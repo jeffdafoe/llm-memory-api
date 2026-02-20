@@ -1,4 +1,28 @@
 ---
+- name: Create deployment directory
+  file:
+    path: "{{ project_root }}"
+    state: directory
+    owner: "{{ app_user }}"
+    mode: "0755"
+  when: repo_root != project_root
+
+- name: Deploy application code
+  synchronize:
+    src: "{{ repo_root }}/node/api/"
+    dest: "{{ project_root }}/"
+    delete: yes
+  delegate_to: "{{ inventory_hostname }}"
+  when: repo_root != project_root
+
+- name: Deploy migrations
+  synchronize:
+    src: "{{ repo_root }}/migrations/"
+    dest: "{{ project_root }}/migrations/"
+    delete: yes
+  delegate_to: "{{ inventory_hostname }}"
+  when: repo_root != project_root
+
 - name: Create secrets directory
   file:
     path: /etc/memory-api
@@ -14,9 +38,16 @@
 
 - name: Install npm dependencies
   npm:
-    path: "{{ project_root }}/node/api"
+    path: "{{ project_root }}"
     production: yes
   become_user: "{{ app_user }}"
+  when: repo_root != project_root
+
+- name: Install npm dependencies (development)
+  npm:
+    path: "{{ project_root }}/node/api"
+  become_user: "{{ app_user }}"
+  when: repo_root == project_root
 
 - name: Create systemd service
   template:
