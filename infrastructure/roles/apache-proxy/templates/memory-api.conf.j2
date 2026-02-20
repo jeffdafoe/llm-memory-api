@@ -1,7 +1,9 @@
 <VirtualHost *:80>
     ServerName {{ server_name }}
+    DocumentRoot /var/www/html
 
     RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/.well-known/acme-challenge/
     RewriteCond %{SERVER_NAME} ={{ server_name }}
     RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,NE,R=permanent]
 </VirtualHost>
