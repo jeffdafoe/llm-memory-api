@@ -1,0 +1,7 @@
+<VirtualHost *:80>
+    ServerName {{ server_name }}
+
+    RewriteEngine On
+    RewriteCond %{SERVER_NAME} ={{ server_name }}
+    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,NE,R=permanent]
+</VirtualHost>
