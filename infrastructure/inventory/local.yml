@@ -9,3 +9,4 @@ all:
     app_user: jeff
     database_name: memory_api
     database_user: memory_api
+    project_root: /mnt/c/dev/llm-memory-api
