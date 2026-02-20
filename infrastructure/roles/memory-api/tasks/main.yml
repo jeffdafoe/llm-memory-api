@@ -1,12 +1,4 @@
 ---
-- name: Clone repository
-  git:
-    repo: "{{ git_repository }}"
-    dest: "{{ project_root }}"
-    version: "{{ deploy_branch | default('main') }}"
-    force: yes
-  become_user: "{{ app_user }}"
-
 - name: Create secrets directory
   file:
     path: /etc/memory-api
