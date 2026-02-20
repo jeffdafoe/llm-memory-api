@@ -8,7 +8,6 @@
   pre_tasks:
     - name: Load secrets
       include_tasks: ../tasks/load-secrets.yml
-      when: deploy_environment == 'development'
 
     - name: Display deployment info
       debug:
