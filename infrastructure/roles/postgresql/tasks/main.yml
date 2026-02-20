@@ -1,0 +1,110 @@
+---
+- name: Check if PostgreSQL is already installed
+  stat:
+    path: /usr/bin/psql
+  register: postgresql_installed
+
+- name: Download PostgreSQL repository key
+  get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /etc/apt/keyrings/postgresql.asc
+    mode: '0644'
+  when: not postgresql_installed.stat.exists
+
+- name: Add PostgreSQL repository
+  apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/postgresql.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: postgresql
+  when: not postgresql_installed.stat.exists
+
+- name: Install PostgreSQL {{ postgresql_version }}
+  apt:
+    name:
+      - "postgresql-{{ postgresql_version }}"
+      - "postgresql-client-{{ postgresql_version }}"
+      - "postgresql-{{ postgresql_version }}-pgvector"
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+  when: not postgresql_installed.stat.exists
+
+- name: Ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Create database user
+  shell: |
+    sudo -u postgres psql -c "CREATE USER {{ database_user }} WITH PASSWORD '{{ database_password }}';" || true
+  changed_when: false
+
+- name: Set database user password
+  shell: |
+    sudo -u postgres psql -c "ALTER USER {{ database_user }} WITH PASSWORD '{{ database_password }}';"
+  changed_when: false
+  no_log: true
+
+- name: Create database
+  shell: |
+    sudo -u postgres psql -c "CREATE DATABASE {{ database_name }} OWNER {{ database_user }};" || true
+  changed_when: false
+
+- name: Enable pgvector extension
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
+  changed_when: false
+
+- name: Create chunks table
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -c "
+      CREATE TABLE IF NOT EXISTS chunks (
+        id SERIAL PRIMARY KEY,
+        namespace VARCHAR(50) NOT NULL,
+        source_file VARCHAR(500) NOT NULL,
+        heading VARCHAR(500),
+        chunk_text TEXT NOT NULL,
+        embedding vector(1536),
+        ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    "
+  changed_when: false
+
+- name: Create chunks index on namespace + source_file
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -c "
+      CREATE INDEX IF NOT EXISTS idx_chunks_namespace_source
+      ON chunks (namespace, source_file);
+    "
+  changed_when: false
+
+- name: Create vector similarity index
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -c "
+      CREATE INDEX IF NOT EXISTS idx_chunks_embedding
+      ON chunks USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100);
+    "
+  changed_when: false
+
+- name: Create chat_messages table
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -c "
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id SERIAL PRIMARY KEY,
+        channel VARCHAR(100) NOT NULL,
+        from_namespace VARCHAR(50) NOT NULL,
+        message TEXT NOT NULL,
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    "
+  changed_when: false
+
+- name: Create chat_messages index on channel
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -c "
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_channel
+      ON chat_messages (channel, id);
+    "
+  changed_when: false

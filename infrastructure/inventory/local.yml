@@ -1,0 +1,11 @@
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: /usr/bin/python3
+  vars:
+    deploy_environment: development
+    server_name: localhost
+    app_user: jeff
+    database_name: memory_api
+    database_user: memory_api

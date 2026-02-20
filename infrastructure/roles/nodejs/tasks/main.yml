@@ -1,0 +1,29 @@
+---
+- name: Check if Node.js is already installed
+  stat:
+    path: /usr/bin/node
+  register: nodejs_installed
+
+- name: Download NodeSource setup script
+  get_url:
+    url: "https://deb.nodesource.com/setup_{{ nodejs_version }}.x"
+    dest: /tmp/nodesource_setup.sh
+    mode: "0755"
+  when: not nodejs_installed.stat.exists
+
+- name: Run NodeSource setup script
+  command: /tmp/nodesource_setup.sh
+  when: not nodejs_installed.stat.exists
+
+- name: Install Node.js
+  apt:
+    name: nodejs
+    state: present
+    update_cache: yes
+  when: not nodejs_installed.stat.exists
+
+- name: Remove NodeSource setup script
+  file:
+    path: /tmp/nodesource_setup.sh
+    state: absent
+  when: not nodejs_installed.stat.exists
