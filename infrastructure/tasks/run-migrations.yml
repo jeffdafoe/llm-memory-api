@@ -1,0 +1,42 @@
+---
+- name: Find all up migration files
+  find:
+    paths: "{{ playbook_dir }}/../../migrations"
+    patterns: "*_up.sql"
+  register: migration_files
+  delegate_to: localhost
+  become: false
+
+- name: Get applied migrations
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -t -A -c "SELECT migration_id FROM migrations_applied ORDER BY migration_id;"
+  register: applied_migrations
+  changed_when: false
+
+- name: Set applied migrations list
+  set_fact:
+    applied_list: "{{ applied_migrations.stdout_lines | default([]) }}"
+
+- name: Build pending migrations list
+  set_fact:
+    pending_migrations: >-
+      {{
+        migration_files.files
+        | map(attribute='path')
+        | map('basename')
+        | map('regex_replace', '_up\.sql$', '')
+        | reject('in', applied_list)
+        | sort
+        | list
+      }}
+
+- name: Display pending migrations
+  debug:
+    msg: "Pending migrations: {{ pending_migrations }}"
+
+- name: Apply pending migrations
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -f {{ playbook_dir }}/../../migrations/{{ item }}_up.sql && \
+    sudo -u postgres psql -d {{ database_name }} -c "INSERT INTO migrations_applied (migration_id) VALUES ('{{ item }}');"
+  loop: "{{ pending_migrations }}"
+  when: pending_migrations | length > 0

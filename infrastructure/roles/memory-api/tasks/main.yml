@@ -22,7 +22,7 @@
 
 - name: Copy application files
   synchronize:
-    src: "{{ playbook_dir }}/../../node/src/"
+    src: "{{ playbook_dir }}/../../node/api/src/"
     dest: "{{ app_dir }}/src/"
     delete: yes
   become_user: "{{ app_user }}"
@@ -30,7 +30,7 @@
 
 - name: Copy package.json
   copy:
-    src: "{{ playbook_dir }}/../../node/package.json"
+    src: "{{ playbook_dir }}/../../node/api/package.json"
     dest: "{{ app_dir }}/package.json"
     owner: "{{ app_user }}"
     group: "{{ app_user }}"

@@ -56,55 +56,12 @@
     sudo -u postgres psql -d {{ database_name }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
   changed_when: false
 
-- name: Create chunks table
+- name: Create migrations_applied table
   shell: |
     sudo -u postgres psql -d {{ database_name }} -c "
-      CREATE TABLE IF NOT EXISTS chunks (
-        id SERIAL PRIMARY KEY,
-        namespace VARCHAR(50) NOT NULL,
-        source_file VARCHAR(500) NOT NULL,
-        heading VARCHAR(500),
-        chunk_text TEXT NOT NULL,
-        embedding vector(1536),
-        ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      CREATE TABLE IF NOT EXISTS migrations_applied (
+        migration_id VARCHAR(50) PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    "
-  changed_when: false
-
-- name: Create chunks index on namespace + source_file
-  shell: |
-    sudo -u postgres psql -d {{ database_name }} -c "
-      CREATE INDEX IF NOT EXISTS idx_chunks_namespace_source
-      ON chunks (namespace, source_file);
-    "
-  changed_when: false
-
-- name: Create vector similarity index
-  shell: |
-    sudo -u postgres psql -d {{ database_name }} -c "
-      CREATE INDEX IF NOT EXISTS idx_chunks_embedding
-      ON chunks USING ivfflat (embedding vector_cosine_ops)
-      WITH (lists = 100);
-    "
-  changed_when: false
-
-- name: Create chat_messages table
-  shell: |
-    sudo -u postgres psql -d {{ database_name }} -c "
-      CREATE TABLE IF NOT EXISTS chat_messages (
-        id SERIAL PRIMARY KEY,
-        channel VARCHAR(100) NOT NULL,
-        from_namespace VARCHAR(50) NOT NULL,
-        message TEXT NOT NULL,
-        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    "
-  changed_when: false
-
-- name: Create chat_messages index on channel
-  shell: |
-    sudo -u postgres psql -d {{ database_name }} -c "
-      CREATE INDEX IF NOT EXISTS idx_chat_messages_channel
-      ON chat_messages (channel, id);
     "
   changed_when: false
