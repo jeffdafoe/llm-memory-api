@@ -1,16 +1,25 @@
 ---
 - name: Provision Memory API
   hosts: all
+  become: yes
+  vars_files:
+    - ../group_vars/all.yml
 
   pre_tasks:
     - name: Load secrets
       include_tasks: ../tasks/load-secrets.yml
+      when: deploy_environment == 'development'
+
+    - name: Display environment
+      debug:
+        msg: "Setting up {{ deploy_environment }} environment on {{ inventory_hostname }}"
 
   roles:
-    - nodejs
-    - postgresql
-    - nginx
-    - memory-api
+    - role: ../roles/common
+    - role: ../roles/nodejs
+    - role: ../roles/postgresql
+    - role: ../roles/nginx
+    - role: ../roles/memory-api
 
   tasks:
     - name: Run pending migrations

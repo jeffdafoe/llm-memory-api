@@ -1,11 +1,11 @@
 ---
-- name: Create application directory
-  file:
-    path: "{{ app_dir }}"
-    state: directory
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-    mode: "0755"
+- name: Clone repository
+  git:
+    repo: "{{ git_repository }}"
+    dest: "{{ project_root }}"
+    version: "{{ deploy_branch | default('main') }}"
+    force: yes
+  become_user: "{{ app_user }}"
 
 - name: Create secrets directory
   file:
@@ -20,25 +20,9 @@
     mode: "0600"
   notify: Restart memory-api
 
-- name: Copy application files
-  synchronize:
-    src: "{{ playbook_dir }}/../../node/api/src/"
-    dest: "{{ app_dir }}/src/"
-    delete: yes
-  become_user: "{{ app_user }}"
-  notify: Restart memory-api
-
-- name: Copy package.json
-  copy:
-    src: "{{ playbook_dir }}/../../node/api/package.json"
-    dest: "{{ app_dir }}/package.json"
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-  notify: Restart memory-api
-
 - name: Install npm dependencies
   npm:
-    path: "{{ app_dir }}"
+    path: "{{ project_root }}/node/api"
     production: yes
   become_user: "{{ app_user }}"
 
