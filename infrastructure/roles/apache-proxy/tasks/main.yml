@@ -1,0 +1,35 @@
+---
+- name: Enable Apache proxy modules
+  apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - proxy
+    - proxy_http
+    - headers
+    - rewrite
+  notify: Reload apache
+
+- name: Create Apache vhost for memory-api
+  template:
+    src: memory-api.conf.j2
+    dest: "/etc/apache2/sites-available/{{ server_name }}.conf"
+  notify: Reload apache
+
+- name: Enable memory-api vhost
+  command: "a2ensite {{ server_name }}.conf"
+  register: enable_result
+  changed_when: "'Enabling site' in enable_result.stdout"
+  notify: Reload apache
+
+- name: Create Apache SSL vhost for memory-api
+  template:
+    src: memory-api-ssl.conf.j2
+    dest: "/etc/apache2/sites-available/{{ server_name }}-le-ssl.conf"
+  notify: Reload apache
+
+- name: Enable memory-api SSL vhost
+  command: "a2ensite {{ server_name }}-le-ssl.conf"
+  register: enable_ssl_result
+  changed_when: "'Enabling site' in enable_ssl_result.stdout"
+  notify: Reload apache
