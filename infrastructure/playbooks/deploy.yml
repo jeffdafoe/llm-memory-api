@@ -1,0 +1,10 @@
+---
+- name: Deploy Memory API
+  hosts: all
+
+  pre_tasks:
+    - name: Load secrets
+      include_tasks: ../tasks/load-secrets.yml
+
+  roles:
+    - memory-api

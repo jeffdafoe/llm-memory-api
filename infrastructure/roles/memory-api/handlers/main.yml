@@ -1,0 +1,9 @@
+---
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Restart memory-api
+  service:
+    name: memory-api
+    state: restarted

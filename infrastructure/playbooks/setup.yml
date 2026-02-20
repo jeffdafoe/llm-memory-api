@@ -1,0 +1,13 @@
+---
+- name: Provision Memory API
+  hosts: all
+
+  pre_tasks:
+    - name: Load secrets
+      include_tasks: ../tasks/load-secrets.yml
+
+  roles:
+    - nodejs
+    - postgresql
+    - nginx
+    - memory-api

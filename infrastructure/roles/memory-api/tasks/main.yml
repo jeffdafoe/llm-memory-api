@@ -1,0 +1,57 @@
+---
+- name: Create application directory
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0755"
+
+- name: Create secrets directory
+  file:
+    path: /etc/memory-api
+    state: directory
+    mode: "0700"
+
+- name: Deploy environment file
+  template:
+    src: env.j2
+    dest: /etc/memory-api/env
+    mode: "0600"
+  notify: Restart memory-api
+
+- name: Copy application files
+  synchronize:
+    src: "{{ playbook_dir }}/../../src/"
+    dest: "{{ app_dir }}/src/"
+    delete: yes
+  become_user: "{{ app_user }}"
+  notify: Restart memory-api
+
+- name: Copy package.json
+  copy:
+    src: "{{ playbook_dir }}/../../package.json"
+    dest: "{{ app_dir }}/package.json"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+  notify: Restart memory-api
+
+- name: Install npm dependencies
+  npm:
+    path: "{{ app_dir }}"
+    production: yes
+  become_user: "{{ app_user }}"
+
+- name: Create systemd service
+  template:
+    src: memory-api.service.j2
+    dest: /etc/systemd/system/memory-api.service
+  notify:
+    - Reload systemd
+    - Restart memory-api
+
+- name: Enable and start memory-api service
+  service:
+    name: memory-api
+    enabled: yes
+    state: started

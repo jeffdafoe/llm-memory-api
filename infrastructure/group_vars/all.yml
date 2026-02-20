@@ -1,0 +1,12 @@
+# Shared variables across all environments
+
+# PostgreSQL
+postgresql_version: "15"
+
+# Node.js
+nodejs_version: "20"
+
+# Memory API
+memory_api_port: 3100
+project_name: memory-api
+app_dir: /opt/memory-api

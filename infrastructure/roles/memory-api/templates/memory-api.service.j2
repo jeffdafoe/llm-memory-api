@@ -1,0 +1,15 @@
+[Unit]
+Description=Memory API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User={{ app_user }}
+WorkingDirectory={{ app_dir }}
+EnvironmentFile=/etc/memory-api/env
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
