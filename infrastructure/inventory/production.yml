@@ -10,3 +10,6 @@ all:
     app_user: jeff
     database_name: memory_api
     database_user: memory_api
+    database_password: "{{ lookup('env', 'MEMORY_DB_PASSWORD') }}"
+    memory_api_key: "{{ lookup('env', 'MEMORY_API_KEY') }}"
+    openai_api_key: "{{ lookup('env', 'OPENAI_API_KEY') }}"

@@ -9,4 +9,5 @@ nodejs_version: "20"
 # Memory API
 memory_api_port: 3100
 project_name: memory-api
-app_dir: /opt/memory-api
+project_root: /opt/memory-api
+git_repository: "https://github.com/jeffdafoe/llm-memory-api.git"
