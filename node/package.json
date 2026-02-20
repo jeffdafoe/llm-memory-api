@@ -1,0 +1,19 @@
+{
+    "name": "llm-memory-api",
+    "version": "1.0.0",
+    "description": "Vector memory and inter-instance chat API for Claude Code",
+    "main": "src/server.js",
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "node --watch src/server.js"
+    },
+    "dependencies": {
+        "express": "^4.21.0",
+        "pg": "^8.13.0",
+        "pgvector": "^0.2.0"
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "private": true
+}
