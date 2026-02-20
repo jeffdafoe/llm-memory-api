@@ -1,7 +1,10 @@
 ---
-- name: Install Apache
+- name: Install Apache and Certbot
   apt:
-    name: apache2
+    name:
+      - apache2
+      - certbot
+      - python3-certbot-apache
     state: present
 
 - name: Enable Apache proxy modules
@@ -13,6 +16,7 @@
     - proxy_http
     - headers
     - rewrite
+    - ssl
   notify: Reload apache
 
 - name: Create Apache vhost for memory-api
@@ -26,6 +30,24 @@
   register: enable_result
   changed_when: "'Enabling site' in enable_result.stdout"
   notify: Reload apache
+
+- name: Flush handlers to reload Apache before certbot
+  meta: flush_handlers
+
+- name: Check if SSL certificate exists
+  stat:
+    path: "/etc/letsencrypt/live/{{ server_name }}/fullchain.pem"
+  register: ssl_cert
+
+- name: Obtain SSL certificate
+  command: >
+    certbot certonly --webroot
+    -w /var/www/html
+    -d {{ server_name }}
+    --non-interactive
+    --agree-tos
+    -m {{ certbot_email }}
+  when: not ssl_cert.stat.exists
 
 - name: Create Apache SSL vhost for memory-api
   template:

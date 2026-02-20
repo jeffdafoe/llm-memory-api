@@ -11,3 +11,6 @@ memory_api_port: 3100
 project_name: memory-api
 project_root: /var/www/memory-api
 git_repository: "https://github.com/jeffdafoe/llm-memory-api.git"
+
+# SSL
+certbot_email: jeff@jeffdafoe.com
