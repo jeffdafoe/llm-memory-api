@@ -5,7 +5,11 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User={{ app_user }}
+{% if repo_root == project_root %}
 WorkingDirectory={{ project_root }}/node/api
+{% else %}
+WorkingDirectory={{ project_root }}
+{% endif %}
 EnvironmentFile=/etc/memory-api/env
 ExecStart=/usr/bin/node src/server.js
 Restart=on-failure
