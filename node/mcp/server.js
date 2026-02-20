@@ -1,7 +1,8 @@
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
-const { readFileSync } = require('fs');
+const { readFileSync, writeFileSync, mkdirSync, existsSync } = require('fs');
+const path = require('path');
 
 const API_URL = process.env.MEMORY_API_URL || 'http://localhost:3100/v1';
 const API_KEY = process.env.MEMORY_API_KEY || '';
@@ -97,6 +98,43 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     },
                     required: ['channel']
                 }
+            },
+            {
+                name: 'memory_mail_send',
+                description: 'Send mail to another instance. Mail is stored in the API database until the recipient acks it.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        to_namespace: { type: 'string', description: 'Recipient namespace (e.g., "home", "work")' },
+                        subject: { type: 'string', description: 'Mail subject line' },
+                        body: { type: 'string', description: 'Mail body (markdown)' },
+                        from_namespace: { type: 'string', description: 'Sender namespace (default: configured namespace)' }
+                    },
+                    required: ['to_namespace', 'subject', 'body']
+                }
+            },
+            {
+                name: 'memory_mail_check',
+                description: 'Check for new mail addressed to this instance. Downloads messages, writes them to the local mailbox directory, and acks receipt.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        namespace: { type: 'string', description: 'Namespace to check mail for (default: configured namespace)' },
+                        mailbox_dir: { type: 'string', description: 'Local directory to write received mail files to' }
+                    },
+                    required: ['mailbox_dir']
+                }
+            },
+            {
+                name: 'memory_mail_ack',
+                description: 'Manually ack specific mail messages by UUID. Use this if mail_check failed after downloading but before acking.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        ids: { type: 'array', items: { type: 'string' }, description: 'Array of mail UUIDs to ack' }
+                    },
+                    required: ['ids']
+                }
             }
         ]
     };
@@ -166,6 +204,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }).join('\n');
 
         return { content: [{ type: 'text', text: formatted }] };
+    }
+
+    if (name === 'memory_mail_send') {
+        const data = await apiCall('/mail/send', {
+            to_namespace: args.to_namespace,
+            from_namespace: args.from_namespace || DEFAULT_NAMESPACE,
+            subject: args.subject,
+            body: args.body
+        });
+
+        return { content: [{ type: 'text', text: `Mail sent to ${data.to_namespace} (id: ${data.id}, subject: "${data.subject}")` }] };
+    }
+
+    if (name === 'memory_mail_check') {
+        const namespace = args.namespace || DEFAULT_NAMESPACE;
+        const data = await apiCall('/mail/check', { namespace });
+
+        if (data.messages.length === 0) {
+            return { content: [{ type: 'text', text: 'No new mail.' }] };
+        }
+
+        if (!existsSync(args.mailbox_dir)) {
+            mkdirSync(args.mailbox_dir, { recursive: true });
+        }
+
+        const written = [];
+        for (const msg of data.messages) {
+            const slug = msg.subject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            const filename = `${msg.id.slice(0, 8)}-${slug}.md`;
+            const filepath = path.join(args.mailbox_dir, filename);
+
+            const content = `# ${msg.subject}\n\n**From:** ${msg.from_namespace}\n**Date:** ${msg.sent_at}\n**ID:** ${msg.id}\n\n${msg.body}`;
+            writeFileSync(filepath, content, 'utf-8');
+            written.push({ id: msg.id, filename });
+        }
+
+        const ackData = await apiCall('/mail/ack', {
+            ids: written.map(w => w.id)
+        });
+
+        const summary = written.map(w => `  ${w.filename}`).join('\n');
+        return { content: [{ type: 'text', text: `Received ${written.length} message(s), wrote to ${args.mailbox_dir}:\n${summary}\n\nAcked: ${ackData.acked}` }] };
+    }
+
+    if (name === 'memory_mail_ack') {
+        const data = await apiCall('/mail/ack', { ids: args.ids });
+        return { content: [{ type: 'text', text: `Acked ${data.acked} message(s)` }] };
     }
 
     throw new Error(`Unknown tool: ${name}`);

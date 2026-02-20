@@ -8,3 +8,7 @@
 
   roles:
     - memory-api
+
+  tasks:
+    - name: Run pending migrations
+      include_tasks: ../tasks/run-migrations.yml

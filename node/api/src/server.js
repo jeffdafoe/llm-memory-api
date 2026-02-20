@@ -4,6 +4,7 @@ const chatRoutes = require('./routes/chat');
 const ingestRoutes = require('./routes/ingest');
 const searchRoutes = require('./routes/search');
 const deleteRoutes = require('./routes/delete');
+const mailRoutes = require('./routes/mail');
 
 const app = express();
 const port = process.env.PORT || 3100;
@@ -14,6 +15,7 @@ app.use('/v1', chatRoutes);
 app.use('/v1', ingestRoutes);
 app.use('/v1', searchRoutes);
 app.use('/v1', deleteRoutes);
+app.use('/v1', mailRoutes);
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
