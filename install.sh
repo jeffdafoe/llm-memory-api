@@ -19,18 +19,18 @@ apt install -y git ansible curl
 
 # Clone repository
 echo -e "\033[1m[2/4] Cloning repository...\033[0m"
-if [ -d "/opt/memory-api-repo" ]; then
-    echo "Directory /opt/memory-api-repo already exists. Pulling latest..."
-    cd /opt/memory-api-repo
+if [ -d "/var/www/memory-api" ]; then
+    echo "Directory /var/www/memory-api already exists. Pulling latest..."
+    cd /var/www/memory-api
     git pull
 else
-    git clone https://github.com/jeffdafoe/llm-memory-api.git /opt/memory-api-repo
+    git clone https://github.com/jeffdafoe/llm-memory-api.git /var/www/memory-api
 fi
 
 # Run setup playbook
 echo -e "\033[1m[3/4] Running setup...\033[0m"
-cd /opt/memory-api-repo/infrastructure
-export ANSIBLE_CONFIG=/opt/memory-api-repo/infrastructure/ansible.cfg
+cd /var/www/memory-api/infrastructure
+export ANSIBLE_CONFIG=/var/www/memory-api/infrastructure/ansible.cfg
 ansible-playbook -i inventory/production.yml playbooks/setup.yml
 
 # Run deploy playbook
