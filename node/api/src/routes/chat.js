@@ -172,13 +172,13 @@ router.post('/chat/ack', async (req, res) => {
     }
 });
 
-router.get('/chat/status', async (req, res) => {
+router.post('/chat/status', async (req, res) => {
     try {
-        const { agent, channel } = req.query;
+        const { agent, channel } = req.body;
 
         if (!agent) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required query param: agent' }
+                error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
             });
         }
 
