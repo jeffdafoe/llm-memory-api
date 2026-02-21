@@ -64,7 +64,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
             {
-                name: 'memory_search',
+                name: 'search',
                 description: 'Search memory for relevant notes using semantic similarity',
                 inputSchema: {
                     type: 'object',
@@ -77,7 +77,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_ingest',
+                name: 'ingest',
                 description: 'Ingest a markdown file into memory. Reads the file from local disk and sends content to the API.',
                 inputSchema: {
                     type: 'object',
@@ -90,7 +90,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_delete',
+                name: 'delete',
                 description: 'Delete all chunks for a specific source file from memory',
                 inputSchema: {
                     type: 'object',
@@ -102,7 +102,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_chat_send',
+                name: 'chat_send',
                 description: 'Send a chat message to another agent. Use to="*" to broadcast to all registered agents.',
                 inputSchema: {
                     type: 'object',
@@ -115,8 +115,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_chat_receive',
-                description: 'Check for unread chat messages. Returns unacked messages. Call memory_chat_ack with the message IDs after processing.',
+                name: 'chat_receive',
+                description: 'Check for unread chat messages. Returns unacked messages. Call chat_ack with the message IDs after processing.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -125,7 +125,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_chat_ack',
+                name: 'chat_ack',
                 description: 'Acknowledge specific chat messages as read. Acked messages will not appear in future receives.',
                 inputSchema: {
                     type: 'object',
@@ -137,7 +137,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_chat_status',
+                name: 'chat_status',
                 description: 'Get chat status for an agent: pending message count, last message time, last ack time.',
                 inputSchema: {
                     type: 'object',
@@ -147,7 +147,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_mail_send',
+                name: 'mail_send',
                 description: 'Send mail to another agent. Mail is stored in the API database until the recipient acks it.',
                 inputSchema: {
                     type: 'object',
@@ -161,7 +161,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_mail_check',
+                name: 'mail_check',
                 description: 'Check for new mail addressed to this agent. Downloads messages, writes them to the local mailbox directory, and acks receipt.',
                 inputSchema: {
                     type: 'object',
@@ -173,7 +173,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'memory_mail_ack',
+                name: 'mail_ack',
                 description: 'Manually ack specific mail messages by UUID. Use this if mail_check failed after downloading but before acking.',
                 inputSchema: {
                     type: 'object',
@@ -190,7 +190,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    if (name === 'memory_search') {
+    if (name === 'search') {
         const data = await apiCall('/search', {
             query: args.query,
             namespace: args.namespace || DEFAULT_NAMESPACE,
@@ -204,7 +204,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: formatted || 'No results found.' }] };
     }
 
-    if (name === 'memory_ingest') {
+    if (name === 'ingest') {
         const content = readFileSync(args.file_path, 'utf-8');
         const sourceName = args.source_file || args.file_path.split(/[/\\]/).pop();
 
@@ -217,7 +217,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: `Ingested ${data.chunks_created} chunks from ${data.source_file} into namespace "${data.namespace}"` }] };
     }
 
-    if (name === 'memory_delete') {
+    if (name === 'delete') {
         const data = await apiCall('/delete', {
             namespace: args.namespace || DEFAULT_NAMESPACE,
             source_file: args.source_file
@@ -226,7 +226,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: `Deleted ${data.chunks_deleted} chunks for ${args.source_file}` }] };
     }
 
-    if (name === 'memory_chat_send') {
+    if (name === 'chat_send') {
         const data = await apiCall('/chat/send', {
             from_agent: args.from || DEFAULT_AGENT,
             to_agent: args.to,
@@ -241,7 +241,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: `Message sent to ${data.to_agent} (id: ${data.id})` }] };
     }
 
-    if (name === 'memory_chat_receive') {
+    if (name === 'chat_receive') {
         const agent = args.agent || DEFAULT_AGENT;
         const data = await apiCall('/chat/receive', { agent });
 
@@ -254,10 +254,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return `[${m.from_agent}] (id:${m.id}, ${m.sent_at}): ${m.message}`;
         }).join('\n');
 
-        return { content: [{ type: 'text', text: `${formatted}\n\n(message_ids: [${ids.join(', ')}] — call memory_chat_ack to mark as read)` }] };
+        return { content: [{ type: 'text', text: `${formatted}\n\n(message_ids: [${ids.join(', ')}] — call chat_ack to mark as read)` }] };
     }
 
-    if (name === 'memory_chat_ack') {
+    if (name === 'chat_ack') {
         const agent = args.agent || DEFAULT_AGENT;
         const data = await apiCall('/chat/ack', {
             agent,
@@ -267,14 +267,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]` }] };
     }
 
-    if (name === 'memory_chat_status') {
+    if (name === 'chat_status') {
         const agent = args.agent || DEFAULT_AGENT;
         const data = await apiGet(`/chat/status?agent=${encodeURIComponent(agent)}`);
 
         return { content: [{ type: 'text', text: `Chat status for ${data.agent}:\n  Pending: ${data.pending_count}\n  Max message ID: ${data.max_message_id}\n  Last message: ${data.last_message_at}\n  Last ack: ${data.last_ack_at}` }] };
     }
 
-    if (name === 'memory_mail_send') {
+    if (name === 'mail_send') {
         const data = await apiCall('/mail/send', {
             to_agent: args.to,
             from_agent: args.from || DEFAULT_AGENT,
@@ -285,7 +285,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")` }] };
     }
 
-    if (name === 'memory_mail_check') {
+    if (name === 'mail_check') {
         const agent = args.agent || DEFAULT_AGENT;
         const data = await apiCall('/mail/check', { agent });
 
@@ -335,7 +335,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: result }] };
     }
 
-    if (name === 'memory_mail_ack') {
+    if (name === 'mail_ack') {
         const data = await apiCall('/mail/ack', { ids: args.ids });
         return { content: [{ type: 'text', text: `Acked ${data.acked} message(s)` }] };
     }
