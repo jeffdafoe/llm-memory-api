@@ -1,0 +1,68 @@
+---
+- name: Install Apache and Certbot
+  apt:
+    name:
+      - apache2
+      - certbot
+      - python3-certbot-apache
+    state: present
+
+- name: Enable Apache proxy modules
+  apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - proxy
+    - proxy_http
+    - headers
+    - rewrite
+    - ssl
+  notify: Reload apache
+
+- name: Create Apache vhost for memory-api
+  template:
+    src: memory-api.conf.j2
+    dest: "/etc/apache2/sites-available/{{ server_name }}.conf"
+  notify: Reload apache
+
+- name: Enable memory-api vhost
+  command: "a2ensite {{ server_name }}.conf"
+  register: enable_result
+  changed_when: "'Enabling site' in enable_result.stdout"
+  notify: Reload apache
+
+- name: Flush handlers to reload Apache before certbot
+  meta: flush_handlers
+
+- name: Check if SSL certificate exists
+  stat:
+    path: "/etc/letsencrypt/live/{{ server_name }}/fullchain.pem"
+  register: ssl_cert
+
+- name: Obtain SSL certificate
+  command: >
+    certbot certonly --webroot
+    -w /var/www/html
+    -d {{ server_name }}
+    --non-interactive
+    --agree-tos
+    -m {{ certbot_email }}
+  when: not ssl_cert.stat.exists
+
+- name: Create Apache SSL vhost for memory-api
+  template:
+    src: memory-api-ssl.conf.j2
+    dest: "/etc/apache2/sites-available/{{ server_name }}-le-ssl.conf"
+  notify: Reload apache
+
+- name: Enable memory-api SSL vhost
+  command: "a2ensite {{ server_name }}-le-ssl.conf"
+  register: enable_ssl_result
+  changed_when: "'Enabling site' in enable_ssl_result.stdout"
+  notify: Reload apache
+
+- name: Ensure Apache is running
+  service:
+    name: apache2
+    state: started
+    enabled: yes

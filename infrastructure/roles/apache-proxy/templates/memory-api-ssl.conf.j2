@@ -1,0 +1,20 @@
+<VirtualHost *:443>
+    ServerName {{ server_name }}
+
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/{{ server_name }}/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/{{ server_name }}/privkey.pem
+
+    ProxyPreserveHost On
+    ProxyPass /v1/ http://127.0.0.1:{{ memory_api_port }}/v1/
+    ProxyPassReverse /v1/ http://127.0.0.1:{{ memory_api_port }}/v1/
+
+    RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+    RequestHeader set X-Forwarded-Proto "https"
+
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+
+    ErrorLog ${APACHE_LOG_DIR}/{{ project_name }}_error.log
+    CustomLog ${APACHE_LOG_DIR}/{{ project_name }}_access.log combined
+</VirtualHost>

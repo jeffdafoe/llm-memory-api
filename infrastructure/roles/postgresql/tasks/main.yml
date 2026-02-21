@@ -23,11 +23,16 @@
     name:
       - "postgresql-{{ postgresql_version }}"
       - "postgresql-client-{{ postgresql_version }}"
-      - "postgresql-{{ postgresql_version }}-pgvector"
       - python3-psycopg2
     state: present
     update_cache: yes
   when: not postgresql_installed.stat.exists
+
+- name: Install pgvector extension package
+  apt:
+    name: "postgresql-{{ postgresql_version }}-pgvector"
+    state: present
+    update_cache: yes
 
 - name: Ensure PostgreSQL is running
   service:
