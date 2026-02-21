@@ -11,7 +11,7 @@
 # The first message should be placed in outbox/ before starting, or
 # the subagent should write it immediately after the script starts.
 
-set -euo pipefail
+set -uo pipefail
 
 # Defaults
 POLL_INTERVAL=5
@@ -201,14 +201,14 @@ data = json.load(sys.stdin)
 inbox = sys.argv[1]
 transcript = sys.argv[2]
 for msg in data["messages"]:
-    filename = os.path.join(inbox, f"{msg[\"id\"]}.txt")
+    filename = os.path.join(inbox, str(msg["id"]) + ".txt")
     with open(filename, "w") as f:
         f.write(msg["message"])
     with open(transcript, "a") as f:
         from datetime import datetime
         ts = datetime.now().strftime("%H:%M:%S")
-        f.write(f"**{msg[\"from_agent\"]}** ({ts}):\n{msg[\"message\"]}\n\n")
-    print(f"id={msg[\"id\"]} from={msg[\"from_agent\"]}")
+        f.write("**" + msg["from_agent"] + "** (" + ts + "):\n" + msg["message"] + "\n\n")
+    print("id=" + str(msg["id"]) + " from=" + msg["from_agent"])
 ' "$INBOX_DIR" "$TRANSCRIPT_FILE" 2>&1 | while read -r line; do
             log "RECEIVED: $line"
         done
@@ -221,7 +221,7 @@ for msg in data["messages"]:
         fi
 
         # Check if any incoming message is a CONCLUDED
-        echo "$response" | python3 -c '
+        concluded_check=$(echo "$response" | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
 for msg in data.get("messages", []):
@@ -229,9 +229,9 @@ for msg in data.get("messages", []):
         print("true")
         sys.exit(0)
 print("false")
-' | read -r concluded_check || true
+' 2>/dev/null || echo "false")
 
-        if [[ "${concluded_check:-false}" == "true" ]]; then
+        if [[ "${concluded_check}" == "true" ]]; then
             OTHER_CONCLUDED=true
             log "Other side sent CONCLUDED"
         fi
