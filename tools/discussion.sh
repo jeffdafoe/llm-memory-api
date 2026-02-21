@@ -11,7 +11,7 @@
 # The first message should be placed in outbox/ before starting, or
 # the subagent should write it immediately after the script starts.
 
-set -uo pipefail
+set -u
 
 # Find python - prefer python3, fall back to python
 PYTHON=""
@@ -94,6 +94,8 @@ transcript() {
     echo "$message" >> "$TRANSCRIPT_FILE"
     echo "" >> "$TRANSCRIPT_FILE"
 }
+
+trap 'log "Transport exiting (exit code: $?)"' EXIT
 
 api_call() {
     local endpoint="$1"
@@ -205,7 +207,8 @@ while true; do
 
     if [[ "$message_count" -gt 0 ]]; then
         # Extract and process each message
-        # Write messages to inbox and transcript
+        # Write messages to inbox and transcript BEFORE acking
+        # This ensures messages survive transport restarts (duplicates just overwrite)
         echo "$response" | $PYTHON -c '
 import sys, json, os
 data = json.load(sys.stdin)
@@ -224,7 +227,7 @@ for msg in data["messages"]:
             log "RECEIVED: $line"
         done
 
-        # Get last message id for ack
+        # Ack AFTER writing to inbox — safe on restart (duplicates overwrite)
         last_id=$(echo "$response" | $PYTHON -c 'import sys,json; d=json.load(sys.stdin); msgs=d.get("messages",[]); print(msgs[-1]["id"] if msgs else "")')
 
         if [[ -n "$last_id" ]]; then
