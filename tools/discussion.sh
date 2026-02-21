@@ -4,6 +4,8 @@
 # Polls the chat API for messages, writes them to inbox/.
 # Watches outbox/ for replies and sends them via the API.
 #
+# Dependencies: node (for JSON parsing), curl
+#
 # Usage:
 #   discussion.sh --api-url URL --api-key KEY --agent NAME --other AGENT --dir WORKDIR [--initiator]
 #
@@ -13,14 +15,9 @@
 
 set -u
 
-# Find python - prefer python3, fall back to python
-PYTHON=""
-if command -v python3 &>/dev/null && python3 --version &>/dev/null; then
-    PYTHON="python3"
-elif command -v python &>/dev/null && python --version &>/dev/null; then
-    PYTHON="python"
-else
-    echo "Python not found" >&2
+# Verify node is available (required for JSON parsing)
+if ! command -v node &>/dev/null; then
+    echo "Node.js not found — required for JSON parsing" >&2
     exit 1
 fi
 
@@ -119,16 +116,14 @@ ack_messages() {
 
 send_message() {
     local message="$1"
-    # Escape the message for JSON
     local escaped
-    escaped=$(printf '%s' "$message" | $PYTHON -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+    escaped=$(printf '%s' "$message" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))')
     api_call "/chat/send" "{\"from_agent\": \"${MY_AGENT}\", \"to_agent\": \"${OTHER_AGENT}\", \"message\": ${escaped}}" > /dev/null
     log "SENT: ${message:0:100}..."
     transcript "$MY_AGENT" "$message"
 }
 
 check_outbox() {
-    # Look for any file in outbox/
     local outfile
     for outfile in "$OUTBOX_DIR"/*; do
         if [[ -f "$outfile" ]]; then
@@ -140,13 +135,11 @@ check_outbox() {
                 send_message "$message"
                 TURN_COUNT=$((TURN_COUNT + 1))
 
-                # Check if we just concluded
                 if [[ "$message" == "[CONCLUDED]"* ]]; then
                     MY_CONCLUDED=true
                     log "We sent CONCLUDED"
                 fi
 
-                # Pacing: wait after sending
                 sleep "$SEND_DELAY"
                 return 0
             fi
@@ -168,6 +161,44 @@ check_timeout() {
     return 1
 }
 
+# Process received messages in a single node call.
+# Writes messages to inbox/ and appends to transcript BEFORE returning.
+# Outputs structured lines to stdout: count=N, last_id=X, concluded=true/false, log=...
+process_received() {
+    local response="$1"
+    echo "$response" | node -e '
+const fs = require("fs");
+const path = require("path");
+let d = "";
+process.stdin.on("data", c => d += c);
+process.stdin.on("end", () => {
+    let data;
+    try { data = JSON.parse(d); } catch (e) { console.log("count=0"); return; }
+    const msgs = data.messages || [];
+    const inbox = process.argv[1];
+    const transcript = process.argv[2];
+
+    if (msgs.length === 0) {
+        console.log("count=0");
+        return;
+    }
+
+    let concluded = false;
+    for (const msg of msgs) {
+        fs.writeFileSync(path.join(inbox, msg.id + ".txt"), msg.message);
+        const ts = new Date().toTimeString().slice(0, 8);
+        fs.appendFileSync(transcript, "**" + msg.from_agent + "** (" + ts + "):\n" + msg.message + "\n\n");
+        console.log("log=id=" + msg.id + " from=" + msg.from_agent);
+        if (msg.message.startsWith("[CONCLUDED]")) concluded = true;
+    }
+
+    const lastId = msgs[msgs.length - 1].id;
+    console.log("count=" + msgs.length);
+    console.log("last_id=" + lastId);
+    console.log("concluded=" + concluded);
+});' "$INBOX_DIR" "$TRANSCRIPT_FILE"
+}
+
 # Main loop
 log "Discussion transport starting: ${MY_AGENT} <-> ${OTHER_AGENT}"
 log "Work dir: ${WORK_DIR}"
@@ -187,9 +218,7 @@ while true; do
         log "Timeout reached (${TURN_COUNT} turns, ${TIMEOUT_MINUTES}m). Writing timeout notice to inbox."
         echo "[SYSTEM] Discussion timeout reached. Please wrap up." > "${INBOX_DIR}/timeout.txt"
         echo "TIMEOUT" > "$STATUS_FILE"
-        # Give the subagent a chance to conclude
         sleep 30
-        # Check outbox one more time
         check_outbox || true
         echo "DONE" > "$STATUS_FILE"
         touch "$DONE_FILE"
@@ -202,57 +231,32 @@ while true; do
     # Poll for incoming messages
     response=$(receive_messages)
 
-    # Parse messages using python for reliable JSON handling
-    message_count=$(echo "$response" | $PYTHON -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("messages",[])))')
+    # Single node call: write to inbox, append transcript, extract metadata
+    result=$(process_received "$response")
+
+    # Log received messages
+    echo "$result" | grep "^log=" | while read -r line; do
+        log "RECEIVED: ${line#log=}"
+    done
+
+    message_count=$(echo "$result" | grep "^count=" | cut -d= -f2)
 
     if [[ "$message_count" -gt 0 ]]; then
-        # Extract and process each message
-        # Write messages to inbox and transcript BEFORE acking
-        # This ensures messages survive transport restarts (duplicates just overwrite)
-        echo "$response" | $PYTHON -c '
-import sys, json, os
-data = json.load(sys.stdin)
-inbox = sys.argv[1]
-transcript = sys.argv[2]
-for msg in data["messages"]:
-    filename = os.path.join(inbox, str(msg["id"]) + ".txt")
-    with open(filename, "w") as f:
-        f.write(msg["message"])
-    with open(transcript, "a") as f:
-        from datetime import datetime
-        ts = datetime.now().strftime("%H:%M:%S")
-        f.write("**" + msg["from_agent"] + "** (" + ts + "):\n" + msg["message"] + "\n\n")
-    print("id=" + str(msg["id"]) + " from=" + msg["from_agent"])
-' "$INBOX_DIR" "$TRANSCRIPT_FILE" 2>&1 | while read -r line; do
-            log "RECEIVED: $line"
-        done
+        last_id=$(echo "$result" | grep "^last_id=" | cut -d= -f2)
+        concluded=$(echo "$result" | grep "^concluded=" | cut -d= -f2)
 
         # Ack AFTER writing to inbox — safe on restart (duplicates overwrite)
-        last_id=$(echo "$response" | $PYTHON -c 'import sys,json; d=json.load(sys.stdin); msgs=d.get("messages",[]); print(msgs[-1]["id"] if msgs else "")')
-
         if [[ -n "$last_id" ]]; then
             ack_messages "$last_id"
         fi
 
-        # Check if any incoming message is a CONCLUDED
-        concluded_check=$(echo "$response" | $PYTHON -c '
-import sys, json
-data = json.load(sys.stdin)
-for msg in data.get("messages", []):
-    if msg["message"].startswith("[CONCLUDED]"):
-        print("true")
-        sys.exit(0)
-print("false")
-' 2>/dev/null || echo "false")
-
-        if [[ "${concluded_check}" == "true" ]]; then
+        if [[ "$concluded" == "true" ]]; then
             OTHER_CONCLUDED=true
             log "Other side sent CONCLUDED"
         fi
 
         echo "MESSAGE_RECEIVED" > "$STATUS_FILE"
     else
-        # No messages, wait before next poll
         sleep "$POLL_INTERVAL"
     fi
 done
