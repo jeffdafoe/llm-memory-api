@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Usage:
+#   First time:  curl -sSL https://raw.githubusercontent.com/jeffdafoe/llm-memory-api/main/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh
+#   Re-install:  sudo bash /opt/llm-memory-api/install.sh
+#   Deploy only: sudo bash /opt/llm-memory-api/deploy.sh
+
 echo -e "\033[1;36m==================================="
 echo "  Memory API Installer"
 echo -e "===================================\033[0m"
@@ -27,7 +32,7 @@ else
     git clone https://github.com/jeffdafoe/llm-memory-api.git /opt/llm-memory-api
 fi
 
-# Run setup playbook
+# Run setup playbook (will prompt for secrets on first run)
 echo -e "\033[1m[3/4] Running setup...\033[0m"
 cd /opt/llm-memory-api/infrastructure
 export ANSIBLE_CONFIG=/opt/llm-memory-api/infrastructure/ansible.cfg
@@ -41,4 +46,7 @@ echo ""
 echo -e "\033[1;32m==================================="
 echo "  Installation complete!"
 echo -e "===================================\033[0m"
+echo ""
+echo "To deploy updates later, run:"
+echo "  sudo bash /opt/llm-memory-api/deploy.sh"
 echo ""
