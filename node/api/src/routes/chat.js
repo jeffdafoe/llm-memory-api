@@ -3,6 +3,11 @@ const pool = require('../db');
 
 const router = Router();
 
+function logChat(action, details) {
+    const timestamp = new Date().toISOString();
+    console.log(`[chat] ${timestamp} ${action}:`, JSON.stringify(details));
+}
+
 router.post('/chat/send', async (req, res) => {
     try {
         const { from_agent, to_agent, message } = req.body;
@@ -36,6 +41,8 @@ router.post('/chat/send', async (req, res) => {
                 ids.push({ id: result.rows[0].id, to_agent: recipient });
             }
 
+            logChat('send_broadcast', { from_agent, recipients: ids.map(i => i.to_agent), message_ids: ids.map(i => i.id) });
+
             return res.json({
                 broadcast: true,
                 from_agent,
@@ -55,6 +62,8 @@ router.post('/chat/send', async (req, res) => {
             'INSERT INTO chat_messages (from_agent, to_agent, message) VALUES ($1, $2, $3) RETURNING id, sent_at',
             [from_agent, to_agent, message]
         );
+
+        logChat('send', { from_agent, to_agent, message_id: result.rows[0].id });
 
         res.json({
             id: result.rows[0].id,
@@ -80,20 +89,16 @@ router.post('/chat/receive', async (req, res) => {
             });
         }
 
-        const cursor = await pool.query(
-            'SELECT last_read_id FROM chat_cursors WHERE agent = $1',
+        const result = await pool.query(
+            'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL ORDER BY id ASC',
             [agent]
         );
-        const lastReadId = cursor.rows.length > 0 ? cursor.rows[0].last_read_id : 0;
 
-        const result = await pool.query(
-            'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND id > $2 ORDER BY id ASC',
-            [agent, lastReadId]
-        );
+        logChat('receive', { agent, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
 
         res.json({
             messages: result.rows,
-            last_read_id: lastReadId
+            pending_count: result.rows.length
         });
     } catch (err) {
         console.error('Chat receive error:', err.message);
@@ -105,29 +110,75 @@ router.post('/chat/receive', async (req, res) => {
 
 router.post('/chat/ack', async (req, res) => {
     try {
-        const { agent, last_read_id } = req.body;
+        const { agent, message_ids } = req.body;
 
-        if (!agent || last_read_id == null) {
+        if (!agent || !message_ids || !Array.isArray(message_ids) || message_ids.length === 0) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required fields: agent, last_read_id' }
+                error: { code: 'BAD_REQUEST', message: 'Required fields: agent, message_ids (non-empty array of message IDs)' }
             });
         }
 
-        await pool.query(
-            `INSERT INTO chat_cursors (agent, last_read_id, updated_at)
-            VALUES ($1, $2, NOW())
-            ON CONFLICT (agent) DO UPDATE
-            SET last_read_id = GREATEST(chat_cursors.last_read_id, $2),
-                updated_at = NOW()`,
-            [agent, last_read_id]
+        const result = await pool.query(
+            'UPDATE chat_messages SET acked_at = NOW() WHERE id = ANY($1) AND to_agent = $2 AND acked_at IS NULL RETURNING id',
+            [message_ids, agent]
         );
+
+        logChat('ack', { agent, requested_ids: message_ids, acked_ids: result.rows.map(r => r.id) });
 
         res.json({
             agent,
-            last_read_id
+            acked: result.rows.length,
+            acked_ids: result.rows.map(r => r.id)
         });
     } catch (err) {
         console.error('Chat ack error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+router.get('/chat/status', async (req, res) => {
+    try {
+        const { agent } = req.query;
+
+        if (!agent) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required query param: agent' }
+            });
+        }
+
+        const pending = await pool.query(
+            'SELECT COUNT(*) as count FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL',
+            [agent]
+        );
+
+        const latest = await pool.query(
+            'SELECT MAX(id) as max_id FROM chat_messages WHERE to_agent = $1',
+            [agent]
+        );
+
+        const lastActivity = await pool.query(
+            'SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_agent = $1',
+            [agent]
+        );
+
+        const lastAcked = await pool.query(
+            'SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_agent = $1 AND acked_at IS NOT NULL',
+            [agent]
+        );
+
+        logChat('status', { agent });
+
+        res.json({
+            agent,
+            pending_count: parseInt(pending.rows[0].count),
+            max_message_id: latest.rows[0].max_id,
+            last_message_at: lastActivity.rows[0].last_sent,
+            last_ack_at: lastAcked.rows[0].last_acked
+        });
+    } catch (err) {
+        console.error('Chat status error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

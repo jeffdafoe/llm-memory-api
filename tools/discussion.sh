@@ -110,8 +110,8 @@ receive_messages() {
 }
 
 ack_messages() {
-    local last_id="$1"
-    api_call "/chat/ack" "{\"agent\": \"${MY_AGENT}\", \"last_read_id\": ${last_id}}" > /dev/null
+    local ids_json="$1"
+    api_call "/chat/ack" "{\"agent\": \"${MY_AGENT}\", \"message_ids\": ${ids_json}}" > /dev/null
 }
 
 send_message() {
@@ -163,7 +163,7 @@ check_timeout() {
 
 # Process received messages in a single node call.
 # Writes messages to inbox/ and appends to transcript BEFORE returning.
-# Outputs structured lines to stdout: count=N, last_id=X, concluded=true/false, log=...
+# Outputs structured lines to stdout: count=N, ids_json=[1,2,3], concluded=true/false, log=...
 process_received() {
     local response="$1"
     echo "$response" | node -e '
@@ -184,17 +184,18 @@ process.stdin.on("end", () => {
     }
 
     let concluded = false;
+    const ids = [];
     for (const msg of msgs) {
         fs.writeFileSync(path.join(inbox, msg.id + ".txt"), msg.message);
         const ts = new Date().toTimeString().slice(0, 8);
         fs.appendFileSync(transcript, "**" + msg.from_agent + "** (" + ts + "):\n" + msg.message + "\n\n");
         console.log("log=id=" + msg.id + " from=" + msg.from_agent);
+        ids.push(msg.id);
         if (msg.message.startsWith("[CONCLUDED]")) concluded = true;
     }
 
-    const lastId = msgs[msgs.length - 1].id;
     console.log("count=" + msgs.length);
-    console.log("last_id=" + lastId);
+    console.log("ids_json=" + JSON.stringify(ids));
     console.log("concluded=" + concluded);
 });' "$INBOX_DIR" "$TRANSCRIPT_FILE"
 }
@@ -242,12 +243,12 @@ while true; do
     message_count=$(echo "$result" | grep "^count=" | cut -d= -f2)
 
     if [[ "$message_count" -gt 0 ]]; then
-        last_id=$(echo "$result" | grep "^last_id=" | cut -d= -f2)
+        ids_json=$(echo "$result" | grep "^ids_json=" | cut -d= -f2-)
         concluded=$(echo "$result" | grep "^concluded=" | cut -d= -f2)
 
         # Ack AFTER writing to inbox — safe on restart (duplicates overwrite)
-        if [[ -n "$last_id" ]]; then
-            ack_messages "$last_id"
+        if [[ -n "$ids_json" ]]; then
+            ack_messages "$ids_json"
         fi
 
         if [[ "$concluded" == "true" ]]; then

@@ -29,6 +29,24 @@ async function apiCall(endpoint, body) {
     return data;
 }
 
+async function apiGet(endpoint) {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${API_KEY}`
+        }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        const msg = data.error ? data.error.message : JSON.stringify(data);
+        throw new Error(`API error ${response.status}: ${msg}`);
+    }
+
+    return data;
+}
+
 async function autoRegister() {
     try {
         await apiCall('/register', { agent: DEFAULT_AGENT });
@@ -98,7 +116,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'memory_chat_receive',
-                description: 'Check for unread chat messages. Returns messages since last ack. Call memory_chat_ack after processing.',
+                description: 'Check for unread chat messages. Returns unacked messages. Call memory_chat_ack with the message IDs after processing.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -108,14 +126,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'memory_chat_ack',
-                description: 'Acknowledge chat messages as read. Advances the read cursor so these messages won\'t appear in future receives.',
+                description: 'Acknowledge specific chat messages as read. Acked messages will not appear in future receives.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         agent: { type: 'string', description: 'Agent acking messages (default: configured agent)' },
-                        last_read_id: { type: 'number', description: 'ID of the last message read (from receive results)' }
+                        message_ids: { type: 'array', items: { type: 'number' }, description: 'Array of message IDs to ack (from receive results)' }
                     },
-                    required: ['last_read_id']
+                    required: ['message_ids']
+                }
+            },
+            {
+                name: 'memory_chat_status',
+                description: 'Get chat status for an agent: pending message count, last message time, last ack time.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        agent: { type: 'string', description: 'Agent to check status for (default: configured agent)' }
+                    }
                 }
             },
             {
@@ -221,22 +249,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return { content: [{ type: 'text', text: 'No new messages.' }] };
         }
 
-        const lastId = data.messages[data.messages.length - 1].id;
+        const ids = data.messages.map(m => m.id);
         const formatted = data.messages.map(m => {
-            return `[${m.from_agent}] (${m.sent_at}): ${m.message}`;
+            return `[${m.from_agent}] (id:${m.id}, ${m.sent_at}): ${m.message}`;
         }).join('\n');
 
-        return { content: [{ type: 'text', text: `${formatted}\n\n(last_read_id: ${lastId} — call memory_chat_ack to mark as read)` }] };
+        return { content: [{ type: 'text', text: `${formatted}\n\n(message_ids: [${ids.join(', ')}] — call memory_chat_ack to mark as read)` }] };
     }
 
     if (name === 'memory_chat_ack') {
         const agent = args.agent || DEFAULT_AGENT;
         const data = await apiCall('/chat/ack', {
             agent,
-            last_read_id: args.last_read_id
+            message_ids: args.message_ids
         });
 
-        return { content: [{ type: 'text', text: `Chat cursor advanced to message ${data.last_read_id} for ${data.agent}` }] };
+        return { content: [{ type: 'text', text: `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]` }] };
+    }
+
+    if (name === 'memory_chat_status') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiGet(`/chat/status?agent=${encodeURIComponent(agent)}`);
+
+        return { content: [{ type: 'text', text: `Chat status for ${data.agent}:\n  Pending: ${data.pending_count}\n  Max message ID: ${data.max_message_id}\n  Last message: ${data.last_message_at}\n  Last ack: ${data.last_ack_at}` }] };
     }
 
     if (name === 'memory_mail_send') {
