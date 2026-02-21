@@ -13,6 +13,17 @@
 
 set -uo pipefail
 
+# Find python - prefer python3, fall back to python
+PYTHON=""
+if command -v python3 &>/dev/null && python3 --version &>/dev/null; then
+    PYTHON="python3"
+elif command -v python &>/dev/null && python --version &>/dev/null; then
+    PYTHON="python"
+else
+    echo "Python not found" >&2
+    exit 1
+fi
+
 # Defaults
 POLL_INTERVAL=5
 SEND_DELAY=3
@@ -108,7 +119,7 @@ send_message() {
     local message="$1"
     # Escape the message for JSON
     local escaped
-    escaped=$(printf '%s' "$message" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+    escaped=$(printf '%s' "$message" | $PYTHON -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
     api_call "/chat/send" "{\"from_agent\": \"${MY_AGENT}\", \"to_agent\": \"${OTHER_AGENT}\", \"message\": ${escaped}}" > /dev/null
     log "SENT: ${message:0:100}..."
     transcript "$MY_AGENT" "$message"
@@ -190,12 +201,12 @@ while true; do
     response=$(receive_messages)
 
     # Parse messages using python for reliable JSON handling
-    message_count=$(echo "$response" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("messages",[])))')
+    message_count=$(echo "$response" | $PYTHON -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("messages",[])))')
 
     if [[ "$message_count" -gt 0 ]]; then
         # Extract and process each message
         # Write messages to inbox and transcript
-        echo "$response" | python3 -c '
+        echo "$response" | $PYTHON -c '
 import sys, json, os
 data = json.load(sys.stdin)
 inbox = sys.argv[1]
@@ -214,14 +225,14 @@ for msg in data["messages"]:
         done
 
         # Get last message id for ack
-        last_id=$(echo "$response" | python3 -c 'import sys,json; d=json.load(sys.stdin); msgs=d.get("messages",[]); print(msgs[-1]["id"] if msgs else "")')
+        last_id=$(echo "$response" | $PYTHON -c 'import sys,json; d=json.load(sys.stdin); msgs=d.get("messages",[]); print(msgs[-1]["id"] if msgs else "")')
 
         if [[ -n "$last_id" ]]; then
             ack_messages "$last_id"
         fi
 
         # Check if any incoming message is a CONCLUDED
-        concluded_check=$(echo "$response" | python3 -c '
+        concluded_check=$(echo "$response" | $PYTHON -c '
 import sys, json
 data = json.load(sys.stdin)
 for msg in data.get("messages", []):
