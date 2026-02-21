@@ -38,6 +38,7 @@ while [[ $# -gt 0 ]]; do
         --initiator) INITIATOR=true; shift ;;
         --max-turns) MAX_TURNS="$2"; shift 2 ;;
         --timeout) TIMEOUT_MINUTES="$2"; shift 2 ;;
+        --channel) CHANNEL="$2"; shift 2 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -51,6 +52,7 @@ for var in API_URL API_KEY MY_AGENT OTHER_AGENT WORK_DIR; do
 done
 
 INITIATOR="${INITIATOR:-false}"
+CHANNEL="${CHANNEL:-discussion}"
 INBOX_DIR="${WORK_DIR}/inbox"
 OUTBOX_DIR="${WORK_DIR}/outbox"
 LOG_FILE="${WORK_DIR}/conversation.log"
@@ -105,7 +107,7 @@ api_call() {
 
 receive_messages() {
     local response
-    response=$(api_call "/chat/receive" "{\"agent\": \"${MY_AGENT}\"}")
+    response=$(api_call "/chat/receive" "{\"agent\": \"${MY_AGENT}\", \"channel\": \"${CHANNEL}\"}")
     echo "$response"
 }
 
@@ -118,7 +120,7 @@ send_message() {
     local message="$1"
     local escaped
     escaped=$(printf '%s' "$message" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))')
-    api_call "/chat/send" "{\"from_agent\": \"${MY_AGENT}\", \"to_agent\": \"${OTHER_AGENT}\", \"message\": ${escaped}}" > /dev/null
+    api_call "/chat/send" "{\"from_agent\": \"${MY_AGENT}\", \"to_agent\": \"${OTHER_AGENT}\", \"message\": ${escaped}, \"channel\": \"${CHANNEL}\"}" > /dev/null
     log "SENT: ${message:0:100}..."
     transcript "$MY_AGENT" "$message"
 }

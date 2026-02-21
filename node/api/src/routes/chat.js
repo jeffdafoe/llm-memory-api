@@ -3,6 +3,18 @@ const pool = require('../db');
 
 const router = Router();
 
+const CHANNEL_PATTERN = /^[a-zA-Z0-9_-]{1,50}$/;
+
+function validateChannel(channel) {
+    if (channel === undefined || channel === null) {
+        return { valid: true, value: null };
+    }
+    if (typeof channel !== 'string' || !CHANNEL_PATTERN.test(channel)) {
+        return { valid: false };
+    }
+    return { valid: true, value: channel };
+}
+
 function logChat(action, details) {
     const timestamp = new Date().toISOString();
     console.log(`[chat] ${timestamp} ${action}:`, JSON.stringify(details));
@@ -10,11 +22,18 @@ function logChat(action, details) {
 
 router.post('/chat/send', async (req, res) => {
     try {
-        const { from_agent, to_agent, message } = req.body;
+        const { from_agent, to_agent, message, channel } = req.body;
 
         if (!from_agent || !to_agent || !message) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'Required fields: from_agent, to_agent, message' }
+            });
+        }
+
+        const ch = validateChannel(channel);
+        if (!ch.valid) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Invalid channel: must match /^[a-zA-Z0-9_-]{1,50}$/' }
             });
         }
 
@@ -35,13 +54,13 @@ router.post('/chat/send', async (req, res) => {
             const ids = [];
             for (const recipient of recipients) {
                 const result = await pool.query(
-                    'INSERT INTO chat_messages (from_agent, to_agent, message) VALUES ($1, $2, $3) RETURNING id, sent_at',
-                    [from_agent, recipient, message]
+                    'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+                    [from_agent, recipient, message, ch.value]
                 );
                 ids.push({ id: result.rows[0].id, to_agent: recipient });
             }
 
-            logChat('send_broadcast', { from_agent, recipients: ids.map(i => i.to_agent), message_ids: ids.map(i => i.id) });
+            logChat('send_broadcast', { from_agent, recipients: ids.map(i => i.to_agent), message_ids: ids.map(i => i.id), channel: ch.value });
 
             return res.json({
                 broadcast: true,
@@ -59,11 +78,11 @@ router.post('/chat/send', async (req, res) => {
         }
 
         const result = await pool.query(
-            'INSERT INTO chat_messages (from_agent, to_agent, message) VALUES ($1, $2, $3) RETURNING id, sent_at',
-            [from_agent, to_agent, message]
+            'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+            [from_agent, to_agent, message, ch.value]
         );
 
-        logChat('send', { from_agent, to_agent, message_id: result.rows[0].id });
+        logChat('send', { from_agent, to_agent, message_id: result.rows[0].id, channel: ch.value });
 
         res.json({
             id: result.rows[0].id,
@@ -81,7 +100,7 @@ router.post('/chat/send', async (req, res) => {
 
 router.post('/chat/receive', async (req, res) => {
     try {
-        const { agent } = req.body;
+        const { agent, channel } = req.body;
 
         if (!agent) {
             return res.status(400).json({
@@ -89,12 +108,27 @@ router.post('/chat/receive', async (req, res) => {
             });
         }
 
-        const result = await pool.query(
-            'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL ORDER BY id ASC',
-            [agent]
-        );
+        const ch = validateChannel(channel);
+        if (!ch.valid) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Invalid channel: must match /^[a-zA-Z0-9_-]{1,50}$/' }
+            });
+        }
 
-        logChat('receive', { agent, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
+        let result;
+        if (ch.value === null) {
+            result = await pool.query(
+                'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL AND channel IS NULL ORDER BY id ASC',
+                [agent]
+            );
+        } else {
+            result = await pool.query(
+                'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL AND channel = $2 ORDER BY id ASC',
+                [agent, ch.value]
+            );
+        }
+
+        logChat('receive', { agent, channel: ch.value, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
 
         res.json({
             messages: result.rows,
@@ -140,7 +174,7 @@ router.post('/chat/ack', async (req, res) => {
 
 router.get('/chat/status', async (req, res) => {
     try {
-        const { agent } = req.query;
+        const { agent, channel } = req.query;
 
         if (!agent) {
             return res.status(400).json({
@@ -148,27 +182,44 @@ router.get('/chat/status', async (req, res) => {
             });
         }
 
+        const ch = validateChannel(channel);
+        if (!ch.valid) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Invalid channel: must match /^[a-zA-Z0-9_-]{1,50}$/' }
+            });
+        }
+
+        let channelFilter;
+        let params;
+        if (ch.value === null) {
+            channelFilter = 'AND channel IS NULL';
+            params = [agent];
+        } else {
+            channelFilter = 'AND channel = $2';
+            params = [agent, ch.value];
+        }
+
         const pending = await pool.query(
-            'SELECT COUNT(*) as count FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL',
-            [agent]
+            `SELECT COUNT(*) as count FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL ${channelFilter}`,
+            params
         );
 
         const latest = await pool.query(
-            'SELECT MAX(id) as max_id FROM chat_messages WHERE to_agent = $1',
-            [agent]
+            `SELECT MAX(id) as max_id FROM chat_messages WHERE to_agent = $1 ${channelFilter}`,
+            params
         );
 
         const lastActivity = await pool.query(
-            'SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_agent = $1',
-            [agent]
+            `SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_agent = $1 ${channelFilter}`,
+            params
         );
 
         const lastAcked = await pool.query(
-            'SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_agent = $1 AND acked_at IS NOT NULL',
-            [agent]
+            `SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_agent = $1 AND acked_at IS NOT NULL ${channelFilter}`,
+            params
         );
 
-        logChat('status', { agent });
+        logChat('status', { agent, channel: ch.value });
 
         res.json({
             agent,
