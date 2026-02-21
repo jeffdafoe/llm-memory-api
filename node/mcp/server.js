@@ -109,7 +109,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {
                         to: { type: 'string', description: 'Recipient agent (e.g., "home", "work") or "*" for broadcast' },
                         message: { type: 'string', description: 'Message to send' },
-                        from: { type: 'string', description: 'Sender agent (default: configured agent)' }
+                        from: { type: 'string', description: 'Sender agent (default: configured agent)' },
+                        channel: { type: 'string', description: 'Optional channel for message isolation (e.g., "discussion"). Omit for regular chat.' }
                     },
                     required: ['to', 'message']
                 }
@@ -120,7 +121,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        agent: { type: 'string', description: 'Agent to check messages for (default: configured agent)' }
+                        agent: { type: 'string', description: 'Agent to check messages for (default: configured agent)' },
+                        channel: { type: 'string', description: 'Optional channel to filter by (e.g., "discussion"). Omit for regular chat only.' }
                     }
                 }
             },
@@ -142,7 +144,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        agent: { type: 'string', description: 'Agent to check status for (default: configured agent)' }
+                        agent: { type: 'string', description: 'Agent to check status for (default: configured agent)' },
+                        channel: { type: 'string', description: 'Optional channel to filter by. Omit for regular chat only.' }
                     }
                 }
             },
@@ -227,11 +230,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === 'chat_send') {
-        const data = await apiCall('/chat/send', {
+        const body = {
             from_agent: args.from || DEFAULT_AGENT,
             to_agent: args.to,
             message: args.message
-        });
+        };
+        if (args.channel) {
+            body.channel = args.channel;
+        }
+        const data = await apiCall('/chat/send', body);
 
         if (data.broadcast) {
             const targets = data.recipients.map(r => r.to_agent).join(', ');
@@ -243,7 +250,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'chat_receive') {
         const agent = args.agent || DEFAULT_AGENT;
-        const data = await apiCall('/chat/receive', { agent });
+        const body = { agent };
+        if (args.channel) {
+            body.channel = args.channel;
+        }
+        const data = await apiCall('/chat/receive', body);
 
         if (data.messages.length === 0) {
             return { content: [{ type: 'text', text: 'No new messages.' }] };
@@ -269,7 +280,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'chat_status') {
         const agent = args.agent || DEFAULT_AGENT;
-        const data = await apiGet(`/chat/status?agent=${encodeURIComponent(agent)}`);
+        let url = `/chat/status?agent=${encodeURIComponent(agent)}`;
+        if (args.channel) {
+            url += `&channel=${encodeURIComponent(args.channel)}`;
+        }
+        const data = await apiGet(url);
 
         return { content: [{ type: 'text', text: `Chat status for ${data.agent}:\n  Pending: ${data.pending_count}\n  Max message ID: ${data.max_message_id}\n  Last message: ${data.last_message_at}\n  Last ack: ${data.last_ack_at}` }] };
     }
