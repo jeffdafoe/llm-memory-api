@@ -12,18 +12,25 @@ router.post('/mail/send', async (req, res) => {
         });
     }
 
-    const result = await pool.query(
-        'INSERT INTO mail (to_namespace, from_namespace, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-        [to_namespace, from_namespace, subject, body]
-    );
+    try {
+        const result = await pool.query(
+            'INSERT INTO mail (to_namespace, from_namespace, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+            [to_namespace, from_namespace, subject, body]
+        );
 
-    res.json({
-        id: result.rows[0].id,
-        to_namespace,
-        from_namespace,
-        subject,
-        sent_at: result.rows[0].sent_at
-    });
+        res.json({
+            id: result.rows[0].id,
+            to_namespace,
+            from_namespace,
+            subject,
+            sent_at: result.rows[0].sent_at
+        });
+    } catch (err) {
+        console.error('Mail send error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
 });
 
 router.post('/mail/check', async (req, res) => {
@@ -35,12 +42,19 @@ router.post('/mail/check', async (req, res) => {
         });
     }
 
-    const result = await pool.query(
-        'SELECT id, from_namespace, to_namespace, subject, body, sent_at FROM mail WHERE to_namespace = $1 AND acked_at IS NULL ORDER BY sent_at ASC',
-        [namespace]
-    );
+    try {
+        const result = await pool.query(
+            'SELECT id, from_namespace, to_namespace, subject, body, sent_at FROM mail WHERE to_namespace = $1 AND acked_at IS NULL ORDER BY sent_at ASC',
+            [namespace]
+        );
 
-    res.json({ messages: result.rows });
+        res.json({ messages: result.rows });
+    } catch (err) {
+        console.error('Mail check error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
 });
 
 router.post('/mail/ack', async (req, res) => {
@@ -52,12 +66,19 @@ router.post('/mail/ack', async (req, res) => {
         });
     }
 
-    const result = await pool.query(
-        'UPDATE mail SET acked_at = NOW() WHERE id = ANY($1) AND acked_at IS NULL',
-        [ids]
-    );
+    try {
+        const result = await pool.query(
+            'UPDATE mail SET acked_at = NOW() WHERE id = ANY($1) AND acked_at IS NULL',
+            [ids]
+        );
 
-    res.json({ acked: result.rowCount });
+        res.json({ acked: result.rowCount });
+    } catch (err) {
+        console.error('Mail ack error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
 });
 
 module.exports = router;

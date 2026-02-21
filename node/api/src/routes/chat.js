@@ -12,17 +12,24 @@ router.post('/chat/send', async (req, res) => {
         });
     }
 
-    const result = await pool.query(
-        'INSERT INTO chat_messages (channel, from_namespace, message) VALUES ($1, $2, $3) RETURNING id, sent_at',
-        [channel, from_namespace, message]
-    );
+    try {
+        const result = await pool.query(
+            'INSERT INTO chat_messages (channel, from_namespace, message) VALUES ($1, $2, $3) RETURNING id, sent_at',
+            [channel, from_namespace, message]
+        );
 
-    res.json({
-        id: result.rows[0].id,
-        channel,
-        from_namespace,
-        sent_at: result.rows[0].sent_at
-    });
+        res.json({
+            id: result.rows[0].id,
+            channel,
+            from_namespace,
+            sent_at: result.rows[0].sent_at
+        });
+    } catch (err) {
+        console.error('Chat send error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
 });
 
 router.post('/chat/receive', async (req, res) => {
@@ -34,16 +41,23 @@ router.post('/chat/receive', async (req, res) => {
         });
     }
 
-    const sinceId = since_id || 0;
+    try {
+        const sinceId = since_id || 0;
 
-    const result = await pool.query(
-        'SELECT id, channel, from_namespace, message, sent_at FROM chat_messages WHERE channel = $1 AND id > $2 ORDER BY id ASC',
-        [channel, sinceId]
-    );
+        const result = await pool.query(
+            'SELECT id, channel, from_namespace, message, sent_at FROM chat_messages WHERE channel = $1 AND id > $2 ORDER BY id ASC',
+            [channel, sinceId]
+        );
 
-    res.json({
-        messages: result.rows
-    });
+        res.json({
+            messages: result.rows
+        });
+    } catch (err) {
+        console.error('Chat receive error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
 });
 
 module.exports = router;
