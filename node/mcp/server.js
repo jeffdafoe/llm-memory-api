@@ -29,24 +29,6 @@ async function apiCall(endpoint, body) {
     return data;
 }
 
-async function apiGet(endpoint) {
-    const response = await fetch(`${API_URL}${endpoint}`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${API_KEY}`
-        }
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-        const msg = data.error ? data.error.message : JSON.stringify(data);
-        throw new Error(`API error ${response.status}: ${msg}`);
-    }
-
-    return data;
-}
-
 async function autoRegister() {
     try {
         await apiCall('/register', { agent: DEFAULT_AGENT });
@@ -185,6 +167,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     },
                     required: ['ids']
                 }
+            },
+            {
+                name: 'presence',
+                description: 'Get presence info for all agents: online/offline status, last seen time, and unread chat/mail counts for the querying agent.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        agent: { type: 'string', description: 'Agent requesting presence info (default: configured agent). Unread counts are relative to this agent.' }
+                    }
+                }
             }
         ]
     };
@@ -280,11 +272,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'chat_status') {
         const agent = args.agent || DEFAULT_AGENT;
-        let url = `/chat/status?agent=${encodeURIComponent(agent)}`;
+        const body = { agent };
         if (args.channel) {
-            url += `&channel=${encodeURIComponent(args.channel)}`;
+            body.channel = args.channel;
         }
-        const data = await apiGet(url);
+        const data = await apiCall('/chat/status', body);
 
         return { content: [{ type: 'text', text: `Chat status for ${data.agent}:\n  Pending: ${data.pending_count}\n  Max message ID: ${data.max_message_id}\n  Last message: ${data.last_message_at}\n  Last ack: ${data.last_ack_at}` }] };
     }
@@ -355,13 +347,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: `Acked ${data.acked} message(s)` }] };
     }
 
+    if (name === 'presence') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/presence', { agent });
+
+        const lines = data.agents.map(a => {
+            const parts = [`${a.agent}: ${a.status}`];
+            if (a.last_seen) {
+                parts.push(`last seen ${a.last_seen}`);
+            }
+            if (a.unread_chat > 0) {
+                parts.push(`${a.unread_chat} unread chat`);
+            }
+            if (a.unread_mail > 0) {
+                parts.push(`${a.unread_mail} unread mail`);
+            }
+            return parts.join(' | ');
+        });
+
+        return { content: [{ type: 'text', text: lines.join('\n') || 'No agents registered.' }] };
+    }
+
     throw new Error(`Unknown tool: ${name}`);
 });
+
+async function sendHeartbeat() {
+    try {
+        await apiCall('/heartbeat', { agent: DEFAULT_AGENT });
+    } catch (err) {
+        // Heartbeat failure is non-fatal
+    }
+}
 
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     await autoRegister();
+    await sendHeartbeat();
+    setInterval(sendHeartbeat, 120000);
 }
 
 main().catch(console.error);
