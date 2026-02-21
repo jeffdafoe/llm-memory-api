@@ -140,7 +140,7 @@ check_outbox() {
                 send_message "$message"
                 TURN_COUNT=$((TURN_COUNT + 1))
 
-                if [[ "$message" == "[CONCLUDED]"* ]]; then
+                if [[ "$message" == *"[CONCLUDED]"* ]]; then
                     MY_CONCLUDED=true
                     if [[ $CONCLUDE_SEEN_AT -eq 0 ]]; then
                         CONCLUDE_SEEN_AT=$(date +%s)
@@ -199,7 +199,7 @@ process.stdin.on("end", () => {
         fs.appendFileSync(transcript, "**" + msg.from_agent + "** (" + ts + "):\n" + msg.message + "\n\n");
         console.log("log=id=" + msg.id + " from=" + msg.from_agent);
         ids.push(msg.id);
-        if (msg.message.startsWith("[CONCLUDED]")) concluded = true;
+        if (msg.message.includes("[CONCLUDED]")) concluded = true;
     }
 
     console.log("count=" + msgs.length);
