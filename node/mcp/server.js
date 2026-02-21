@@ -7,6 +7,7 @@ const path = require('path');
 const API_URL = process.env.MEMORY_API_URL || 'http://localhost:3100/v1';
 const API_KEY = process.env.MEMORY_API_KEY || '';
 const DEFAULT_NAMESPACE = process.env.MEMORY_DEFAULT_NAMESPACE || 'default';
+const DEFAULT_AGENT = process.env.MEMORY_DEFAULT_AGENT || DEFAULT_NAMESPACE;
 
 async function apiCall(endpoint, body) {
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -28,8 +29,16 @@ async function apiCall(endpoint, body) {
     return data;
 }
 
+async function autoRegister() {
+    try {
+        await apiCall('/register', { agent: DEFAULT_AGENT });
+    } catch (err) {
+        // Registration failure is non-fatal — API may not be upgraded yet
+    }
+}
+
 const server = new Server(
-    { name: 'llm-memory', version: '1.0.0' },
+    { name: 'llm-memory', version: '2.0.0' },
     { capabilities: { tools: {} } }
 );
 
@@ -76,50 +85,60 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'memory_chat_send',
-                description: 'Send a message to a chat channel for inter-instance communication',
+                description: 'Send a chat message to another agent. Use to="*" to broadcast to all registered agents.',
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        channel: { type: 'string', description: 'Channel name (e.g., "work-home")' },
+                        to: { type: 'string', description: 'Recipient agent (e.g., "home", "work") or "*" for broadcast' },
                         message: { type: 'string', description: 'Message to send' },
-                        from_namespace: { type: 'string', description: 'Sender namespace (default: configured namespace)' }
+                        from: { type: 'string', description: 'Sender agent (default: configured agent)' }
                     },
-                    required: ['channel', 'message']
+                    required: ['to', 'message']
                 }
             },
             {
                 name: 'memory_chat_receive',
-                description: 'Check for new messages on a chat channel',
+                description: 'Check for unread chat messages. Returns messages since last ack. Call memory_chat_ack after processing.',
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        channel: { type: 'string', description: 'Channel name (e.g., "work-home")' },
-                        since_id: { type: 'number', description: 'Only return messages after this ID (default: 0 for all)' }
+                        agent: { type: 'string', description: 'Agent to check messages for (default: configured agent)' }
+                    }
+                }
+            },
+            {
+                name: 'memory_chat_ack',
+                description: 'Acknowledge chat messages as read. Advances the read cursor so these messages won\'t appear in future receives.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        agent: { type: 'string', description: 'Agent acking messages (default: configured agent)' },
+                        last_read_id: { type: 'number', description: 'ID of the last message read (from receive results)' }
                     },
-                    required: ['channel']
+                    required: ['last_read_id']
                 }
             },
             {
                 name: 'memory_mail_send',
-                description: 'Send mail to another instance. Mail is stored in the API database until the recipient acks it.',
+                description: 'Send mail to another agent. Mail is stored in the API database until the recipient acks it.',
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        to_namespace: { type: 'string', description: 'Recipient namespace (e.g., "home", "work")' },
+                        to: { type: 'string', description: 'Recipient agent (e.g., "home", "work")' },
                         subject: { type: 'string', description: 'Mail subject line' },
                         body: { type: 'string', description: 'Mail body (markdown)' },
-                        from_namespace: { type: 'string', description: 'Sender namespace (default: configured namespace)' }
+                        from: { type: 'string', description: 'Sender agent (default: configured agent)' }
                     },
-                    required: ['to_namespace', 'subject', 'body']
+                    required: ['to', 'subject', 'body']
                 }
             },
             {
                 name: 'memory_mail_check',
-                description: 'Check for new mail addressed to this instance. Downloads messages, writes them to the local mailbox directory, and acks receipt.',
+                description: 'Check for new mail addressed to this agent. Downloads messages, writes them to the local mailbox directory, and acks receipt.',
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        namespace: { type: 'string', description: 'Namespace to check mail for (default: configured namespace)' },
+                        agent: { type: 'string', description: 'Agent to check mail for (default: configured agent)' },
                         mailbox_dir: { type: 'string', description: 'Local directory to write received mail files to' }
                     },
                     required: ['mailbox_dir']
@@ -181,45 +200,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'memory_chat_send') {
         const data = await apiCall('/chat/send', {
-            channel: args.channel,
-            from_namespace: args.from_namespace || DEFAULT_NAMESPACE,
+            from_agent: args.from || DEFAULT_AGENT,
+            to_agent: args.to,
             message: args.message
         });
 
-        return { content: [{ type: 'text', text: `Message sent to #${data.channel} (id: ${data.id})` }] };
+        if (data.broadcast) {
+            const targets = data.recipients.map(r => r.to_agent).join(', ');
+            return { content: [{ type: 'text', text: `Broadcast sent to: ${targets}` }] };
+        }
+
+        return { content: [{ type: 'text', text: `Message sent to ${data.to_agent} (id: ${data.id})` }] };
     }
 
     if (name === 'memory_chat_receive') {
-        const data = await apiCall('/chat/receive', {
-            channel: args.channel,
-            since_id: args.since_id || 0
-        });
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/chat/receive', { agent });
 
         if (data.messages.length === 0) {
             return { content: [{ type: 'text', text: 'No new messages.' }] };
         }
 
+        const lastId = data.messages[data.messages.length - 1].id;
         const formatted = data.messages.map(m => {
-            return `[${m.from_namespace}] (${m.sent_at}): ${m.message}`;
+            return `[${m.from_agent}] (${m.sent_at}): ${m.message}`;
         }).join('\n');
 
-        return { content: [{ type: 'text', text: formatted }] };
+        return { content: [{ type: 'text', text: `${formatted}\n\n(last_read_id: ${lastId} — call memory_chat_ack to mark as read)` }] };
+    }
+
+    if (name === 'memory_chat_ack') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/chat/ack', {
+            agent,
+            last_read_id: args.last_read_id
+        });
+
+        return { content: [{ type: 'text', text: `Chat cursor advanced to message ${data.last_read_id} for ${data.agent}` }] };
     }
 
     if (name === 'memory_mail_send') {
         const data = await apiCall('/mail/send', {
-            to_namespace: args.to_namespace,
-            from_namespace: args.from_namespace || DEFAULT_NAMESPACE,
+            to_agent: args.to,
+            from_agent: args.from || DEFAULT_AGENT,
             subject: args.subject,
             body: args.body
         });
 
-        return { content: [{ type: 'text', text: `Mail sent to ${data.to_namespace} (id: ${data.id}, subject: "${data.subject}")` }] };
+        return { content: [{ type: 'text', text: `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")` }] };
     }
 
     if (name === 'memory_mail_check') {
-        const namespace = args.namespace || DEFAULT_NAMESPACE;
-        const data = await apiCall('/mail/check', { namespace });
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/mail/check', { agent });
 
         if (data.messages.length === 0) {
             return { content: [{ type: 'text', text: 'No new mail.' }] };
@@ -235,7 +268,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const filename = `${msg.id.slice(0, 8)}-${slug}.md`;
             const filepath = path.join(args.mailbox_dir, filename);
 
-            const content = `# ${msg.subject}\n\n**From:** ${msg.from_namespace}\n**Date:** ${msg.sent_at}\n**ID:** ${msg.id}\n\n${msg.body}`;
+            const content = `# ${msg.subject}\n\n**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**ID:** ${msg.id}\n\n${msg.body}`;
             writeFileSync(filepath, content, 'utf-8');
             written.push({ id: msg.id, filename });
         }
@@ -259,6 +292,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
+    await autoRegister();
 }
 
 main().catch(console.error);
