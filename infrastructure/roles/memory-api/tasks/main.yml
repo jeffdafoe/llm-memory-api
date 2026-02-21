@@ -1,11 +1,34 @@
 ---
-- name: Create application directory
+- name: Create deployment directory
   file:
-    path: "{{ app_dir }}"
+    path: "{{ project_root }}"
     state: directory
     owner: "{{ app_user }}"
-    group: "{{ app_user }}"
     mode: "0755"
+  when: repo_root != project_root
+
+- name: Deploy application code
+  synchronize:
+    src: "{{ repo_root }}/node/api/"
+    dest: "{{ project_root }}/"
+    delete: yes
+  delegate_to: "{{ inventory_hostname }}"
+  when: repo_root != project_root
+
+- name: Deploy migrations
+  synchronize:
+    src: "{{ repo_root }}/migrations/"
+    dest: "{{ project_root }}/migrations/"
+    delete: yes
+  delegate_to: "{{ inventory_hostname }}"
+  when: repo_root != project_root
+
+- name: Set deployment directory ownership
+  file:
+    path: "{{ project_root }}"
+    owner: "{{ app_user }}"
+    recurse: yes
+  when: repo_root != project_root
 
 - name: Create secrets directory
   file:
@@ -20,27 +43,18 @@
     mode: "0600"
   notify: Restart memory-api
 
-- name: Copy application files
-  synchronize:
-    src: "{{ playbook_dir }}/../../node/api/src/"
-    dest: "{{ app_dir }}/src/"
-    delete: yes
-  become_user: "{{ app_user }}"
-  notify: Restart memory-api
-
-- name: Copy package.json
-  copy:
-    src: "{{ playbook_dir }}/../../node/api/package.json"
-    dest: "{{ app_dir }}/package.json"
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-  notify: Restart memory-api
-
 - name: Install npm dependencies
   npm:
-    path: "{{ app_dir }}"
+    path: "{{ project_root }}"
     production: yes
   become_user: "{{ app_user }}"
+  when: repo_root != project_root
+
+- name: Install npm dependencies (development)
+  npm:
+    path: "{{ project_root }}/node/api"
+  become_user: "{{ app_user }}"
+  when: repo_root == project_root
 
 - name: Create systemd service
   template:

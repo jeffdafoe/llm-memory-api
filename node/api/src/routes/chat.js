@@ -63,6 +63,7 @@ router.post('/chat/send', async (req, res) => {
             sent_at: result.rows[0].sent_at
         });
     } catch (err) {
+        console.error('Chat send error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -95,6 +96,7 @@ router.post('/chat/receive', async (req, res) => {
             last_read_id: lastReadId
         });
     } catch (err) {
+        console.error('Chat receive error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -125,6 +127,7 @@ router.post('/chat/ack', async (req, res) => {
             last_read_id
         });
     } catch (err) {
+        console.error('Chat ack error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

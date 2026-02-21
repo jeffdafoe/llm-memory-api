@@ -1,8 +1,7 @@
 all:
   hosts:
-    vps:
-      ansible_host: 165.245.142.212
-      ansible_user: jeff
+    localhost:
+      ansible_connection: local
       ansible_python_interpreter: /usr/bin/python3
   vars:
     deploy_environment: production

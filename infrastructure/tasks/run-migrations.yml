@@ -1,11 +1,9 @@
 ---
 - name: Find all up migration files
   find:
-    paths: "{{ playbook_dir }}/../../migrations"
+    paths: "{{ project_root }}/migrations"
     patterns: "*_up.sql"
   register: migration_files
-  delegate_to: localhost
-  become: false
 
 - name: Get applied migrations
   shell: |
@@ -22,11 +20,11 @@
     pending_migrations: >-
       {{
         migration_files.files
+        | sort(attribute='path')
         | map(attribute='path')
         | map('basename')
         | map('regex_replace', '_up\.sql$', '')
         | reject('in', applied_list)
-        | sort
         | list
       }}
 
@@ -36,7 +34,17 @@
 
 - name: Apply pending migrations
   shell: |
-    sudo -u postgres psql -d {{ database_name }} -f {{ playbook_dir }}/../../migrations/{{ item }}_up.sql && \
+    sudo -u postgres psql -d {{ database_name }} -f {{ project_root }}/migrations/{{ item }}_up.sql && \
     sudo -u postgres psql -d {{ database_name }} -c "INSERT INTO migrations_applied (migration_id) VALUES ('{{ item }}');"
   loop: "{{ pending_migrations }}"
   when: pending_migrations | length > 0
+
+- name: Grant table permissions to application user
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -c "
+      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {{ database_user }};
+      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {{ database_user }};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO {{ database_user }};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO {{ database_user }};
+    "
+  changed_when: false

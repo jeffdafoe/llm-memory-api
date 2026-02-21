@@ -14,39 +14,46 @@ router.post('/search', async (req, res) => {
         });
     }
 
-    const maxResults = limit || 5;
-    const embeddings = await embed(query);
-    const queryVector = pgvector.toSql(embeddings[0]);
+    try {
+        const maxResults = limit || 5;
+        const embeddings = await embed(query);
+        const queryVector = pgvector.toSql(embeddings[0]);
 
-    let sql;
-    let params;
+        let sql;
+        let params;
 
-    if (!namespace || namespace === '*') {
-        sql = `
-            SELECT source_file, heading, chunk_text, namespace,
-                   1 - (embedding <=> $1) AS similarity
-            FROM chunks
-            ORDER BY embedding <=> $1
-            LIMIT $2
-        `;
-        params = [queryVector, maxResults];
-    } else {
-        sql = `
-            SELECT source_file, heading, chunk_text, namespace,
-                   1 - (embedding <=> $1) AS similarity
-            FROM chunks
-            WHERE namespace = $2
-            ORDER BY embedding <=> $1
-            LIMIT $3
-        `;
-        params = [queryVector, namespace, maxResults];
+        if (!namespace || namespace === '*') {
+            sql = `
+                SELECT source_file, heading, chunk_text, namespace,
+                       1 - (embedding <=> $1) AS similarity
+                FROM chunks
+                ORDER BY embedding <=> $1
+                LIMIT $2
+            `;
+            params = [queryVector, maxResults];
+        } else {
+            sql = `
+                SELECT source_file, heading, chunk_text, namespace,
+                       1 - (embedding <=> $1) AS similarity
+                FROM chunks
+                WHERE namespace = $2
+                ORDER BY embedding <=> $1
+                LIMIT $3
+            `;
+            params = [queryVector, namespace, maxResults];
+        }
+
+        const result = await pool.query(sql, params);
+
+        res.json({
+            results: result.rows
+        });
+    } catch (err) {
+        console.error('Search error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
     }
-
-    const result = await pool.query(sql, params);
-
-    res.json({
-        results: result.rows
-    });
 });
 
 module.exports = router;

@@ -33,6 +33,7 @@ router.post('/mail/send', async (req, res) => {
             sent_at: result.rows[0].sent_at
         });
     } catch (err) {
+        console.error('Mail send error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -56,6 +57,7 @@ router.post('/mail/check', async (req, res) => {
 
         res.json({ messages: result.rows });
     } catch (err) {
+        console.error('Mail check error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -79,6 +81,7 @@ router.post('/mail/ack', async (req, res) => {
 
         res.json({ acked: result.rowCount });
     } catch (err) {
+        console.error('Mail ack error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
