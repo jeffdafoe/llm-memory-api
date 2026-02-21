@@ -64,4 +64,37 @@ router.post('/ingest', async (req, res) => {
     }
 });
 
+// Returns all indexed source files with their latest ingestion timestamp and chunk count.
+// Optional namespace filter in request body. Used by the MCP ingest_notes tool to determine
+// which files need re-ingestion by comparing against local filesystem mtimes.
+router.post('/ingest/status', async (req, res) => {
+    const { namespace } = req.body;
+
+    try {
+        let query = `
+            SELECT namespace, source_file, MAX(ingested_at) as ingested_at, COUNT(*) as chunk_count
+            FROM chunks
+        `;
+        const params = [];
+
+        if (namespace) {
+            query += ' WHERE namespace = $1';
+            params.push(namespace);
+        }
+
+        query += ' GROUP BY namespace, source_file ORDER BY namespace, source_file';
+
+        const result = await pool.query(query, params);
+
+        res.json({
+            files: result.rows
+        });
+    } catch (err) {
+        console.error('Ingest status error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
 module.exports = router;

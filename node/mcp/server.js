@@ -1,13 +1,14 @@
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
-const { readFileSync, writeFileSync, mkdirSync, existsSync } = require('fs');
+const { readFileSync, readdirSync, statSync } = require('fs');
 const path = require('path');
 
 const API_URL = process.env.MEMORY_API_URL || 'http://localhost:3100/v1';
 const API_KEY = process.env.MEMORY_API_KEY || '';
 const DEFAULT_NAMESPACE = process.env.MEMORY_DEFAULT_NAMESPACE || 'default';
 const DEFAULT_AGENT = process.env.MEMORY_DEFAULT_AGENT || DEFAULT_NAMESPACE;
+const MEMORY_REPO_PATH = process.env.MEMORY_REPO_PATH || '';
 
 async function apiCall(endpoint, body) {
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -35,6 +36,29 @@ async function autoRegister() {
     } catch (err) {
         // Registration failure is non-fatal — API may not be upgraded yet
     }
+}
+
+// Recursively find all .md files under a directory, skipping hidden dirs and node_modules
+function walkMarkdownFiles(dir) {
+    const results = [];
+    let entries;
+    try {
+        entries = readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+        return results;
+    }
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+                continue;
+            }
+            results.push(...walkMarkdownFiles(fullPath));
+        } else if (entry.name.endsWith('.md')) {
+            results.push(fullPath);
+        }
+    }
+    return results;
 }
 
 const server = new Server(
@@ -147,14 +171,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'mail_check',
-                description: 'Check for new mail addressed to this agent. Downloads messages, writes them to the local mailbox directory, and acks receipt.',
+                description: 'Check for new mail addressed to this agent. Returns unacked messages and acks them.',
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        agent: { type: 'string', description: 'Agent to check mail for (default: configured agent)' },
-                        mailbox_dir: { type: 'string', description: 'Local directory to write received mail files to' }
-                    },
-                    required: ['mailbox_dir']
+                        agent: { type: 'string', description: 'Agent to check mail for (default: configured agent)' }
+                    }
                 }
             },
             {
@@ -166,6 +188,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         ids: { type: 'array', items: { type: 'string' }, description: 'Array of mail UUIDs to ack' }
                     },
                     required: ['ids']
+                }
+            },
+            {
+                name: 'ingest_notes',
+                description: 'Ingest all markdown notes from the llm-memory repo that have changed since last indexing. Compares local file modification times against the API index. Requires MEMORY_REPO_PATH env var.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        dry_run: { type: 'boolean', description: 'If true, only report what would be re-ingested without actually doing it (default: false)' }
+                    }
                 }
             },
             {
@@ -300,51 +332,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return { content: [{ type: 'text', text: 'No new mail.' }] };
         }
 
-        if (!existsSync(args.mailbox_dir)) {
-            mkdirSync(args.mailbox_dir, { recursive: true });
-        }
+        // Ack all messages
+        const ids = data.messages.map(m => m.id);
+        const ackData = await apiCall('/mail/ack', { ids });
 
-        const written = [];
-        const failed = [];
-        for (const msg of data.messages) {
-            const slug = msg.subject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-            const filename = `${msg.id.slice(0, 8)}-${slug}.md`;
-            const filepath = path.join(args.mailbox_dir, filename);
+        // Format messages for display
+        const formatted = data.messages.map(msg =>
+            `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`
+        ).join('\n\n---\n\n');
 
-            const content = `# ${msg.subject}\n\n**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**ID:** ${msg.id}\n\n${msg.body}`;
-            try {
-                writeFileSync(filepath, content, 'utf-8');
-                const stat = require('fs').statSync(filepath);
-                if (stat.size === 0) {
-                    failed.push({ id: msg.id, filename, reason: 'empty file after write' });
-                } else {
-                    written.push({ id: msg.id, filename });
-                }
-            } catch (err) {
-                failed.push({ id: msg.id, filename, reason: err.message });
-            }
-        }
-
-        let ackCount = 0;
-        if (written.length > 0) {
-            const ackData = await apiCall('/mail/ack', {
-                ids: written.map(w => w.id)
-            });
-            ackCount = ackData.acked;
-        }
-
-        const summary = written.map(w => `  ${w.filename}`).join('\n');
-        let result = `Received ${written.length} message(s), wrote to ${args.mailbox_dir}:\n${summary}\n\nAcked: ${ackCount}`;
-        if (failed.length > 0) {
-            const failSummary = failed.map(f => `  ${f.filename}: ${f.reason}`).join('\n');
-            result += `\n\nFailed (NOT acked, will retry next check):\n${failSummary}`;
-        }
-        return { content: [{ type: 'text', text: result }] };
+        return { content: [{ type: 'text', text: `${data.messages.length} message(s) (acked: ${ackData.acked}):\n\n${formatted}` }] };
     }
 
     if (name === 'mail_ack') {
         const data = await apiCall('/mail/ack', { ids: args.ids });
         return { content: [{ type: 'text', text: `Acked ${data.acked} message(s)` }] };
+    }
+
+    if (name === 'ingest_notes') {
+        if (!MEMORY_REPO_PATH) {
+            throw new Error('MEMORY_REPO_PATH environment variable is not set');
+        }
+
+        const dryRun = args.dry_run || false;
+
+        // Walk repo for .md files under the three namespace directories
+        const namespaces = ['work', 'home', 'shared'];
+        const localFiles = [];
+
+        for (const ns of namespaces) {
+            const nsDir = path.join(MEMORY_REPO_PATH, ns);
+            const mdFiles = walkMarkdownFiles(nsDir);
+            for (const filePath of mdFiles) {
+                const stat = statSync(filePath);
+                localFiles.push({
+                    filePath,
+                    fileName: path.basename(filePath),
+                    namespace: ns,
+                    mtime: stat.mtime
+                });
+            }
+        }
+
+        // Get current index state from the API
+        const statusData = await apiCall('/ingest/status', {});
+
+        // Build lookup: "namespace:source_file" -> ingested_at Date
+        const indexMap = {};
+        for (const entry of statusData.files) {
+            indexMap[`${entry.namespace}:${entry.source_file}`] = new Date(entry.ingested_at);
+        }
+
+        // Compare local files against index
+        const toIngest = [];
+        const upToDate = [];
+
+        for (const file of localFiles) {
+            const key = `${file.namespace}:${file.fileName}`;
+            const indexedAt = indexMap[key];
+
+            if (!indexedAt || file.mtime > indexedAt) {
+                toIngest.push(file);
+            } else {
+                upToDate.push(file);
+            }
+        }
+
+        if (dryRun) {
+            const staleList = toIngest.map(f => `  ${f.namespace}/${f.fileName}`).join('\n');
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Dry run: ${toIngest.length} file(s) need re-indexing, ${upToDate.length} up to date.\n\nStale/new:\n${staleList || '  (none)'}`
+                }]
+            };
+        }
+
+        // Re-ingest stale/new files
+        const results = [];
+        for (const file of toIngest) {
+            try {
+                const content = readFileSync(file.filePath, 'utf-8');
+                const data = await apiCall('/ingest', {
+                    namespace: file.namespace,
+                    source_file: file.fileName,
+                    content
+                });
+                results.push(`  OK ${file.namespace}/${file.fileName} (${data.chunks_created} chunks)`);
+            } catch (err) {
+                results.push(`  FAIL ${file.namespace}/${file.fileName}: ${err.message}`);
+            }
+        }
+
+        const summary = `Reindex complete: ${toIngest.length} file(s) re-ingested, ${upToDate.length} up to date.`;
+        const details = results.length > 0 ? '\n\n' + results.join('\n') : '';
+
+        return { content: [{ type: 'text', text: summary + details }] };
     }
 
     if (name === 'presence') {
