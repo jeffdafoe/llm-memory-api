@@ -1,0 +1,8 @@
+# Force LF line endings for all text files
+* text=auto eol=lf
+
+# Ensure shell scripts are always LF
+*.sh text eol=lf
+*.j2 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

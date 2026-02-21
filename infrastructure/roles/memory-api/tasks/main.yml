@@ -23,6 +23,13 @@
   delegate_to: "{{ inventory_hostname }}"
   when: repo_root != project_root
 
+- name: Set deployment directory ownership
+  file:
+    path: "{{ project_root }}"
+    owner: "{{ app_user }}"
+    recurse: yes
+  when: repo_root != project_root
+
 - name: Create secrets directory
   file:
     path: /etc/memory-api

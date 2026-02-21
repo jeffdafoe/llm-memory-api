@@ -24,10 +24,12 @@ apt install -y git ansible curl
 
 # Clone repository
 echo -e "\033[1m[2/4] Cloning repository...\033[0m"
-if [ -d "/opt/llm-memory-api" ]; then
-    echo "Directory /opt/llm-memory-api already exists. Pulling latest..."
+if [ -d "/opt/llm-memory-api/.git" ]; then
+    echo "Git repo exists. Pulling latest..."
     cd /opt/llm-memory-api
     git pull
+elif [ -d "/opt/llm-memory-api" ]; then
+    echo "Directory exists (no git). Skipping clone."
 else
     git clone https://github.com/jeffdafoe/llm-memory-api.git /opt/llm-memory-api
 fi
