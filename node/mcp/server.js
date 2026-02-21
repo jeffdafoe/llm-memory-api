@@ -263,22 +263,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         const written = [];
+        const failed = [];
         for (const msg of data.messages) {
             const slug = msg.subject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
             const filename = `${msg.id.slice(0, 8)}-${slug}.md`;
             const filepath = path.join(args.mailbox_dir, filename);
 
             const content = `# ${msg.subject}\n\n**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**ID:** ${msg.id}\n\n${msg.body}`;
-            writeFileSync(filepath, content, 'utf-8');
-            written.push({ id: msg.id, filename });
+            try {
+                writeFileSync(filepath, content, 'utf-8');
+                const stat = require('fs').statSync(filepath);
+                if (stat.size === 0) {
+                    failed.push({ id: msg.id, filename, reason: 'empty file after write' });
+                } else {
+                    written.push({ id: msg.id, filename });
+                }
+            } catch (err) {
+                failed.push({ id: msg.id, filename, reason: err.message });
+            }
         }
 
-        const ackData = await apiCall('/mail/ack', {
-            ids: written.map(w => w.id)
-        });
+        let ackCount = 0;
+        if (written.length > 0) {
+            const ackData = await apiCall('/mail/ack', {
+                ids: written.map(w => w.id)
+            });
+            ackCount = ackData.acked;
+        }
 
         const summary = written.map(w => `  ${w.filename}`).join('\n');
-        return { content: [{ type: 'text', text: `Received ${written.length} message(s), wrote to ${args.mailbox_dir}:\n${summary}\n\nAcked: ${ackData.acked}` }] };
+        let result = `Received ${written.length} message(s), wrote to ${args.mailbox_dir}:\n${summary}\n\nAcked: ${ackCount}`;
+        if (failed.length > 0) {
+            const failSummary = failed.map(f => `  ${f.filename}: ${f.reason}`).join('\n');
+            result += `\n\nFailed (NOT acked, will retry next check):\n${failSummary}`;
+        }
+        return { content: [{ type: 'text', text: result }] };
     }
 
     if (name === 'memory_mail_ack') {
