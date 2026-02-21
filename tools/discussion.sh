@@ -7,7 +7,7 @@
 # Dependencies: node (for JSON parsing), curl
 #
 # Usage:
-#   discussion.sh --api-url URL --api-key KEY --agent NAME --other AGENT --dir WORKDIR [--initiator]
+#   discussion.sh --api-url URL --api-key KEY --agent NAME --other AGENT --dir WORKDIR [--initiator] [--conclude-timeout SECONDS]
 #
 # The --initiator flag means this side sends the first message.
 # The first message should be placed in outbox/ before starting, or
@@ -26,6 +26,7 @@ POLL_INTERVAL=5
 SEND_DELAY=3
 MAX_TURNS=20
 TIMEOUT_MINUTES=15
+CONCLUDE_TIMEOUT=120
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
         --max-turns) MAX_TURNS="$2"; shift 2 ;;
         --timeout) TIMEOUT_MINUTES="$2"; shift 2 ;;
         --channel) CHANNEL="$2"; shift 2 ;;
+        --conclude-timeout) CONCLUDE_TIMEOUT="$2"; shift 2 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -69,6 +71,7 @@ echo "STARTING" > "$STATUS_FILE"
 TURN_COUNT=0
 MY_CONCLUDED=false
 OTHER_CONCLUDED=false
+CONCLUDE_SEEN_AT=0
 START_TIME=$(date +%s)
 
 TRANSCRIPT_FILE="${WORK_DIR}/transcript.md"
@@ -139,6 +142,9 @@ check_outbox() {
 
                 if [[ "$message" == "[CONCLUDED]"* ]]; then
                     MY_CONCLUDED=true
+                    if [[ $CONCLUDE_SEEN_AT -eq 0 ]]; then
+                        CONCLUDE_SEEN_AT=$(date +%s)
+                    fi
                     log "We sent CONCLUDED"
                 fi
 
@@ -216,6 +222,18 @@ while true; do
         exit 0
     fi
 
+    # Check conclude timeout — one side concluded but the other hasn't responded
+    if [[ $CONCLUDE_SEEN_AT -gt 0 ]]; then
+        local_now=$(date +%s)
+        conclude_elapsed=$((local_now - CONCLUDE_SEEN_AT))
+        if [[ $conclude_elapsed -ge $CONCLUDE_TIMEOUT ]]; then
+            log "Conclude timeout reached (${CONCLUDE_TIMEOUT}s). Other side did not respond."
+            echo "CONCLUDE_TIMEOUT" > "$STATUS_FILE"
+            echo "TIMEOUT" > "$DONE_FILE"
+            exit 0
+        fi
+    fi
+
     # Check timeout
     if check_timeout; then
         log "Timeout reached (${TURN_COUNT} turns, ${TIMEOUT_MINUTES}m). Writing timeout notice to inbox."
@@ -255,6 +273,9 @@ while true; do
 
         if [[ "$concluded" == "true" ]]; then
             OTHER_CONCLUDED=true
+            if [[ $CONCLUDE_SEEN_AT -eq 0 ]]; then
+                CONCLUDE_SEEN_AT=$(date +%s)
+            fi
             log "Other side sent CONCLUDED"
         fi
 
