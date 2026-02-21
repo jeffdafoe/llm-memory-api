@@ -73,6 +73,9 @@ MY_CONCLUDED=false
 OTHER_CONCLUDED=false
 CONCLUDE_SEEN_AT=0
 START_TIME=$(date +%s)
+SEEN_IDS_FILE="${WORK_DIR}/.seen_ids"
+READY_FILE="${WORK_DIR}/ready"
+> "$SEEN_IDS_FILE"
 
 TRANSCRIPT_FILE="${WORK_DIR}/transcript.md"
 
@@ -185,6 +188,14 @@ process.stdin.on("end", () => {
     const msgs = data.messages || [];
     const inbox = process.argv[1];
     const transcript = process.argv[2];
+    const seenFile = process.argv[3];
+
+    // Load seen IDs for dedup
+    let seen = new Set();
+    try {
+        const lines = fs.readFileSync(seenFile, "utf-8").trim().split("\n").filter(Boolean);
+        for (const line of lines) seen.add(line);
+    } catch (e) {}
 
     if (msgs.length === 0) {
         console.log("count=0");
@@ -193,19 +204,23 @@ process.stdin.on("end", () => {
 
     let concluded = false;
     const ids = [];
+    const newIds = [];
     for (const msg of msgs) {
+        ids.push(msg.id);
+        if (seen.has(String(msg.id))) continue;
+        newIds.push(msg.id);
         fs.writeFileSync(path.join(inbox, msg.id + ".txt"), msg.message);
         const ts = new Date().toTimeString().slice(0, 8);
         fs.appendFileSync(transcript, "**" + msg.from_agent + "** (" + ts + "):\n" + msg.message + "\n\n");
         console.log("log=id=" + msg.id + " from=" + msg.from_agent);
-        ids.push(msg.id);
+        fs.appendFileSync(seenFile, msg.id + "\n");
         if (msg.message.includes("[CONCLUDED]")) concluded = true;
     }
 
-    console.log("count=" + msgs.length);
+    console.log("count=" + newIds.length);
     console.log("ids_json=" + JSON.stringify(ids));
     console.log("concluded=" + concluded);
-});' "$INBOX_DIR" "$TRANSCRIPT_FILE"
+});' "$INBOX_DIR" "$TRANSCRIPT_FILE" "$SEEN_IDS_FILE"
 }
 
 # Main loop
@@ -280,6 +295,12 @@ while true; do
         fi
 
         echo "MESSAGE_RECEIVED" > "$STATUS_FILE"
+
+        # Signal that the other side is active (first inbound message)
+        if [[ ! -f "$READY_FILE" ]]; then
+            touch "$READY_FILE"
+            log "Other side is active — ready file written"
+        fi
     else
         sleep "$POLL_INTERVAL"
     fi
