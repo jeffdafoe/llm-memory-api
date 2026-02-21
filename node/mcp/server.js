@@ -462,12 +462,53 @@ async function sendHeartbeat() {
     }
 }
 
+async function autoIngest() {
+    if (!MEMORY_REPO_PATH) {
+        return;
+    }
+    try {
+        const namespaces = ['work', 'home', 'shared'];
+        const localFiles = [];
+        for (const ns of namespaces) {
+            const nsDir = path.join(MEMORY_REPO_PATH, ns);
+            const mdFiles = walkMarkdownFiles(nsDir);
+            for (const filePath of mdFiles) {
+                const stat = statSync(filePath);
+                localFiles.push({ filePath, fileName: path.basename(filePath), namespace: ns, mtime: stat.mtime });
+            }
+        }
+
+        const statusData = await apiCall('/ingest/status', {});
+        const indexMap = {};
+        for (const entry of statusData.files) {
+            indexMap[`${entry.namespace}:${entry.source_file}`] = new Date(entry.ingested_at);
+        }
+
+        const toIngest = localFiles.filter(f => {
+            const indexedAt = indexMap[`${f.namespace}:${f.fileName}`];
+            return !indexedAt || f.mtime > indexedAt;
+        });
+
+        if (toIngest.length === 0) {
+            return;
+        }
+
+        for (const file of toIngest) {
+            const content = readFileSync(file.filePath, 'utf-8');
+            await apiCall('/ingest', { namespace: file.namespace, source_file: file.fileName, content });
+        }
+    } catch (err) {
+        // Auto-ingest failure is non-fatal
+    }
+}
+
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     await autoRegister();
     await sendHeartbeat();
     setInterval(sendHeartbeat, 120000);
+    autoIngest();
 }
 
 main().catch(console.error);
