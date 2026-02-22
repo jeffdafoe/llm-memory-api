@@ -93,7 +93,7 @@ function evaluateThreshold(choiceRows, participantCount, threshold) {
 
 router.post('/discussion/create', async (req, res) => {
     try {
-        const { topic, created_by, participants, channel } = req.body;
+        const { topic, created_by, participants, channel, mode } = req.body;
 
         if (!topic || !created_by || !participants || !Array.isArray(participants)) {
             return res.status(400).json({
@@ -117,9 +117,12 @@ router.post('/discussion/create', async (req, res) => {
         try {
             await client.query('BEGIN');
 
+            const validModes = ['realtime', 'async'];
+            const discussionMode = validModes.includes(mode) ? mode : 'realtime';
+
             const result = await client.query(
-                'INSERT INTO discussions (topic, created_by, channel) VALUES ($1, $2, $3) RETURNING id, created_at',
-                [topic, created_by, channel || null]
+                'INSERT INTO discussions (topic, created_by, channel, mode) VALUES ($1, $2, $3, $4) RETURNING id, created_at',
+                [topic, created_by, channel || null, discussionMode]
             );
             const discussionId = result.rows[0].id;
 
@@ -133,13 +136,14 @@ router.post('/discussion/create', async (req, res) => {
 
             await client.query('COMMIT');
 
-            logDiscussion('create', { discussion_id: discussionId, topic, created_by, participants });
+            logDiscussion('create', { discussion_id: discussionId, topic, created_by, participants, mode: discussionMode });
 
             res.json({
                 id: discussionId,
                 topic,
                 created_by,
                 channel: channel || null,
+                mode: discussionMode,
                 participants: participants.map(a => ({
                     agent: a,
                     status: a === created_by ? 'joined' : 'invited'
@@ -278,13 +282,14 @@ router.post('/discussion/pending', async (req, res) => {
 
         // Active discussions with open votes where agent hasn't voted yet
         const openVotes = await pool.query(
-            `SELECT v.*, d.topic as discussion_topic
+            `SELECT v.*, d.topic as discussion_topic, d.mode as discussion_mode
              FROM discussion_votes v
              JOIN discussions d ON v.discussion_id = d.id
              JOIN discussion_participants dp ON d.id = dp.discussion_id
              WHERE dp.agent = $1
              AND dp.status = $2
              AND v.status = $3
+             AND d.status = 'active'
              AND NOT EXISTS (
                  SELECT 1 FROM discussion_ballots b WHERE b.vote_id = v.id AND b.agent = $1
              )

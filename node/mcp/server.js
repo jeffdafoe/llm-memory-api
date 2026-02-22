@@ -219,7 +219,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         topic: { type: 'string', description: 'Discussion topic' },
                         participants: { type: 'array', items: { type: 'string' }, description: 'List of participant agent names (must include creator)' },
                         channel: { type: 'string', description: 'Optional chat channel name for this discussion' },
-                        created_by: { type: 'string', description: 'Creator agent (default: configured agent)' }
+                        created_by: { type: 'string', description: 'Creator agent (default: configured agent)' },
+                        mode: { type: 'string', description: 'Discussion mode: "realtime" (transport + subagent, live back-and-forth) or "async" (independent investigation + direct voting). Default: realtime' }
                     },
                     required: ['topic', 'participants']
                 }
@@ -572,15 +573,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'discussion_create') {
         const creator = args.created_by || DEFAULT_AGENT;
-        const data = await apiCall('/discussion/create', {
+        const body = {
             topic: args.topic,
             created_by: creator,
             participants: args.participants,
             channel: args.channel || null
-        });
+        };
+        if (args.mode) {
+            body.mode = args.mode;
+        }
+        const data = await apiCall('/discussion/create', body);
 
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
-        let text = `Discussion #${data.id} created: "${data.topic}"\nParticipants: ${parts}`;
+        let text = `Discussion #${data.id} created [${data.mode}]: "${data.topic}"\nParticipants: ${parts}`;
         if (args.channel) {
             text += `\nChannel: ${args.channel}`;
         }
@@ -602,7 +607,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         const lines = data.discussions.map(d => {
-            let line = `#${d.id} [${d.status}] "${d.topic}" (created ${d.created_at})`;
+            let line = `#${d.id} [${d.status}] [${d.mode || 'realtime'}] "${d.topic}" (created ${d.created_at})`;
             if (d.channel) {
                 line += ` channel: ${d.channel}`;
             }
@@ -616,7 +621,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const d = data.discussion;
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
-        let text = `Discussion #${d.id}: "${d.topic}" [${d.status}]\nParticipants: ${parts}`;
+        let text = `Discussion #${d.id}: "${d.topic}" [${d.status}] [${d.mode || 'realtime'}]\nParticipants: ${parts}`;
         if (d.channel) {
             text += `\nChannel: ${d.channel}`;
         }
@@ -637,11 +642,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const sections = [];
         if (data.invited_discussions.length > 0) {
-            const lines = data.invited_discussions.map(d => `  #${d.id} "${d.topic}"`);
+            const lines = data.invited_discussions.map(d => `  #${d.id} [${d.mode || 'realtime'}] "${d.topic}"`);
             sections.push('Pending invitations:\n' + lines.join('\n'));
         }
         if (data.open_votes.length > 0) {
-            const lines = data.open_votes.map(v => `  Vote #${v.id} in "${v.discussion_topic}": ${v.question}`);
+            const lines = data.open_votes.map(v => `  Vote #${v.id} [${v.discussion_mode || 'realtime'}] in "${v.discussion_topic}": ${v.question}`);
             sections.push('Open votes awaiting your ballot:\n' + lines.join('\n'));
         }
 
