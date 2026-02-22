@@ -11,16 +11,13 @@
 # Output: Creates working directory, starts transport, writes prompt.txt
 
 set -u
+export MSYS_NO_PATHCONV=1
 
 if ! command -v node &>/dev/null; then
     echo "ERROR: Node.js not found — required for JSON parsing" >&2
     exit 1
 fi
 
-if ! command -v curl &>/dev/null; then
-    echo "ERROR: curl not found" >&2
-    exit 1
-fi
 
 # Defaults
 ACTION=""
@@ -81,21 +78,35 @@ fi
 api_call() {
     local endpoint="$1"
     local body="$2"
-    local response
-    response=$(curl -s -w "\n%{http_code}" -X POST "${API_URL}${endpoint}" \
-        -H "Authorization: Bearer ${API_KEY}" \
-        -H "Content-Type: application/json" \
-        -d "$body")
-    local http_code
-    http_code=$(echo "$response" | tail -1)
-    local body_content
-    body_content=$(echo "$response" | sed '$d')
-    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-        echo "ERROR: HTTP ${http_code} from ${endpoint}" >&2
-        echo "$body_content" >&2
-        return 1
-    fi
-    echo "$body_content"
+    node -e '
+const https = require("https");
+const http = require("http");
+const url = new URL(process.argv[1] + process.argv[2]);
+const mod = url.protocol === "https:" ? https : http;
+const data = process.argv[3];
+const req = mod.request(url, {
+    method: "POST",
+    headers: {
+        "Authorization": "Bearer " + process.argv[4],
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(data)
+    }
+}, res => {
+    let body = "";
+    res.on("data", c => body += c);
+    res.on("end", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            console.log(body);
+        } else {
+            console.error("HTTP " + res.statusCode + ": " + body);
+            process.exit(1);
+        }
+    });
+});
+req.on("error", e => { console.error("ERR: " + e.message); process.exit(1); });
+req.write(data);
+req.end();
+' "$API_URL" "$endpoint" "$body" "$API_KEY"
 }
 
 generate_prompt() {

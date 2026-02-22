@@ -4,7 +4,7 @@
 # Polls the chat API for messages, writes them to inbox/.
 # Watches outbox/ for replies and sends them via the API.
 #
-# Dependencies: node (for JSON parsing), curl
+# Dependencies: node (for JSON parsing and HTTP calls)
 #
 # Usage:
 #   discussion.sh --api-url URL --api-key KEY --agent NAME --other AGENT --dir WORKDIR [--initiator]
@@ -14,6 +14,7 @@
 # the subagent should write it immediately after the script starts.
 
 set -u
+export MSYS_NO_PATHCONV=1
 
 # Verify node is available (required for JSON parsing)
 if ! command -v node &>/dev/null; then
@@ -103,21 +104,44 @@ trap 'log "Transport exiting (exit code: $?)"' EXIT
 api_call() {
     local endpoint="$1"
     local body="$2"
-    local response
-    response=$(curl -s -w "\n%{http_code}" -X POST "${API_URL}${endpoint}" \
-        -H "Authorization: Bearer ${API_KEY}" \
-        -H "Content-Type: application/json" \
-        -d "$body")
-    local http_code
-    http_code=$(echo "$response" | tail -1)
-    local body_content
-    body_content=$(echo "$response" | sed '$d')
-    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-        log "ERROR: HTTP ${http_code} from ${endpoint}: ${body_content}"
-        echo "$body_content"
+    local result
+    result=$(node -e '
+const https = require("https");
+const http = require("http");
+const url = new URL(process.argv[1] + process.argv[2]);
+const mod = url.protocol === "https:" ? https : http;
+const data = process.argv[3];
+const req = mod.request(url, {
+    method: "POST",
+    headers: {
+        "Authorization": "Bearer " + process.argv[4],
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(data)
+    }
+}, res => {
+    let body = "";
+    res.on("data", c => body += c);
+    res.on("end", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            console.log(body);
+        } else {
+            console.error("HTTP " + res.statusCode + ": " + body);
+            process.exit(1);
+        }
+    });
+});
+req.on("error", e => { console.error("ERR: " + e.message); process.exit(1); });
+req.write(data);
+req.end();
+' "$API_URL" "$endpoint" "$body" "$API_KEY" 2>"${WORK_DIR}/.api_err")
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        local err_msg
+        err_msg=$(cat "${WORK_DIR}/.api_err" 2>/dev/null)
+        log "ERROR: ${endpoint}: ${err_msg}"
         return 1
     fi
-    echo "$body_content"
+    echo "$result"
 }
 
 receive_messages() {
