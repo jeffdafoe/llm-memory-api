@@ -1,0 +1,9 @@
+/var/log/llm-memory-api/*.log {
+    weekly
+    missingok
+    rotate 12
+    compress
+    delaycompress
+    notifempty
+    create 644 {{ app_user }} {{ app_user }}
+}
