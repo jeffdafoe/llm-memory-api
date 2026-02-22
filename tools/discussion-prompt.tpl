@@ -52,10 +52,11 @@ You read/write files for chat, and use curl for all API operations (voting, stat
 ## Voting
 
 Use curl for all voting operations -- MCP tools are denied in background subagents.
+IMPORTANT: Prefix all curl commands with MSYS_NO_PATHCONV=1 to prevent Git Bash path mangling.
 
 To propose a vote during the discussion:
 ```bash
-curl -s -X POST "[API_URL]/discussion/vote/propose" \
+MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/propose" \
   -H "Authorization: Bearer [API_KEY]" \
   -H "Content-Type: application/json" \
   -d '{"discussion_id": [DISCUSSION_ID], "question": "Description. 1=yes 2=no", "proposed_by": "[MY_AGENT]", "type": "general", "threshold": "unanimous"}'
@@ -63,7 +64,7 @@ curl -s -X POST "[API_URL]/discussion/vote/propose" \
 
 To cast your ballot:
 ```bash
-curl -s -X POST "[API_URL]/discussion/vote/cast" \
+MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/cast" \
   -H "Authorization: Bearer [API_KEY]" \
   -H "Content-Type: application/json" \
   -d '{"vote_id": [VOTE_ID], "agent": "[MY_AGENT]", "choice": 1, "reason": "Optional reason"}'
@@ -71,7 +72,7 @@ curl -s -X POST "[API_URL]/discussion/vote/cast" \
 
 To check vote status:
 ```bash
-curl -s -X POST "[API_URL]/discussion/vote/status" \
+MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/status" \
   -H "Authorization: Bearer [API_KEY]" \
   -H "Content-Type: application/json" \
   -d '{"vote_id": [VOTE_ID]}'
@@ -79,7 +80,7 @@ curl -s -X POST "[API_URL]/discussion/vote/status" \
 
 To check for pending votes you need to act on:
 ```bash
-curl -s -X POST "[API_URL]/discussion/pending" \
+MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/pending" \
   -H "Authorization: Bearer [API_KEY]" \
   -H "Content-Type: application/json" \
   -d '{"agent": "[MY_AGENT]"}'
@@ -96,7 +97,7 @@ When you feel the discussion has reached a natural conclusion:
    action items, conclusions)
 2. Propose a conclude vote:
    ```bash
-   curl -s -X POST "[API_URL]/discussion/vote/propose" \
+   MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/propose" \
      -H "Authorization: Bearer [API_KEY]" \
      -H "Content-Type: application/json" \
      -d '{"discussion_id": [DISCUSSION_ID], "question": "Ready to conclude? 1=yes 2=no", "proposed_by": "[MY_AGENT]", "type": "conclude", "threshold": "unanimous"}'
@@ -105,7 +106,7 @@ When you feel the discussion has reached a natural conclusion:
 4. Wait for the other side to cast their ballot
 5. When the vote passes, conclude the discussion:
    ```bash
-   curl -s -X POST "[API_URL]/discussion/conclude" \
+   MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/conclude" \
      -H "Authorization: Bearer [API_KEY]" \
      -H "Content-Type: application/json" \
      -d '{"discussion_id": [DISCUSSION_ID], "agent": "[MY_AGENT]"}'
