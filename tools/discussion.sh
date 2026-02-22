@@ -14,7 +14,6 @@
 # the subagent should write it immediately after the script starts.
 
 set -u
-export MSYS_NO_PATHCONV=1
 
 # Verify node is available (required for JSON parsing)
 if ! command -v node &>/dev/null; then
@@ -56,11 +55,20 @@ done
 
 INITIATOR="${INITIATOR:-false}"
 CHANNEL="${CHANNEL:-discussion}"
+
+# Convert Git Bash paths (/c/...) to Windows paths (C:/...) for Node.js compatibility.
+# Node.js on Windows interprets /c/temp as C:\c\temp (root-relative), not C:\temp.
+# Git Bash handles both formats, so this is safe for all operations.
+if [[ "$WORK_DIR" =~ ^/[a-zA-Z]/ ]]; then
+    WORK_DIR=$(echo "$WORK_DIR" | sed 's|^/\([a-zA-Z]\)/|\U\1:/|')
+fi
+
 INBOX_DIR="${WORK_DIR}/inbox"
 OUTBOX_DIR="${WORK_DIR}/outbox"
 LOG_FILE="${WORK_DIR}/conversation.log"
 STATUS_FILE="${WORK_DIR}/status"
 DONE_FILE="${WORK_DIR}/done"
+HEARTBEAT_FILE="${WORK_DIR}/heartbeat"
 
 # Create directories
 mkdir -p "$INBOX_DIR" "$OUTBOX_DIR"
@@ -108,7 +116,7 @@ api_call() {
     result=$(node -e '
 const https = require("https");
 const http = require("http");
-const url = new URL(process.argv[1] + process.argv[2]);
+const url = new URL(process.argv[1] + "/" + process.argv[2]);
 const mod = url.protocol === "https:" ? https : http;
 const data = process.argv[3];
 const req = mod.request(url, {
@@ -146,20 +154,20 @@ req.end();
 
 receive_messages() {
     local response
-    response=$(api_call "/chat/receive" "{\"agent\": \"${MY_AGENT}\", \"channel\": \"${CHANNEL}\"}")
+    response=$(api_call "chat/receive" "{\"agent\": \"${MY_AGENT}\", \"channel\": \"${CHANNEL}\"}")
     echo "$response"
 }
 
 ack_messages() {
     local ids_json="$1"
-    api_call "/chat/ack" "{\"agent\": \"${MY_AGENT}\", \"message_ids\": ${ids_json}}" > /dev/null
+    api_call "chat/ack" "{\"agent\": \"${MY_AGENT}\", \"message_ids\": ${ids_json}}" > /dev/null
 }
 
 send_message() {
     local message="$1"
     local escaped
     escaped=$(printf '%s' "$message" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))')
-    api_call "/chat/send" "{\"from_agent\": \"${MY_AGENT}\", \"to_agent\": \"${OTHER_AGENT}\", \"message\": ${escaped}, \"channel\": \"${CHANNEL}\"}" > /dev/null
+    api_call "chat/send" "{\"from_agent\": \"${MY_AGENT}\", \"to_agent\": \"${OTHER_AGENT}\", \"message\": ${escaped}, \"channel\": \"${CHANNEL}\"}" > /dev/null
     log "SENT: ${message:0:100}..."
     transcript "$MY_AGENT" "$message"
 }
@@ -193,7 +201,7 @@ check_done_file() {
 # Poll for pending votes and write notifications to inbox
 check_pending_votes() {
     local response
-    response=$(api_call "/discussion/pending" "{\"agent\": \"${MY_AGENT}\"}")
+    response=$(api_call "discussion/pending" "{\"agent\": \"${MY_AGENT}\"}")
     echo "$response" | node -e '
 let d = "";
 process.stdin.on("data", c => d += c);
@@ -350,4 +358,6 @@ while true; do
     else
         sleep "$POLL_INTERVAL"
     fi
+
+    date +%s > "$HEARTBEAT_FILE"
 done
