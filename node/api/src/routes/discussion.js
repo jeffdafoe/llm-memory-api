@@ -1,11 +1,11 @@
 const { Router } = require('express');
 const pool = require('../db');
+const { log } = require('../services/logger');
 
 const router = Router();
 
 function logDiscussion(action, details) {
-    const timestamp = new Date().toISOString();
-    console.log(`[discussion] ${timestamp} ${action}:`, JSON.stringify(details));
+    log('discussion', action, details);
 }
 
 // Check if an agent is a joined participant in a discussion

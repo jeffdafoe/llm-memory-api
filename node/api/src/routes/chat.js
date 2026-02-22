@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const pool = require('../db');
+const { log } = require('../services/logger');
 
 const router = Router();
 
@@ -16,8 +17,7 @@ function validateChannel(channel) {
 }
 
 function logChat(action, details) {
-    const timestamp = new Date().toISOString();
-    console.log(`[chat] ${timestamp} ${action}:`, JSON.stringify(details));
+    log('chat', action, details);
 }
 
 router.post('/chat/send', async (req, res) => {

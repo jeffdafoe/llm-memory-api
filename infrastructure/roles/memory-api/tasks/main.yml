@@ -1,4 +1,18 @@
 ---
+- name: Ensure service user exists
+  user:
+    name: "{{ app_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Create log directory
+  file:
+    path: /var/log/llm-memory-api
+    state: directory
+    owner: "{{ app_user }}"
+    mode: "0755"
+
 - name: Create deployment directory
   file:
     path: "{{ project_root }}"
@@ -34,6 +48,7 @@
   file:
     path: /etc/memory-api
     state: directory
+    owner: "{{ app_user }}"
     mode: "0700"
 
 - name: Deploy environment file

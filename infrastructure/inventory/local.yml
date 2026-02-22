@@ -6,7 +6,7 @@ all:
   vars:
     deploy_environment: development
     server_name: localhost
-    app_user: jeff
+    app_user: memory-api
     database_name: memory_api
     database_user: memory_api
     repo_root: /mnt/c/dev/llm-memory-api
