@@ -93,7 +93,7 @@ function evaluateThreshold(choiceRows, participantCount, threshold) {
 
 router.post('/discussion/create', async (req, res) => {
     try {
-        const { topic, created_by, participants, channel, mode } = req.body;
+        const { topic, created_by, participants, channel, mode, context } = req.body;
 
         if (!topic || !created_by || !participants || !Array.isArray(participants)) {
             return res.status(400).json({
@@ -120,9 +120,12 @@ router.post('/discussion/create', async (req, res) => {
             const validModes = ['realtime', 'async'];
             const discussionMode = validModes.includes(mode) ? mode : 'realtime';
 
+            // Enforce 10k char limit on context
+            const contextText = context ? String(context).slice(0, 10000) : null;
+
             const result = await client.query(
-                'INSERT INTO discussions (topic, created_by, channel, mode) VALUES ($1, $2, $3, $4) RETURNING id, created_at',
-                [topic, created_by, channel || null, discussionMode]
+                'INSERT INTO discussions (topic, created_by, channel, mode, context) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at',
+                [topic, created_by, channel || null, discussionMode, contextText]
             );
             const discussionId = result.rows[0].id;
 
@@ -138,7 +141,7 @@ router.post('/discussion/create', async (req, res) => {
 
             logDiscussion('create', { discussion_id: discussionId, topic, created_by, participants, mode: discussionMode });
 
-            res.json({
+            const responseBody = {
                 id: discussionId,
                 topic,
                 created_by,
@@ -149,7 +152,11 @@ router.post('/discussion/create', async (req, res) => {
                     status: a === created_by ? 'joined' : 'invited'
                 })),
                 created_at: result.rows[0].created_at
-            });
+            };
+            if (contextText) {
+                responseBody.context = contextText;
+            }
+            res.json(responseBody);
         } catch (err) {
             await client.query('ROLLBACK');
             throw err;

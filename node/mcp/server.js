@@ -220,7 +220,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         participants: { type: 'array', items: { type: 'string' }, description: 'List of participant agent names (must include creator)' },
                         channel: { type: 'string', description: 'Optional chat channel name for this discussion' },
                         created_by: { type: 'string', description: 'Creator agent (default: configured agent)' },
-                        mode: { type: 'string', description: 'Discussion mode: "realtime" (transport + subagent, live back-and-forth) or "async" (independent investigation + direct voting). Default: realtime' }
+                        mode: { type: 'string', description: 'Discussion mode: "realtime" (transport + subagent, live back-and-forth) or "async" (independent investigation + direct voting). Default: realtime' },
+                        context: { type: 'string', description: 'Optional background/context for the discussion (max 10k chars). Visible to joining agents via discussion_status.' }
                     },
                     required: ['topic', 'participants']
                 }
@@ -582,6 +583,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (args.mode) {
             body.mode = args.mode;
         }
+        if (args.context) {
+            body.context = args.context;
+        }
         const data = await apiCall('/discussion/create', body);
 
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
@@ -624,6 +628,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         let text = `Discussion #${d.id}: "${d.topic}" [${d.status}] [${d.mode || 'realtime'}]\nParticipants: ${parts}`;
         if (d.channel) {
             text += `\nChannel: ${d.channel}`;
+        }
+        if (d.context) {
+            text += `\nContext: ${d.context}`;
         }
 
         if (data.votes.length > 0) {
