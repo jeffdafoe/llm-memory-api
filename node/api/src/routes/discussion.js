@@ -280,7 +280,10 @@ router.post('/discussion/pending', async (req, res) => {
             [agent, 'invited', 'active']
         );
 
-        // Active discussions with open votes where agent hasn't voted yet
+        // Open votes where agent hasn't voted yet — async discussions only.
+        // Realtime discussion votes are discovered in-band through chat messages,
+        // not through pending. Hiding them here prevents agents from voting
+        // directly on realtime topics instead of launching the discussion protocol.
         const openVotes = await pool.query(
             `SELECT v.*, d.topic as discussion_topic, d.mode as discussion_mode
              FROM discussion_votes v
@@ -290,6 +293,7 @@ router.post('/discussion/pending', async (req, res) => {
              AND dp.status = $2
              AND v.status = $3
              AND d.status = 'active'
+             AND d.mode = 'async'
              AND NOT EXISTS (
                  SELECT 1 FROM discussion_ballots b WHERE b.vote_id = v.id AND b.agent = $1
              )
