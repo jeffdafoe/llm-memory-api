@@ -209,6 +209,129 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         agent: { type: 'string', description: 'Agent requesting presence info (default: configured agent). Unread counts are relative to this agent.' }
                     }
                 }
+            },
+            {
+                name: 'discussion_create',
+                description: 'Create a new discussion with specified participants. Creator is auto-added as joined; others are invited.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        topic: { type: 'string', description: 'Discussion topic' },
+                        participants: { type: 'array', items: { type: 'string' }, description: 'List of participant agent names (must include creator)' },
+                        channel: { type: 'string', description: 'Optional chat channel name for this discussion' },
+                        created_by: { type: 'string', description: 'Creator agent (default: configured agent)' }
+                    },
+                    required: ['topic', 'participants']
+                }
+            },
+            {
+                name: 'discussion_list',
+                description: 'List discussions, optionally filtered by status and/or agent.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        status: { type: 'string', description: 'Filter by status: active, concluded, timed_out' },
+                        agent: { type: 'string', description: 'Filter to discussions this agent participates in' }
+                    }
+                }
+            },
+            {
+                name: 'discussion_status',
+                description: 'Get full status of a discussion: details, participants, and votes.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        discussion_id: { type: 'number', description: 'Discussion ID' }
+                    },
+                    required: ['discussion_id']
+                }
+            },
+            {
+                name: 'discussion_pending',
+                description: 'Check for discussions needing attention: pending invitations and open votes awaiting your ballot.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        agent: { type: 'string', description: 'Agent to check for (default: configured agent)' }
+                    }
+                }
+            },
+            {
+                name: 'discussion_conclude',
+                description: 'Manually conclude an active discussion.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        discussion_id: { type: 'number', description: 'Discussion ID' },
+                        agent: { type: 'string', description: 'Agent concluding (default: configured agent)' }
+                    },
+                    required: ['discussion_id']
+                }
+            },
+            {
+                name: 'discussion_join',
+                description: 'Join a discussion you have been invited to.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        discussion_id: { type: 'number', description: 'Discussion ID' },
+                        agent: { type: 'string', description: 'Agent joining (default: configured agent)' }
+                    },
+                    required: ['discussion_id']
+                }
+            },
+            {
+                name: 'discussion_leave',
+                description: 'Leave a discussion you are participating in.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        discussion_id: { type: 'number', description: 'Discussion ID' },
+                        agent: { type: 'string', description: 'Agent leaving (default: configured agent)' }
+                    },
+                    required: ['discussion_id']
+                }
+            },
+            {
+                name: 'discussion_vote_propose',
+                description: 'Propose a vote in a discussion. Use type "conclude" for ending the discussion, "general" for other decisions. Choices are integers; describe options in the question text.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        discussion_id: { type: 'number', description: 'Discussion ID' },
+                        question: { type: 'string', description: 'Vote question (include numbered options, e.g. "1=approve 2=reject")' },
+                        type: { type: 'string', description: 'Vote type: "general" or "conclude" (default: general)' },
+                        threshold: { type: 'string', description: 'Pass threshold: "unanimous" or "majority" (default: unanimous)' },
+                        closes_at: { type: 'string', description: 'Optional ISO timestamp when vote auto-closes' },
+                        proposed_by: { type: 'string', description: 'Proposing agent (default: configured agent)' }
+                    },
+                    required: ['discussion_id', 'question']
+                }
+            },
+            {
+                name: 'discussion_vote_cast',
+                description: 'Cast a ballot on an open vote. Choice is an integer matching the options in the question.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        vote_id: { type: 'number', description: 'Vote ID' },
+                        choice: { type: 'number', description: 'Integer choice (matching options in the question)' },
+                        reason: { type: 'string', description: 'Optional reason for your choice' },
+                        agent: { type: 'string', description: 'Voting agent (default: configured agent)' }
+                    },
+                    required: ['vote_id', 'choice']
+                }
+            },
+            {
+                name: 'discussion_vote_status',
+                description: 'Get status and ballots for a specific vote.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        vote_id: { type: 'number', description: 'Vote ID' }
+                    },
+                    required: ['vote_id']
+                }
             }
         ]
     };
@@ -445,6 +568,142 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
 
         return { content: [{ type: 'text', text: lines.join('\n') || 'No agents registered.' }] };
+    }
+
+    if (name === 'discussion_create') {
+        const creator = args.created_by || DEFAULT_AGENT;
+        const data = await apiCall('/discussion/create', {
+            topic: args.topic,
+            created_by: creator,
+            participants: args.participants,
+            channel: args.channel || null
+        });
+
+        const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
+        return { content: [{ type: 'text', text: `Discussion #${data.id} created: "${data.topic}"\nParticipants: ${parts}` }] };
+    }
+
+    if (name === 'discussion_list') {
+        const body = {};
+        if (args.status) {
+            body.status = args.status;
+        }
+        if (args.agent) {
+            body.agent = args.agent;
+        }
+        const data = await apiCall('/discussion/list', body);
+
+        if (data.discussions.length === 0) {
+            return { content: [{ type: 'text', text: 'No discussions found.' }] };
+        }
+
+        const lines = data.discussions.map(d => {
+            return `#${d.id} [${d.status}] "${d.topic}" (created ${d.created_at})`;
+        });
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+    }
+
+    if (name === 'discussion_status') {
+        const data = await apiCall('/discussion/status', { discussion_id: args.discussion_id });
+
+        const d = data.discussion;
+        const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
+        let text = `Discussion #${d.id}: "${d.topic}" [${d.status}]\nParticipants: ${parts}`;
+
+        if (data.votes.length > 0) {
+            const voteLines = data.votes.map(v => {
+                return `  Vote #${v.id} [${v.status}] (${v.type}, ${v.threshold}): ${v.question}`;
+            });
+            text += '\nVotes:\n' + voteLines.join('\n');
+        }
+
+        return { content: [{ type: 'text', text }] };
+    }
+
+    if (name === 'discussion_pending') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/discussion/pending', { agent });
+
+        const sections = [];
+        if (data.invited_discussions.length > 0) {
+            const lines = data.invited_discussions.map(d => `  #${d.id} "${d.topic}"`);
+            sections.push('Pending invitations:\n' + lines.join('\n'));
+        }
+        if (data.open_votes.length > 0) {
+            const lines = data.open_votes.map(v => `  Vote #${v.id} in "${v.discussion_topic}": ${v.question}`);
+            sections.push('Open votes awaiting your ballot:\n' + lines.join('\n'));
+        }
+
+        if (sections.length === 0) {
+            return { content: [{ type: 'text', text: 'Nothing pending.' }] };
+        }
+        return { content: [{ type: 'text', text: sections.join('\n\n') }] };
+    }
+
+    if (name === 'discussion_conclude') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/discussion/conclude', { discussion_id: args.discussion_id, agent });
+        return { content: [{ type: 'text', text: `Discussion #${data.discussion_id} concluded.` }] };
+    }
+
+    if (name === 'discussion_join') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/discussion/join', { discussion_id: args.discussion_id, agent });
+        return { content: [{ type: 'text', text: `${data.agent} joined discussion #${data.discussion_id}.` }] };
+    }
+
+    if (name === 'discussion_leave') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/discussion/leave', { discussion_id: args.discussion_id, agent });
+        return { content: [{ type: 'text', text: `${data.agent} left discussion #${data.discussion_id}.` }] };
+    }
+
+    if (name === 'discussion_vote_propose') {
+        const proposer = args.proposed_by || DEFAULT_AGENT;
+        const data = await apiCall('/discussion/vote/propose', {
+            discussion_id: args.discussion_id,
+            proposed_by: proposer,
+            question: args.question,
+            type: args.type || 'general',
+            threshold: args.threshold || 'unanimous',
+            closes_at: args.closes_at || null
+        });
+
+        return { content: [{ type: 'text', text: `Vote #${data.id} proposed in discussion #${data.discussion_id}: "${data.question}" (${data.type}, ${data.threshold})` }] };
+    }
+
+    if (name === 'discussion_vote_cast') {
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/discussion/vote/cast', {
+            vote_id: args.vote_id,
+            agent,
+            choice: args.choice,
+            reason: args.reason || null
+        });
+
+        return { content: [{ type: 'text', text: `Vote cast on #${data.vote_id}: choice ${data.choice}. Vote status: ${data.vote_status}` }] };
+    }
+
+    if (name === 'discussion_vote_status') {
+        const data = await apiCall('/discussion/vote/status', { vote_id: args.vote_id });
+
+        const v = data.vote;
+        let text = `Vote #${v.id} [${v.status}] (${v.type}, ${v.threshold}): ${v.question}`;
+
+        if (data.ballots.length > 0) {
+            const ballotLines = data.ballots.map(b => {
+                let line = `  ${b.agent}: choice ${b.choice}`;
+                if (b.reason) {
+                    line += ` — ${b.reason}`;
+                }
+                return line;
+            });
+            text += '\nBallots:\n' + ballotLines.join('\n');
+        } else {
+            text += '\nNo ballots cast yet.';
+        }
+
+        return { content: [{ type: 'text', text }] };
     }
 
     throw new Error(`Unknown tool: ${name}`);
