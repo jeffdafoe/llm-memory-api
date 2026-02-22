@@ -86,6 +86,8 @@ curl -s -X POST "[API_URL]/discussion/pending" \
 ```
 
 Always mention proposed votes in your chat message so the other side knows to check.
+Also check for pending votes after reading each message -- the other side may have
+proposed a vote between your poll cycles.
 
 ## Concluding the Discussion
 

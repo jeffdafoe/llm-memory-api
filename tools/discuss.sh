@@ -81,10 +81,21 @@ fi
 api_call() {
     local endpoint="$1"
     local body="$2"
-    curl -s -X POST "${API_URL}${endpoint}" \
+    local response
+    response=$(curl -s -w "\n%{http_code}" -X POST "${API_URL}${endpoint}" \
         -H "Authorization: Bearer ${API_KEY}" \
         -H "Content-Type: application/json" \
-        -d "$body"
+        -d "$body")
+    local http_code
+    http_code=$(echo "$response" | tail -1)
+    local body_content
+    body_content=$(echo "$response" | sed '$d')
+    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+        echo "ERROR: HTTP ${http_code} from ${endpoint}" >&2
+        echo "$body_content" >&2
+        return 1
+    fi
+    echo "$body_content"
 }
 
 generate_prompt() {
@@ -150,21 +161,18 @@ if [[ "$ACTION" == "create" ]]; then
     fi
 
     # Create discussion via API
-    # Build JSON body with node to handle escaping
     CREATE_BODY=$(node -e '
-const args = JSON.parse(process.argv[1]);
 const body = {
-    topic: args.topic,
-    created_by: args.agent,
-    participants: [args.agent, args.other],
+    topic: process.argv[1],
+    created_by: process.argv[2],
+    participants: [process.argv[2], process.argv[3]],
     channel: "discuss-" + Date.now(),
-    mode: args.mode
+    mode: process.argv[4]
 };
-if (args.context) {
-    body.context = args.context;
-}
+const ctx = process.argv[5];
+if (ctx && ctx.trim()) body.context = ctx;
 console.log(JSON.stringify(body));
-' "$(node -e "console.log(JSON.stringify({topic:'$TOPIC',agent:'$MY_AGENT',other:'$OTHER_AGENT',mode:'$MODE',context:process.argv[1]}))" "$CONTEXT")")
+' "$TOPIC" "$MY_AGENT" "$OTHER_AGENT" "$MODE" "$CONTEXT")
 
     RESPONSE=$(curl -s -X POST "${API_URL}/discussion/create" \
         -H "Authorization: Bearer ${API_KEY}" \
@@ -227,7 +235,7 @@ if [[ "$ACTION" == "join" ]]; then
     # Get discussion status
     STATUS_RESPONSE=$(api_call "/discussion/status" "{\"discussion_id\": ${JOIN_ID}}")
 
-    # Extract fields
+    # Extract fields as JSON, then parse each with a helper
     EXTRACTED=$(echo "$STATUS_RESPONSE" | node -e '
 let d = "";
 process.stdin.on("data", c => d += c);
@@ -237,22 +245,27 @@ process.stdin.on("end", () => {
         const disc = data.discussion;
         const myAgent = process.argv[1];
         const other = data.participants.find(p => p.agent !== myAgent);
-        console.log("TOPIC=" + disc.topic);
-        console.log("CHANNEL=" + (disc.channel || "discuss-" + disc.id));
-        console.log("MODE=" + (disc.mode || "realtime"));
-        console.log("CONTEXT=" + (disc.context || ""));
-        console.log("OTHER=" + (other ? other.agent : "unknown"));
+        console.log(JSON.stringify({
+            topic: disc.topic,
+            channel: disc.channel || "discuss-" + disc.id,
+            mode: disc.mode || "realtime",
+            context: disc.context || "",
+            other: other ? other.agent : "unknown"
+        }));
     } catch (e) {
         console.error("Failed to parse status: " + d);
         process.exit(1);
     }
 });' "$MY_AGENT")
 
-    TOPIC=$(echo "$EXTRACTED" | grep "^TOPIC=" | cut -d= -f2-)
-    CHANNEL=$(echo "$EXTRACTED" | grep "^CHANNEL=" | cut -d= -f2-)
-    MODE=$(echo "$EXTRACTED" | grep "^MODE=" | cut -d= -f2-)
-    CONTEXT=$(echo "$EXTRACTED" | grep "^CONTEXT=" | cut -d= -f2-)
-    OTHER_AGENT=$(echo "$EXTRACTED" | grep "^OTHER=" | cut -d= -f2-)
+    read_field() {
+        echo "$EXTRACTED" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).$1"
+    }
+    TOPIC=$(read_field topic)
+    CHANNEL=$(read_field channel)
+    MODE=$(read_field mode)
+    CONTEXT=$(read_field context)
+    OTHER_AGENT=$(read_field other)
 
     if [[ -z "$TOPIC" ]]; then
         echo "ERROR: Failed to get discussion details. API response:" >&2

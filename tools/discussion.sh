@@ -103,10 +103,21 @@ trap 'log "Transport exiting (exit code: $?)"' EXIT
 api_call() {
     local endpoint="$1"
     local body="$2"
-    curl -s -X POST "${API_URL}${endpoint}" \
+    local response
+    response=$(curl -s -w "\n%{http_code}" -X POST "${API_URL}${endpoint}" \
         -H "Authorization: Bearer ${API_KEY}" \
         -H "Content-Type: application/json" \
-        -d "$body"
+        -d "$body")
+    local http_code
+    http_code=$(echo "$response" | tail -1)
+    local body_content
+    body_content=$(echo "$response" | sed '$d')
+    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+        log "ERROR: HTTP ${http_code} from ${endpoint}: ${body_content}"
+        echo "$body_content"
+        return 1
+    fi
+    echo "$body_content"
 }
 
 receive_messages() {
