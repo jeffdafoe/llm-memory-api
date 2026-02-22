@@ -153,8 +153,16 @@ req.end();
 }
 
 receive_messages() {
+    local after_id=""
+    if [[ -f "${WORK_DIR}/last-delivered-id" ]]; then
+        after_id=$(cat "${WORK_DIR}/last-delivered-id")
+    fi
+    local body="{\"agent\": \"${MY_AGENT}\", \"channel\": \"${CHANNEL}\"}"
+    if [[ -n "$after_id" ]]; then
+        body="{\"agent\": \"${MY_AGENT}\", \"channel\": \"${CHANNEL}\", \"after_id\": ${after_id}}"
+    fi
     local response
-    response=$(api_call "chat/receive" "{\"agent\": \"${MY_AGENT}\", \"channel\": \"${CHANNEL}\"}")
+    response=$(api_call "chat/receive" "$body")
     echo "$response"
 }
 
@@ -196,6 +204,60 @@ check_done_file() {
         return 0
     fi
     return 1
+}
+
+check_idle_timeout() {
+    if [[ -f "${WORK_DIR}/idle-timeout" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Wait for the subagent to consume inbox files (deletion = read).
+# Polls every 2 seconds, gives up after 120 seconds and acks anyway.
+wait_for_subagent_reads() {
+    local new_ids_json="$1"
+    local ids
+    ids=$(echo "$new_ids_json" | node -e '
+let d="";
+process.stdin.on("data",c=>d+=c);
+process.stdin.on("end",()=>{
+    try { JSON.parse(d).forEach(id=>console.log(id)); }
+    catch(e) {}
+});')
+
+    if [[ -z "$ids" ]]; then
+        return 0
+    fi
+
+    local start_time
+    start_time=$(date +%s)
+    local timeout=120
+
+    while true; do
+        local all_deleted=true
+        while read -r id; do
+            if [[ -f "${INBOX_DIR}/${id}.txt" ]]; then
+                all_deleted=false
+                break
+            fi
+        done <<< "$ids"
+
+        if [[ "$all_deleted" == "true" ]]; then
+            log "All inbox files consumed by subagent"
+            return 0
+        fi
+
+        local now
+        now=$(date +%s)
+        local elapsed=$((now - start_time))
+        if [[ $elapsed -ge $timeout ]]; then
+            log "WARNING: Delayed ack timeout (${timeout}s) — acking unconsumed messages"
+            return 0
+        fi
+
+        sleep 2
+    done
 }
 
 # Poll for pending votes and write notifications to inbox
@@ -290,6 +352,7 @@ process.stdin.on("end", () => {
 
     console.log("count=" + newIds.length);
     console.log("ids_json=" + JSON.stringify(ids));
+    console.log("new_ids_json=" + JSON.stringify(newIds));
 });' "$INBOX_DIR" "$TRANSCRIPT_FILE" "$SEEN_IDS_FILE"
 }
 
@@ -303,6 +366,13 @@ while true; do
     if check_done_file; then
         log "Done file detected. Discussion concluded."
         echo "DONE" > "$STATUS_FILE"
+        exit 0
+    fi
+
+    # Check if subagent hit idle timeout (no messages for 60s)
+    if check_idle_timeout; then
+        log "Idle timeout detected. Shutting down."
+        echo "IDLE_TIMEOUT" > "$STATUS_FILE"
         exit 0
     fi
 
@@ -321,7 +391,7 @@ while true; do
     # Check outbox for messages to send
     check_outbox || true
 
-    # Poll for incoming messages
+    # Poll for incoming messages (uses after_id from last-delivered-id if available)
     response=$(receive_messages)
 
     # Single node call: write to inbox, append transcript, extract metadata
@@ -342,10 +412,29 @@ while true; do
 
     if [[ "$message_count" -gt 0 ]]; then
         ids_json=$(echo "$result" | grep "^ids_json=" | cut -d= -f2-)
+        new_ids_json=$(echo "$result" | grep "^new_ids_json=" | cut -d= -f2-)
 
-        # Ack AFTER writing to inbox — safe on restart (duplicates overwrite)
+        # Delayed ack: wait for subagent to consume the inbox files before acking.
+        # This ensures the subagent actually read the messages. 120s timeout safety net.
+        if [[ -n "$new_ids_json" ]] && [[ "$new_ids_json" != "[]" ]]; then
+            wait_for_subagent_reads "$new_ids_json"
+        fi
+
+        # Ack all message IDs (new + dupes) after subagent has consumed them
         if [[ -n "$ids_json" ]]; then
             ack_messages "$ids_json"
+        fi
+
+        # Record last delivered ID for crash recovery
+        max_id=$(echo "$ids_json" | node -e '
+let d="";
+process.stdin.on("data",c=>d+=c);
+process.stdin.on("end",()=>{
+    try { const ids=JSON.parse(d); console.log(Math.max(...ids)); }
+    catch(e) {}
+});')
+        if [[ -n "$max_id" ]] && [[ "$max_id" != "-Infinity" ]]; then
+            echo "$max_id" > "${WORK_DIR}/last-delivered-id"
         fi
 
         echo "MESSAGE_RECEIVED" > "$STATUS_FILE"
