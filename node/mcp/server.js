@@ -439,12 +439,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (a.last_seen) {
                 parts.push(`last seen ${a.last_seen}`);
             }
-            if (a.unread_chat > 0) {
-                parts.push(`${a.unread_chat} unread chat`);
-            }
-            if (a.unread_mail > 0) {
-                parts.push(`${a.unread_mail} unread mail`);
-            }
+            parts.push(`${a.unread_chat || 0} unread chat`);
+            parts.push(`${a.unread_mail || 0} unread mail`);
             return parts.join(' | ');
         });
 
