@@ -4,7 +4,8 @@
     name: "{{ app_user }}"
     system: yes
     shell: /usr/sbin/nologin
-    create_home: no
+    home: "/home/{{ app_user }}"
+    create_home: yes
 
 - name: Create log directory
   file:
