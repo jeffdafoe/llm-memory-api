@@ -100,7 +100,7 @@ router.post('/chat/send', async (req, res) => {
 
 router.post('/chat/receive', async (req, res) => {
     try {
-        const { agent, channel } = req.body;
+        const { agent, channel, after_id } = req.body;
 
         if (!agent) {
             return res.status(400).json({
@@ -115,20 +115,33 @@ router.post('/chat/receive', async (req, res) => {
             });
         }
 
-        let result;
-        if (ch.value === null) {
-            result = await pool.query(
-                'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL AND channel IS NULL ORDER BY id ASC',
-                [agent]
-            );
-        } else {
-            result = await pool.query(
-                'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL AND channel = $2 ORDER BY id ASC',
-                [agent, ch.value]
-            );
+        if (after_id !== undefined && (!Number.isInteger(after_id) || after_id < 0)) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'after_id must be a non-negative integer' }
+            });
         }
 
-        logChat('receive', { agent, channel: ch.value, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
+        // Build query dynamically — optional channel and after_id filters
+        let query = 'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL';
+        const params = [agent];
+
+        if (ch.value === null) {
+            query += ' AND channel IS NULL';
+        } else {
+            params.push(ch.value);
+            query += ` AND channel = $${params.length}`;
+        }
+
+        if (after_id !== undefined) {
+            params.push(after_id);
+            query += ` AND id > $${params.length}`;
+        }
+
+        query += ' ORDER BY id ASC';
+
+        const result = await pool.query(query, params);
+
+        logChat('receive', { agent, channel: ch.value, after_id: after_id || null, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
 
         res.json({
             messages: result.rows,

@@ -38,14 +38,23 @@ You read/write files for chat, and use curl for all API operations (voting, stat
 3. Think about the content, compose a reply
 4. Write your reply to outbox/ with the next sequential number
 5. Check if a "done" file exists -- if so, go to Exit
-6. Poll for new messages using a batched loop (saves turn budget):
+6. Poll for new messages using a batched loop (saves turn budget).
+   The loop also tracks idle time -- if 12 consecutive polls (60 seconds) find
+   no new messages, write an idle-timeout file and exit:
    ```bash
-   for i in $(seq 1 6); do
+   idle_count=0
+   while true; do
      files=$(ls [WORK_DIR]/inbox/*.txt 2>/dev/null)
      if [ -n "$files" ]; then echo "NEW_MESSAGES"; echo "$files"; break; fi
      if [ -f [WORK_DIR]/done ]; then echo "DONE"; break; fi
+     idle_count=$((idle_count + 1))
+     if [ $idle_count -ge 12 ]; then echo "IDLE_TIMEOUT"; break; fi
      sleep 5
    done
+   ```
+   If the output is "IDLE_TIMEOUT", write the idle-timeout file and go to Exit:
+   ```bash
+   echo "idle" > [WORK_DIR]/idle-timeout
    ```
 7. Go back to step 1
 
