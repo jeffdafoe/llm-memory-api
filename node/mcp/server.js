@@ -580,7 +580,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
 
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
-        return { content: [{ type: 'text', text: `Discussion #${data.id} created: "${data.topic}"\nParticipants: ${parts}` }] };
+        let text = `Discussion #${data.id} created: "${data.topic}"\nParticipants: ${parts}`;
+        if (args.channel) {
+            text += `\nChannel: ${args.channel}`;
+        }
+        return { content: [{ type: 'text', text }] };
     }
 
     if (name === 'discussion_list') {
@@ -598,7 +602,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         const lines = data.discussions.map(d => {
-            return `#${d.id} [${d.status}] "${d.topic}" (created ${d.created_at})`;
+            let line = `#${d.id} [${d.status}] "${d.topic}" (created ${d.created_at})`;
+            if (d.channel) {
+                line += ` channel: ${d.channel}`;
+            }
+            return line;
         });
         return { content: [{ type: 'text', text: lines.join('\n') }] };
     }
@@ -609,6 +617,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const d = data.discussion;
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
         let text = `Discussion #${d.id}: "${d.topic}" [${d.status}]\nParticipants: ${parts}`;
+        if (d.channel) {
+            text += `\nChannel: ${d.channel}`;
+        }
 
         if (data.votes.length > 0) {
             const voteLines = data.votes.map(v => {

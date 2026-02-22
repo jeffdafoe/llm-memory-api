@@ -155,6 +155,40 @@ check_done_file() {
     return 1
 }
 
+# Poll for pending votes and write notifications to inbox
+check_pending_votes() {
+    local response
+    response=$(api_call "/discussion/pending" "{\"agent\": \"${MY_AGENT}\"}")
+    echo "$response" | node -e '
+let d = "";
+process.stdin.on("data", c => d += c);
+process.stdin.on("end", () => {
+    const fs = require("fs");
+    const path = require("path");
+    let data;
+    try { data = JSON.parse(d); } catch (e) { return; }
+    const votes = data.open_votes || [];
+    const inbox = process.argv[1];
+    const seenFile = process.argv[2];
+
+    // Load seen vote IDs to avoid duplicate notifications
+    let seen = new Set();
+    try {
+        const lines = fs.readFileSync(seenFile, "utf-8").trim().split("\n").filter(Boolean);
+        for (const line of lines) seen.add(line);
+    } catch (e) {}
+
+    for (const vote of votes) {
+        const key = "vote-" + vote.id;
+        if (seen.has(key)) continue;
+        const notice = "[VOTE PENDING] Vote #" + vote.id + " (" + vote.type + ", " + vote.threshold + "): " + vote.question;
+        fs.writeFileSync(path.join(inbox, "vote-pending-" + vote.id + ".txt"), notice);
+        fs.appendFileSync(seenFile, key + "\n");
+        console.log("vote_notify=" + vote.id);
+    }
+});' "$INBOX_DIR" "$SEEN_IDS_FILE"
+}
+
 check_timeout() {
     local now
     now=$(date +%s)
@@ -256,6 +290,12 @@ while true; do
     done
 
     message_count=$(echo "$result" | grep "^count=" | cut -d= -f2)
+
+    # Poll for pending votes and notify subagent
+    vote_result=$(check_pending_votes)
+    echo "$vote_result" | grep "^vote_notify=" | while read -r line; do
+        log "VOTE NOTIFICATION: vote #${line#vote_notify=}"
+    done
 
     if [[ "$message_count" -gt 0 ]]; then
         ids_json=$(echo "$result" | grep "^ids_json=" | cut -d= -f2-)
