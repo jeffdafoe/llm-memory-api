@@ -8,6 +8,7 @@ const deleteRoutes = require('./routes/delete');
 const mailRoutes = require('./routes/mail');
 const registerRoutes = require('./routes/register');
 const presenceRoutes = require('./routes/presence');
+const discussionRoutes = require('./routes/discussion');
 
 const app = express();
 const port = process.env.PORT || 3100;
@@ -22,6 +23,7 @@ app.use('/v1', deleteRoutes);
 app.use('/v1', mailRoutes);
 app.use('/v1', registerRoutes);
 app.use('/v1', presenceRoutes);
+app.use('/v1', discussionRoutes);
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
