@@ -7,7 +7,7 @@
 # Dependencies: node (for JSON parsing), curl
 #
 # Usage:
-#   discussion.sh --api-url URL --api-key KEY --agent NAME --other AGENT --dir WORKDIR [--initiator] [--conclude-timeout SECONDS]
+#   discussion.sh --api-url URL --api-key KEY --agent NAME --other AGENT --dir WORKDIR [--initiator]
 #
 # The --initiator flag means this side sends the first message.
 # The first message should be placed in outbox/ before starting, or
@@ -26,7 +26,7 @@ POLL_INTERVAL=5
 SEND_DELAY=3
 MAX_TURNS=20
 TIMEOUT_MINUTES=15
-CONCLUDE_TIMEOUT=120
+DONE_CHECK_INTERVAL=5
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
         --max-turns) MAX_TURNS="$2"; shift 2 ;;
         --timeout) TIMEOUT_MINUTES="$2"; shift 2 ;;
         --channel) CHANNEL="$2"; shift 2 ;;
-        --conclude-timeout) CONCLUDE_TIMEOUT="$2"; shift 2 ;;
+        --done-check-interval) DONE_CHECK_INTERVAL="$2"; shift 2 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -69,10 +69,8 @@ echo "STARTING" > "$STATUS_FILE"
 
 # Track state
 TURN_COUNT=0
-MY_CONCLUDED=false
-OTHER_CONCLUDED=false
-CONCLUDE_SEEN_AT=0
 START_TIME=$(date +%s)
+LAST_DONE_CHECK=0
 SEEN_IDS_FILE="${WORK_DIR}/.seen_ids"
 READY_FILE="${WORK_DIR}/ready"
 > "$SEEN_IDS_FILE"
@@ -142,20 +140,18 @@ check_outbox() {
             if [[ -n "$message" ]]; then
                 send_message "$message"
                 TURN_COUNT=$((TURN_COUNT + 1))
-
-                if [[ "$message" == *"[CONCLUDED]"* ]]; then
-                    MY_CONCLUDED=true
-                    if [[ $CONCLUDE_SEEN_AT -eq 0 ]]; then
-                        CONCLUDE_SEEN_AT=$(date +%s)
-                    fi
-                    log "We sent CONCLUDED"
-                fi
-
                 sleep "$SEND_DELAY"
                 return 0
             fi
         fi
     done
+    return 1
+}
+
+check_done_file() {
+    if [[ -f "$DONE_FILE" ]]; then
+        return 0
+    fi
     return 1
 }
 
@@ -174,7 +170,7 @@ check_timeout() {
 
 # Process received messages in a single node call.
 # Writes messages to inbox/ and appends to transcript BEFORE returning.
-# Outputs structured lines to stdout: count=N, ids_json=[1,2,3], concluded=true/false, log=...
+# Outputs structured lines to stdout: count=N, ids_json=[1,2,3], log=...
 process_received() {
     local response="$1"
     echo "$response" | node -e '
@@ -202,7 +198,6 @@ process.stdin.on("end", () => {
         return;
     }
 
-    let concluded = false;
     const ids = [];
     const newIds = [];
     for (const msg of msgs) {
@@ -214,12 +209,10 @@ process.stdin.on("end", () => {
         fs.appendFileSync(transcript, "**" + msg.from_agent + "** (" + ts + "):\n" + msg.message + "\n\n");
         console.log("log=id=" + msg.id + " from=" + msg.from_agent);
         fs.appendFileSync(seenFile, msg.id + "\n");
-        if (msg.message.includes("[CONCLUDED]")) concluded = true;
     }
 
     console.log("count=" + newIds.length);
     console.log("ids_json=" + JSON.stringify(ids));
-    console.log("concluded=" + concluded);
 });' "$INBOX_DIR" "$TRANSCRIPT_FILE" "$SEEN_IDS_FILE"
 }
 
@@ -229,24 +222,11 @@ log "Work dir: ${WORK_DIR}"
 echo "POLLING" > "$STATUS_FILE"
 
 while true; do
-    # Check if we're done
-    if [[ "$MY_CONCLUDED" == true ]] && [[ "$OTHER_CONCLUDED" == true ]]; then
-        log "Both sides concluded. Discussion complete."
+    # Check if subagent wrote done file (discussion concluded via voting)
+    if check_done_file; then
+        log "Done file detected. Discussion concluded."
         echo "DONE" > "$STATUS_FILE"
-        touch "$DONE_FILE"
         exit 0
-    fi
-
-    # Check conclude timeout — one side concluded but the other hasn't responded
-    if [[ $CONCLUDE_SEEN_AT -gt 0 ]]; then
-        local_now=$(date +%s)
-        conclude_elapsed=$((local_now - CONCLUDE_SEEN_AT))
-        if [[ $conclude_elapsed -ge $CONCLUDE_TIMEOUT ]]; then
-            log "Conclude timeout reached (${CONCLUDE_TIMEOUT}s). Other side did not respond."
-            echo "CONCLUDE_TIMEOUT" > "$STATUS_FILE"
-            echo "TIMEOUT" > "$DONE_FILE"
-            exit 0
-        fi
     fi
 
     # Check timeout
@@ -279,19 +259,10 @@ while true; do
 
     if [[ "$message_count" -gt 0 ]]; then
         ids_json=$(echo "$result" | grep "^ids_json=" | cut -d= -f2-)
-        concluded=$(echo "$result" | grep "^concluded=" | cut -d= -f2)
 
         # Ack AFTER writing to inbox — safe on restart (duplicates overwrite)
         if [[ -n "$ids_json" ]]; then
             ack_messages "$ids_json"
-        fi
-
-        if [[ "$concluded" == "true" ]]; then
-            OTHER_CONCLUDED=true
-            if [[ $CONCLUDE_SEEN_AT -eq 0 ]]; then
-                CONCLUDE_SEEN_AT=$(date +%s)
-            fi
-            log "Other side sent CONCLUDED"
         fi
 
         echo "MESSAGE_RECEIVED" > "$STATUS_FILE"
