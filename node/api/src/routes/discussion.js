@@ -139,6 +139,7 @@ router.post('/discussion/create', async (req, res) => {
                 id: discussionId,
                 topic,
                 created_by,
+                channel: channel || null,
                 participants: participants.map(a => ({
                     agent: a,
                     status: a === created_by ? 'joined' : 'invited'
