@@ -193,17 +193,6 @@ console.log(JSON.stringify(body));
     WORK_DIR="${TEMP_BASE}/discuss-${DISCUSSION_ID}"
     mkdir -p "${WORK_DIR}/inbox" "${WORK_DIR}/outbox"
 
-    # Start transport in background
-    bash "$TRANSPORT_SCRIPT" \
-        --api-url "$API_URL" \
-        --api-key "$API_KEY" \
-        --agent "$MY_AGENT" \
-        --other "$OTHER_AGENT" \
-        --dir "$WORK_DIR" \
-        --channel "$CHANNEL" \
-        --initiator &
-    TRANSPORT_PID=$!
-
     # Generate prompt
     PROMPT=$(generate_prompt "$DISCUSSION_ID" "$TOPIC" "$OTHER_AGENT" "$CONTEXT" "$WORK_DIR" "true")
     echo "$PROMPT" > "${WORK_DIR}/prompt.txt"
@@ -214,10 +203,13 @@ console.log(JSON.stringify(body));
     echo "Channel: ${CHANNEL}"
     echo "Mode: ${MODE}"
     echo "Working directory: ${WORK_DIR}"
-    echo "Transport PID: ${TRANSPORT_PID}"
+    echo "Transport script: ${TRANSPORT_SCRIPT}"
     echo "Prompt written to: ${WORK_DIR}/prompt.txt"
     echo ""
-    echo "Next: Launch a background Task subagent with the contents of prompt.txt"
+    echo "Next steps:"
+    echo "  1. Start the transport in a background shell:"
+    echo "     bash ${TRANSPORT_SCRIPT} --api-url ${API_URL} --api-key ${API_KEY} --agent ${MY_AGENT} --other ${OTHER_AGENT} --dir ${WORK_DIR} --channel ${CHANNEL} --initiator"
+    echo "  2. Launch a background Task subagent with the contents of prompt.txt (use max_turns: 50)"
     exit 0
 fi
 
@@ -277,16 +269,6 @@ process.stdin.on("end", () => {
     WORK_DIR="${TEMP_BASE}/discuss-${JOIN_ID}"
     mkdir -p "${WORK_DIR}/inbox" "${WORK_DIR}/outbox"
 
-    # Start transport in background (NOT initiator)
-    bash "$TRANSPORT_SCRIPT" \
-        --api-url "$API_URL" \
-        --api-key "$API_KEY" \
-        --agent "$MY_AGENT" \
-        --other "$OTHER_AGENT" \
-        --dir "$WORK_DIR" \
-        --channel "$CHANNEL" &
-    TRANSPORT_PID=$!
-
     # Generate prompt
     PROMPT=$(generate_prompt "$JOIN_ID" "$TOPIC" "$OTHER_AGENT" "$CONTEXT" "$WORK_DIR" "false")
     echo "$PROMPT" > "${WORK_DIR}/prompt.txt"
@@ -299,9 +281,12 @@ process.stdin.on("end", () => {
     echo "Mode: ${MODE}"
     echo "Other agent: ${OTHER_AGENT}"
     echo "Working directory: ${WORK_DIR}"
-    echo "Transport PID: ${TRANSPORT_PID}"
+    echo "Transport script: ${TRANSPORT_SCRIPT}"
     echo "Prompt written to: ${WORK_DIR}/prompt.txt"
     echo ""
-    echo "Next: Launch a background Task subagent with the contents of prompt.txt"
+    echo "Next steps:"
+    echo "  1. Start the transport in a background shell:"
+    echo "     bash ${TRANSPORT_SCRIPT} --api-url ${API_URL} --api-key ${API_KEY} --agent ${MY_AGENT} --other ${OTHER_AGENT} --dir ${WORK_DIR} --channel ${CHANNEL}"
+    echo "  2. Launch a background Task subagent with the contents of prompt.txt (use max_turns: 50)"
     exit 0
 fi
