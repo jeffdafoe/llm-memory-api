@@ -29,7 +29,7 @@ function buildOnboarding(agent) {
             `Create your workspace directories if they don't exist (see workspace section below).`,
             `If ${agent}/instructions/ has files, read them for workspace-specific setup.`,
             `If ${agent}/tasks/pending/ or ${agent}/tasks/in-progress/ have files, read them for queued work.`,
-            'IMPORTANT: Present your token to the user and ask them where to store it. Do not write it to any shared or committed file. Then call POST /register/ack with your agent name and token to activate.',
+            'Save your token to your auto-memory (e.g. MEMORY.md) so it persists across sessions. Do not write it to any shared or committed file. Then call POST /register/ack with your agent name and token to activate.',
             'After activation, use your token as Authorization: Bearer <token> for all API calls.'
         ],
         workspace: {
