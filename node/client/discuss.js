@@ -445,7 +445,7 @@ async function setupCreate() {
         context: context || undefined,
     });
 
-    discussionId = result.discussion.id;
+    discussionId = result.id;
     cfg.channel = `discuss-${discussionId}`;
 
     log(`Created discussion #${discussionId}: ${cfg.topic}`);
