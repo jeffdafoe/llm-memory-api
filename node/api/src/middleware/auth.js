@@ -5,12 +5,24 @@ function hashToken(plaintext, salt) {
     return crypto.pbkdf2Sync(plaintext, salt, 100000, 64, 'sha512').toString('hex');
 }
 
-// Cache agent tokens in memory to avoid DB lookup on every request
+// Cache session tokens in memory to avoid DB lookup on every request
 // Key: bearer token, Value: { agent, expires }
-const tokenCache = new Map();
+const sessionCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Login is unauthenticated — the passphrase in the body is the credential
+const UNAUTHENTICATED_ROUTES = ['/agent/login'];
+
+// Registration routes use the shared key instead of a session token
+const SHARED_KEY_ROUTES = ['/agent/register', '/agent/register/ack'];
+
 async function auth(req, res, next) {
+    const route = req.path;
+
+    if (UNAUTHENTICATED_ROUTES.includes(route)) {
+        return next();
+    }
+
     const header = req.headers.authorization;
 
     if (!header) {
@@ -21,46 +33,57 @@ async function auth(req, res, next) {
 
     const token = header.replace('Bearer ', '');
 
-    // Shared API key fallback (grandfathered)
-    if (token === process.env.MEMORY_API_KEY) {
-        req.authMethod = 'api_key';
-        return next();
+    // Registration routes require the shared registration key
+    if (SHARED_KEY_ROUTES.includes(route)) {
+        if (token === process.env.MEMORY_API_KEY) {
+            req.authMethod = 'shared_key';
+            return next();
+        }
+        return res.status(403).json({
+            error: { code: 'FORBIDDEN', message: 'Invalid registration key' }
+        });
     }
 
-    // Check token cache first
-    const cached = tokenCache.get(token);
+    // Everything else requires a valid session token
+    const cached = sessionCache.get(token);
     if (cached && cached.expires > Date.now()) {
-        req.authMethod = 'agent_token';
+        req.authMethod = 'session';
         req.authenticatedAgent = cached.agent;
         return next();
     }
 
-    // Look up all active agents with tokens
+    // Cache miss — check active sessions in database
     try {
         const result = await pool.query(
-            "SELECT agent, token_hash, token_salt FROM agents WHERE status = 'active' AND token_hash IS NOT NULL"
+            "SELECT id, agent, token_hash, token_salt, expires_at FROM agent_sessions WHERE expires_at > NOW()"
         );
 
         for (const row of result.rows) {
             const hash = hashToken(token, row.token_salt);
             if (hash === row.token_hash) {
-                // Cache the successful match
-                tokenCache.set(token, {
+                sessionCache.set(token, {
                     agent: row.agent,
-                    expires: Date.now() + CACHE_TTL_MS
+                    expires: Math.min(
+                        Date.now() + CACHE_TTL_MS,
+                        new Date(row.expires_at).getTime()
+                    )
                 });
-                req.authMethod = 'agent_token';
+                req.authMethod = 'session';
                 req.authenticatedAgent = row.agent;
                 return next();
             }
         }
     } catch (err) {
-        console.error('Auth token lookup error:', err.message);
+        console.error('Auth session lookup error:', err.message);
     }
 
     return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'Invalid API key or agent token' }
+        error: { code: 'FORBIDDEN', message: 'Invalid or expired session token' }
     });
 }
+
+// Exported so login/logout/rotate handlers can manage the cache
+auth.sessionCache = sessionCache;
+auth.hashToken = hashToken;
 
 module.exports = auth;

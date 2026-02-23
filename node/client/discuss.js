@@ -51,7 +51,7 @@ const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 // Merge defaults
 const cfg = {
     apiUrl: config.apiUrl,
-    apiKey: config.apiKey,
+    passphrase: config.passphrase,
     agent: config.agent,
     other: config.other || null,
     workDir: config.workDir,
@@ -69,8 +69,11 @@ const cfg = {
     proxyPort: config.proxyPort || 0, // 0 = random available port
 };
 
+// Session token obtained at login, used for all authenticated API calls
+let sessionToken = null;
+
 // Validate required fields
-for (const field of ['apiUrl', 'apiKey', 'agent', 'workDir']) {
+for (const field of ['apiUrl', 'passphrase', 'agent', 'workDir']) {
     if (!cfg[field]) {
         console.error(`Missing required config field: ${field}`);
         process.exit(1);
@@ -127,20 +130,20 @@ function appendTranscript(speaker, message) {
 // API client
 // ---------------------------------------------------------------------------
 
-function apiCall(endpoint, body) {
+// Raw HTTP call — used by both apiCall and apiCallNoAuth
+function httpPost(url, headers, body) {
     return new Promise((resolve, reject) => {
-        const url = new URL(cfg.apiUrl + '/' + endpoint);
-        const mod = url.protocol === 'https:' ? https : http;
+        const urlObj = new URL(url);
+        const mod = urlObj.protocol === 'https:' ? https : http;
         const data = JSON.stringify(body);
 
-        const req = mod.request(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + cfg.apiKey,
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(data),
-            },
-        }, (res) => {
+        const allHeaders = {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(data),
+            ...headers,
+        };
+
+        const req = mod.request(urlObj, { method: 'POST', headers: allHeaders }, (res) => {
             let responseBody = '';
             res.on('data', (chunk) => responseBody += chunk);
             res.on('end', () => {
@@ -160,6 +163,41 @@ function apiCall(endpoint, body) {
         req.write(data);
         req.end();
     });
+}
+
+function apiCallNoAuth(endpoint, body) {
+    return httpPost(cfg.apiUrl + '/' + endpoint, {}, body);
+}
+
+function apiCall(endpoint, body) {
+    if (!sessionToken) {
+        throw new Error('Not logged in — no session token available');
+    }
+    return httpPost(
+        cfg.apiUrl + '/' + endpoint,
+        { 'Authorization': 'Bearer ' + sessionToken },
+        body
+    );
+}
+
+async function transportLogin() {
+    const data = await apiCallNoAuth('agent/login', {
+        agent: cfg.agent,
+        passphrase: cfg.passphrase,
+    });
+    sessionToken = data.session_token;
+    log(`Logged in as ${cfg.agent} (session expires ${data.expires_at})`);
+}
+
+async function transportLogout() {
+    if (!sessionToken) return;
+    try {
+        await apiCall('agent/logout', { agent: cfg.agent });
+        log('Logged out');
+    } catch (err) {
+        log(`Logout error (non-fatal): ${err.message}`);
+    }
+    sessionToken = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -508,7 +546,7 @@ function generatePrompt(proxyPort) {
         '[WORK_DIR]': cfg.workDir,
         '[DISCUSSION_ID]': String(discussionId),
         '[API_URL]': `http://127.0.0.1:${proxyPort}`,
-        '[API_KEY]': '', // not needed for local proxy
+        '[API_KEY]': '', // local proxy handles auth — subagent doesn't need credentials
         '[MY_AGENT]': cfg.agent,
         '[CONTEXT]': cfg.context || '(none)',
         '[INITIATOR_LINE]': cfg.initiator
@@ -644,6 +682,9 @@ function initTranscript() {
 
 async function main() {
     try {
+        // Login to get session token before any API calls
+        await transportLogin();
+
         // Setup phase based on command
         if (command === 'create') {
             if (!cfg.other) {
@@ -692,8 +733,9 @@ async function main() {
         log(`Prompt: ${PROMPT_FILE}`);
 
         // Handle clean shutdown
-        const shutdown = () => {
+        const shutdown = async () => {
             log('Shutting down...');
+            await transportLogout();
             server.close();
             writeStatus('SHUTDOWN');
             process.exit(0);
@@ -705,6 +747,7 @@ async function main() {
         await runTransport();
 
         // Clean exit
+        await transportLogout();
         server.close();
     } catch (err) {
         console.error(`Fatal error: ${err.message}`);

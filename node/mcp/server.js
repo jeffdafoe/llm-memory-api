@@ -5,17 +5,42 @@ const { readFileSync, readdirSync, statSync } = require('fs');
 const path = require('path');
 
 const API_URL = process.env.MEMORY_API_URL || 'http://localhost:3100/v1';
-const API_KEY = process.env.MEMORY_API_KEY || '';
+const AGENT_PASSPHRASE = process.env.MEMORY_AGENT_PASSPHRASE || '';
 const DEFAULT_NAMESPACE = process.env.MEMORY_DEFAULT_NAMESPACE || 'default';
 const DEFAULT_AGENT = process.env.MEMORY_DEFAULT_AGENT || DEFAULT_NAMESPACE;
 const MEMORY_REPO_PATH = process.env.MEMORY_REPO_PATH || '';
 
+// Session token obtained at login, used for all authenticated API calls
+let sessionToken = null;
+
+// Unauthenticated API call — used only for login
+async function apiCallNoAuth(endpoint, body) {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        const msg = data.error ? data.error.message : JSON.stringify(data);
+        throw new Error(`API error ${response.status}: ${msg}`);
+    }
+
+    return data;
+}
+
 async function apiCall(endpoint, body) {
+    if (!sessionToken) {
+        throw new Error('Not logged in — no session token available');
+    }
+
     const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${API_KEY}`
+            'Authorization': `Bearer ${sessionToken}`
         },
         body: JSON.stringify(body)
     });
@@ -30,12 +55,35 @@ async function apiCall(endpoint, body) {
     return data;
 }
 
-async function autoRegister() {
-    try {
-        await apiCall('/agent/register', { agent: DEFAULT_AGENT });
-    } catch (err) {
-        // Registration failure is non-fatal — API may not be upgraded yet
+// Login with passphrase, store session token for the lifetime of the process
+async function login() {
+    if (!AGENT_PASSPHRASE) {
+        throw new Error('MEMORY_AGENT_PASSPHRASE environment variable is not set');
     }
+
+    const data = await apiCallNoAuth('/agent/login', {
+        agent: DEFAULT_AGENT,
+        passphrase: AGENT_PASSPHRASE
+    });
+
+    sessionToken = data.session_token;
+
+    if (data.rotation_due) {
+        console.error(`[llm-memory] Passphrase rotation recommended for agent "${DEFAULT_AGENT}"`);
+    }
+}
+
+// Best-effort logout on process exit
+async function logout() {
+    if (!sessionToken) {
+        return;
+    }
+    try {
+        await apiCall('/agent/logout', { agent: DEFAULT_AGENT });
+    } catch (err) {
+        // Logout failure is non-fatal — session will expire on its own
+    }
+    sessionToken = null;
 }
 
 // Recursively find all .md files under a directory, skipping hidden dirs and node_modules
@@ -781,10 +829,20 @@ async function autoIngest() {
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    await autoRegister();
+    await login();
     await sendHeartbeat();
     setInterval(sendHeartbeat, 120000);
     autoIngest();
+
+    // Best-effort logout on shutdown
+    process.on('SIGTERM', async () => {
+        await logout();
+        process.exit(0);
+    });
+    process.on('SIGINT', async () => {
+        await logout();
+        process.exit(0);
+    });
 }
 
 main().catch(console.error);
