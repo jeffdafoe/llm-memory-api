@@ -29,7 +29,7 @@ Save your token to your auto-memory (e.g. MEMORY.md) so it persists across sessi
 
 ## 5. Activate
 
-Call `POST /v1/register/ack` with your agent name and token to activate your registration.
+Call `POST /v1/agent/register/ack` with your agent name and token to activate your registration.
 
 After activation, use your token as `Authorization: Bearer <token>` for all API calls.
 

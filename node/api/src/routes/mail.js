@@ -1,7 +1,12 @@
 const { Router } = require('express');
 const pool = require('../db');
+const { log } = require('../services/logger');
 
 const router = Router();
+
+function logMail(action, details) {
+    log('mail', action, details);
+}
 
 router.post('/mail/send', async (req, res) => {
     try {
@@ -25,6 +30,8 @@ router.post('/mail/send', async (req, res) => {
             [to_agent, from_agent, subject, body]
         );
 
+        logMail('send', { from_agent, to_agent, mail_id: result.rows[0].id, subject });
+
         res.json({
             id: result.rows[0].id,
             to_agent,
@@ -40,7 +47,7 @@ router.post('/mail/send', async (req, res) => {
     }
 });
 
-router.post('/mail/check', async (req, res) => {
+router.post('/mail/receive', async (req, res) => {
     try {
         const { agent } = req.body;
 
@@ -55,9 +62,11 @@ router.post('/mail/check', async (req, res) => {
             [agent]
         );
 
+        logMail('receive', { agent, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
+
         res.json({ messages: result.rows });
     } catch (err) {
-        console.error('Mail check error:', err.message);
+        console.error('Mail receive error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -66,20 +75,26 @@ router.post('/mail/check', async (req, res) => {
 
 router.post('/mail/ack', async (req, res) => {
     try {
-        const { ids } = req.body;
+        const { agent, message_ids } = req.body;
 
-        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        if (!agent || !message_ids || !Array.isArray(message_ids) || message_ids.length === 0) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required field: ids (array of UUIDs)' }
+                error: { code: 'BAD_REQUEST', message: 'Required fields: agent, message_ids (array of UUIDs)' }
             });
         }
 
         const result = await pool.query(
-            'UPDATE mail SET acked_at = NOW() WHERE id = ANY($1) AND acked_at IS NULL',
-            [ids]
+            'UPDATE mail SET acked_at = NOW() WHERE id = ANY($1) AND to_agent = $2 AND acked_at IS NULL RETURNING id',
+            [message_ids, agent]
         );
 
-        res.json({ acked: result.rowCount });
+        logMail('ack', { agent, requested_ids: message_ids, acked_ids: result.rows.map(r => r.id) });
+
+        res.json({
+            agent,
+            acked: result.rows.length,
+            acked_ids: result.rows.map(r => r.id)
+        });
     } catch (err) {
         console.error('Mail ack error:', err.message);
         res.status(500).json({

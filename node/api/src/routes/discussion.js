@@ -141,22 +141,24 @@ router.post('/discussion/create', async (req, res) => {
 
             logDiscussion('create', { discussion_id: discussionId, topic, created_by, participants, mode: discussionMode });
 
-            const responseBody = {
+            const discussion = {
                 id: discussionId,
                 topic,
                 created_by,
                 channel: channel || null,
                 mode: discussionMode,
-                participants: participants.map(a => ({
-                    agent: a,
-                    status: a === created_by ? 'joined' : 'invited'
-                })),
                 created_at: result.rows[0].created_at
             };
             if (contextText) {
-                responseBody.context = contextText;
+                discussion.context = contextText;
             }
-            res.json(responseBody);
+            res.json({
+                discussion,
+                participants: participants.map(a => ({
+                    agent: a,
+                    status: a === created_by ? 'joined' : 'invited'
+                }))
+            });
         } catch (err) {
             await client.query('ROLLBACK');
             throw err;
@@ -508,14 +510,16 @@ router.post('/discussion/vote/propose', async (req, res) => {
         logDiscussion('vote_propose', { discussion_id, vote_id: result.rows[0].id, proposed_by, question, type: voteType });
 
         res.json({
-            id: result.rows[0].id,
-            discussion_id,
-            proposed_by,
-            question,
-            type: voteType,
-            threshold: voteThreshold,
-            closes_at: closes_at || null,
-            created_at: result.rows[0].created_at
+            vote: {
+                id: result.rows[0].id,
+                discussion_id,
+                proposed_by,
+                question,
+                type: voteType,
+                threshold: voteThreshold,
+                closes_at: closes_at || null,
+                created_at: result.rows[0].created_at
+            }
         });
     } catch (err) {
         console.error('Discussion vote propose error:', err.message);

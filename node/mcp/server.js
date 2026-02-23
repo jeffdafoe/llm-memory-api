@@ -32,7 +32,7 @@ async function apiCall(endpoint, body) {
 
 async function autoRegister() {
     try {
-        await apiCall('/register', { agent: DEFAULT_AGENT });
+        await apiCall('/agent/register', { agent: DEFAULT_AGENT });
     } catch (err) {
         // Registration failure is non-fatal — API may not be upgraded yet
     }
@@ -170,8 +170,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'mail_check',
-                description: 'Check for new mail addressed to this agent. Returns unacked messages and acks them.',
+                name: 'mail_receive',
+                description: 'Check for new mail addressed to this agent. Returns unacked messages. Call mail_ack with the message IDs after processing.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -181,10 +181,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'mail_ack',
-                description: 'Manually ack specific mail messages by UUID. Use this if mail_check failed after downloading but before acking.',
+                description: 'Manually ack specific mail messages by UUID. Use this if mail_receive failed after downloading but before acking.',
                 inputSchema: {
                     type: 'object',
                     properties: {
+                        agent: { type: 'string', description: 'Agent acking messages (default: configured agent)' },
                         ids: { type: 'array', items: { type: 'string' }, description: 'Array of mail UUIDs to ack' }
                     },
                     required: ['ids']
@@ -201,7 +202,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: 'presence',
+                name: 'agent_status',
                 description: 'Get presence info for all agents: online/offline status, last seen time, and unread chat/mail counts for the querying agent.',
                 inputSchema: {
                     type: 'object',
@@ -343,7 +344,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
     if (name === 'search') {
-        const data = await apiCall('/search', {
+        const data = await apiCall('/memory/search', {
             query: args.query,
             namespace: args.namespace || DEFAULT_NAMESPACE,
             limit: args.limit || 5
@@ -360,7 +361,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const content = readFileSync(args.file_path, 'utf-8');
         const sourceName = args.source_file || args.file_path.split(/[/\\]/).pop();
 
-        const data = await apiCall('/ingest', {
+        const data = await apiCall('/memory/ingest', {
             namespace: args.namespace || DEFAULT_NAMESPACE,
             source_file: sourceName,
             content
@@ -370,7 +371,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === 'delete') {
-        const data = await apiCall('/delete', {
+        const data = await apiCall('/memory/delete', {
             namespace: args.namespace || DEFAULT_NAMESPACE,
             source_file: args.source_file
         });
@@ -390,7 +391,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const data = await apiCall('/chat/send', body);
 
         if (data.broadcast) {
-            const targets = data.recipients.map(r => r.to_agent).join(', ');
+            const targets = data.to_agents.map(r => r.to_agent).join(', ');
             return { content: [{ type: 'text', text: `Broadcast sent to: ${targets}` }] };
         }
 
@@ -449,29 +450,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")` }] };
     }
 
-    if (name === 'mail_check') {
+    if (name === 'mail_receive') {
         const agent = args.agent || DEFAULT_AGENT;
-        const data = await apiCall('/mail/check', { agent });
+        const data = await apiCall('/mail/receive', { agent });
 
         if (data.messages.length === 0) {
             return { content: [{ type: 'text', text: 'No new mail.' }] };
         }
 
-        // Ack all messages
         const ids = data.messages.map(m => m.id);
-        const ackData = await apiCall('/mail/ack', { ids });
-
-        // Format messages for display
         const formatted = data.messages.map(msg =>
             `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`
         ).join('\n\n---\n\n');
 
-        return { content: [{ type: 'text', text: `${data.messages.length} message(s) (acked: ${ackData.acked}):\n\n${formatted}` }] };
+        return { content: [{ type: 'text', text: `${formatted}\n\n(mail_ids: [${ids.join(', ')}] — call mail_ack to mark as read)` }] };
     }
 
     if (name === 'mail_ack') {
-        const data = await apiCall('/mail/ack', { ids: args.ids });
-        return { content: [{ type: 'text', text: `Acked ${data.acked} message(s)` }] };
+        const agent = args.agent || DEFAULT_AGENT;
+        const data = await apiCall('/mail/ack', { agent, message_ids: args.ids });
+        return { content: [{ type: 'text', text: `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]` }] };
     }
 
     if (name === 'ingest_notes') {
@@ -500,7 +498,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         // Get current index state from the API
-        const statusData = await apiCall('/ingest/status', {});
+        const statusData = await apiCall('/memory/ingest/status', {});
 
         // Build lookup: "namespace:source_file" -> ingested_at Date
         const indexMap = {};
@@ -538,7 +536,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         for (const file of toIngest) {
             try {
                 const content = readFileSync(file.filePath, 'utf-8');
-                const data = await apiCall('/ingest', {
+                const data = await apiCall('/memory/ingest', {
                     namespace: file.namespace,
                     source_file: file.fileName,
                     content
@@ -555,9 +553,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: summary + details }] };
     }
 
-    if (name === 'presence') {
+    if (name === 'agent_status') {
         const agent = args.agent || DEFAULT_AGENT;
-        const data = await apiCall('/presence', { agent });
+        const data = await apiCall('/agent/status', { agent });
 
         const lines = data.agents.map(a => {
             const parts = [`${a.agent}: ${a.status}`];
@@ -589,7 +587,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const data = await apiCall('/discussion/create', body);
 
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
-        let text = `Discussion #${data.id} created [${data.mode}]: "${data.topic}"\nParticipants: ${parts}`;
+        let text = `Discussion #${data.discussion.id} created [${data.discussion.mode}]: "${data.discussion.topic}"\nParticipants: ${parts}`;
         if (args.channel) {
             text += `\nChannel: ${args.channel}`;
         }
@@ -692,7 +690,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             closes_at: args.closes_at || null
         });
 
-        return { content: [{ type: 'text', text: `Vote #${data.id} proposed in discussion #${data.discussion_id}: "${data.question}" (${data.type}, ${data.threshold})` }] };
+        return { content: [{ type: 'text', text: `Vote #${data.vote.id} proposed in discussion #${data.vote.discussion_id}: "${data.vote.question}" (${data.vote.type}, ${data.vote.threshold})` }] };
     }
 
     if (name === 'discussion_vote_cast') {
@@ -734,7 +732,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 async function sendHeartbeat() {
     try {
-        await apiCall('/heartbeat', { agent: DEFAULT_AGENT });
+        await apiCall('/agent/heartbeat', { agent: DEFAULT_AGENT });
     } catch (err) {
         // Heartbeat failure is non-fatal
     }
@@ -756,7 +754,7 @@ async function autoIngest() {
             }
         }
 
-        const statusData = await apiCall('/ingest/status', {});
+        const statusData = await apiCall('/memory/ingest/status', {});
         const indexMap = {};
         for (const entry of statusData.files) {
             indexMap[`${entry.namespace}:${entry.source_file}`] = new Date(entry.ingested_at);
@@ -773,7 +771,7 @@ async function autoIngest() {
 
         for (const file of toIngest) {
             const content = readFileSync(file.filePath, 'utf-8');
-            await apiCall('/ingest', { namespace: file.namespace, source_file: file.fileName, content });
+            await apiCall('/memory/ingest', { namespace: file.namespace, source_file: file.fileName, content });
         }
     } catch (err) {
         // Auto-ingest failure is non-fatal
