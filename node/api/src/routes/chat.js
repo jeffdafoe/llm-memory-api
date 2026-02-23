@@ -57,15 +57,15 @@ router.post('/chat/send', async (req, res) => {
                     'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
                     [from_agent, recipient, message, ch.value]
                 );
-                ids.push({ id: result.rows[0].id, to_agent: recipient });
+                ids.push({ id: result.rows[0].id, to_agent: recipient, sent_at: result.rows[0].sent_at });
             }
 
-            logChat('send_broadcast', { from_agent, recipients: ids.map(i => i.to_agent), message_ids: ids.map(i => i.id), channel: ch.value });
+            logChat('send_broadcast', { from_agent, to_agents: ids.map(i => i.to_agent), message_ids: ids.map(i => i.id), channel: ch.value });
 
             return res.json({
                 broadcast: true,
                 from_agent,
-                recipients: ids,
+                to_agents: ids,
                 sent_at: ids[0] ? ids[0].sent_at : null
             });
         }
