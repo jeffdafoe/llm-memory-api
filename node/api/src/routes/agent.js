@@ -5,11 +5,18 @@ const path = require('path');
 const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
 const { log } = require('../services/logger');
+const auth = require('../middleware/auth');
 
 const router = Router();
 
 // Agents with last_seen within this window are considered "online"
 const ONLINE_THRESHOLD_MINUTES = 5;
+
+// Session tokens expire after 24 hours
+const SESSION_TTL_HOURS = 24;
+
+// Passphrase rotation is suggested after 30 days
+const ROTATION_THRESHOLD_DAYS = 30;
 
 function logAgent(action, details) {
     log('agent', action, details);
@@ -19,9 +26,14 @@ function hashToken(plaintext, salt) {
     return crypto.pbkdf2Sync(plaintext, salt, 100000, 64, 'sha512').toString('hex');
 }
 
-function generateToken() {
+function generatePassphraseToken() {
     const words = generatePassphrase(3);
     return words.join('-');
+}
+
+// Generate a random session token (URL-safe base64, 48 bytes = 64 chars)
+function generateSessionToken() {
+    return crypto.randomBytes(48).toString('base64url');
 }
 
 const ONBOARDING_PATH = path.join(__dirname, '..', '..', '..', '..', 'templates', 'onboarding.md');
@@ -61,7 +73,7 @@ router.post('/agent/register', async (req, res) => {
                 });
             }
             // Status is 'pending' — regenerate token (they haven't acked yet)
-            const token = generateToken();
+            const token = generatePassphraseToken();
             const salt = crypto.randomBytes(32).toString('hex');
             const hash = hashToken(token, salt);
 
@@ -82,7 +94,7 @@ router.post('/agent/register', async (req, res) => {
         }
 
         // New agent
-        const token = generateToken();
+        const token = generatePassphraseToken();
         const salt = crypto.randomBytes(32).toString('hex');
         const hash = hashToken(token, salt);
 
@@ -155,10 +167,189 @@ router.post('/agent/register/ack', async (req, res) => {
         res.json({
             agent,
             status: 'active',
-            message: 'Registration complete. Use your token as Authorization: Bearer <token> for all API calls.'
+            message: 'Registration complete. Call POST /agent/login with your agent name and passphrase to get a session token.'
         });
     } catch (err) {
         console.error('Agent register/ack error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/login — verify passphrase, create session, return session token.
+// No auth required — the passphrase in the body is the credential.
+// Also cleans up expired sessions lazily on each call.
+router.post('/agent/login', async (req, res) => {
+    try {
+        const { agent, passphrase } = req.body;
+
+        if (!agent || !passphrase) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required fields: agent, passphrase' }
+            });
+        }
+
+        // Look up agent and verify passphrase
+        const agentResult = await pool.query(
+            "SELECT agent, token_hash, token_salt, status, passphrase_rotated_at FROM agents WHERE agent = $1",
+            [agent]
+        );
+
+        if (agentResult.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+
+        const row = agentResult.rows[0];
+
+        if (row.status !== 'active') {
+            return res.status(403).json({
+                error: { code: 'NOT_ACTIVE', message: 'Agent is not active. Complete registration first.' }
+            });
+        }
+
+        const hash = hashToken(passphrase, row.token_salt);
+        if (hash !== row.token_hash) {
+            logAgent('login-failed', { agent });
+            return res.status(403).json({
+                error: { code: 'INVALID_PASSPHRASE', message: 'Passphrase does not match' }
+            });
+        }
+
+        // Generate session token and store hashed in database
+        const sessionToken = generateSessionToken();
+        const sessionSalt = crypto.randomBytes(32).toString('hex');
+        const sessionHash = hashToken(sessionToken, sessionSalt);
+        const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
+
+        await pool.query(
+            'INSERT INTO agent_sessions (agent, token_hash, token_salt, expires_at) VALUES ($1, $2, $3, $4)',
+            [agent, sessionHash, sessionSalt, expiresAt]
+        );
+
+        // Update last_seen
+        await pool.query(
+            'UPDATE agents SET last_seen = NOW() WHERE agent = $1',
+            [agent]
+        );
+
+        // Check if passphrase rotation is due
+        let rotationDue = false;
+        if (row.passphrase_rotated_at) {
+            const daysSinceRotation = (Date.now() - new Date(row.passphrase_rotated_at).getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSinceRotation > ROTATION_THRESHOLD_DAYS) {
+                rotationDue = true;
+            }
+        } else {
+            // No rotation timestamp means never rotated — suggest rotation
+            rotationDue = true;
+        }
+
+        // Lazy cleanup: delete expired sessions
+        await pool.query('DELETE FROM agent_sessions WHERE expires_at < NOW()');
+
+        logAgent('login', { agent });
+
+        res.json({
+            agent,
+            session_token: sessionToken,
+            expires_at: expiresAt,
+            rotation_due: rotationDue
+        });
+    } catch (err) {
+        console.error('Agent login error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/logout — invalidate session token.
+// Auth: session token (via middleware).
+router.post('/agent/logout', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        const token = req.headers.authorization.replace('Bearer ', '');
+
+        // Find and delete the session matching this token
+        const sessions = await pool.query(
+            'SELECT id, token_hash, token_salt FROM agent_sessions WHERE agent = $1',
+            [agent]
+        );
+
+        let deleted = false;
+        for (const row of sessions.rows) {
+            const hash = hashToken(token, row.token_salt);
+            if (hash === row.token_hash) {
+                await pool.query('DELETE FROM agent_sessions WHERE id = $1', [row.id]);
+                deleted = true;
+                break;
+            }
+        }
+
+        // Clear from session cache
+        auth.sessionCache.delete(token);
+
+        logAgent('logout', { agent, session_deleted: deleted });
+
+        res.json({
+            agent,
+            message: 'Logged out'
+        });
+    } catch (err) {
+        console.error('Agent logout error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/rotate — generate new passphrase, invalidate all sessions.
+// Auth: session token (via middleware) + shared key in body.
+// Both are required — session proves identity, shared key proves authorization.
+router.post('/agent/rotate', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        const { shared_key } = req.body;
+
+        // Require shared key as additional authorization
+        if (!shared_key || shared_key !== process.env.MEMORY_API_KEY) {
+            return res.status(403).json({
+                error: { code: 'FORBIDDEN', message: 'Valid shared_key required for passphrase rotation' }
+            });
+        }
+
+        // Generate new passphrase
+        const passphrase = generatePassphraseToken();
+        const salt = crypto.randomBytes(32).toString('hex');
+        const hash = hashToken(passphrase, salt);
+
+        await pool.query(
+            'UPDATE agents SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE agent = $3',
+            [hash, salt, agent]
+        );
+
+        // Invalidate all existing sessions for this agent
+        await pool.query('DELETE FROM agent_sessions WHERE agent = $1', [agent]);
+
+        // Clear all cached sessions for this agent
+        for (const [key, value] of auth.sessionCache.entries()) {
+            if (value.agent === agent) {
+                auth.sessionCache.delete(key);
+            }
+        }
+
+        logAgent('rotate', { agent });
+
+        res.json({
+            agent,
+            passphrase,
+            message: 'Passphrase rotated. Save this — it will not be shown again. All sessions have been invalidated.'
+        });
+    } catch (err) {
+        console.error('Agent rotate error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

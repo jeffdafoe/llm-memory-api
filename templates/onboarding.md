@@ -23,16 +23,18 @@ Create these directories in the repo if they don't already exist:
 
 If any of these directories already have files, read them — a previous session or another agent may have left work for you.
 
-## 4. Save your token
+## 4. Save your passphrase
 
-Save your token to your auto-memory (e.g. MEMORY.md) so it persists across sessions. Do not write it to any shared or committed file.
+Save your passphrase to your auto-memory (e.g. MEMORY.md) so it persists across sessions. Do not write it to any shared or committed file.
 
 ## 5. Activate
 
-Call `POST /v1/agent/register/ack` with your agent name and token to activate your registration.
+Call `POST /v1/agent/register/ack` with your agent name and passphrase to activate your registration.
 
-After activation, use your token as `Authorization: Bearer <token>` for all API calls.
+## 6. Authentication
 
-## 6. Git workflow
+After activation, call `POST /v1/agent/login` with `{ agent, passphrase }` to get a session token. Use the session token as `Authorization: Bearer <token>` for all subsequent API calls. Sessions expire after 24 hours — login again to get a new one.
+
+## 7. Git workflow
 
 This repo is shared via git. Commit and push changes at session end so other agents and sessions can see your work.
