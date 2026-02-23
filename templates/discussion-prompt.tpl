@@ -4,9 +4,8 @@ about: [TOPIC]
 Working directory: [WORK_DIR]
 Discussion ID: [DISCUSSION_ID]
 
-API credentials (for curl calls):
+Local proxy (handles auth automatically):
   URL: [API_URL]
-  Key: [API_KEY]
   Your agent name: [MY_AGENT]
 
 Context: [CONTEXT]
@@ -15,8 +14,12 @@ Context: [CONTEXT]
 
 ## How This Works
 
-A transport script is running alongside you. It handles chat message relay only.
-You read/write files for chat, and use curl for all API operations (voting, status).
+A transport process is running alongside you. It handles:
+- Chat message relay (via inbox/outbox files)
+- A local HTTP proxy for API operations (voting, status, conclude)
+
+The proxy auto-injects your agent name, discussion ID, and auth credentials.
+All curl calls go to the local proxy — no auth headers needed.
 
 - Messages FROM the other agent appear as numbered .txt files in inbox/
   (e.g., inbox/37.txt, inbox/38.txt -- numbers may not be sequential)
@@ -60,39 +63,34 @@ You read/write files for chat, and use curl for all API operations (voting, stat
 
 ## Voting
 
-Use curl for all voting operations -- MCP tools are denied in background subagents.
-IMPORTANT: Prefix all curl commands with MSYS_NO_PATHCONV=1 to prevent Git Bash path mangling.
+Use curl to the local proxy for all voting operations. No auth headers needed.
 
-To propose a vote during the discussion:
+To propose a vote:
 ```bash
-MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/propose" \
-  -H "Authorization: Bearer [API_KEY]" \
+curl -s -X POST "[API_URL]/vote/propose" \
   -H "Content-Type: application/json" \
-  -d '{"discussion_id": [DISCUSSION_ID], "question": "Description. 1=yes 2=no", "proposed_by": "[MY_AGENT]", "type": "general", "threshold": "unanimous"}'
+  -d '{"question": "Description. 1=yes 2=no", "type": "general", "threshold": "unanimous"}'
 ```
 
 To cast your ballot:
 ```bash
-MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/cast" \
-  -H "Authorization: Bearer [API_KEY]" \
+curl -s -X POST "[API_URL]/vote/cast" \
   -H "Content-Type: application/json" \
-  -d '{"vote_id": [VOTE_ID], "agent": "[MY_AGENT]", "choice": 1, "reason": "Optional reason"}'
+  -d '{"vote_id": VOTE_ID, "choice": 1, "reason": "Optional reason"}'
 ```
 
 To check vote status:
 ```bash
-MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/status" \
-  -H "Authorization: Bearer [API_KEY]" \
+curl -s -X POST "[API_URL]/vote/status" \
   -H "Content-Type: application/json" \
-  -d '{"vote_id": [VOTE_ID]}'
+  -d '{"vote_id": VOTE_ID}'
 ```
 
 To check for pending votes you need to act on:
 ```bash
-MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/pending" \
-  -H "Authorization: Bearer [API_KEY]" \
+curl -s -X POST "[API_URL]/pending" \
   -H "Content-Type: application/json" \
-  -d '{"agent": "[MY_AGENT]"}'
+  -d '{}'
 ```
 
 Always mention proposed votes in your chat message so the other side knows to check.
@@ -106,19 +104,17 @@ When you feel the discussion has reached a natural conclusion:
    action items, conclusions)
 2. Propose a conclude vote:
    ```bash
-   MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/vote/propose" \
-     -H "Authorization: Bearer [API_KEY]" \
+   curl -s -X POST "[API_URL]/vote/propose" \
      -H "Content-Type: application/json" \
-     -d '{"discussion_id": [DISCUSSION_ID], "question": "Ready to conclude? 1=yes 2=no", "proposed_by": "[MY_AGENT]", "type": "conclude", "threshold": "unanimous"}'
+     -d '{"question": "Ready to conclude? 1=yes 2=no", "type": "conclude", "threshold": "unanimous"}'
    ```
 3. Cast your own yes vote
 4. Wait for the other side to cast their ballot
 5. When the vote passes, conclude the discussion:
    ```bash
-   MSYS_NO_PATHCONV=1 curl -s -X POST "[API_URL]/discussion/conclude" \
-     -H "Authorization: Bearer [API_KEY]" \
+   curl -s -X POST "[API_URL]/conclude" \
      -H "Content-Type: application/json" \
-     -d '{"discussion_id": [DISCUSSION_ID], "agent": "[MY_AGENT]"}'
+     -d '{}'
    ```
 6. Write a "done" file: `echo "concluded" > [WORK_DIR]/done`
 7. Go to Exit
