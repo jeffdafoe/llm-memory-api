@@ -1,5 +1,7 @@
 const { Router } = require('express');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
 const { log } = require('../services/logger');
@@ -19,31 +21,16 @@ function generateToken() {
     return words.join('-');
 }
 
+const ONBOARDING_PATH = path.join(__dirname, '..', '..', '..', '..', 'templates', 'onboarding.md');
+
 function buildOnboarding(agent) {
-    return {
-        repo: 'github.com/jeffdafoe/llm-memory (private)',
-        instructions: [
-            'Find the llm-memory repo on your local filesystem.',
-            'Read shared/GUIDELINES.md for cross-agent communication standards.',
-            'Read all files in shared/tools/ for available collaboration tools.',
-            `Create your workspace directories if they don't exist (see workspace section below).`,
-            `If ${agent}/instructions/ has files, read them for workspace-specific setup.`,
-            `If ${agent}/tasks/pending/ or ${agent}/tasks/in-progress/ have files, read them for queued work.`,
-            'Save your token to your auto-memory (e.g. MEMORY.md) so it persists across sessions. Do not write it to any shared or committed file. Then call POST /register/ack with your agent name and token to activate.',
-            'After activation, use your token as Authorization: Bearer <token> for all API calls.'
-        ],
-        workspace: {
-            base: `${agent}/`,
-            directories: {
-                [`${agent}/instructions/`]: 'Persistent setup instructions and codebase reference docs for your environment. Read these at session start.',
-                [`${agent}/notes/`]: 'Working notes for active tasks. One markdown file per task or topic. Write here as you work to preserve context across sessions.',
-                [`${agent}/tasks/pending/`]: 'Queued work items. One markdown file per task. Check at session start for work to pick up.',
-                [`${agent}/tasks/in-progress/`]: 'Tasks currently being worked on. Move files here from pending/ when you start.',
-                [`${agent}/tasks/done/`]: 'Completed tasks. Move files here from in-progress/ when finished.'
-            },
-            usage: 'This repo is shared via git. Commit and push changes at session end so other agents and sessions can see your work.'
-        }
-    };
+    try {
+        const template = fs.readFileSync(ONBOARDING_PATH, 'utf-8');
+        return template.replace(/\{\{agent\}\}/g, agent);
+    } catch (err) {
+        console.error('Failed to read onboarding template:', err.message);
+        return null;
+    }
 }
 
 // POST /register — create agent, generate token, return plaintext
