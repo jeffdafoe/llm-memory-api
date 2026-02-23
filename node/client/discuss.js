@@ -184,6 +184,7 @@ async function transportLogin() {
     const data = await apiCallNoAuth('agent/login', {
         agent: cfg.agent,
         passphrase: cfg.passphrase,
+        subsystem: 'discussion',
     });
     sessionToken = data.session_token;
     log(`Logged in as ${cfg.agent} (session expires ${data.expires_at})`);

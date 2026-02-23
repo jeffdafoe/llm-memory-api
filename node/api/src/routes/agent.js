@@ -182,7 +182,7 @@ router.post('/agent/register/ack', async (req, res) => {
 // Also cleans up expired sessions lazily on each call.
 router.post('/agent/login', async (req, res) => {
     try {
-        const { agent, passphrase } = req.body;
+        const { agent, passphrase, subsystem } = req.body;
 
         if (!agent || !passphrase) {
             return res.status(400).json({
@@ -225,8 +225,8 @@ router.post('/agent/login', async (req, res) => {
         const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
         await pool.query(
-            'INSERT INTO agent_sessions (agent, token_hash, token_salt, expires_at) VALUES ($1, $2, $3, $4)',
-            [agent, sessionHash, sessionSalt, expiresAt]
+            'INSERT INTO agent_sessions (agent, token_hash, token_salt, expires_at, subsystem) VALUES ($1, $2, $3, $4, $5)',
+            [agent, sessionHash, sessionSalt, expiresAt, subsystem || null]
         );
 
         // Update last_seen
@@ -250,7 +250,7 @@ router.post('/agent/login', async (req, res) => {
         // Lazy cleanup: delete expired sessions
         await pool.query('DELETE FROM agent_sessions WHERE expires_at < NOW()');
 
-        logAgent('login', { agent });
+        logAgent('login', { agent, subsystem: subsystem || null });
 
         res.json({
             agent,
@@ -430,6 +430,24 @@ router.post('/agent/status', async (req, res) => {
             [agent]
         );
 
+        // Get active subsystems per agent from non-expired sessions
+        const sessionsResult = await pool.query(
+            `SELECT agent, subsystem
+            FROM agent_sessions
+            WHERE expires_at > NOW() AND subsystem IS NOT NULL
+            ORDER BY agent, subsystem`
+        );
+
+        const subsystemsByAgent = {};
+        for (const row of sessionsResult.rows) {
+            if (!subsystemsByAgent[row.agent]) {
+                subsystemsByAgent[row.agent] = [];
+            }
+            if (!subsystemsByAgent[row.agent].includes(row.subsystem)) {
+                subsystemsByAgent[row.agent].push(row.subsystem);
+            }
+        }
+
         const agents = result.rows.map(row => {
             let status = 'unknown';
             if (row.last_seen) {
@@ -445,6 +463,7 @@ router.post('/agent/status', async (req, res) => {
                 agent: row.agent,
                 status,
                 last_seen: row.last_seen,
+                subsystems: subsystemsByAgent[row.agent] || [],
                 unread_chat: row.unread_chat,
                 unread_mail: row.unread_mail
             };

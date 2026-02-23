@@ -63,7 +63,8 @@ async function login() {
 
     const data = await apiCallNoAuth('/agent/login', {
         agent: DEFAULT_AGENT,
-        passphrase: AGENT_PASSPHRASE
+        passphrase: AGENT_PASSPHRASE,
+        subsystem: 'mcp'
     });
 
     sessionToken = data.session_token;
