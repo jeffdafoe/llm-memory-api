@@ -42,8 +42,9 @@ All curl calls go to the local proxy — no auth headers needed.
 4. Write your reply to outbox/ with the next sequential number
 5. Check if a "done" file exists -- if so, go to Exit
 6. Poll for new messages using a batched loop (saves turn budget).
-   The loop also tracks idle time -- if 12 consecutive polls (60 seconds) find
-   no new messages, write an idle-timeout file and exit:
+   The loop tracks idle time -- if 60 consecutive polls (5 minutes) find
+   no new messages, write an idle-timeout file and exit.
+   NOTE: The other side needs 1-2 minutes to process and reply. Be patient.
    ```bash
    idle_count=0
    while true; do
@@ -51,7 +52,7 @@ All curl calls go to the local proxy — no auth headers needed.
      if [ -n "$files" ]; then echo "NEW_MESSAGES"; echo "$files"; break; fi
      if [ -f [WORK_DIR]/done ]; then echo "DONE"; break; fi
      idle_count=$((idle_count + 1))
-     if [ $idle_count -ge 12 ]; then echo "IDLE_TIMEOUT"; break; fi
+     if [ $idle_count -ge 60 ]; then echo "IDLE_TIMEOUT"; break; fi
      sleep 5
    done
    ```
