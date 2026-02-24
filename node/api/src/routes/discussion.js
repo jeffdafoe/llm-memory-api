@@ -1,11 +1,85 @@
 const { Router } = require('express');
 const pool = require('../db');
 const { log } = require('../services/logger');
+const { notifyDiscussionInvite } = require('../services/system-notify');
 
 const router = Router();
 
 function logDiscussion(action, details) {
     log('discussion', action, details);
+}
+
+async function getConfig(key, defaultValue) {
+    const result = await pool.query(
+        'SELECT value FROM config WHERE key = $1',
+        [key]
+    );
+    if (result.rows.length === 0) {
+        return defaultValue;
+    }
+    return result.rows[0].value;
+}
+
+// Check if a waiting discussion should transition to active or timed_out.
+// Called after join and on status poll (lazy evaluation).
+async function evaluateReadiness(discussionId) {
+    const discussion = await pool.query(
+        'SELECT * FROM discussions WHERE id = $1',
+        [discussionId]
+    );
+    if (discussion.rows.length === 0 || discussion.rows[0].status !== 'waiting') {
+        return;
+    }
+
+    const d = discussion.rows[0];
+    const participants = await pool.query(
+        'SELECT agent, status, role FROM discussion_participants WHERE discussion_id = $1',
+        [discussionId]
+    );
+
+    const required = participants.rows.filter(p => p.role === 'required');
+    const optional = participants.rows.filter(p => p.role === 'optional');
+
+    const allRequiredJoined = required.every(p => p.status === 'joined');
+    const allOptionalJoined = optional.every(p => p.status === 'joined');
+
+    // All required and optional joined — start immediately
+    if (allRequiredJoined && allOptionalJoined) {
+        await pool.query(
+            'UPDATE discussions SET status = $1 WHERE id = $2',
+            ['active', discussionId]
+        );
+        logDiscussion('ready', { discussion_id: discussionId, reason: 'all_joined' });
+        return;
+    }
+
+    // Check timeout
+    const now = new Date();
+    if (d.timeout_at && now >= new Date(d.timeout_at)) {
+        if (allRequiredJoined) {
+            // Mark missing optional agents as timed_out
+            for (const p of optional) {
+                if (p.status !== 'joined') {
+                    await pool.query(
+                        'UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND agent = $3',
+                        ['timed_out', discussionId, p.agent]
+                    );
+                }
+            }
+            await pool.query(
+                'UPDATE discussions SET status = $1 WHERE id = $2',
+                ['active', discussionId]
+            );
+            logDiscussion('ready', { discussion_id: discussionId, reason: 'timeout_required_present' });
+        } else {
+            // Missing required — discussion fails
+            await pool.query(
+                'UPDATE discussions SET status = $1 WHERE id = $2',
+                ['timed_out', discussionId]
+            );
+            logDiscussion('timed_out', { discussion_id: discussionId, reason: 'missing_required' });
+        }
+    }
 }
 
 // Check if an agent is a joined participant in a discussion
@@ -93,7 +167,7 @@ function evaluateThreshold(choiceRows, participantCount, threshold) {
 
 router.post('/discussion/create', async (req, res) => {
     try {
-        const { topic, created_by, participants, channel, mode, context } = req.body;
+        const { topic, created_by, participants, optional_participants, channel, mode, context } = req.body;
 
         if (!topic || !created_by || !participants || !Array.isArray(participants)) {
             return res.status(400).json({
@@ -101,7 +175,10 @@ router.post('/discussion/create', async (req, res) => {
             });
         }
 
-        if (participants.length < 2) {
+        const optionalList = Array.isArray(optional_participants) ? optional_participants : [];
+        const allParticipants = [...participants, ...optionalList];
+
+        if (allParticipants.length < 2) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'A discussion requires at least 2 participants' }
             });
@@ -110,6 +187,34 @@ router.post('/discussion/create', async (req, res) => {
         if (!participants.includes(created_by)) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'Creator must be in the participants list' }
+            });
+        }
+
+        // Check for duplicates between required and optional
+        const overlap = optionalList.filter(a => participants.includes(a));
+        if (overlap.length > 0) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Agents cannot be both required and optional: ' + overlap.join(', ') }
+            });
+        }
+
+        // Reject if creator is already in an active or waiting discussion
+        const existing = await pool.query(
+            `SELECT d.id, d.topic, d.status FROM discussions d
+             JOIN discussion_participants dp ON dp.discussion_id = d.id
+             WHERE dp.agent = $1 AND dp.status IN ('invited', 'joined')
+             AND d.status IN ('waiting', 'active')
+             ORDER BY d.id DESC LIMIT 1`,
+            [created_by]
+        );
+        if (existing.rows.length > 0) {
+            const d = existing.rows[0];
+            return res.status(409).json({
+                error: {
+                    code: 'DISCUSSION_CONFLICT',
+                    message: `Agent "${created_by}" is already in discussion #${d.id} (${d.status}): "${d.topic}"`,
+                    existing_discussion_id: d.id
+                }
             });
         }
 
@@ -123,42 +228,76 @@ router.post('/discussion/create', async (req, res) => {
             // Enforce 10k char limit on context
             const contextText = context ? String(context).slice(0, 10000) : null;
 
+            // Compute timeout_at from config
+            const timeoutMinutes = parseInt(await getConfig('discussion_wait_timeout', '5'));
+            const timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
+
             const result = await client.query(
-                'INSERT INTO discussions (topic, created_by, channel, mode, context) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at',
-                [topic, created_by, channel || null, discussionMode, contextText]
+                'INSERT INTO discussions (topic, created_by, status, channel, mode, context, timeout_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at',
+                [topic, created_by, 'waiting', channel || null, discussionMode, contextText, timeoutAt]
             );
             const discussionId = result.rows[0].id;
 
             for (const agent of participants) {
                 const isCreator = agent === created_by;
                 await client.query(
-                    'INSERT INTO discussion_participants (discussion_id, agent, status, joined_at) VALUES ($1, $2, $3, $4)',
-                    [discussionId, agent, isCreator ? 'joined' : 'invited', isCreator ? new Date() : null]
+                    'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
+                    [discussionId, agent, isCreator ? 'joined' : 'invited', 'required', isCreator ? new Date() : null]
+                );
+            }
+
+            for (const agent of optionalList) {
+                await client.query(
+                    'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
+                    [discussionId, agent, 'invited', 'optional', null]
                 );
             }
 
             await client.query('COMMIT');
 
-            logDiscussion('create', { discussion_id: discussionId, topic, created_by, participants, mode: discussionMode });
+            logDiscussion('create', {
+                discussion_id: discussionId, topic, created_by,
+                required: participants, optional: optionalList, mode: discussionMode
+            });
+
+            // Notify invited agents (fire-and-forget, don't block response)
+            const invitedAgents = allParticipants.filter(a => a !== created_by);
+            if (invitedAgents.length > 0) {
+                notifyDiscussionInvite(discussionId, topic, created_by, invitedAgents)
+                    .catch(err => console.error('System notify error:', err.message));
+            }
+
+            // Evaluate readiness (creator is already joined)
+            await evaluateReadiness(discussionId);
+
+            // Fetch current status after readiness check
+            const current = await pool.query('SELECT status FROM discussions WHERE id = $1', [discussionId]);
 
             const discussion = {
                 id: discussionId,
                 topic,
                 created_by,
+                status: current.rows[0].status,
                 channel: channel || null,
                 mode: discussionMode,
+                timeout_at: timeoutAt,
                 created_at: result.rows[0].created_at
             };
             if (contextText) {
                 discussion.context = contextText;
             }
-            res.json({
-                discussion,
-                participants: participants.map(a => ({
-                    agent: a,
-                    status: a === created_by ? 'joined' : 'invited'
-                }))
-            });
+
+            const participantList = participants.map(a => ({
+                agent: a,
+                role: 'required',
+                status: a === created_by ? 'joined' : 'invited'
+            })).concat(optionalList.map(a => ({
+                agent: a,
+                role: 'optional',
+                status: 'invited'
+            })));
+
+            res.json({ discussion, participants: participantList });
         } catch (err) {
             await client.query('ROLLBACK');
             throw err;
@@ -231,8 +370,13 @@ router.post('/discussion/status', async (req, res) => {
             });
         }
 
+        // Evaluate readiness if still waiting
+        if (discussion.rows[0].status === 'waiting') {
+            await evaluateReadiness(discussion_id);
+        }
+
         const participants = await pool.query(
-            'SELECT agent, status, invited_at, joined_at FROM discussion_participants WHERE discussion_id = $1',
+            'SELECT agent, status, role, invited_at, joined_at FROM discussion_participants WHERE discussion_id = $1',
             [discussion_id]
         );
 
@@ -283,10 +427,10 @@ router.post('/discussion/pending', async (req, res) => {
             });
         }
 
-        // Discussions where agent is invited but hasn't joined
+        // Discussions where agent is invited but hasn't joined (waiting or active)
         const invited = await pool.query(
-            'SELECT d.* FROM discussions d JOIN discussion_participants dp ON d.id = dp.discussion_id WHERE dp.agent = $1 AND dp.status = $2 AND d.status = $3',
-            [agent, 'invited', 'active']
+            'SELECT d.* FROM discussions d JOIN discussion_participants dp ON d.id = dp.discussion_id WHERE dp.agent = $1 AND dp.status = $2 AND d.status IN ($3, $4)',
+            [agent, 'invited', 'waiting', 'active']
         );
 
         // Open votes where agent hasn't voted yet — async discussions only.
@@ -389,9 +533,11 @@ router.post('/discussion/join', async (req, res) => {
                 error: { code: 'NOT_FOUND', message: 'Discussion not found' }
             });
         }
-        if (discussion.rows[0].status !== 'active') {
+
+        const dStatus = discussion.rows[0].status;
+        if (dStatus !== 'waiting' && dStatus !== 'active') {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Discussion is not active' }
+                error: { code: 'BAD_REQUEST', message: 'Discussion is ' + dStatus + ' and not accepting joins' }
             });
         }
 
@@ -402,22 +548,31 @@ router.post('/discussion/join', async (req, res) => {
 
         if (existing.rows.length > 0) {
             if (existing.rows[0].status === 'joined') {
-                return res.json({ discussion_id, agent, status: 'joined', message: 'Already joined' });
+                return res.json({ discussion_id, agent, status: 'joined', discussion_status: dStatus, message: 'Already joined' });
             }
+            // Allow timed_out, invited, or left agents to (re)join
             await pool.query(
                 'UPDATE discussion_participants SET status = $1, joined_at = NOW() WHERE discussion_id = $2 AND agent = $3',
                 ['joined', discussion_id, agent]
             );
         } else {
             await pool.query(
-                'INSERT INTO discussion_participants (discussion_id, agent, status, joined_at) VALUES ($1, $2, $3, NOW())',
-                [discussion_id, agent, 'joined']
+                'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, NOW())',
+                [discussion_id, agent, 'joined', 'required']
             );
         }
 
         logDiscussion('join', { discussion_id, agent });
 
-        res.json({ discussion_id, agent, status: 'joined' });
+        // Evaluate readiness if still waiting
+        if (dStatus === 'waiting') {
+            await evaluateReadiness(discussion_id);
+        }
+
+        // Fetch current discussion status after readiness check
+        const current = await pool.query('SELECT status FROM discussions WHERE id = $1', [discussion_id]);
+
+        res.json({ discussion_id, agent, status: 'joined', discussion_status: current.rows[0].status });
     } catch (err) {
         console.error('Discussion join error:', err.message);
         res.status(500).json({

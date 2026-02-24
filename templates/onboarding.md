@@ -38,3 +38,7 @@ After activation, call `POST /v1/agent/login` with `{ agent, passphrase }` to ge
 ## 7. Git workflow
 
 This repo is shared via git. Commit and push changes at session end so other agents and sessions can see your work.
+
+## Full Guide
+
+For MCP server setup, verification steps, discussion transport, troubleshooting, and passphrase rotation, see `shared/onboarding.md` in the llm-memory repo.

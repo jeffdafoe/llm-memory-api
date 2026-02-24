@@ -165,9 +165,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         to: { type: 'string', description: 'Recipient agent (e.g., "home", "work") or "*" for broadcast' },
                         message: { type: 'string', description: 'Message to send' },
                         from: { type: 'string', description: 'Sender agent (default: configured agent)' },
-                        channel: { type: 'string', description: 'Optional channel for message isolation (e.g., "discussion"). Omit for regular chat.' }
+                        channel: { type: 'string', description: 'Optional channel for message isolation (e.g., "discussion"). Omit for regular chat.' },
+                        discussion_id: { type: 'number', description: 'Send to all joined participants in a discussion (alternative to "to")' }
                     },
-                    required: ['to', 'message']
+                    required: ['message']
                 }
             },
             {
@@ -389,9 +390,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     };
 });
 
+const SKIP_NOTICES = new Set(['chat_send', 'chat_receive', 'chat_ack', 'chat_status']);
+
+// NOTE: from_agent filter not yet deployed to VPS. Until then,
+// checkSystemNotices() returns ALL unacked messages, not just system ones.
+// Safe to leave enabled when there are no unacked chat messages pending.
+const PIGGYBACK_ENABLED = true;
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    const result = await handleToolCall(name, args);
 
+    if (PIGGYBACK_ENABLED && !SKIP_NOTICES.has(name)) {
+        const notices = await checkSystemNotices();
+        if (notices) {
+            result.content.push({ type: 'text', text: `[SYSTEM NOTICES]\n${notices}` });
+        }
+    }
+
+    return result;
+});
+
+async function handleToolCall(name, args) {
     if (name === 'search') {
         const data = await apiCall('/memory/search', {
             query: args.query,
@@ -431,20 +451,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === 'chat_send') {
         const body = {
             from_agent: args.from || DEFAULT_AGENT,
-            to_agent: args.to,
             message: args.message
         };
+        if (args.discussion_id) {
+            body.discussion_id = args.discussion_id;
+        } else {
+            body.to_agents = [args.to];
+        }
         if (args.channel) {
             body.channel = args.channel;
         }
         const data = await apiCall('/chat/send', body);
 
-        if (data.broadcast) {
-            const targets = data.to_agents.map(r => r.to_agent).join(', ');
-            return { content: [{ type: 'text', text: `Broadcast sent to: ${targets}` }] };
-        }
-
-        return { content: [{ type: 'text', text: `Message sent to ${data.to_agent} (id: ${data.id})` }] };
+        const targets = data.to_agents.map(r => r.agent).join(', ');
+        return { content: [{ type: 'text', text: `Message sent to ${targets}` }] };
     }
 
     if (name === 'chat_receive') {
@@ -777,7 +797,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     throw new Error(`Unknown tool: ${name}`);
-});
+}
+
+// Check for unread system messages. Returns formatted text or null.
+// Does NOT auto-ack — notices repeat on every tool call until the LLM
+// explicitly calls chat_ack, ensuring important notices aren't lost.
+async function checkSystemNotices() {
+    try {
+        const data = await apiCall('/chat/receive', {
+            agent: DEFAULT_AGENT,
+            from_agent: 'system'
+        });
+        if (data.messages.length === 0) {
+            return null;
+        }
+        const ids = data.messages.map(m => m.id);
+        const lines = data.messages.map(m => m.message);
+        return `${lines.join('\n')}\n(system message_ids: [${ids.join(', ')}] — call chat_ack to dismiss)`;
+    } catch (err) {
+        return null;
+    }
+}
 
 async function sendHeartbeat() {
     try {

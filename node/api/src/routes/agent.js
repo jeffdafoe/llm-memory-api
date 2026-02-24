@@ -22,6 +22,10 @@ function logAgent(action, details) {
     log('agent', action, details);
 }
 
+// Dummy salt for timing-safe rejections — ensures agent-not-found paths
+// take the same time as invalid-credential paths (prevents enumeration)
+const DUMMY_SALT = crypto.randomBytes(32).toString('hex');
+
 function hashToken(plaintext, salt) {
     return crypto.pbkdf2Sync(plaintext, salt, 100000, 64, 'sha512').toString('hex');
 }
@@ -136,13 +140,14 @@ router.post('/agent/register/ack', async (req, res) => {
             [agent]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+        const row = result.rows[0];
+        const hash = hashToken(token, row ? row.token_salt : DUMMY_SALT);
+
+        if (!row) {
+            return res.status(403).json({
+                error: { code: 'INVALID_TOKEN', message: 'Invalid agent or token' }
             });
         }
-
-        const row = result.rows[0];
 
         if (row.status === 'active') {
             return res.status(409).json({
@@ -150,10 +155,9 @@ router.post('/agent/register/ack', async (req, res) => {
             });
         }
 
-        const hash = hashToken(token, row.token_salt);
         if (hash !== row.token_hash) {
             return res.status(403).json({
-                error: { code: 'INVALID_TOKEN', message: 'Token does not match' }
+                error: { code: 'INVALID_TOKEN', message: 'Invalid agent or token' }
             });
         }
 
@@ -196,25 +200,13 @@ router.post('/agent/login', async (req, res) => {
             [agent]
         );
 
-        if (agentResult.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
-
         const row = agentResult.rows[0];
+        const hash = hashToken(passphrase, row ? row.token_salt : DUMMY_SALT);
 
-        if (row.status !== 'active') {
-            return res.status(403).json({
-                error: { code: 'NOT_ACTIVE', message: 'Agent is not active. Complete registration first.' }
-            });
-        }
-
-        const hash = hashToken(passphrase, row.token_salt);
-        if (hash !== row.token_hash) {
+        if (!row || row.status !== 'active' || hash !== row.token_hash) {
             logAgent('login-failed', { agent });
             return res.status(403).json({
-                error: { code: 'INVALID_PASSPHRASE', message: 'Passphrase does not match' }
+                error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
             });
         }
 
@@ -307,17 +299,28 @@ router.post('/agent/logout', async (req, res) => {
 });
 
 // POST /agent/rotate — generate new passphrase, invalidate all sessions.
-// Auth: session token (via middleware) + shared key in body.
-// Both are required — session proves identity, shared key proves authorization.
+// Auth: session token (via middleware) + current passphrase in body.
+// Both are required — session proves identity, passphrase confirms intent.
 router.post('/agent/rotate', async (req, res) => {
     try {
         const agent = req.authenticatedAgent;
-        const { shared_key } = req.body;
+        const { current_passphrase } = req.body;
 
-        // Require shared key as additional authorization
-        if (!shared_key || shared_key !== process.env.MEMORY_API_KEY) {
+        if (!current_passphrase) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required field: current_passphrase' }
+            });
+        }
+
+        // Verify current passphrase before allowing rotation
+        const agentRow = await pool.query(
+            'SELECT token_hash, token_salt FROM agents WHERE agent = $1',
+            [agent]
+        );
+        const currentHash = hashToken(current_passphrase, agentRow.rows[0].token_salt);
+        if (currentHash !== agentRow.rows[0].token_hash) {
             return res.status(403).json({
-                error: { code: 'FORBIDDEN', message: 'Valid shared_key required for passphrase rotation' }
+                error: { code: 'INVALID_PASSPHRASE', message: 'Current passphrase does not match' }
             });
         }
 
