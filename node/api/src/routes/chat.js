@@ -22,11 +22,17 @@ function logChat(action, details) {
 
 router.post('/chat/send', async (req, res) => {
     try {
-        const { from_agent, to_agent, message, channel } = req.body;
+        const { from_agent, to_agents, discussion_id, message, channel } = req.body;
 
-        if (!from_agent || !to_agent || !message) {
+        if (!from_agent || !message) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required fields: from_agent, to_agent, message' }
+                error: { code: 'BAD_REQUEST', message: 'Required fields: from_agent, message' }
+            });
+        }
+
+        if (!to_agents && !discussion_id) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required: to_agents (array) or discussion_id' }
             });
         }
 
@@ -37,58 +43,81 @@ router.post('/chat/send', async (req, res) => {
             });
         }
 
-        if (to_agent === '*') {
+        // Resolve recipients — union of to_agents and discussion participants
+        const discussionParticipants = new Set();
+        const recipientSet = new Set();
+
+        if (discussion_id) {
+            const participants = await pool.query(
+                'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND status = $2 AND agent != $3',
+                [discussion_id, 'joined', from_agent]
+            );
+            for (const row of participants.rows) {
+                discussionParticipants.add(row.agent);
+                recipientSet.add(row.agent);
+            }
+        }
+
+        if (to_agents && to_agents.length === 1 && to_agents[0] === '*') {
             const known = await pool.query(
                 'SELECT agent FROM agents WHERE agent != $1',
                 [from_agent]
             );
-
-            const recipients = known.rows.map(r => r.agent);
-
-            if (recipients.length === 0) {
+            for (const row of known.rows) {
+                recipientSet.add(row.agent);
+            }
+        } else if (to_agents) {
+            if (!Array.isArray(to_agents) || to_agents.length === 0) {
                 return res.status(400).json({
-                    error: { code: 'NO_RECIPIENTS', message: 'No registered agents to broadcast to' }
+                    error: { code: 'BAD_REQUEST', message: 'to_agents must be a non-empty array' }
                 });
             }
-
-            const ids = [];
-            for (const recipient of recipients) {
-                const result = await pool.query(
-                    'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-                    [from_agent, recipient, message, ch.value]
-                );
-                ids.push({ id: result.rows[0].id, to_agent: recipient, sent_at: result.rows[0].sent_at });
+            for (const agent of to_agents) {
+                recipientSet.add(agent);
             }
+        }
 
-            logChat('send_broadcast', { from_agent, to_agents: ids.map(i => i.to_agent), message_ids: ids.map(i => i.id), channel: ch.value });
+        // Remove sender from recipients (in case discussion includes them)
+        recipientSet.delete(from_agent);
 
-            return res.json({
-                broadcast: true,
-                from_agent,
-                to_agents: ids,
-                sent_at: ids[0] ? ids[0].sent_at : null
+        const recipients = Array.from(recipientSet);
+        if (recipients.length === 0) {
+            return res.status(400).json({
+                error: { code: 'NO_RECIPIENTS', message: 'No recipients resolved' }
             });
         }
 
-        const exists = await pool.query('SELECT 1 FROM agents WHERE agent = $1', [to_agent]);
-        if (exists.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: `Agent "${to_agent}" is not registered` }
-            });
+        // Validate all recipients exist
+        for (const agent of recipients) {
+            const exists = await pool.query('SELECT 1 FROM agents WHERE agent = $1', [agent]);
+            if (exists.rows.length === 0) {
+                return res.status(404).json({
+                    error: { code: 'NOT_FOUND', message: `Agent "${agent}" is not registered` }
+                });
+            }
         }
 
-        const result = await pool.query(
-            'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-            [from_agent, to_agent, message, ch.value]
-        );
+        // Insert a message for each recipient
+        // If discussion_id is set, prefix forwarded messages for non-participants
+        const results = [];
+        for (const recipient of recipients) {
+            let msgText = message;
+            if (discussion_id && !discussionParticipants.has(recipient)) {
+                msgText = `[Forwarded from discussion #${discussion_id}] ${message}`;
+            }
+            const result = await pool.query(
+                'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+                [from_agent, recipient, msgText, ch.value]
+            );
+            results.push({ id: result.rows[0].id, agent: recipient, sent_at: result.rows[0].sent_at });
+        }
 
-        logChat('send', { from_agent, to_agent, message_id: result.rows[0].id, channel: ch.value });
+        logChat('send', { from_agent, to_agents: recipients, message_ids: results.map(r => r.id), channel: ch.value, discussion_id: discussion_id || null });
 
         res.json({
-            id: result.rows[0].id,
             from_agent,
-            to_agent,
-            sent_at: result.rows[0].sent_at
+            to_agents: results,
+            sent_at: results[0] ? results[0].sent_at : null
         });
     } catch (err) {
         console.error('Chat send error:', err.message);
@@ -100,7 +129,7 @@ router.post('/chat/send', async (req, res) => {
 
 router.post('/chat/receive', async (req, res) => {
     try {
-        const { agent, channel, after_id } = req.body;
+        const { agent, channel, after_id, from_agent } = req.body;
 
         if (!agent) {
             return res.status(400).json({
@@ -121,7 +150,13 @@ router.post('/chat/receive', async (req, res) => {
             });
         }
 
-        // Build query dynamically — optional channel and after_id filters
+        if (from_agent !== undefined && (typeof from_agent !== 'string' || from_agent.length === 0)) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'from_agent must be a non-empty string' }
+            });
+        }
+
+        // Build query dynamically — optional channel, after_id, and from_agent filters
         let query = 'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL';
         const params = [agent];
 
@@ -130,6 +165,11 @@ router.post('/chat/receive', async (req, res) => {
         } else {
             params.push(ch.value);
             query += ` AND channel = $${params.length}`;
+        }
+
+        if (from_agent) {
+            params.push(from_agent);
+            query += ` AND from_agent = $${params.length}`;
         }
 
         if (after_id !== undefined) {

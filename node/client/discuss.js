@@ -54,6 +54,7 @@ const cfg = {
     passphrase: config.passphrase,
     agent: config.agent,
     other: config.other || null,
+    optionalParticipants: config.optionalParticipants || [],
     workDir: config.workDir,
     channel: config.channel || 'discussion',
     mode: config.mode || 'realtime',
@@ -89,7 +90,6 @@ const OUTBOX_DIR = path.join(cfg.workDir, 'outbox');
 const LOG_FILE = path.join(cfg.workDir, 'conversation.log');
 const STATUS_FILE = path.join(cfg.workDir, 'status');
 const DONE_FILE = path.join(cfg.workDir, 'done');
-const HEARTBEAT_FILE = path.join(cfg.workDir, 'heartbeat');
 const TRANSCRIPT_FILE = path.join(cfg.workDir, 'transcript.md');
 const LAST_DELIVERED_FILE = path.join(cfg.workDir, 'last-delivered-id');
 const IDLE_TIMEOUT_FILE = path.join(cfg.workDir, 'idle-timeout');
@@ -105,6 +105,12 @@ const READY_FILE = path.join(cfg.workDir, 'ready');
 let turnCount = 0;
 const startTime = Date.now();
 const seenIds = new Set();
+
+// Subagent death detection
+let lastOutboxTime = Date.now();
+let lastInboxDeliveryTime = 0;
+let subagentDeathReported = false;
+const SUBAGENT_DEAD_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -238,7 +244,7 @@ async function sendMessage(message) {
     try {
         await apiCall('chat/send', {
             from_agent: cfg.agent,
-            to_agent: cfg.other,
+            discussion_id: discussionId,
             message: message,
             channel: cfg.channel,
         });
@@ -265,7 +271,8 @@ function processReceivedMessages(messages) {
         seenIds.add(msg.id);
         newIds.push(msg.id);
 
-        fs.writeFileSync(path.join(INBOX_DIR, `${msg.id}.txt`), msg.message);
+        const inboxContent = `From: ${msg.from_agent}\n\n${msg.message}`;
+        fs.writeFileSync(path.join(INBOX_DIR, `${msg.id}.txt`), inboxContent);
         appendTranscript(msg.from_agent, msg.message);
         log(`RECEIVED: id=${msg.id} from=${msg.from_agent}`);
     }
@@ -433,7 +440,7 @@ function startProxyServer() {
                         // Return transport status
                         result = {
                             agent: cfg.agent,
-                            other: cfg.other,
+                            otherAgents: cfg.otherAgents || [cfg.other].filter(Boolean),
                             discussionId: discussionId,
                             turnCount: turnCount,
                             elapsedMinutes: Math.round((Date.now() - startTime) / 60000),
@@ -475,20 +482,45 @@ async function setupCreate() {
         context = fs.readFileSync(cfg.contextFile, 'utf-8');
     }
 
-    // Create discussion via API
-    const result = await apiCall('discussion/create', {
-        topic: cfg.topic,
-        participants: [cfg.agent, cfg.other],
-        created_by: cfg.agent,
-        mode: cfg.mode,
-        context: context || undefined,
-    });
+    // Build participant lists
+    const requiredParticipants = [cfg.agent];
+    if (cfg.other) {
+        requiredParticipants.push(cfg.other);
+    }
+    const optionalParticipants = Array.isArray(cfg.optionalParticipants) ? cfg.optionalParticipants : [];
+
+    // Create discussion via API — if the server returns 409 (agent already
+    // in an active discussion), extract the existing ID and join that instead
+    let result;
+    try {
+        result = await apiCall('discussion/create', {
+            topic: cfg.topic,
+            participants: requiredParticipants,
+            optional_participants: optionalParticipants.length > 0 ? optionalParticipants : undefined,
+            created_by: cfg.agent,
+            mode: cfg.mode,
+            context: context || undefined,
+        });
+    } catch (err) {
+        if (err.message && err.message.includes('DISCUSSION_CONFLICT')) {
+            const idMatch = err.message.match(/discussion #(\d+)/);
+            if (idMatch) {
+                discussionId = parseInt(idMatch[1]);
+                log(`Create rejected — already in discussion #${discussionId}, joining instead`);
+                return setupJoin();
+            }
+        }
+        throw err;
+    }
 
     discussionId = result.discussion.id;
     cfg.channel = `discuss-${discussionId}`;
 
-    log(`Created discussion #${discussionId}: ${cfg.topic}`);
-    log(`Channel: ${cfg.channel}`);
+    // Build otherAgents from required + optional, excluding self
+    cfg.otherAgents = [...requiredParticipants, ...optionalParticipants].filter(a => a !== cfg.agent);
+
+    log(`Created discussion #${discussionId}: ${cfg.topic} (status: ${result.discussion.status})`);
+    log(`Channel: ${cfg.channel}, timeout_at: ${result.discussion.timeout_at}`);
 
     return discussionId;
 }
@@ -509,23 +541,66 @@ async function setupJoin() {
     cfg.context = discussion.context || '';
     cfg.mode = discussion.mode || 'realtime';
 
-    // Find the other participant
+    // Find other participants
     const participants = result.participants || [];
-    const otherParticipant = participants.find(p => p.agent !== cfg.agent);
-    if (otherParticipant) {
-        cfg.other = otherParticipant.agent;
+    const others = participants.filter(p => p.agent !== cfg.agent);
+    cfg.otherAgents = others.map(p => p.agent);
+    if (others.length === 1) {
+        cfg.other = others[0].agent;
     }
 
     // Join the discussion
-    await apiCall('discussion/join', {
+    const joinResult = await apiCall('discussion/join', {
         discussion_id: discussionId,
         agent: cfg.agent,
     });
 
-    log(`Joined discussion #${discussionId}: ${cfg.topic}`);
-    log(`Channel: ${cfg.channel}, Other: ${cfg.other}`);
+    log(`Joined discussion #${discussionId}: ${cfg.topic} (status: ${joinResult.discussion_status})`);
+    log(`Channel: ${cfg.channel}, Other: ${cfg.other || '(multiple)'}`);
 
     return discussionId;
+}
+
+// ---------------------------------------------------------------------------
+// Readiness: wait for discussion to transition from waiting to active
+// ---------------------------------------------------------------------------
+
+async function waitForReady() {
+    // Check current status first
+    const initial = await apiCall('discussion/status', { discussion_id: discussionId });
+    if (initial.discussion.status === 'active') {
+        log('Discussion is already active');
+        return;
+    }
+
+    if (initial.discussion.status !== 'waiting') {
+        throw new Error('Discussion is ' + initial.discussion.status + ' — cannot start transport');
+    }
+
+    log('Discussion is waiting for participants...');
+    writeStatus('WAITING');
+
+    while (true) {
+        await sleep(cfg.pollInterval);
+
+        const result = await apiCall('discussion/status', { discussion_id: discussionId });
+        const status = result.discussion.status;
+
+        if (status === 'active') {
+            log('Discussion is now active — all participants ready');
+            return;
+        }
+
+        if (status === 'timed_out') {
+            throw new Error('Discussion timed out waiting for required participants');
+        }
+
+        if (status === 'concluded') {
+            throw new Error('Discussion was concluded before it started');
+        }
+
+        // Still waiting
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -541,8 +616,23 @@ function generatePrompt(proxyPort) {
         return null;
     }
 
+    // Build human-readable participant list for the prompt
+    let otherAgentsStr;
+    if (cfg.otherAgents && cfg.otherAgents.length > 0) {
+        if (cfg.otherAgents.length === 1) {
+            otherAgentsStr = `the "${cfg.otherAgents[0]}" agent`;
+        } else {
+            const quoted = cfg.otherAgents.map(a => `"${a}"`);
+            otherAgentsStr = `agents ${quoted.join(', ')}`;
+        }
+    } else if (cfg.other) {
+        otherAgentsStr = `the "${cfg.other}" agent`;
+    } else {
+        otherAgentsStr = 'other agents';
+    }
+
     const replacements = {
-        '[OTHER_AGENT]': cfg.other,
+        '[OTHER_AGENTS]': otherAgentsStr,
         '[TOPIC]': cfg.topic,
         '[WORK_DIR]': cfg.workDir,
         '[DISCUSSION_ID]': String(discussionId),
@@ -552,7 +642,7 @@ function generatePrompt(proxyPort) {
         '[CONTEXT]': cfg.context || '(none)',
         '[INITIATOR_LINE]': cfg.initiator
             ? 'You are the INITIATOR. Send the first message to start the discussion.'
-            : 'You are JOINING. Wait for the first message from the other side.',
+            : 'You are JOINING. Wait for the first message from another participant.',
     };
 
     let prompt = template;
@@ -571,7 +661,10 @@ function generatePrompt(proxyPort) {
 // ---------------------------------------------------------------------------
 
 async function runTransport() {
-    log(`Discussion transport starting: ${cfg.agent} <-> ${cfg.other}`);
+    const othersLabel = (cfg.otherAgents && cfg.otherAgents.length > 0)
+        ? cfg.otherAgents.join(', ')
+        : (cfg.other || 'unknown');
+    log(`Discussion transport starting: ${cfg.agent} <-> ${othersLabel}`);
     log(`Work dir: ${cfg.workDir}`);
     writeStatus('POLLING');
 
@@ -608,6 +701,8 @@ async function runTransport() {
         // 4. Check outbox
         const outMsg = checkOutbox();
         if (outMsg) {
+            lastOutboxTime = Date.now();
+            subagentDeathReported = false;
             await sendMessage(outMsg);
             await sleep(cfg.sendDelay);
         }
@@ -636,20 +731,42 @@ async function runTransport() {
                 fs.writeFileSync(LAST_DELIVERED_FILE, String(maxId));
             }
 
+            lastInboxDeliveryTime = Date.now();
             writeStatus('MESSAGE_RECEIVED');
 
             // Signal other side is active
             if (!fs.existsSync(READY_FILE)) {
                 fs.writeFileSync(READY_FILE, '');
-                log('Other side is active — ready file written');
+                log('Received first message — ready file written');
             }
         } else {
             await sleep(cfg.pollInterval);
         }
 
-        // Heartbeat
-        fs.writeFileSync(HEARTBEAT_FILE, String(Date.now()));
+        // Check for dead subagent: inbox has unprocessed messages but no
+        // outbox activity for SUBAGENT_DEAD_THRESHOLD_MS. Report once.
+        if (!subagentDeathReported
+            && lastInboxDeliveryTime > 0
+            && lastInboxDeliveryTime > lastOutboxTime
+            && (Date.now() - lastInboxDeliveryTime) > SUBAGENT_DEAD_THRESHOLD_MS) {
+            subagentDeathReported = true;
+            log('Subagent appears dead — no outbox activity after inbox delivery');
+            reportSubagentDead().catch(err => {
+                log(`Failed to report subagent death: ${err.message}`);
+            });
+        }
+
     }
+}
+
+// Report subagent death to the error reporting endpoint
+async function reportSubagentDead() {
+    const result = await apiCall('system/error/report', {
+        source: 'discuss-transport',
+        error_code: 'SUBAGENT_DEAD',
+        context: { discussion_id: discussionId },
+    });
+    log(`Subagent death reported (id: ${result.id}, status: ${result.status})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -666,8 +783,11 @@ function ensureDirectories() {
 }
 
 function initTranscript() {
+    const othersLabel = (cfg.otherAgents && cfg.otherAgents.length > 0)
+        ? cfg.otherAgents.join(', ')
+        : (cfg.other || 'unknown');
     const header = [
-        `# Discussion: ${cfg.agent} <-> ${cfg.other}`,
+        `# Discussion: ${cfg.agent} <-> ${othersLabel}`,
         '',
         `Started: ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`,
         '',
@@ -688,8 +808,8 @@ async function main() {
 
         // Setup phase based on command
         if (command === 'create') {
-            if (!cfg.other) {
-                console.error('create mode requires "other" in config');
+            if (!cfg.other && (!cfg.optionalParticipants || cfg.optionalParticipants.length === 0)) {
+                console.error('create mode requires "other" or "optionalParticipants" in config');
                 process.exit(1);
             }
             if (!cfg.topic) {
@@ -703,15 +823,15 @@ async function main() {
             await setupJoin();
         } else {
             // transport mode — everything should already be set up
-            if (!cfg.other) {
-                console.error('transport mode requires "other" in config');
-                process.exit(1);
-            }
         }
 
         ensureDirectories();
-        initTranscript();
         writeStatus('STARTING');
+
+        // Wait for all participants to join before proceeding
+        await waitForReady();
+
+        initTranscript();
 
         // Load seen IDs from file if resuming
         if (fs.existsSync(SEEN_IDS_FILE)) {
@@ -728,8 +848,11 @@ async function main() {
         generatePrompt(port);
 
         // Log summary
+        const summaryOthers = (cfg.otherAgents && cfg.otherAgents.length > 0)
+            ? cfg.otherAgents.join(', ')
+            : (cfg.other || '(none)');
         log(`Discussion #${discussionId} ready`);
-        log(`Mode: ${command}, Agent: ${cfg.agent}, Other: ${cfg.other}`);
+        log(`Mode: ${command}, Agent: ${cfg.agent}, Others: ${summaryOthers}`);
         log(`Proxy: 127.0.0.1:${port}`);
         log(`Prompt: ${PROMPT_FILE}`);
 

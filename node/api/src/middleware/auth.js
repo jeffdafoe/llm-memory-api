@@ -10,11 +10,12 @@ function hashToken(plaintext, salt) {
 const sessionCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Login is unauthenticated — the passphrase in the body is the credential
-const UNAUTHENTICATED_ROUTES = ['/agent/login'];
-
-// Registration routes use the shared key instead of a session token
-const SHARED_KEY_ROUTES = ['/agent/register', '/agent/register/ack'];
+// Routes that don't require authentication
+const UNAUTHENTICATED_ROUTES = [
+    '/agent/register',
+    '/agent/register/ack',
+    '/agent/login',
+];
 
 async function auth(req, res, next) {
     const route = req.path;
@@ -32,17 +33,6 @@ async function auth(req, res, next) {
     }
 
     const token = header.replace('Bearer ', '');
-
-    // Registration routes require the shared registration key
-    if (SHARED_KEY_ROUTES.includes(route)) {
-        if (token === process.env.MEMORY_API_KEY) {
-            req.authMethod = 'shared_key';
-            return next();
-        }
-        return res.status(403).json({
-            error: { code: 'FORBIDDEN', message: 'Invalid registration key' }
-        });
-    }
 
     // Everything else requires a valid session token
     const cached = sessionCache.get(token);

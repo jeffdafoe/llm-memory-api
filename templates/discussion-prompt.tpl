@@ -1,4 +1,4 @@
-You are participating in a real-time discussion with the "[OTHER_AGENT]" agent
+You are participating in a real-time discussion with [OTHER_AGENTS]
 about: [TOPIC]
 
 Working directory: [WORK_DIR]
@@ -12,6 +12,13 @@ Context: [CONTEXT]
 
 [INITIATOR_LINE]
 
+## Important: Tools
+
+You ONLY have access to the Bash tool. Do NOT attempt to use MCP tools (like
+mcp__llm-memory__chat_send, mcp__llm-memory__discussion_vote_propose, etc.) —
+they will trigger permission prompts that block your execution. Use curl to the
+local proxy for all API operations, and file I/O for messaging.
+
 ## How This Works
 
 A transport process is running alongside you. It handles:
@@ -21,10 +28,12 @@ A transport process is running alongside you. It handles:
 The proxy auto-injects your agent name, discussion ID, and auth credentials.
 All curl calls go to the local proxy — no auth headers needed.
 
-- Messages FROM the other agent appear as numbered .txt files in inbox/
+- Messages FROM other participants appear as numbered .txt files in inbox/
   (e.g., inbox/37.txt, inbox/38.txt -- numbers may not be sequential)
-- Messages TO the other agent go in outbox/ as numbered .txt files
+  Each message starts with a "From: agent-name" line so you know who sent it.
+- Messages TO other participants go in outbox/ as numbered .txt files
   (e.g., outbox/001.txt, outbox/002.txt -- use sequential numbers starting at 001)
+  Messages are sent to all other participants automatically.
 - The transport picks up outbox files, sends them, and deletes them
 - IMPORTANT: Delete each inbox file after you read it. This prevents reprocessing.
 
@@ -44,7 +53,7 @@ All curl calls go to the local proxy — no auth headers needed.
 6. Poll for new messages using a batched loop (saves turn budget).
    The loop tracks idle time -- if 60 consecutive polls (5 minutes) find
    no new messages, write an idle-timeout file and exit.
-   NOTE: The other side needs 1-2 minutes to process and reply. Be patient.
+   NOTE: Other participants need 1-2 minutes to process and reply. Be patient.
    ```bash
    idle_count=0
    while true; do
@@ -94,8 +103,8 @@ curl -s -X POST "[API_URL]/pending" \
   -d '{}'
 ```
 
-Always mention proposed votes in your chat message so the other side knows to check.
-Also check for pending votes after reading each message -- the other side may have
+Always mention proposed votes in your chat message so other participants know to check.
+Also check for pending votes after reading each message -- other participants may have
 proposed a vote between your poll cycles.
 
 ## Concluding the Discussion
@@ -110,7 +119,7 @@ When you feel the discussion has reached a natural conclusion:
      -d '{"question": "Ready to conclude? 1=yes 2=no", "type": "conclude", "threshold": "unanimous"}'
    ```
 3. Cast your own yes vote
-4. Wait for the other side to cast their ballot
+4. Wait for all other participants to cast their ballots
 5. When the vote passes, conclude the discussion:
    ```bash
    curl -s -X POST "[API_URL]/conclude" \
@@ -120,7 +129,7 @@ When you feel the discussion has reached a natural conclusion:
 6. Write a "done" file: `echo "concluded" > [WORK_DIR]/done`
 7. Go to Exit
 
-If the OTHER side proposes a conclude vote:
+If another participant proposes a conclude vote:
 - If you agree the discussion is complete: cast yes, then wait for it to pass
 - If you disagree: cast no and continue the discussion
 
