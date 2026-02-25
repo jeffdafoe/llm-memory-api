@@ -25,11 +25,21 @@ Examples:
 
 Call the `discussion_pending` MCP tool (no args needed — it defaults to your configured agent). The response context tells you your agent name. You'll need this so you don't list yourself as a participant.
 
-## Step 2: Find discuss.js
+## Step 2: Research the topic
+
+Before launching the discussion, gather relevant context so the subagent is well-informed:
+
+1. Search vector memory for the topic (`search` MCP tool with `namespace: "*"`). Review the results — keep chunks that are relevant, discard noise.
+2. Check for related task files in `shared/tasks/` and `work/tasks/` if applicable.
+3. If the current conversation has relevant context (decisions made, files discussed, etc.), summarize the key points.
+
+Write a context file to `C:/temp/llm/discuss-context.md` combining the curated results. Include source file paths so the subagent can read full files if needed. Pass this to discuss.js via `--context-file C:/temp/llm/discuss-context.md`.
+
+## Step 3: Find discuss.js
 
 The transport script is at `node/client/discuss.js` relative to the llm-memory-api repo root. Find the repo by locating `.mcp.json` in your project root — it contains the path to the MCP server script under `mcpServers.llm-memory.args[0]`. The repo root is two directories up from that script path (`node/mcp/server.js` -> repo root).
 
-## Step 3: Run discuss.js
+## Step 4: Run discuss.js
 
 discuss.js reads credentials (API URL, agent name, passphrase) from `.mcp.json` automatically. It searches up from the current working directory to find it. Run it from your project root.
 
@@ -53,13 +63,13 @@ Optional flags:
 - `--optional <agent>` (repeatable, for optional participants who may join later)
 - `--context "background info"` or `--context-file <path>`
 - `--mode realtime|async` (default: realtime)
-- `--max-turns <n>` (default: 200)
+- `--max-messages <n>` (default: 200)
 - `--timeout <minutes>` (default: 120)
 - `--mcp-config <path>` (override .mcp.json auto-discovery)
 
 **IMPORTANT:** Run the command in the background (with `&`) so it doesn't block your session.
 
-## Step 4: Wait for transport readiness
+## Step 5: Wait for transport readiness
 
 After starting discuss.js, wait for the `prompt.txt` file to appear in the work directory. The work directory is auto-generated at `<os-temp>/llm/discuss-<id>/`. Check stderr output from the backgrounded process — it will log the exact paths:
 
@@ -69,7 +79,7 @@ After starting discuss.js, wait for the `prompt.txt` file to appear in the work 
 
 Poll until the prompt file exists (it may take a few seconds while the transport logs in, creates/joins the discussion, and waits for participants).
 
-## Step 5: Launch the subagent
+## Step 6: Launch the subagent
 
 Read the generated `prompt.txt` and launch a background Task agent with its contents:
 
@@ -77,6 +87,7 @@ Read the generated `prompt.txt` and launch a background Task agent with its cont
 Use the Task tool with:
 - subagent_type: "general-purpose"
 - run_in_background: true
+- max_turns: 100
 - prompt: <contents of prompt.txt>
 ```
 

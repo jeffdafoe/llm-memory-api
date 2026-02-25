@@ -650,9 +650,9 @@ router.post('/discussion/vote/propose', async (req, res) => {
             'SELECT status FROM discussions WHERE id = $1',
             [discussion_id]
         );
-        if (discussion.rows[0].status !== 'active') {
+        if (!['active', 'waiting'].includes(discussion.rows[0].status)) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Discussion is not active' }
+                error: { code: 'BAD_REQUEST', message: 'Discussion is not active or waiting' }
             });
         }
 
