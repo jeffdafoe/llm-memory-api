@@ -228,8 +228,12 @@ router.post('/discussion/create', async (req, res) => {
             // Enforce 10k char limit on context
             const contextText = context ? String(context).slice(0, 10000) : null;
 
-            // Compute timeout_at from config
-            const timeoutMinutes = parseInt(await getConfig('discussion_wait_timeout', '5'));
+            // Compute timeout_at from config (mode-specific)
+            const timeoutKey = discussionMode === 'async'
+                ? 'discussion_wait_timeout_async'
+                : 'discussion_wait_timeout_realtime';
+            const timeoutDefault = discussionMode === 'async' ? '1440' : '5';
+            const timeoutMinutes = parseInt(await getConfig(timeoutKey, timeoutDefault));
             const timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
 
             const result = await client.query(
@@ -419,7 +423,7 @@ router.post('/discussion/status', async (req, res) => {
 
 router.post('/discussion/pending', async (req, res) => {
     try {
-        const { agent } = req.body;
+        const { agent, discussion_id } = req.body;
 
         if (!agent) {
             return res.status(400).json({
@@ -437,6 +441,15 @@ router.post('/discussion/pending', async (req, res) => {
         // Realtime discussion votes are discovered in-band through chat messages,
         // not through pending. Hiding them here prevents agents from voting
         // directly on realtime topics instead of launching the discussion protocol.
+        // When discussion_id is provided (transport polling its own discussion),
+        // include that discussion's votes regardless of mode.
+        const voteParams = [agent, 'joined', 'open'];
+        let modeFilter = `AND d.mode = 'async'`;
+        if (discussion_id) {
+            modeFilter = `AND (d.mode = 'async' OR d.id = $4)`;
+            voteParams.push(discussion_id);
+        }
+
         const openVotes = await pool.query(
             `SELECT v.*, d.topic as discussion_topic, d.mode as discussion_mode
              FROM discussion_votes v
@@ -446,12 +459,12 @@ router.post('/discussion/pending', async (req, res) => {
              AND dp.status = $2
              AND v.status = $3
              AND d.status = 'active'
-             AND d.mode = 'async'
+             ${modeFilter}
              AND NOT EXISTS (
                  SELECT 1 FROM discussion_ballots b WHERE b.vote_id = v.id AND b.agent = $1
              )
              ORDER BY v.created_at DESC`,
-            [agent, 'joined', 'open']
+            voteParams
         );
 
         logDiscussion('pending', { agent, invited: invited.rows.length, open_votes: openVotes.rows.length });

@@ -5,98 +5,159 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const os = require('os');
 
 // ---------------------------------------------------------------------------
 // Argument parsing
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
-const command = args[0]; // create | join | transport
+const command = args[0]; // create | join
 
-if (!command || !['create', 'join', 'transport'].includes(command)) {
-    console.error('Usage: node discuss.js <create|join|transport> --config <json-file> [--discussion-id <id>]');
+if (!command || !['create', 'join'].includes(command)) {
+    console.error('Usage: node discuss.js create --topic "..." --other <agent> [--optional <agent2>]');
+    console.error('       node discuss.js join [discussion-id]');
     process.exit(1);
 }
 
-let configPath = null;
 let discussionId = null;
+let topic = null;
+const others = [];
+const optionalParticipants = [];
+let cliContext = null;
+let contextFile = null;
+let mode = 'realtime';
+let mcpConfigPath = null;
+let maxTurns = 200;
+let timeoutMinutes = 120;
 
 for (let i = 1; i < args.length; i++) {
-    if (args[i] === '--config' && args[i + 1]) {
-        configPath = args[i + 1];
+    if (args[i] === '--topic' && args[i + 1]) {
+        topic = args[i + 1];
         i++;
-    }
-    if (args[i] === '--discussion-id' && args[i + 1]) {
-        discussionId = parseInt(args[i + 1], 10);
+    } else if (args[i] === '--other' && args[i + 1]) {
+        others.push(args[i + 1]);
         i++;
-    }
-    // join <id> shorthand
-    if (command === 'join' && !discussionId && /^\d+$/.test(args[i])) {
+    } else if (args[i] === '--optional' && args[i + 1]) {
+        optionalParticipants.push(args[i + 1]);
+        i++;
+    } else if (args[i] === '--context' && args[i + 1]) {
+        cliContext = args[i + 1];
+        i++;
+    } else if (args[i] === '--context-file' && args[i + 1]) {
+        contextFile = args[i + 1];
+        i++;
+    } else if (args[i] === '--mode' && args[i + 1]) {
+        mode = args[i + 1];
+        i++;
+    } else if (args[i] === '--mcp-config' && args[i + 1]) {
+        mcpConfigPath = args[i + 1];
+        i++;
+    } else if (args[i] === '--max-turns' && args[i + 1]) {
+        maxTurns = parseInt(args[i + 1], 10);
+        i++;
+    } else if (args[i] === '--timeout' && args[i + 1]) {
+        timeoutMinutes = parseInt(args[i + 1], 10);
+        i++;
+    } else if (command === 'join' && !discussionId && /^\d+$/.test(args[i])) {
         discussionId = parseInt(args[i], 10);
     }
 }
 
-if (!configPath) {
-    console.error('Missing --config <json-file>');
+// ---------------------------------------------------------------------------
+// .mcp.json discovery
+// ---------------------------------------------------------------------------
+
+function findMcpConfig() {
+    if (mcpConfigPath) {
+        return mcpConfigPath;
+    }
+    let dir = process.cwd();
+    while (true) {
+        const candidate = path.join(dir, '.mcp.json');
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return null;
+}
+
+const mcpPath = findMcpConfig();
+if (!mcpPath) {
+    console.error('Could not find .mcp.json — run from a project directory or use --mcp-config <path>');
     process.exit(1);
 }
 
-if (command === 'join' && !discussionId) {
-    console.error('join mode requires a discussion ID: node discuss.js join <id> --config <file>');
+const mcpConfig = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+const memoryServer = mcpConfig.mcpServers && mcpConfig.mcpServers['llm-memory'];
+if (!memoryServer || !memoryServer.env) {
+    console.error('.mcp.json does not contain an llm-memory server configuration');
     process.exit(1);
 }
 
-const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+const mcpEnv = memoryServer.env;
 
-// Merge defaults
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
 const cfg = {
-    apiUrl: config.apiUrl,
-    passphrase: config.passphrase,
-    agent: config.agent,
-    other: config.other || null,
-    optionalParticipants: config.optionalParticipants || [],
-    workDir: config.workDir,
-    channel: config.channel || 'discussion',
-    mode: config.mode || 'realtime',
-    topic: config.topic || '',
-    context: config.context || '',
-    contextFile: config.contextFile || null,
-    initiator: config.initiator || false,
-    maxTurns: config.maxTurns || 20,
-    timeoutMinutes: config.timeoutMinutes || 120,
-    templatePath: config.templatePath || path.join(__dirname, '..', '..', 'templates', 'discussion-prompt.tpl'),
-    pollInterval: config.pollInterval || 5000,
-    sendDelay: config.sendDelay || 3000,
-    proxyPort: config.proxyPort || 0, // 0 = random available port
+    apiUrl: mcpEnv.MEMORY_API_URL,
+    passphrase: mcpEnv.MEMORY_AGENT_PASSPHRASE,
+    agent: mcpEnv.MEMORY_DEFAULT_AGENT,
+    others: others,
+    optionalParticipants: optionalParticipants,
+    otherAgents: [...others, ...optionalParticipants],
+    workDir: null, // set after discussion ID is known
+    channel: 'discussion',
+    mode: mode,
+    topic: topic || '',
+    context: cliContext || '',
+    contextFile: contextFile || null,
+    initiator: command === 'create',
+    maxTurns: maxTurns,
+    timeoutMinutes: timeoutMinutes,
+    templatePath: path.join(__dirname, '..', '..', 'templates', 'discussion-prompt.tpl'),
+    pollInterval: 5000,
+    sendDelay: 3000,
+    proxyPort: 0,
 };
 
-// Session token obtained at login, used for all authenticated API calls
-let sessionToken = null;
-
 // Validate required fields
-for (const field of ['apiUrl', 'passphrase', 'agent', 'workDir']) {
+for (const field of ['apiUrl', 'passphrase', 'agent']) {
     if (!cfg[field]) {
-        console.error(`Missing required config field: ${field}`);
+        console.error(`Missing required config: ${field} (check .mcp.json)`);
         process.exit(1);
     }
 }
 
+// Session token obtained at login, used for all authenticated API calls
+let sessionToken = null;
+
 // ---------------------------------------------------------------------------
-// Paths
+// Paths (initialized after workDir is determined)
 // ---------------------------------------------------------------------------
 
-const INBOX_DIR = path.join(cfg.workDir, 'inbox');
-const OUTBOX_DIR = path.join(cfg.workDir, 'outbox');
-const LOG_FILE = path.join(cfg.workDir, 'conversation.log');
-const STATUS_FILE = path.join(cfg.workDir, 'status');
-const DONE_FILE = path.join(cfg.workDir, 'done');
-const TRANSCRIPT_FILE = path.join(cfg.workDir, 'transcript.md');
-const LAST_DELIVERED_FILE = path.join(cfg.workDir, 'last-delivered-id');
-const IDLE_TIMEOUT_FILE = path.join(cfg.workDir, 'idle-timeout');
-const PORT_FILE = path.join(cfg.workDir, 'port');
-const PROMPT_FILE = path.join(cfg.workDir, 'prompt.txt');
-const SEEN_IDS_FILE = path.join(cfg.workDir, '.seen_ids');
-const READY_FILE = path.join(cfg.workDir, 'ready');
+let INBOX_DIR, OUTBOX_DIR, LOG_FILE, STATUS_FILE, DONE_FILE, TRANSCRIPT_FILE;
+let LAST_DELIVERED_FILE, IDLE_TIMEOUT_FILE, PORT_FILE, PROMPT_FILE, SEEN_IDS_FILE, READY_FILE;
+
+function initPaths() {
+    INBOX_DIR = path.join(cfg.workDir, 'inbox');
+    OUTBOX_DIR = path.join(cfg.workDir, 'outbox');
+    LOG_FILE = path.join(cfg.workDir, 'conversation.log');
+    STATUS_FILE = path.join(cfg.workDir, 'status');
+    DONE_FILE = path.join(cfg.workDir, 'done');
+    TRANSCRIPT_FILE = path.join(cfg.workDir, 'transcript.md');
+    LAST_DELIVERED_FILE = path.join(cfg.workDir, 'last-delivered-id');
+    IDLE_TIMEOUT_FILE = path.join(cfg.workDir, 'idle-timeout');
+    PORT_FILE = path.join(cfg.workDir, 'port');
+    PROMPT_FILE = path.join(cfg.workDir, 'prompt.txt');
+    SEEN_IDS_FILE = path.join(cfg.workDir, '.seen_ids');
+    READY_FILE = path.join(cfg.workDir, 'ready');
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -119,12 +180,16 @@ const SUBAGENT_DEAD_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
 function log(message) {
     const ts = new Date().toTimeString().slice(0, 8);
     const line = `[${ts}] ${message}`;
-    fs.appendFileSync(LOG_FILE, line + '\n');
+    if (LOG_FILE) {
+        fs.appendFileSync(LOG_FILE, line + '\n');
+    }
     process.stderr.write(line + '\n');
 }
 
 function writeStatus(status) {
-    fs.writeFileSync(STATUS_FILE, status);
+    if (STATUS_FILE) {
+        fs.writeFileSync(STATUS_FILE, status);
+    }
 }
 
 function appendTranscript(speaker, message) {
@@ -344,7 +409,7 @@ const seenVoteIds = new Set();
 
 async function checkPendingVotes() {
     try {
-        const response = await apiCall('discussion/pending', { agent: cfg.agent });
+        const response = await apiCall('discussion/pending', { agent: cfg.agent, discussion_id: discussionId });
         const votes = response.open_votes || [];
 
         for (const vote of votes) {
@@ -409,6 +474,25 @@ function startProxyServer() {
                     const urlPath = req.url;
 
                     if (urlPath === '/vote/propose') {
+                        // If proposing a conclude vote, check for an existing one first
+                        if ((parsed.type || 'general') === 'conclude') {
+                            const pending = await apiCall('discussion/pending', { agent: cfg.agent, discussion_id: discussionId });
+                            const existingConclude = (pending.open_votes || []).find(v => v.type === 'conclude');
+                            if (existingConclude) {
+                                log(`Found existing conclude vote #${existingConclude.id}, casting yes instead of proposing`);
+                                result = await apiCall('discussion/vote/cast', {
+                                    vote_id: existingConclude.id,
+                                    agent: cfg.agent,
+                                    choice: 1,
+                                    reason: 'Auto-agreed to existing conclude vote',
+                                });
+                                // Mark as seen so checkPendingVotes doesn't re-notify
+                                seenVoteIds.add(existingConclude.id);
+                                res.writeHead(200, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify(result));
+                                return;
+                            }
+                        }
                         result = await apiCall('discussion/vote/propose', {
                             discussion_id: discussionId,
                             proposed_by: cfg.agent,
@@ -440,7 +524,7 @@ function startProxyServer() {
                         // Return transport status
                         result = {
                             agent: cfg.agent,
-                            otherAgents: cfg.otherAgents || [cfg.other].filter(Boolean),
+                            otherAgents: cfg.otherAgents,
                             discussionId: discussionId,
                             turnCount: turnCount,
                             elapsedMinutes: Math.round((Date.now() - startTime) / 60000),
@@ -476,31 +560,28 @@ function startProxyServer() {
 // ---------------------------------------------------------------------------
 
 async function setupCreate() {
-    // Read context from file if specified
-    let context = cfg.context || '';
+    let createContext = cfg.context || '';
     if (cfg.contextFile) {
-        context = fs.readFileSync(cfg.contextFile, 'utf-8');
+        createContext = fs.readFileSync(cfg.contextFile, 'utf-8');
     }
 
-    // Build participant lists
-    const requiredParticipants = [cfg.agent];
-    if (cfg.other) {
-        requiredParticipants.push(cfg.other);
-    }
-    const optionalParticipants = Array.isArray(cfg.optionalParticipants) ? cfg.optionalParticipants : [];
+    const participants = [cfg.agent, ...cfg.others];
 
     // Create discussion via API — if the server returns 409 (agent already
     // in an active discussion), extract the existing ID and join that instead
     let result;
     try {
-        result = await apiCall('discussion/create', {
+        const createBody = {
             topic: cfg.topic,
-            participants: requiredParticipants,
-            optional_participants: optionalParticipants.length > 0 ? optionalParticipants : undefined,
+            participants: participants,
             created_by: cfg.agent,
             mode: cfg.mode,
-            context: context || undefined,
-        });
+            context: createContext || undefined,
+        };
+        if (cfg.optionalParticipants.length > 0) {
+            createBody.optional_participants = cfg.optionalParticipants;
+        }
+        result = await apiCall('discussion/create', createBody);
     } catch (err) {
         if (err.message && err.message.includes('DISCUSSION_CONFLICT')) {
             const idMatch = err.message.match(/discussion #(\d+)/);
@@ -515,9 +596,7 @@ async function setupCreate() {
 
     discussionId = result.discussion.id;
     cfg.channel = `discuss-${discussionId}`;
-
-    // Build otherAgents from required + optional, excluding self
-    cfg.otherAgents = [...requiredParticipants, ...optionalParticipants].filter(a => a !== cfg.agent);
+    cfg.otherAgents = [...cfg.others, ...cfg.optionalParticipants];
 
     log(`Created discussion #${discussionId}: ${cfg.topic} (status: ${result.discussion.status})`);
     log(`Channel: ${cfg.channel}, timeout_at: ${result.discussion.timeout_at}`);
@@ -543,11 +622,7 @@ async function setupJoin() {
 
     // Find other participants
     const participants = result.participants || [];
-    const others = participants.filter(p => p.agent !== cfg.agent);
-    cfg.otherAgents = others.map(p => p.agent);
-    if (others.length === 1) {
-        cfg.other = others[0].agent;
-    }
+    cfg.otherAgents = participants.filter(p => p.agent !== cfg.agent).map(p => p.agent);
 
     // Join the discussion
     const joinResult = await apiCall('discussion/join', {
@@ -556,7 +631,7 @@ async function setupJoin() {
     });
 
     log(`Joined discussion #${discussionId}: ${cfg.topic} (status: ${joinResult.discussion_status})`);
-    log(`Channel: ${cfg.channel}, Other: ${cfg.other || '(multiple)'}`);
+    log(`Channel: ${cfg.channel}, Others: ${cfg.otherAgents.join(', ')}`);
 
     return discussionId;
 }
@@ -625,8 +700,6 @@ function generatePrompt(proxyPort) {
             const quoted = cfg.otherAgents.map(a => `"${a}"`);
             otherAgentsStr = `agents ${quoted.join(', ')}`;
         }
-    } else if (cfg.other) {
-        otherAgentsStr = `the "${cfg.other}" agent`;
     } else {
         otherAgentsStr = 'other agents';
     }
@@ -661,10 +734,7 @@ function generatePrompt(proxyPort) {
 // ---------------------------------------------------------------------------
 
 async function runTransport() {
-    const othersLabel = (cfg.otherAgents && cfg.otherAgents.length > 0)
-        ? cfg.otherAgents.join(', ')
-        : (cfg.other || 'unknown');
-    log(`Discussion transport starting: ${cfg.agent} <-> ${othersLabel}`);
+    log(`Discussion transport starting: ${cfg.agent} <-> ${cfg.otherAgents.join(', ')}`);
     log(`Work dir: ${cfg.workDir}`);
     writeStatus('POLLING');
 
@@ -783,11 +853,8 @@ function ensureDirectories() {
 }
 
 function initTranscript() {
-    const othersLabel = (cfg.otherAgents && cfg.otherAgents.length > 0)
-        ? cfg.otherAgents.join(', ')
-        : (cfg.other || 'unknown');
     const header = [
-        `# Discussion: ${cfg.agent} <-> ${othersLabel}`,
+        `# Discussion: ${cfg.agent} <-> ${cfg.otherAgents.join(', ')}`,
         '',
         `Started: ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`,
         '',
@@ -808,23 +875,42 @@ async function main() {
 
         // Setup phase based on command
         if (command === 'create') {
-            if (!cfg.other && (!cfg.optionalParticipants || cfg.optionalParticipants.length === 0)) {
-                console.error('create mode requires "other" or "optionalParticipants" in config');
+            if (cfg.others.length === 0) {
+                console.error('create requires at least one --other participant');
                 process.exit(1);
             }
             if (!cfg.topic) {
-                console.error('create mode requires "topic" in config');
+                console.error('create requires --topic');
                 process.exit(1);
             }
-            ensureDirectories();
             await setupCreate();
         } else if (command === 'join') {
-            ensureDirectories();
+            // Auto-discover discussion ID from pending invitations
+            if (!discussionId) {
+                const pending = await apiCall('discussion/pending', { agent: cfg.agent });
+                const invitations = pending.invited_discussions || [];
+                if (invitations.length === 0) {
+                    console.error('No pending discussion invitations found');
+                    process.exit(1);
+                }
+                if (invitations.length > 1) {
+                    console.error('Multiple pending invitations:');
+                    for (const inv of invitations) {
+                        console.error(`  #${inv.id}: ${inv.topic} (${inv.status})`);
+                    }
+                    console.error('Specify one: node discuss.js join <id>');
+                    process.exit(1);
+                }
+                discussionId = invitations[0].id;
+                log(`Auto-discovered pending invitation: discussion #${discussionId}`);
+            }
             await setupJoin();
-        } else {
-            // transport mode — everything should already be set up
         }
 
+        // Set workDir now that we have the discussion ID
+        const tmpBase = path.join(os.tmpdir(), 'llm');
+        cfg.workDir = path.join(tmpBase, `discuss-${discussionId}`);
+        initPaths();
         ensureDirectories();
         writeStatus('STARTING');
 
@@ -848,11 +934,8 @@ async function main() {
         generatePrompt(port);
 
         // Log summary
-        const summaryOthers = (cfg.otherAgents && cfg.otherAgents.length > 0)
-            ? cfg.otherAgents.join(', ')
-            : (cfg.other || '(none)');
         log(`Discussion #${discussionId} ready`);
-        log(`Mode: ${command}, Agent: ${cfg.agent}, Others: ${summaryOthers}`);
+        log(`Mode: ${command}, Agent: ${cfg.agent}, Others: ${cfg.otherAgents.join(', ')}`);
         log(`Proxy: 127.0.0.1:${port}`);
         log(`Prompt: ${PROMPT_FILE}`);
 
@@ -884,8 +967,10 @@ async function main() {
 // Persist seen IDs on exit
 process.on('exit', () => {
     try {
-        const ids = Array.from(seenIds).join('\n');
-        fs.writeFileSync(SEEN_IDS_FILE, ids + '\n');
+        if (SEEN_IDS_FILE) {
+            const ids = Array.from(seenIds).join('\n');
+            fs.writeFileSync(SEEN_IDS_FILE, ids + '\n');
+        }
     } catch (e) {
         // Best effort
     }
