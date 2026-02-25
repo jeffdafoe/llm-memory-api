@@ -28,7 +28,7 @@ let cliContext = null;
 let contextFile = null;
 let mode = 'realtime';
 let mcpConfigPath = null;
-let maxTurns = 200;
+let maxMessages = 200;
 let timeoutMinutes = 120;
 
 for (let i = 1; i < args.length; i++) {
@@ -53,8 +53,8 @@ for (let i = 1; i < args.length; i++) {
     } else if (args[i] === '--mcp-config' && args[i + 1]) {
         mcpConfigPath = args[i + 1];
         i++;
-    } else if (args[i] === '--max-turns' && args[i + 1]) {
-        maxTurns = parseInt(args[i + 1], 10);
+    } else if (args[i] === '--max-messages' && args[i + 1]) {
+        maxMessages = parseInt(args[i + 1], 10);
         i++;
     } else if (args[i] === '--timeout' && args[i + 1]) {
         timeoutMinutes = parseInt(args[i + 1], 10);
@@ -108,6 +108,7 @@ const cfg = {
     apiUrl: mcpEnv.MEMORY_API_URL,
     passphrase: mcpEnv.MEMORY_AGENT_PASSPHRASE,
     agent: mcpEnv.MEMORY_DEFAULT_AGENT,
+    repoPath: mcpEnv.MEMORY_REPO_PATH || null,
     others: others,
     optionalParticipants: optionalParticipants,
     otherAgents: [...others, ...optionalParticipants],
@@ -118,7 +119,7 @@ const cfg = {
     context: cliContext || '',
     contextFile: contextFile || null,
     initiator: command === 'create',
-    maxTurns: maxTurns,
+    maxMessages: maxMessages,
     timeoutMinutes: timeoutMinutes,
     templatePath: path.join(__dirname, '..', '..', 'templates', 'discussion-prompt.tpl'),
     pollInterval: 5000,
@@ -142,7 +143,7 @@ let sessionToken = null;
 // ---------------------------------------------------------------------------
 
 let INBOX_DIR, OUTBOX_DIR, LOG_FILE, STATUS_FILE, DONE_FILE, TRANSCRIPT_FILE;
-let LAST_DELIVERED_FILE, IDLE_TIMEOUT_FILE, PORT_FILE, PROMPT_FILE, SEEN_IDS_FILE, READY_FILE;
+let LAST_DELIVERED_FILE, IDLE_TIMEOUT_FILE, PORT_FILE, PROMPT_FILE, SEEN_IDS_FILE, READY_FILE, POLL_SCRIPT;
 
 function initPaths() {
     INBOX_DIR = path.join(cfg.workDir, 'inbox');
@@ -157,6 +158,7 @@ function initPaths() {
     PROMPT_FILE = path.join(cfg.workDir, 'prompt.txt');
     SEEN_IDS_FILE = path.join(cfg.workDir, '.seen_ids');
     READY_FILE = path.join(cfg.workDir, 'ready');
+    POLL_SCRIPT = path.join(cfg.workDir, 'poll.sh');
 }
 
 // ---------------------------------------------------------------------------
@@ -197,12 +199,39 @@ function appendTranscript(speaker, message) {
     fs.appendFileSync(TRANSCRIPT_FILE, `**${speaker}** (${ts}):\n${message}\n\n`);
 }
 
+async function saveTranscript() {
+    if (!cfg.repoPath || !TRANSCRIPT_FILE) return;
+    if (!fs.existsSync(TRANSCRIPT_FILE)) return;
+
+    const transcriptsDir = path.join(cfg.repoPath, cfg.agent, 'notes', 'discussions');
+    if (!fs.existsSync(transcriptsDir)) {
+        fs.mkdirSync(transcriptsDir, { recursive: true });
+    }
+
+    const dest = path.join(transcriptsDir, `discussion-${discussionId}.md`);
+    fs.copyFileSync(TRANSCRIPT_FILE, dest);
+    log(`Transcript saved to ${dest}`);
+
+    try {
+        const content = fs.readFileSync(dest, 'utf-8');
+        const sourceFile = `${cfg.agent}/notes/discussions/discussion-${discussionId}.md`;
+        await apiCall('memory/ingest', {
+            namespace: cfg.agent,
+            source_file: sourceFile,
+            content: content,
+        });
+        log(`Transcript ingested into vector memory (${sourceFile})`);
+    } catch (err) {
+        log(`Transcript ingest failed (non-fatal): ${err.message}`);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // API client
 // ---------------------------------------------------------------------------
 
-// Raw HTTP call — used by both apiCall and apiCallNoAuth
-function httpPost(url, headers, body) {
+// Single HTTP request (no retry)
+function httpPostOnce(url, headers, body) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
         const mod = urlObj.protocol === 'https:' ? https : http;
@@ -236,19 +265,62 @@ function httpPost(url, headers, body) {
     });
 }
 
+const RETRYABLE_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE']);
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
+
+function isRetryable(err) {
+    if (RETRYABLE_CODES.has(err.code)) return true;
+    const match = err.message && err.message.match(/^HTTP (\d+):/);
+    if (match && RETRYABLE_STATUS.has(parseInt(match[1]))) return true;
+    return false;
+}
+
+async function httpPost(url, headers, body) {
+    let lastErr;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            return await httpPostOnce(url, headers, body);
+        } catch (err) {
+            lastErr = err;
+            if (attempt < MAX_RETRIES && isRetryable(err)) {
+                const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+                log(`Retryable error (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${err.message} — retrying in ${delay}ms`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+    }
+    throw lastErr;
+}
+
 function apiCallNoAuth(endpoint, body) {
     return httpPost(cfg.apiUrl + '/' + endpoint, {}, body);
 }
 
-function apiCall(endpoint, body) {
+async function apiCall(endpoint, body) {
     if (!sessionToken) {
         throw new Error('Not logged in — no session token available');
     }
-    return httpPost(
-        cfg.apiUrl + '/' + endpoint,
-        { 'Authorization': 'Bearer ' + sessionToken },
-        body
-    );
+    try {
+        return await httpPost(
+            cfg.apiUrl + '/' + endpoint,
+            { 'Authorization': 'Bearer ' + sessionToken },
+            body
+        );
+    } catch (err) {
+        const match = err.message && err.message.match(/^HTTP (\d+):/);
+        if (match && (match[1] === '401' || match[1] === '403')) {
+            log('Session expired or invalid — re-logging in');
+            await transportLogin();
+            return httpPost(
+                cfg.apiUrl + '/' + endpoint,
+                { 'Authorization': 'Bearer ' + sessionToken },
+                body
+            );
+        }
+        throw err;
+    }
 }
 
 async function transportLogin() {
@@ -440,7 +512,7 @@ function checkIdleTimeout() {
 function checkTimeout() {
     const elapsedMinutes = (Date.now() - startTime) / 60000;
     if (elapsedMinutes >= cfg.timeoutMinutes) return true;
-    if (turnCount >= cfg.maxTurns) return true;
+    if (turnCount >= cfg.maxMessages) return true;
     return false;
 }
 
@@ -831,10 +903,23 @@ async function runTransport() {
 
 // Report subagent death to the error reporting endpoint
 async function reportSubagentDead() {
+    const elapsedMinutes = Math.round((Date.now() - startTime) / 60000);
+    const silentMinutes = Math.round((Date.now() - lastOutboxTime) / 60000);
+    const context = {
+        discussion_id: discussionId,
+        agent: cfg.agent,
+        messages_sent: turnCount,
+        elapsed_minutes: elapsedMinutes,
+        silent_minutes: silentMinutes,
+        last_outbox_activity: new Date(lastOutboxTime).toISOString(),
+        last_inbox_delivery: new Date(lastInboxDeliveryTime).toISOString(),
+        max_turns_budget: 100,
+    };
+    log(`Subagent death detected: ${turnCount} messages sent, ${elapsedMinutes}m elapsed, ${silentMinutes}m silent`);
     const result = await apiCall('system/error/report', {
         source: 'discuss-transport',
         error_code: 'SUBAGENT_DEAD',
-        context: { discussion_id: discussionId },
+        context: context,
     });
     log(`Subagent death reported (id: ${result.id}, status: ${result.status})`);
 }
@@ -850,6 +935,24 @@ function sleep(ms) {
 function ensureDirectories() {
     fs.mkdirSync(INBOX_DIR, { recursive: true });
     fs.mkdirSync(OUTBOX_DIR, { recursive: true });
+}
+
+function writePollScript() {
+    const workDir = cfg.workDir.replace(/\\/g, '/');
+    const script = `#!/bin/bash
+# Poll for new inbox messages, done file, or idle timeout.
+# Outputs: NEW_MESSAGES, DONE, or IDLE_TIMEOUT
+idle_count=0
+while true; do
+  files=$(ls ${workDir}/inbox/*.txt 2>/dev/null)
+  if [ -n "$files" ]; then echo "NEW_MESSAGES"; echo "$files"; break; fi
+  if [ -f ${workDir}/done ]; then echo "DONE"; break; fi
+  idle_count=$((idle_count + 1))
+  if [ $idle_count -ge 60 ]; then echo "IDLE_TIMEOUT"; break; fi
+  sleep 5
+done
+`;
+    fs.writeFileSync(POLL_SCRIPT, script);
 }
 
 function initTranscript() {
@@ -912,6 +1015,7 @@ async function main() {
         cfg.workDir = path.join(tmpBase, `discuss-${discussionId}`);
         initPaths();
         ensureDirectories();
+        writePollScript();
         writeStatus('STARTING');
 
         // Wait for all participants to join before proceeding
@@ -952,6 +1056,9 @@ async function main() {
 
         // Run transport
         await runTransport();
+
+        // Save transcript to persistent location and ingest into vector memory
+        await saveTranscript();
 
         // Clean exit
         await transportLogout();
