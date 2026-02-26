@@ -28,6 +28,7 @@ let cliContext = null;
 let contextFile = null;
 let mode = 'realtime';
 let mcpConfigPath = null;
+let workDirBase = null;
 let maxMessages = 200;
 let timeoutMinutes = 120;
 
@@ -58,6 +59,9 @@ for (let i = 1; i < args.length; i++) {
         i++;
     } else if (args[i] === '--timeout' && args[i + 1]) {
         timeoutMinutes = parseInt(args[i + 1], 10);
+        i++;
+    } else if (args[i] === '--work-dir' && args[i + 1]) {
+        workDirBase = args[i + 1];
         i++;
     } else if (command === 'join' && !discussionId && /^\d+$/.test(args[i])) {
         discussionId = parseInt(args[i], 10);
@@ -658,12 +662,39 @@ async function setupCreate() {
         if (err.message && err.message.includes('DISCUSSION_CONFLICT')) {
             const idMatch = err.message.match(/discussion #(\d+)/);
             if (idMatch) {
-                discussionId = parseInt(idMatch[1]);
-                log(`Create rejected — already in discussion #${discussionId}, joining instead`);
-                return setupJoin();
+                const staleId = parseInt(idMatch[1], 10);
+                discussionId = staleId;
+                log(`Create rejected — already in discussion #${staleId}, trying to join`);
+                try {
+                    return await setupJoin();
+                } catch (joinErr) {
+                    // Join failed (likely timed out). Leave the stale discussion and retry create once.
+                    log(`Join #${staleId} failed (${joinErr.message}), leaving and retrying create`);
+                    try {
+                        await apiCall('discussion/leave', { discussion_id: staleId, agent: cfg.agent });
+                        log(`Left stale discussion #${staleId}`);
+                    } catch (leaveErr) {
+                        log(`Leave #${staleId} failed: ${leaveErr.message}`);
+                    }
+                    discussionId = null;
+                    const retryBody = {
+                        topic: cfg.topic,
+                        participants: participants,
+                        created_by: cfg.agent,
+                        mode: cfg.mode,
+                        context: createContext || undefined,
+                    };
+                    if (cfg.optionalParticipants.length > 0) {
+                        retryBody.optional_participants = cfg.optionalParticipants;
+                    }
+                    result = await apiCall('discussion/create', retryBody);
+                    log(`Created discussion #${result.discussion.id} (after clearing stale #${staleId})`);
+                }
             }
         }
-        throw err;
+        if (!result) {
+            throw err;
+        }
     }
 
     discussionId = result.discussion.id;
@@ -937,6 +968,41 @@ function ensureDirectories() {
     fs.mkdirSync(OUTBOX_DIR, { recursive: true });
 }
 
+// Prevent two transport instances from running for the same discussion.
+// Uses a PID lockfile — if an existing lock points to a live process, refuse to start.
+let LOCK_FILE = null;
+
+function acquireLock() {
+    LOCK_FILE = path.join(cfg.workDir, '.lock');
+    if (fs.existsSync(LOCK_FILE)) {
+        const existingPid = parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim(), 10);
+        if (!isNaN(existingPid)) {
+            try {
+                process.kill(existingPid, 0);
+                console.error(`Another transport (PID ${existingPid}) is already running for discussion #${discussionId}`);
+                process.exit(1);
+            } catch (e) {
+                log(`Stale lockfile from PID ${existingPid} — cleaning up`);
+            }
+        }
+    }
+    fs.writeFileSync(LOCK_FILE, String(process.pid));
+    log(`Acquired lock (PID ${process.pid})`);
+}
+
+function releaseLock() {
+    try {
+        if (LOCK_FILE && fs.existsSync(LOCK_FILE)) {
+            const pid = parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim(), 10);
+            if (pid === process.pid) {
+                fs.unlinkSync(LOCK_FILE);
+            }
+        }
+    } catch (e) {
+        // Best effort
+    }
+}
+
 function writePollScript() {
     const workDir = cfg.workDir.replace(/\\/g, '/');
     const script = `#!/bin/bash
@@ -1010,11 +1076,17 @@ async function main() {
             await setupJoin();
         }
 
-        // Set workDir now that we have the discussion ID
-        const tmpBase = path.join(os.tmpdir(), 'llm');
-        cfg.workDir = path.join(tmpBase, `discuss-${discussionId}`);
+        // Set workDir now that we have the discussion ID.
+        // Respect --work-dir CLI flag if provided, otherwise fall back to os.tmpdir().
+        if (workDirBase) {
+            cfg.workDir = path.join(workDirBase, `discuss-${discussionId}`);
+        } else {
+            const tmpBase = path.join(os.tmpdir(), 'llm');
+            cfg.workDir = path.join(tmpBase, `discuss-${discussionId}`);
+        }
         initPaths();
         ensureDirectories();
+        acquireLock();
         writePollScript();
         writeStatus('STARTING');
 
@@ -1046,6 +1118,7 @@ async function main() {
         // Handle clean shutdown
         const shutdown = async () => {
             log('Shutting down...');
+            releaseLock();
             await transportLogout();
             server.close();
             writeStatus('SHUTDOWN');
@@ -1073,6 +1146,7 @@ async function main() {
 
 // Persist seen IDs on exit
 process.on('exit', () => {
+    releaseLock();
     try {
         if (SEEN_IDS_FILE) {
             const ids = Array.from(seenIds).join('\n');
