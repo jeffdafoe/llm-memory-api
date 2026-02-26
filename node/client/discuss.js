@@ -146,22 +146,18 @@ let sessionToken = null;
 // Paths (initialized after workDir is determined)
 // ---------------------------------------------------------------------------
 
-let INBOX_DIR, OUTBOX_DIR, LOG_FILE, STATUS_FILE, DONE_FILE, TRANSCRIPT_FILE;
-let LAST_DELIVERED_FILE, IDLE_TIMEOUT_FILE, PORT_FILE, PROMPT_FILE, SEEN_IDS_FILE, READY_FILE, POLL_SCRIPT;
+let INBOX_DIR, OUTBOX_DIR, LOG_FILE, STATE_FILE, DONE_FILE, TRANSCRIPT_FILE;
+let IDLE_TIMEOUT_FILE, PROMPT_FILE, POLL_SCRIPT;
 
 function initPaths() {
     INBOX_DIR = path.join(cfg.workDir, 'inbox');
     OUTBOX_DIR = path.join(cfg.workDir, 'outbox');
     LOG_FILE = path.join(cfg.workDir, 'conversation.log');
-    STATUS_FILE = path.join(cfg.workDir, 'status');
+    STATE_FILE = path.join(cfg.workDir, 'state.json');
     DONE_FILE = path.join(cfg.workDir, 'done');
     TRANSCRIPT_FILE = path.join(cfg.workDir, 'transcript.md');
-    LAST_DELIVERED_FILE = path.join(cfg.workDir, 'last-delivered-id');
     IDLE_TIMEOUT_FILE = path.join(cfg.workDir, 'idle-timeout');
-    PORT_FILE = path.join(cfg.workDir, 'port');
     PROMPT_FILE = path.join(cfg.workDir, 'prompt.txt');
-    SEEN_IDS_FILE = path.join(cfg.workDir, '.seen_ids');
-    READY_FILE = path.join(cfg.workDir, 'ready');
     POLL_SCRIPT = path.join(cfg.workDir, 'poll.sh');
 }
 
@@ -172,12 +168,20 @@ function initPaths() {
 let turnCount = 0;
 const startTime = Date.now();
 const seenIds = new Set();
+let currentStatus = 'INIT';
+let proxyPort = 0;
+let lastDeliveredId = 0;
+let readySignaled = false;
 
 // Subagent death detection
 let lastOutboxTime = Date.now();
 let lastInboxDeliveryTime = 0;
 let subagentDeathReported = false;
 const SUBAGENT_DEAD_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+
+// Stall detection
+let stallWarningLogged = false;
+const STALL_WARNING_MS = 90000;
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -192,10 +196,38 @@ function log(message) {
     process.stderr.write(line + '\n');
 }
 
-function writeStatus(status) {
-    if (STATUS_FILE) {
-        fs.writeFileSync(STATUS_FILE, status);
+function writeState(overrides) {
+    if (!STATE_FILE) return;
+    const state = {
+        status: currentStatus,
+        pid: process.pid,
+        port: proxyPort,
+        heartbeat: new Date().toISOString(),
+        turnCount,
+        lastDeliveredId,
+        seenIds: [...seenIds],
+        ready: readySignaled,
+        startedAt: new Date(startTime).toISOString(),
+    };
+    if (overrides) {
+        Object.assign(state, overrides);
     }
+    const tmp = STATE_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
+    fs.renameSync(tmp, STATE_FILE);
+}
+
+function readState() {
+    try {
+        return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    } catch (e) {
+        return null;
+    }
+}
+
+function setStatus(status) {
+    currentStatus = status;
+    writeState();
 }
 
 function appendTranscript(speaker, message) {
@@ -356,11 +388,8 @@ async function receiveMessages() {
     const body = { agent: cfg.agent, channel: cfg.channel };
 
     // Use after_id for crash recovery
-    if (fs.existsSync(LAST_DELIVERED_FILE)) {
-        const lastId = parseInt(fs.readFileSync(LAST_DELIVERED_FILE, 'utf-8').trim(), 10);
-        if (!isNaN(lastId)) {
-            body.after_id = lastId;
-        }
+    if (lastDeliveredId > 0) {
+        body.after_id = lastDeliveredId;
     }
 
     try {
@@ -597,15 +626,14 @@ function startProxyServer() {
                             agent: cfg.agent,
                         });
                     } else if (urlPath === '/status') {
-                        // Return transport status
-                        result = {
+                        // Return transport status from state.json
+                        const state = readState() || {};
+                        result = Object.assign({
                             agent: cfg.agent,
                             otherAgents: cfg.otherAgents,
                             discussionId: discussionId,
-                            turnCount: turnCount,
                             elapsedMinutes: Math.round((Date.now() - startTime) / 60000),
-                            status: fs.existsSync(STATUS_FILE) ? fs.readFileSync(STATUS_FILE, 'utf-8').trim() : 'unknown',
-                        };
+                        }, state);
                     } else {
                         res.writeHead(404);
                         res.end(JSON.stringify({ error: `Unknown endpoint: ${urlPath}` }));
@@ -624,7 +652,8 @@ function startProxyServer() {
 
         server.listen(cfg.proxyPort, '127.0.0.1', () => {
             const port = server.address().port;
-            fs.writeFileSync(PORT_FILE, String(port));
+            proxyPort = port;
+            writeState();
             log(`Proxy server listening on 127.0.0.1:${port}`);
             resolve({ server, port });
         });
@@ -636,10 +665,10 @@ function startProxyServer() {
 // ---------------------------------------------------------------------------
 
 async function setupCreate() {
-    let createContext = cfg.context || '';
     if (cfg.contextFile) {
-        createContext = fs.readFileSync(cfg.contextFile, 'utf-8');
+        cfg.context = fs.readFileSync(cfg.contextFile, 'utf-8');
     }
+    let createContext = cfg.context || '';
 
     const participants = [cfg.agent, ...cfg.others];
 
@@ -721,6 +750,9 @@ async function setupJoin() {
     cfg.topic = discussion.topic;
     cfg.channel = discussion.channel || `discuss-${discussionId}`;
     cfg.context = discussion.context || '';
+    if (cfg.contextFile) {
+        cfg.context = fs.readFileSync(cfg.contextFile, 'utf-8');
+    }
     cfg.mode = discussion.mode || 'realtime';
 
     // Find other participants
@@ -756,7 +788,7 @@ async function waitForReady() {
     }
 
     log('Discussion is waiting for participants...');
-    writeStatus('WAITING');
+    setStatus('WAITING');
 
     while (true) {
         await sleep(cfg.pollInterval);
@@ -807,6 +839,26 @@ function generatePrompt(proxyPort) {
         otherAgentsStr = 'other agents';
     }
 
+    // Extract communication standards from GUIDELINES.md
+    let guidelines = '';
+    if (cfg.repoPath) {
+        try {
+            const guidelinesPath = path.join(cfg.repoPath, 'shared', 'GUIDELINES.md');
+            const content = fs.readFileSync(guidelinesPath, 'utf-8');
+            const match = content.match(/# Cross-Agent Communication Standards[\s\S]*?(?=\n## Relaying|$)/);
+            if (!match) {
+                const altMatch = content.match(/# Mailbox Communication Guidelines[\s\S]*?(?=\n## Relaying|$)/);
+                if (altMatch) {
+                    guidelines = altMatch[0].trim();
+                }
+            } else {
+                guidelines = match[0].trim();
+            }
+        } catch (err) {
+            log(`WARNING: Could not read GUIDELINES.md: ${err.message}`);
+        }
+    }
+
     const replacements = {
         '[OTHER_AGENTS]': otherAgentsStr,
         '[TOPIC]': cfg.topic,
@@ -816,6 +868,7 @@ function generatePrompt(proxyPort) {
         '[API_KEY]': '', // local proxy handles auth — subagent doesn't need credentials
         '[MY_AGENT]': cfg.agent,
         '[CONTEXT]': cfg.context || '(none)',
+        '[GUIDELINES]': guidelines,
         '[INITIATOR_LINE]': cfg.initiator
             ? 'You are the INITIATOR. Send the first message to start the discussion.'
             : 'You are JOINING. Wait for the first message from another participant.',
@@ -839,20 +892,22 @@ function generatePrompt(proxyPort) {
 async function runTransport() {
     log(`Discussion transport starting: ${cfg.agent} <-> ${cfg.otherAgents.join(', ')}`);
     log(`Work dir: ${cfg.workDir}`);
-    writeStatus('POLLING');
+    setStatus('POLLING');
 
     while (true) {
+        touchLock();
+
         // 1. Check done
         if (checkDone()) {
             log('Done file detected. Discussion concluded.');
-            writeStatus('DONE');
+            setStatus('DONE');
             return;
         }
 
         // 2. Check idle timeout
         if (checkIdleTimeout()) {
             log('Idle timeout detected. Shutting down.');
-            writeStatus('IDLE_TIMEOUT');
+            setStatus('IDLE_TIMEOUT');
             return;
         }
 
@@ -860,13 +915,13 @@ async function runTransport() {
         if (checkTimeout()) {
             log(`Timeout reached (${turnCount} turns, ${cfg.timeoutMinutes}m). Writing timeout notice.`);
             fs.writeFileSync(path.join(INBOX_DIR, 'timeout.txt'), '[SYSTEM] Discussion timeout reached. Please wrap up.');
-            writeStatus('TIMEOUT');
+            setStatus('TIMEOUT');
             await sleep(30000);
             const outMsg = checkOutbox();
             if (outMsg) {
                 await sendMessage(outMsg);
             }
-            writeStatus('DONE');
+            setStatus('DONE');
             fs.writeFileSync(DONE_FILE, 'timeout');
             return;
         }
@@ -874,7 +929,17 @@ async function runTransport() {
         // 4. Check outbox
         const outMsg = checkOutbox();
         if (outMsg) {
+            const sizeKB = (Buffer.byteLength(outMsg, 'utf-8') / 1024).toFixed(1);
+            const responseTime = (lastInboxDeliveryTime > 0)
+                ? Math.round((Date.now() - lastInboxDeliveryTime) / 1000)
+                : null;
+            if (responseTime !== null) {
+                log(`Outbox: ${sizeKB}KB, response time: ${responseTime}s`);
+            } else {
+                log(`Outbox: ${sizeKB}KB`);
+            }
             lastOutboxTime = Date.now();
+            stallWarningLogged = false;
             subagentDeathReported = false;
             await sendMessage(outMsg);
             await sleep(cfg.sendDelay);
@@ -901,19 +966,28 @@ async function runTransport() {
             // 11. Record last-delivered-id
             const maxId = Math.max(...allIds);
             if (isFinite(maxId)) {
-                fs.writeFileSync(LAST_DELIVERED_FILE, String(maxId));
+                lastDeliveredId = maxId;
             }
 
             lastInboxDeliveryTime = Date.now();
-            writeStatus('MESSAGE_RECEIVED');
 
-            // Signal other side is active
-            if (!fs.existsSync(READY_FILE)) {
-                fs.writeFileSync(READY_FILE, '');
-                log('Received first message — ready file written');
+            if (!readySignaled) {
+                readySignaled = true;
+                log('Received first message — ready signaled');
             }
+
+            setStatus('MESSAGE_RECEIVED');
         } else {
             await sleep(cfg.pollInterval);
+        }
+
+        // Stall warning: no outbox response for a while after inbox delivery
+        if (!stallWarningLogged
+            && lastInboxDeliveryTime > 0
+            && lastInboxDeliveryTime > lastOutboxTime
+            && (Date.now() - lastInboxDeliveryTime) > STALL_WARNING_MS) {
+            stallWarningLogged = true;
+            log(`WARNING: No outbox response ${Math.round((Date.now() - lastInboxDeliveryTime) / 1000)}s after inbox delivery`);
         }
 
         // Check for dead subagent: inbox has unprocessed messages but no
@@ -972,31 +1046,53 @@ function ensureDirectories() {
 // Uses a PID lockfile — if an existing lock points to a live process, refuse to start.
 let LOCK_FILE = null;
 
+const LOCK_STALE_MS = 30000;
+
 function acquireLock() {
     LOCK_FILE = path.join(cfg.workDir, '.lock');
-    if (fs.existsSync(LOCK_FILE)) {
-        const existingPid = parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim(), 10);
-        if (!isNaN(existingPid)) {
-            try {
-                process.kill(existingPid, 0);
-                console.error(`Another transport (PID ${existingPid}) is already running for discussion #${discussionId}`);
+    const lockInfoFile = path.join(LOCK_FILE, 'info.json');
+    try {
+        fs.mkdirSync(LOCK_FILE);
+    } catch (e) {
+        if (e.code !== 'EEXIST') throw e;
+        // Lock dir exists — check if stale via mtime
+        try {
+            const stat = fs.statSync(lockInfoFile);
+            const age = Date.now() - stat.mtimeMs;
+            if (age < LOCK_STALE_MS) {
+                const info = JSON.parse(fs.readFileSync(lockInfoFile, 'utf-8'));
+                console.error(`Another transport (PID ${info.pid}) is already running for discussion #${discussionId}`);
                 process.exit(1);
-            } catch (e) {
-                log(`Stale lockfile from PID ${existingPid} — cleaning up`);
             }
+            log(`Stale lock (${Math.round(age / 1000)}s old) — cleaning up`);
+        } catch (statErr) {
+            log('Lock dir exists but info unreadable — cleaning up');
         }
+        // Remove stale lock and recreate
+        try { fs.unlinkSync(lockInfoFile); } catch (e2) { /* ignore */ }
+        try { fs.rmdirSync(LOCK_FILE); } catch (e2) { /* ignore */ }
+        fs.mkdirSync(LOCK_FILE);
     }
-    fs.writeFileSync(LOCK_FILE, String(process.pid));
+    fs.writeFileSync(lockInfoFile, JSON.stringify({ pid: process.pid, started: Date.now() }));
     log(`Acquired lock (PID ${process.pid})`);
+}
+
+function touchLock() {
+    try {
+        const lockInfoFile = path.join(LOCK_FILE, 'info.json');
+        const now = new Date();
+        fs.utimesSync(lockInfoFile, now, now);
+    } catch (e) {
+        // Best effort
+    }
 }
 
 function releaseLock() {
     try {
         if (LOCK_FILE && fs.existsSync(LOCK_FILE)) {
-            const pid = parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim(), 10);
-            if (pid === process.pid) {
-                fs.unlinkSync(LOCK_FILE);
-            }
+            const lockInfoFile = path.join(LOCK_FILE, 'info.json');
+            try { fs.unlinkSync(lockInfoFile); } catch (e) { /* ignore */ }
+            fs.rmdirSync(LOCK_FILE);
         }
     } catch (e) {
         // Best effort
@@ -1088,18 +1184,23 @@ async function main() {
         ensureDirectories();
         acquireLock();
         writePollScript();
-        writeStatus('STARTING');
+        setStatus('STARTING');
 
         // Wait for all participants to join before proceeding
         await waitForReady();
 
         initTranscript();
 
-        // Load seen IDs from file if resuming
-        if (fs.existsSync(SEEN_IDS_FILE)) {
-            const lines = fs.readFileSync(SEEN_IDS_FILE, 'utf-8').trim().split('\n').filter(Boolean);
-            for (const line of lines) {
-                seenIds.add(parseInt(line, 10));
+        // Load state from previous run if resuming
+        const prevState = readState();
+        if (prevState) {
+            if (Array.isArray(prevState.seenIds)) {
+                for (const id of prevState.seenIds) {
+                    seenIds.add(id);
+                }
+            }
+            if (prevState.lastDeliveredId > 0) {
+                lastDeliveredId = prevState.lastDeliveredId;
             }
         }
 
@@ -1121,7 +1222,7 @@ async function main() {
             releaseLock();
             await transportLogout();
             server.close();
-            writeStatus('SHUTDOWN');
+            setStatus('SHUTDOWN');
             process.exit(0);
         };
         process.on('SIGINT', shutdown);
@@ -1139,19 +1240,16 @@ async function main() {
     } catch (err) {
         console.error(`Fatal error: ${err.message}`);
         log(`FATAL: ${err.message}`);
-        writeStatus('ERROR');
+        setStatus('ERROR');
         process.exit(1);
     }
 }
 
-// Persist seen IDs on exit
+// Persist state on exit
 process.on('exit', () => {
     releaseLock();
     try {
-        if (SEEN_IDS_FILE) {
-            const ids = Array.from(seenIds).join('\n');
-            fs.writeFileSync(SEEN_IDS_FILE, ids + '\n');
-        }
+        writeState();
     } catch (e) {
         // Best effort
     }

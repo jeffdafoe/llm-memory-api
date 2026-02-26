@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const pool = require('../db');
 const { log } = require('../services/logger');
-const { notifyDiscussionInvite } = require('../services/system-notify');
+const { notifyDiscussionInvite, sendSystemMessageToMany } = require('../services/system-notify');
 
 const router = Router();
 
@@ -576,7 +576,11 @@ router.post('/discussion/join', async (req, res) => {
             });
         }
 
-        const dStatus = discussion.rows[0].status;
+        if (discussion.rows[0].status === 'waiting') {
+            await evaluateReadiness(discussion_id);
+        }
+        const refreshed = await pool.query('SELECT status FROM discussions WHERE id = $1', [discussion_id]);
+        const dStatus = refreshed.rows[0].status;
         if (dStatus !== 'waiting' && dStatus !== 'active') {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'Discussion is ' + dStatus + ' and not accepting joins' }
@@ -789,12 +793,38 @@ router.post('/discussion/vote/cast', async (req, res) => {
 
         logDiscussion('vote_cast', { vote_id, agent, choice });
 
+        // Notify all joined participants about the vote
+        const discussionId = vote.rows[0].discussion_id;
+        const disc = await pool.query('SELECT channel FROM discussions WHERE id = $1', [discussionId]);
+        const channel = disc.rows[0].channel || `discuss-${discussionId}`;
+        const participants = await pool.query(
+            'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
+            [discussionId, 'joined']
+        );
+        const voteType = vote.rows[0].type || 'general';
+        const voteStatus = updated.rows[0].status;
+        const totalJoined = participants.rows.length;
+        const ballots = await pool.query('SELECT COUNT(*) as count FROM discussion_ballots WHERE vote_id = $1', [vote_id]);
+        const castCount = parseInt(ballots.rows[0].count);
+
+        let msg = `[Vote] ${agent} voted ${choice} on vote #${vote_id} (${voteType}).`;
+        if (voteStatus === 'passed') {
+            msg += ' Passed.';
+        } else if (voteStatus === 'failed') {
+            msg += ' Failed.';
+        } else {
+            msg += ` ${castCount}/${totalJoined} votes cast.`;
+        }
+
+        const recipients = participants.rows.map(r => r.agent);
+        await sendSystemMessageToMany(recipients, msg, channel);
+
         res.json({
             vote_id,
             agent,
             choice,
             reason: reason || null,
-            vote_status: updated.rows[0].status
+            vote_status: voteStatus
         });
     } catch (err) {
         console.error('Discussion vote cast error:', err.message);
