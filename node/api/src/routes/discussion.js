@@ -198,7 +198,8 @@ router.post('/discussion/create', async (req, res) => {
             });
         }
 
-        // Reject if creator is already in an active or waiting discussion
+        // Reject if creator is already in an active or waiting discussion.
+        // Run evaluateReadiness first so timed-out discussions don't falsely block.
         const existing = await pool.query(
             `SELECT d.id, d.topic, d.status FROM discussions d
              JOIN discussion_participants dp ON dp.discussion_id = d.id
@@ -209,13 +210,41 @@ router.post('/discussion/create', async (req, res) => {
         );
         if (existing.rows.length > 0) {
             const d = existing.rows[0];
-            return res.status(409).json({
-                error: {
-                    code: 'DISCUSSION_CONFLICT',
-                    message: `Agent "${created_by}" is already in discussion #${d.id} (${d.status}): "${d.topic}"`,
-                    existing_discussion_id: d.id
+            // Lazily evaluate — the discussion may have timed out since last check
+            if (d.status === 'waiting') {
+                await evaluateReadiness(d.id);
+                const recheck = await pool.query(
+                    'SELECT status FROM discussions WHERE id = $1',
+                    [d.id]
+                );
+                // If it transitioned out of waiting/active, it's no longer a conflict
+                if (recheck.rows.length > 0 &&
+                    recheck.rows[0].status !== 'waiting' &&
+                    recheck.rows[0].status !== 'active') {
+                    logDiscussion('conflict_cleared', {
+                        discussion_id: d.id,
+                        new_status: recheck.rows[0].status,
+                        agent: created_by
+                    });
+                    // Fall through to create
+                } else {
+                    return res.status(409).json({
+                        error: {
+                            code: 'DISCUSSION_CONFLICT',
+                            message: `Agent "${created_by}" is already in discussion #${d.id} (${d.status}): "${d.topic}"`,
+                            existing_discussion_id: d.id
+                        }
+                    });
                 }
-            });
+            } else {
+                return res.status(409).json({
+                    error: {
+                        code: 'DISCUSSION_CONFLICT',
+                        message: `Agent "${created_by}" is already in discussion #${d.id} (${d.status}): "${d.topic}"`,
+                        existing_discussion_id: d.id
+                    }
+                });
+            }
         }
 
         const client = await pool.connect();
