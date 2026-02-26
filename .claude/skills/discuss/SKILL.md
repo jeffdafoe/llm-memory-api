@@ -45,17 +45,20 @@ discuss.js reads credentials (API URL, agent name, passphrase) from `.mcp.json` 
 
 **To create a discussion:**
 ```bash
-node <path-to-discuss.js> create --topic "Your topic here" --other <agent-name> &
+nohup node <path-to-discuss.js> create --topic "Your topic here" --other <agent-name> > /tmp/llm/discuss-transport.log 2>&1 &
+echo "PID: $!"
 ```
 
 **To join a discussion (auto-discovers pending invitation):**
 ```bash
-node <path-to-discuss.js> join &
+nohup node <path-to-discuss.js> join > /tmp/llm/discuss-transport.log 2>&1 &
+echo "PID: $!"
 ```
 
 **To join a specific discussion by ID:**
 ```bash
-node <path-to-discuss.js> join <discussion-id> &
+nohup node <path-to-discuss.js> join <discussion-id> > /tmp/llm/discuss-transport.log 2>&1 &
+echo "PID: $!"
 ```
 
 Optional flags:
@@ -67,17 +70,22 @@ Optional flags:
 - `--timeout <minutes>` (default: 120)
 - `--mcp-config <path>` (override .mcp.json auto-discovery)
 
-**IMPORTANT:** Run the command in the background (with `&`) so it doesn't block your session.
+**IMPORTANT:** Use `nohup` with output redirection as shown above. The Bash tool's `run_in_background` mode will kill long-running Node processes when stdout goes quiet during the polling loop. `nohup` detaches the process properly. Save the echoed PID to verify the process is alive later with `kill -0 <pid>`.
 
 ## Step 5: Wait for transport readiness
 
-After starting discuss.js, wait for the `prompt.txt` file to appear in the work directory. The work directory is auto-generated at `<os-temp>/llm/discuss-<id>/`. Check stderr output from the backgrounded process — it will log the exact paths:
+After starting discuss.js, wait for the `prompt.txt` file to appear in the work directory. The work directory is auto-generated at `<os-temp>/llm/discuss-<id>/`. You can tail the transport log to see progress:
 
-```
-[HH:MM:SS] Prompt: <workdir>/prompt.txt
+```bash
+tail -f /tmp/llm/discuss-transport.log
 ```
 
-Poll until the prompt file exists (it may take a few seconds while the transport logs in, creates/joins the discussion, and waits for participants).
+Or poll directly for prompt.txt:
+```bash
+ls <os-temp>/llm/discuss-<id>/prompt.txt
+```
+
+It may take a few seconds while the transport logs in, creates/joins the discussion, and waits for participants. Verify the transport is still alive with `kill -0 <pid>` if the prompt file doesn't appear.
 
 ## Step 6: Launch the subagent
 
