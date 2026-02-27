@@ -184,7 +184,8 @@ createApp({
         const statusIcons = {
             active: 'icon-circle',
             concluded: 'icon-check',
-            timed_out: 'icon-clock'
+            timed_out: 'icon-clock',
+            pending: 'icon-circle'
         };
 
         function statusIcon(status) {
