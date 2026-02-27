@@ -109,6 +109,60 @@ router.post('/admin/logout', async (req, res) => {
     }
 });
 
+// POST /admin/dashboard — combined summary data
+router.post('/admin/dashboard', async (req, res) => {
+    try {
+        const agents = await pool.query(
+            `SELECT agent, status, last_seen, registered_at
+             FROM agents
+             ORDER BY agent`
+        );
+
+        const discussions = await pool.query(
+            `SELECT d.id, d.topic, d.status, d.created_by, d.created_at,
+                    COUNT(dp.agent) AS participant_count
+             FROM discussions d
+             LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
+             GROUP BY d.id
+             ORDER BY
+                 CASE d.status WHEN 'active' THEN 0 ELSE 1 END,
+                 d.created_at DESC
+             LIMIT 10`
+        );
+
+        const chat = await pool.query(
+            `SELECT id, from_agent, to_agent, channel, message, sent_at, acked_at
+             FROM chat_messages
+             WHERE channel IS NULL OR channel = ''
+             ORDER BY
+                 CASE WHEN acked_at IS NULL THEN 0 ELSE 1 END,
+                 sent_at DESC
+             LIMIT 15`
+        );
+
+        const mail = await pool.query(
+            `SELECT id, from_agent, to_agent, subject, sent_at, acked_at
+             FROM mail
+             ORDER BY
+                 CASE WHEN acked_at IS NULL THEN 0 ELSE 1 END,
+                 sent_at DESC
+             LIMIT 15`
+        );
+
+        res.json({
+            agents: agents.rows,
+            discussions: discussions.rows,
+            chat: chat.rows,
+            mail: mail.rows
+        });
+    } catch (err) {
+        console.error('Admin dashboard error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to fetch dashboard data' }
+        });
+    }
+});
+
 // POST /admin/agents — list all agents
 router.post('/admin/agents', async (req, res) => {
     try {

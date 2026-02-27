@@ -120,3 +120,8 @@ dialog article {
     font-size: 0.9em;
     font-family: inherit;
 }
+
+tr.unread {
+    font-weight: bold;
+    border-left: 3px solid var(--pico-primary);
+}

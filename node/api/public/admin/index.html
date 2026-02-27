@@ -37,6 +37,7 @@
                     <li><strong>Memory API Admin</strong></li>
                 </ul>
                 <ul>
+                    <li><a href="#" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">Dashboard</a></li>
                     <li><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
                     <li><a href="#" :class="{ active: currentView === 'discussions' }" @click.prevent="currentView = 'discussions'">Discussions</a></li>
                     <li><a href="#" :class="{ active: currentView === 'chat' }" @click.prevent="currentView = 'chat'">Chat</a></li>
@@ -46,6 +47,99 @@
             </nav>
 
             <main class="container">
+                <!-- Dashboard view -->
+                <div v-if="currentView === 'dashboard' && dashboard">
+                    <h2>Dashboard</h2>
+
+                    <div class="grid">
+                        <div>
+                            <h4>Agents</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Agent</th>
+                                        <th>Status</th>
+                                        <th>Last Seen</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="agent in dashboard.agents" :key="agent.agent">
+                                        <td>{{ agent.agent }}</td>
+                                        <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
+                                        <td>{{ formatDate(agent.last_seen) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div>
+                            <h4>Discussions</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Topic</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="d in dashboard.discussions" :key="d.id">
+                                        <td>{{ d.id }}</td>
+                                        <td class="message-cell">{{ d.topic }}</td>
+                                        <td><span :class="'badge badge-' + d.status">{{ d.status }}</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div>
+                            <h4>Chat</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Message</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="msg in dashboard.chat" :key="msg.id" :class="{ unread: !msg.acked_at }">
+                                        <td>{{ msg.from_agent }}</td>
+                                        <td>{{ msg.to_agent }}</td>
+                                        <td class="message-cell">{{ msg.message }}</td>
+                                        <td>{{ formatDate(msg.sent_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div>
+                            <h4>Mail</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Subject</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="msg in dashboard.mail" :key="msg.id" :class="{ unread: !msg.acked_at }">
+                                        <td>{{ msg.from_agent }}</td>
+                                        <td>{{ msg.to_agent }}</td>
+                                        <td class="message-cell">{{ msg.subject }}</td>
+                                        <td>{{ formatDate(msg.sent_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Agents view -->
                 <div v-if="currentView === 'agents'">
                     <h2>Agents</h2>
