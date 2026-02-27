@@ -18,6 +18,7 @@ createApp({
         const discussionFilter = ref('');
         const selectedDiscussion = ref(null);
         const chatMessages = ref([]);
+        const selectedMessage = ref(null);
         const mailMessages = ref([]);
         const selectedMail = ref(null);
 
@@ -192,6 +193,7 @@ createApp({
             selectedDiscussion,
             viewDiscussion,
             chatMessages,
+            selectedMessage,
             mailMessages,
             selectedMail,
             viewMail,
