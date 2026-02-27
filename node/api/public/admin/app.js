@@ -185,7 +185,8 @@ createApp({
             active: 'icon-circle',
             concluded: 'icon-check',
             timed_out: 'icon-clock',
-            pending: 'icon-circle'
+            pending: 'icon-circle',
+            cancelled: 'icon-x'
         };
 
         function statusIcon(status) {
