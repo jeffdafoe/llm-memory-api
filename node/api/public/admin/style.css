@@ -209,3 +209,9 @@ h4 i {
     font-size: 0.9em;
     opacity: 0.7;
 }
+
+.unread-count {
+    font-weight: normal;
+    font-size: 0.8em;
+    color: var(--pico-muted-color);
+}
