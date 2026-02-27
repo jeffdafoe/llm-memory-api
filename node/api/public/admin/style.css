@@ -57,6 +57,8 @@ nav a.active {
 }
 
 .message-cell {
+    max-width: 1px;
+    width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -64,6 +66,10 @@ nav a.active {
 
 .time-cell {
     text-align: right;
+    white-space: nowrap;
+}
+
+.nowrap {
     white-space: nowrap;
 }
 
