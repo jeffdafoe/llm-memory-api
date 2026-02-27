@@ -31,6 +31,7 @@ let mcpConfigPath = null;
 let workDirBase = null;
 let maxMessages = 200;
 let timeoutMinutes = 120;
+let joinTimeout = 120;
 
 for (let i = 1; i < args.length; i++) {
     if (args[i] === '--topic' && args[i + 1]) {
@@ -62,6 +63,9 @@ for (let i = 1; i < args.length; i++) {
         i++;
     } else if (args[i] === '--work-dir' && args[i + 1]) {
         workDirBase = args[i + 1];
+        i++;
+    } else if (args[i] === '--join-timeout' && args[i + 1]) {
+        joinTimeout = parseInt(args[i + 1], 10);
         i++;
     } else if (command === 'join' && !discussionId && /^\d+$/.test(args[i])) {
         discussionId = parseInt(args[i], 10);
@@ -612,6 +616,12 @@ function startProxyServer() {
                             choice: parsed.choice,
                             reason: parsed.reason || undefined,
                         });
+                        try {
+                            const reasonText = parsed.reason ? ` (${parsed.reason})` : '';
+                            appendTranscript('system', `${cfg.agent} voted ${parsed.choice} on vote #${parsed.vote_id}${reasonText}`);
+                        } catch (err) {
+                            log(`Transcript append failed after vote/cast (non-fatal): ${err.message}`);
+                        }
                     } else if (urlPath === '/vote/status') {
                         result = await apiCall('discussion/vote/status', {
                             vote_id: parsed.vote_id,
@@ -621,6 +631,11 @@ function startProxyServer() {
                             agent: cfg.agent,
                         });
                     } else if (urlPath === '/conclude') {
+                        try {
+                            appendTranscript('system', `${cfg.agent} concluded the discussion`);
+                        } catch (err) {
+                            log(`Transcript append failed before conclude (non-fatal): ${err.message}`);
+                        }
                         result = await apiCall('discussion/conclude', {
                             discussion_id: discussionId,
                             agent: cfg.agent,
@@ -1152,12 +1167,24 @@ async function main() {
         } else if (command === 'join') {
             // Auto-discover discussion ID from pending invitations
             if (!discussionId) {
-                const pending = await apiCall('discussion/pending', { agent: cfg.agent });
-                const invitations = pending.invited_discussions || [];
-                if (invitations.length === 0) {
-                    console.error('No pending discussion invitations found');
-                    process.exit(1);
+                // Retry loop — the other agent may not have created the discussion yet
+                const pollIntervalMs = 5000;
+                const maxAttempts = Math.ceil((joinTimeout * 1000) / pollIntervalMs);
+                let invitations = [];
+
+                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                    const pending = await apiCall('discussion/pending', { agent: cfg.agent });
+                    invitations = pending.invited_discussions || [];
+                    if (invitations.length > 0) break;
+
+                    if (attempt === maxAttempts) {
+                        console.error(`No pending discussion invitations found after ${joinTimeout}s`);
+                        process.exit(1);
+                    }
+                    console.error(`[${new Date().toTimeString().slice(0, 8)}] No invitations yet, retrying (${attempt}/${maxAttempts})...`);
+                    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
                 }
+
                 if (invitations.length > 1) {
                     console.error('Multiple pending invitations:');
                     for (const inv of invitations) {
@@ -1173,9 +1200,11 @@ async function main() {
         }
 
         // Set workDir now that we have the discussion ID.
-        // Respect --work-dir CLI flag if provided, otherwise fall back to os.tmpdir().
+        // Priority: --work-dir CLI flag > MEMORY_TEMP_DIR from .mcp.json > os.tmpdir()/llm
         if (workDirBase) {
             cfg.workDir = path.join(workDirBase, `discuss-${discussionId}`);
+        } else if (mcpEnv.MEMORY_TEMP_DIR) {
+            cfg.workDir = path.join(mcpEnv.MEMORY_TEMP_DIR, `discuss-${discussionId}`);
         } else {
             const tmpBase = path.join(os.tmpdir(), 'llm');
             cfg.workDir = path.join(tmpBase, `discuss-${discussionId}`);
