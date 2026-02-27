@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
 const agentRoutes = require('./routes/agent');
@@ -7,11 +8,13 @@ const discussionRoutes = require('./routes/discussion');
 const mailRoutes = require('./routes/mail');
 const memoryRoutes = require('./routes/memory');
 const systemRoutes = require('./routes/system');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const port = process.env.PORT || 3100;
 
 app.use(express.json({ limit: '5mb' }));
+app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
 app.use('/v1', auth);
 app.use('/v1', opportunisticHeartbeat);
 app.use('/v1', agentRoutes);
@@ -20,6 +23,7 @@ app.use('/v1', discussionRoutes);
 app.use('/v1', mailRoutes);
 app.use('/v1', memoryRoutes);
 app.use('/v1', systemRoutes);
+app.use('/v1', adminRoutes);
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });

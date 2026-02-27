@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory API Admin</title>
+    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Login screen -->
+        <main v-if="!authenticated" class="container">
+            <article class="login-card">
+                <h2>Memory API Admin</h2>
+                <form @submit.prevent="login">
+                    <label>
+                        Username
+                        <input type="text" v-model="loginForm.username" required autofocus>
+                    </label>
+                    <label>
+                        Password
+                        <input type="password" v-model="loginForm.password" required>
+                    </label>
+                    <p v-if="loginError" class="error">{{ loginError }}</p>
+                    <button type="submit" :disabled="loggingIn">
+                        {{ loggingIn ? 'Logging in...' : 'Log in' }}
+                    </button>
+                </form>
+            </article>
+        </main>
+
+        <!-- App shell -->
+        <div v-else>
+            <nav class="container-fluid">
+                <ul>
+                    <li><strong>Memory API Admin</strong></li>
+                </ul>
+                <ul>
+                    <li><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
+                    <li><a href="#" :class="{ active: currentView === 'discussions' }" @click.prevent="currentView = 'discussions'">Discussions</a></li>
+                    <li><a href="#" :class="{ active: currentView === 'chat' }" @click.prevent="currentView = 'chat'">Chat</a></li>
+                    <li><a href="#" :class="{ active: currentView === 'mail' }" @click.prevent="currentView = 'mail'">Mail</a></li>
+                    <li><a href="#" @click.prevent="logout">Logout</a></li>
+                </ul>
+            </nav>
+
+            <main class="container">
+                <!-- Agents view -->
+                <div v-if="currentView === 'agents'">
+                    <h2>Agents</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Status</th>
+                                <th>Last Seen</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="agent in agents" :key="agent.agent">
+                                <td>{{ agent.agent }}</td>
+                                <td>
+                                    <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
+                                </td>
+                                <td>{{ formatDate(agent.last_seen) }}</td>
+                                <td>{{ formatDate(agent.created_at) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Discussions view -->
+                <div v-if="currentView === 'discussions'">
+                    <h2>Discussions</h2>
+                    <div class="filters">
+                        <select v-model="discussionFilter" @change="loadDiscussions">
+                            <option value="">All</option>
+                            <option value="active">Active</option>
+                            <option value="concluded">Concluded</option>
+                            <option value="timed_out">Timed Out</option>
+                        </select>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Topic</th>
+                                <th>Status</th>
+                                <th>Created By</th>
+                                <th>Participants</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="d in discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
+                                <td>{{ d.id }}</td>
+                                <td>{{ d.topic }}</td>
+                                <td>
+                                    <span :class="'badge badge-' + d.status">{{ d.status }}</span>
+                                </td>
+                                <td>{{ d.created_by }}</td>
+                                <td>{{ d.participant_count }}</td>
+                                <td>{{ formatDate(d.created_at) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Discussion detail modal -->
+                    <dialog :open="selectedDiscussion !== null" @close="selectedDiscussion = null">
+                        <article v-if="selectedDiscussion">
+                            <header>
+                                <button aria-label="Close" rel="prev" @click="selectedDiscussion = null"></button>
+                                <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
+                            </header>
+                            <div class="grid">
+                                <div>
+                                    <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
+                                    <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
+                                    <strong>Created by:</strong> {{ selectedDiscussion.discussion.created_by }}<br>
+                                    <strong>Created:</strong> {{ formatDate(selectedDiscussion.discussion.created_at) }}
+                                </div>
+                                <div>
+                                    <strong>Participants:</strong>
+                                    <ul>
+                                        <li v-for="p in selectedDiscussion.participants" :key="p.agent">
+                                            {{ p.agent }} ({{ p.status }})
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div v-if="selectedDiscussion.votes.length > 0">
+                                <h4>Votes</h4>
+                                <div v-for="v in selectedDiscussion.votes" :key="v.id" class="vote-card">
+                                    <strong>Vote #{{ v.id }}:</strong> {{ v.question }}<br>
+                                    <strong>Status:</strong> {{ v.status }} | <strong>Type:</strong> {{ v.type }}<br>
+                                    <div v-if="v.ballots && v.ballots[0]">
+                                        <strong>Ballots:</strong>
+                                        <ul>
+                                            <li v-for="b in v.ballots" :key="b.agent">
+                                                {{ b.agent }}: choice {{ b.choice }}
+                                                <span v-if="b.reason"> — {{ b.reason }}</span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    </dialog>
+                </div>
+
+                <!-- Chat view -->
+                <div v-if="currentView === 'chat'">
+                    <h2>Chat Messages</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Channel</th>
+                                <th>Message</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="msg in chatMessages" :key="msg.id">
+                                <td>{{ msg.from_agent }}</td>
+                                <td>{{ msg.to_agent }}</td>
+                                <td>{{ msg.channel || '—' }}</td>
+                                <td class="message-cell">{{ msg.message }}</td>
+                                <td>{{ formatDate(msg.created_at) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Mail view -->
+                <div v-if="currentView === 'mail'">
+                    <h2>Mail</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Subject</th>
+                                <th>Time</th>
+                                <th>Acked</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="msg in mailMessages" :key="msg.id" @click="viewMail(msg)" class="clickable">
+                                <td>{{ msg.from_agent }}</td>
+                                <td>{{ msg.to_agent }}</td>
+                                <td>{{ msg.subject }}</td>
+                                <td>{{ formatDate(msg.created_at) }}</td>
+                                <td>{{ msg.acked_at ? 'Yes' : 'No' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <dialog :open="selectedMail !== null" @close="selectedMail = null">
+                        <article v-if="selectedMail">
+                            <header>
+                                <button aria-label="Close" rel="prev" @click="selectedMail = null"></button>
+                                <h3>{{ selectedMail.subject }}</h3>
+                            </header>
+                            <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
+                            <p><strong>Date:</strong> {{ formatDate(selectedMail.created_at) }}</p>
+                            <pre class="mail-body">{{ selectedMail.body }}</pre>
+                        </article>
+                    </dialog>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
