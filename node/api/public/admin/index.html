@@ -146,6 +146,24 @@
                                     </div>
                                 </div>
                             </div>
+                            <div>
+                                <h4>
+                                    Chat Transcript
+                                    <button v-if="!discussionChat" class="inline-button" @click="loadDiscussionChat(selectedDiscussion.discussion.id)">Load</button>
+                                </h4>
+                                <div v-if="discussionChat">
+                                    <div v-if="discussionChat.length === 0"><em>No messages found for this discussion.</em></div>
+                                    <div v-else class="chat-transcript">
+                                        <div v-for="msg in discussionChat" :key="msg.id" class="chat-bubble" :class="'chat-from-' + msg.from_agent">
+                                            <div class="chat-meta">
+                                                <strong>{{ msg.from_agent }}</strong>
+                                                <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
+                                            </div>
+                                            <pre class="chat-text">{{ msg.message }}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </article>
                     </dialog>
                 </div>
