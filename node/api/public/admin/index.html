@@ -55,7 +55,7 @@
                                 <th>Agent</th>
                                 <th>Status</th>
                                 <th>Last Seen</th>
-                                <th>Created</th>
+                                <th>Registered</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -65,7 +65,7 @@
                                     <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                 </td>
                                 <td>{{ formatDate(agent.last_seen) }}</td>
-                                <td>{{ formatDate(agent.created_at) }}</td>
+                                <td>{{ formatDate(agent.registered_at) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -169,7 +169,7 @@
                                 <td>{{ msg.to_agent }}</td>
                                 <td>{{ msg.channel || '—' }}</td>
                                 <td class="message-cell">{{ msg.message }}</td>
-                                <td>{{ formatDate(msg.created_at) }}</td>
+                                <td>{{ formatDate(msg.sent_at) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -193,7 +193,7 @@
                                 <td>{{ msg.from_agent }}</td>
                                 <td>{{ msg.to_agent }}</td>
                                 <td>{{ msg.subject }}</td>
-                                <td>{{ formatDate(msg.created_at) }}</td>
+                                <td>{{ formatDate(msg.sent_at) }}</td>
                                 <td>{{ msg.acked_at ? 'Yes' : 'No' }}</td>
                             </tr>
                         </tbody>
@@ -206,7 +206,7 @@
                                 <h3>{{ selectedMail.subject }}</h3>
                             </header>
                             <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
-                            <p><strong>Date:</strong> {{ formatDate(selectedMail.created_at) }}</p>
+                            <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
                             <pre class="mail-body">{{ selectedMail.body }}</pre>
                         </article>
                     </dialog>
