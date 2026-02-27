@@ -113,7 +113,7 @@ router.post('/admin/logout', async (req, res) => {
 router.post('/admin/agents', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT agent, status, last_seen, passphrase_rotated_at, created_at
+            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at
              FROM agents
              ORDER BY agent`
         );
@@ -207,7 +207,7 @@ router.post('/admin/chat', async (req, res) => {
             sql += ' WHERE channel = $1';
             params.push(channel);
         }
-        sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+        sql += ` ORDER BY sent_at DESC LIMIT $${params.length + 1}`;
         params.push(limit);
 
         const result = await pool.query(sql, params);
@@ -225,7 +225,7 @@ router.post('/admin/mail', async (req, res) => {
     const { limit = 50 } = req.body;
     try {
         const result = await pool.query(
-            'SELECT * FROM mail ORDER BY created_at DESC LIMIT $1',
+            'SELECT * FROM mail ORDER BY sent_at DESC LIMIT $1',
             [limit]
         );
         res.json({ messages: result.rows });
