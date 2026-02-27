@@ -133,7 +133,7 @@ router.post('/admin/dashboard', async (req, res) => {
         const chat = await pool.query(
             `SELECT id, from_agent, to_agent, channel, message, sent_at, acked_at
              FROM chat_messages
-             WHERE channel IS NULL OR channel = ''
+             WHERE from_agent != 'system'
              ORDER BY
                  CASE WHEN acked_at IS NULL THEN 0 ELSE 1 END,
                  sent_at DESC
