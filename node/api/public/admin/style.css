@@ -1,0 +1,79 @@
+.login-card {
+    max-width: 400px;
+    margin: 15vh auto 0;
+    padding: 2rem;
+}
+
+.error {
+    color: var(--pico-del-color);
+}
+
+nav a.active {
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+.clickable {
+    cursor: pointer;
+}
+
+.clickable:hover {
+    background: var(--pico-table-row-stripped-background-color);
+}
+
+.badge {
+    padding: 0.2em 0.6em;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.badge-active {
+    background: #2d6a2d;
+    color: white;
+}
+
+.badge-concluded {
+    background: #555;
+    color: white;
+}
+
+.badge-timed_out {
+    background: #8b4513;
+    color: white;
+}
+
+.badge-pending {
+    background: #b8860b;
+    color: white;
+}
+
+.message-cell {
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mail-body {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.vote-card {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 4px;
+}
+
+.filters {
+    margin-bottom: 1rem;
+    max-width: 200px;
+}
+
+dialog article {
+    max-width: 800px;
+    width: 90vw;
+}
