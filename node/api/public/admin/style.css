@@ -47,20 +47,24 @@ nav a.active {
     color: white;
 }
 
-.status-icon {
-    font-size: 1.1em;
-}
-
 .status-active {
     color: #2d6a2d;
+    font-size: 0.5em;
 }
 
 .status-concluded {
-    color: #888;
+    color: #2d6a2d;
+    font-size: 0.9em;
 }
 
 .status-timed_out {
     color: #8b4513;
+    font-size: 0.9em;
+}
+
+.status-pending {
+    color: #b8860b;
+    font-size: 0.5em;
 }
 
 .fixed-table {
