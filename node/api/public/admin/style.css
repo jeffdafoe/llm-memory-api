@@ -47,12 +47,26 @@ nav a.active {
     color: white;
 }
 
+.fixed-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
 .message-cell {
-    max-width: 400px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+.time-cell {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.col-icon { width: 1.5em; }
+.col-agent { width: 7em; }
+.col-channel { width: 8em; }
+.col-time { width: 11em; }
 
 .mail-body {
     white-space: pre-wrap;
