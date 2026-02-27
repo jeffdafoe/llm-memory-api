@@ -137,3 +137,19 @@ tr.unread {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 }
+
+.icon-cell {
+    width: 1.5em;
+    text-align: center;
+    padding-right: 0;
+}
+
+.acked-icon {
+    color: #2d6a2d;
+    font-size: 0.9em;
+}
+
+.unacked-icon {
+    color: #b8860b;
+    font-size: 0.5em;
+}
