@@ -7,12 +7,13 @@ createApp({
         const authenticated = ref(false);
         const sessionToken = ref(null);
         const user = ref(null);
-        const currentView = ref('agents');
+        const currentView = ref('dashboard');
         const loginForm = ref({ username: '', password: '' });
         const loginError = ref('');
         const loggingIn = ref(false);
 
         // Data
+        const dashboard = ref(null);
         const agents = ref([]);
         const discussions = ref([]);
         const discussionFilter = ref('');
@@ -83,6 +84,15 @@ createApp({
         }
 
         // Data loading
+        async function loadDashboard() {
+            try {
+                const data = await api('/admin/dashboard');
+                dashboard.value = data;
+            } catch (err) {
+                console.error('Failed to load dashboard:', err);
+            }
+        }
+
         async function loadAgents() {
             try {
                 const data = await api('/admin/agents');
@@ -147,7 +157,9 @@ createApp({
         }
 
         function loadCurrentView() {
-            if (currentView.value === 'agents') {
+            if (currentView.value === 'dashboard') {
+                loadDashboard();
+            } else if (currentView.value === 'agents') {
                 loadAgents();
             } else if (currentView.value === 'discussions') {
                 loadDiscussions();
@@ -215,6 +227,7 @@ createApp({
             loggingIn,
             login,
             logout,
+            dashboard,
             agents,
             discussions,
             discussionFilter,
