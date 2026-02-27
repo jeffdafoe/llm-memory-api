@@ -141,7 +141,7 @@ router.post('/admin/dashboard', async (req, res) => {
         );
 
         const mail = await pool.query(
-            `SELECT id, from_agent, to_agent, subject, sent_at, acked_at
+            `SELECT id, from_agent, to_agent, subject, body, sent_at, acked_at
              FROM mail
              ORDER BY
                  CASE WHEN acked_at IS NULL THEN 0 ELSE 1 END,

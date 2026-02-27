@@ -83,7 +83,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="d in dashboard.discussions" :key="d.id">
+                                    <tr v-for="d in dashboard.discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
                                         <td>{{ d.id }}</td>
                                         <td class="message-cell">{{ d.topic }}</td>
                                         <td><span :class="'badge badge-' + d.status">{{ d.status }}</span></td>
@@ -93,51 +93,45 @@
                         </div>
                     </div>
 
-                    <div class="grid">
-                        <div>
-                            <h4>Chat</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>From</th>
-                                        <th>To</th>
-                                        <th>Message</th>
-                                        <th>Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="msg in dashboard.chat" :key="msg.id" :class="{ unread: !msg.acked_at }">
-                                        <td>{{ msg.from_agent }}</td>
-                                        <td>{{ msg.to_agent }}</td>
-                                        <td class="message-cell">{{ msg.message }}</td>
-                                        <td>{{ formatDate(msg.sent_at) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                    <h4>Chat</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Message</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="msg in dashboard.chat" :key="msg.id" @click="selectedMessage = msg" class="clickable" :class="{ unread: !msg.acked_at }">
+                                <td>{{ msg.from_agent }}</td>
+                                <td>{{ msg.to_agent }}</td>
+                                <td class="message-cell">{{ msg.message }}</td>
+                                <td>{{ formatDate(msg.sent_at) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
 
-                        <div>
-                            <h4>Mail</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>From</th>
-                                        <th>To</th>
-                                        <th>Subject</th>
-                                        <th>Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="msg in dashboard.mail" :key="msg.id" :class="{ unread: !msg.acked_at }">
-                                        <td>{{ msg.from_agent }}</td>
-                                        <td>{{ msg.to_agent }}</td>
-                                        <td class="message-cell">{{ msg.subject }}</td>
-                                        <td>{{ formatDate(msg.sent_at) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <h4>Mail</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Subject</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="msg in dashboard.mail" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
+                                <td>{{ msg.from_agent }}</td>
+                                <td>{{ msg.to_agent }}</td>
+                                <td class="message-cell">{{ msg.subject }}</td>
+                                <td>{{ formatDate(msg.sent_at) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
 
                 <!-- Agents view -->
@@ -201,65 +195,6 @@
                         </tbody>
                     </table>
 
-                    <!-- Discussion detail modal -->
-                    <dialog :open="selectedDiscussion !== null" @close="selectedDiscussion = null">
-                        <article v-if="selectedDiscussion">
-                            <header>
-                                <button aria-label="Close" rel="prev" @click="selectedDiscussion = null"></button>
-                                <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
-                            </header>
-                            <div class="grid">
-                                <div>
-                                    <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
-                                    <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
-                                    <strong>Created by:</strong> {{ selectedDiscussion.discussion.created_by }}<br>
-                                    <strong>Created:</strong> {{ formatDate(selectedDiscussion.discussion.created_at) }}
-                                </div>
-                                <div>
-                                    <strong>Participants:</strong>
-                                    <ul>
-                                        <li v-for="p in selectedDiscussion.participants" :key="p.agent">
-                                            {{ p.agent }} ({{ p.status }})
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div v-if="selectedDiscussion.votes.length > 0">
-                                <h4>Votes</h4>
-                                <div v-for="v in selectedDiscussion.votes" :key="v.id" class="vote-card">
-                                    <strong>Vote #{{ v.id }}:</strong> {{ v.question }}<br>
-                                    <strong>Status:</strong> {{ v.status }} | <strong>Type:</strong> {{ v.type }}<br>
-                                    <div v-if="v.ballots && v.ballots[0]">
-                                        <strong>Ballots:</strong>
-                                        <ul>
-                                            <li v-for="b in v.ballots" :key="b.agent">
-                                                {{ b.agent }}: choice {{ b.choice }}
-                                                <span v-if="b.reason"> — {{ b.reason }}</span>
-                                            </li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                            <div>
-                                <h4>
-                                    Chat Transcript
-                                    <button v-if="!discussionChat" class="inline-button" @click="loadDiscussionChat(selectedDiscussion.discussion.id)">Load</button>
-                                </h4>
-                                <div v-if="discussionChat">
-                                    <div v-if="discussionChat.length === 0"><em>No messages found for this discussion.</em></div>
-                                    <div v-else class="chat-transcript">
-                                        <div v-for="msg in discussionChat" :key="msg.id" class="chat-bubble" :class="'chat-from-' + msg.from_agent">
-                                            <div class="chat-meta">
-                                                <strong>{{ msg.from_agent }}</strong>
-                                                <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
-                                            </div>
-                                            <div class="chat-text">{{ msg.message }}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </article>
-                    </dialog>
                 </div>
 
                 <!-- Chat view -->
@@ -286,19 +221,6 @@
                         </tbody>
                     </table>
 
-                    <dialog :open="selectedMessage !== null" @close="selectedMessage = null">
-                        <article v-if="selectedMessage">
-                            <header>
-                                <button aria-label="Close" rel="prev" @click="selectedMessage = null"></button>
-                                <h3>Chat Message</h3>
-                            </header>
-                            <p><strong>From:</strong> {{ selectedMessage.from_agent }} <strong>To:</strong> {{ selectedMessage.to_agent }}</p>
-                            <p><strong>Date:</strong> {{ formatDate(selectedMessage.sent_at) }}
-                                <span v-if="selectedMessage.channel"> | <strong>Channel:</strong> {{ selectedMessage.channel }}</span>
-                            </p>
-                            <div class="mail-body">{{ selectedMessage.message }}</div>
-                        </article>
-                    </dialog>
                 </div>
 
                 <!-- Mail view -->
@@ -325,18 +247,97 @@
                         </tbody>
                     </table>
 
-                    <dialog :open="selectedMail !== null" @close="selectedMail = null">
-                        <article v-if="selectedMail">
-                            <header>
-                                <button aria-label="Close" rel="prev" @click="selectedMail = null"></button>
-                                <h3>{{ selectedMail.subject }}</h3>
-                            </header>
-                            <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
-                            <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
-                            <div class="mail-body">{{ selectedMail.body }}</div>
-                        </article>
-                    </dialog>
                 </div>
+
+                <!-- Shared dialogs (accessible from any view) -->
+
+                <!-- Discussion detail modal -->
+                <dialog :open="selectedDiscussion !== null" @close="selectedDiscussion = null">
+                    <article v-if="selectedDiscussion">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="selectedDiscussion = null"></button>
+                            <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
+                        </header>
+                        <div class="grid">
+                            <div>
+                                <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
+                                <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
+                                <strong>Created by:</strong> {{ selectedDiscussion.discussion.created_by }}<br>
+                                <strong>Created:</strong> {{ formatDate(selectedDiscussion.discussion.created_at) }}
+                            </div>
+                            <div>
+                                <strong>Participants:</strong>
+                                <ul>
+                                    <li v-for="p in selectedDiscussion.participants" :key="p.agent">
+                                        {{ p.agent }} ({{ p.status }})
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div v-if="selectedDiscussion.votes.length > 0">
+                            <h4>Votes</h4>
+                            <div v-for="v in selectedDiscussion.votes" :key="v.id" class="vote-card">
+                                <strong>Vote #{{ v.id }}:</strong> {{ v.question }}<br>
+                                <strong>Status:</strong> {{ v.status }} | <strong>Type:</strong> {{ v.type }}<br>
+                                <div v-if="v.ballots && v.ballots[0]">
+                                    <strong>Ballots:</strong>
+                                    <ul>
+                                        <li v-for="b in v.ballots" :key="b.agent">
+                                            {{ b.agent }}: choice {{ b.choice }}
+                                            <span v-if="b.reason"> — {{ b.reason }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h4>
+                                Chat Transcript
+                                <button v-if="!discussionChat" class="inline-button" @click="loadDiscussionChat(selectedDiscussion.discussion.id)">Load</button>
+                            </h4>
+                            <div v-if="discussionChat">
+                                <div v-if="discussionChat.length === 0"><em>No messages found for this discussion.</em></div>
+                                <div v-else class="chat-transcript">
+                                    <div v-for="msg in discussionChat" :key="msg.id" class="chat-bubble" :class="'chat-from-' + msg.from_agent">
+                                        <div class="chat-meta">
+                                            <strong>{{ msg.from_agent }}</strong>
+                                            <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
+                                        </div>
+                                        <div class="chat-text">{{ msg.message }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                </dialog>
+
+                <!-- Chat message modal -->
+                <dialog :open="selectedMessage !== null" @close="selectedMessage = null">
+                    <article v-if="selectedMessage">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="selectedMessage = null"></button>
+                            <h3>Chat Message</h3>
+                        </header>
+                        <p><strong>From:</strong> {{ selectedMessage.from_agent }} <strong>To:</strong> {{ selectedMessage.to_agent }}</p>
+                        <p><strong>Date:</strong> {{ formatDate(selectedMessage.sent_at) }}
+                            <span v-if="selectedMessage.channel"> | <strong>Channel:</strong> {{ selectedMessage.channel }}</span>
+                        </p>
+                        <div class="mail-body">{{ selectedMessage.message }}</div>
+                    </article>
+                </dialog>
+
+                <!-- Mail modal -->
+                <dialog :open="selectedMail !== null" @close="selectedMail = null">
+                    <article v-if="selectedMail">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="selectedMail = null"></button>
+                            <h3>{{ selectedMail.subject }}</h3>
+                        </header>
+                        <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
+                        <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
+                        <div class="mail-body">{{ selectedMail.body }}</div>
+                    </article>
+                </dialog>
             </main>
         </div>
     </div>
