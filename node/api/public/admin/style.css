@@ -123,5 +123,5 @@ dialog article {
 
 tr.unread {
     font-weight: bold;
-    border-left: 3px solid var(--pico-primary);
+    background: rgba(45, 106, 45, 0.15);
 }
