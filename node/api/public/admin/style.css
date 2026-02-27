@@ -153,3 +153,8 @@ tr.unread {
     color: #b8860b;
     font-size: 0.5em;
 }
+
+.muted {
+    color: var(--pico-muted-color);
+    font-style: italic;
+}
