@@ -46,7 +46,7 @@
                 </ul>
             </nav>
 
-            <main class="container">
+            <main :class="currentView === 'dashboard' ? 'container-fluid' : 'container'">
                 <!-- Dashboard view -->
                 <div v-if="currentView === 'dashboard' && dashboard">
                     <h2>Dashboard</h2>
@@ -93,45 +93,51 @@
                         </div>
                     </div>
 
-                    <h4>Chat</h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>From</th>
-                                <th>To</th>
-                                <th>Message</th>
-                                <th>Time</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="msg in dashboard.chat" :key="msg.id" @click="selectedMessage = msg" class="clickable" :class="{ unread: !msg.acked_at }">
-                                <td>{{ msg.from_agent }}</td>
-                                <td>{{ msg.to_agent }}</td>
-                                <td class="message-cell">{{ msg.message }}</td>
-                                <td>{{ formatDate(msg.sent_at) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="grid">
+                        <div>
+                            <h4>Chat</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Message</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="msg in dashboard.chat" :key="msg.id" @click="selectedMessage = msg" class="clickable" :class="{ unread: !msg.acked_at }">
+                                        <td>{{ msg.from_agent }}</td>
+                                        <td>{{ msg.to_agent }}</td>
+                                        <td class="message-cell">{{ msg.message }}</td>
+                                        <td>{{ formatDate(msg.sent_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
 
-                    <h4>Mail</h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>From</th>
-                                <th>To</th>
-                                <th>Subject</th>
-                                <th>Time</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="msg in dashboard.mail" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
-                                <td>{{ msg.from_agent }}</td>
-                                <td>{{ msg.to_agent }}</td>
-                                <td class="message-cell">{{ msg.subject }}</td>
-                                <td>{{ formatDate(msg.sent_at) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                        <div>
+                            <h4>Mail</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Subject</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="msg in dashboard.mail" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
+                                        <td>{{ msg.from_agent }}</td>
+                                        <td>{{ msg.to_agent }}</td>
+                                        <td class="message-cell">{{ msg.subject }}</td>
+                                        <td>{{ formatDate(msg.sent_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Agents view -->
