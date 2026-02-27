@@ -181,6 +181,16 @@ createApp({
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
         }
 
+        const statusIcons = {
+            active: 'icon-circle',
+            concluded: 'icon-check',
+            timed_out: 'icon-clock'
+        };
+
+        function statusIcon(status) {
+            return statusIcons[status] || 'icon-help-circle';
+        }
+
         function closeAllDialogs() {
             selectedDiscussion.value = null;
             discussionChat.value = null;
@@ -281,7 +291,8 @@ createApp({
             selectedMail,
             viewMail,
             loadDiscussions,
-            formatDate
+            formatDate,
+            statusIcon
         };
     }
 }).mount('#app');
