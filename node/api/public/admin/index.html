@@ -36,13 +36,13 @@
             <nav class="container-fluid">
                 <ul>
                     <li><strong>Memory API Admin</strong></li>
-                </ul>
-                <ul>
+                    <li>—</li>
                     <li><a href="#" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">Dashboard</a></li>
                     <li><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
                     <li><a href="#" :class="{ active: currentView === 'discussions' }" @click.prevent="currentView = 'discussions'">Discussions</a></li>
                     <li><a href="#" :class="{ active: currentView === 'chat' }" @click.prevent="currentView = 'chat'">Chat</a></li>
                     <li><a href="#" :class="{ active: currentView === 'mail' }" @click.prevent="currentView = 'mail'">Mail</a></li>
+                    <li class="nav-spacer"></li>
                     <li><a href="#" @click.prevent="logout">Logout</a></li>
                 </ul>
             </nav>

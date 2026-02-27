@@ -13,6 +13,10 @@ nav a.active {
     text-decoration: underline;
 }
 
+.nav-spacer {
+    flex: 1;
+}
+
 .clickable {
     cursor: pointer;
 }
