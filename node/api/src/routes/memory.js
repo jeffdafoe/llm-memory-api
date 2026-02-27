@@ -24,10 +24,7 @@ router.post('/memory/ingest', async (req, res) => {
             });
         }
 
-        // Prepend source filename so it influences the embedding vector — helps
-        // searches match when the query aligns with the filename even if the
-        // chunk content uses different terminology
-        const texts = chunks.map(c => `Source: ${source_file}\n${c.chunk_text}`);
+        const texts = chunks.map(c => c.chunk_text);
         const embeddings = await embed(texts);
 
         const client = await pool.connect();
@@ -114,28 +111,43 @@ router.post('/memory/search', async (req, res) => {
         const embeddings = await embed(query);
         const queryVector = pgvector.toSql(embeddings[0]);
 
+        // Build ILIKE pattern from query words to boost chunks whose source_file
+        // matches the search terms. This catches cases where the filename is the
+        // most relevant signal but the chunk content uses different terminology.
+        const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
         let sql;
         let params;
 
         if (!namespace || namespace === '*') {
+            // Params: $1=vector, $2=limit, $3+=ILIKE patterns
+            const filenameClauses = queryWords.map((_, i) => `source_file ILIKE $${i + 3}`);
+            const boostExpression = filenameClauses.length > 0
+                ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
+                : '0';
             sql = `
                 SELECT source_file, heading, chunk_text, namespace,
-                       1 - (embedding <=> $1) AS similarity
+                       (1 - (embedding <=> $1)) + ${boostExpression} AS similarity
                 FROM memory_chunks
-                ORDER BY embedding <=> $1
+                ORDER BY similarity DESC
                 LIMIT $2
             `;
-            params = [queryVector, maxResults];
+            params = [queryVector, maxResults, ...queryWords.map(w => `%${w}%`)];
         } else {
+            // Params: $1=vector, $2=namespace, $3=limit, $4+=ILIKE patterns
+            const filenameClauses = queryWords.map((_, i) => `source_file ILIKE $${i + 4}`);
+            const boostExpression = filenameClauses.length > 0
+                ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
+                : '0';
             sql = `
                 SELECT source_file, heading, chunk_text, namespace,
-                       1 - (embedding <=> $1) AS similarity
+                       (1 - (embedding <=> $1)) + ${boostExpression} AS similarity
                 FROM memory_chunks
                 WHERE namespace = $2
-                ORDER BY embedding <=> $1
+                ORDER BY similarity DESC
                 LIMIT $3
             `;
-            params = [queryVector, namespace, maxResults];
+            params = [queryVector, namespace, maxResults, ...queryWords.map(w => `%${w}%`)];
         }
 
         const result = await pool.query(sql, params);
