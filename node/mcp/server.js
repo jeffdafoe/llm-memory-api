@@ -252,6 +252,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
+                name: 'clear_notes',
+                description: 'Remove orphaned chunks from the vector DB — entries whose source files no longer exist on disk. Compares DB contents against local repo files per namespace. Requires MEMORY_REPO_PATH env var.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        dry_run: { type: 'boolean', description: 'If true, only report what would be deleted without actually deleting (default: false)' }
+                    }
+                }
+            },
+            {
                 name: 'agent_status',
                 description: 'Get presence info for all agents: online/offline status, last seen time, and unread chat/mail counts for the querying agent.',
                 inputSchema: {
@@ -620,6 +630,70 @@ async function handleToolCall(name, args) {
         const details = results.length > 0 ? '\n\n' + results.join('\n') : '';
 
         return { content: [{ type: 'text', text: summary + details }] };
+    }
+
+    if (name === 'clear_notes') {
+        if (!MEMORY_REPO_PATH) {
+            throw new Error('MEMORY_REPO_PATH environment variable is not set');
+        }
+
+        const dryRun = args.dry_run || false;
+        const namespaces = ['work', 'home', 'shared'];
+
+        // Build valid file list per namespace from local repo
+        const validByNamespace = {};
+        for (const ns of namespaces) {
+            const nsDir = path.join(MEMORY_REPO_PATH, ns);
+            const mdFiles = walkMarkdownFiles(nsDir);
+            validByNamespace[ns] = mdFiles.map(f => path.basename(f));
+        }
+
+        // Get current DB state to find orphans
+        const statusData = await apiCall('/memory/ingest/status', {});
+        const dbByNamespace = {};
+        for (const entry of statusData.files) {
+            if (!dbByNamespace[entry.namespace]) {
+                dbByNamespace[entry.namespace] = [];
+            }
+            dbByNamespace[entry.namespace].push(entry.source_file);
+        }
+
+        // Find orphans per namespace (in DB but not on disk)
+        const allOrphans = [];
+        for (const ns of Object.keys(dbByNamespace)) {
+            const validSet = new Set(validByNamespace[ns] || []);
+            for (const sf of dbByNamespace[ns]) {
+                if (!validSet.has(sf)) {
+                    allOrphans.push({ namespace: ns, source_file: sf });
+                }
+            }
+        }
+
+        if (allOrphans.length === 0) {
+            return { content: [{ type: 'text', text: 'No orphans found.' }] };
+        }
+
+        if (dryRun) {
+            const list = allOrphans.map(o => `  ${o.namespace}/${o.source_file}`).join('\n');
+            return { content: [{ type: 'text', text: `Dry run: ${allOrphans.length} orphan(s) found:\n${list}` }] };
+        }
+
+        // Delete orphans per namespace via cleanup endpoint
+        const results = [];
+        for (const ns of Object.keys(dbByNamespace)) {
+            const validFiles = validByNamespace[ns] || [];
+            const data = await apiCall('/memory/cleanup', {
+                namespace: ns,
+                valid_source_files: validFiles
+            });
+            if (data.orphans_deleted > 0) {
+                for (const orphan of data.orphan_files) {
+                    results.push(`  Deleted ${ns}/${orphan}`);
+                }
+            }
+        }
+
+        return { content: [{ type: 'text', text: `Cleared ${allOrphans.length} orphan(s):\n${results.join('\n')}` }] };
     }
 
     if (name === 'agent_status') {
