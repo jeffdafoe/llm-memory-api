@@ -78,6 +78,13 @@ dialog article {
     max-width: 800px;
     width: 90vw;
     max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.dialog-body {
+    flex: 1;
     overflow-y: auto;
 }
 
