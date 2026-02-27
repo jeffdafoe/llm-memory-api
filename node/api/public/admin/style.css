@@ -183,6 +183,10 @@ tr.unread {
     -webkit-overflow-scrolling: touch;
 }
 
+.table-wrap table {
+    margin-bottom: 0;
+}
+
 .icon-cell {
     width: 1.5em;
     text-align: center;
