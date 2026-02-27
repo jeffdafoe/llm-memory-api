@@ -24,7 +24,10 @@ router.post('/memory/ingest', async (req, res) => {
             });
         }
 
-        const texts = chunks.map(c => c.chunk_text);
+        // Prepend source filename so it influences the embedding vector — helps
+        // searches match when the query aligns with the filename even if the
+        // chunk content uses different terminology
+        const texts = chunks.map(c => `Source: ${source_file}\n${c.chunk_text}`);
         const embeddings = await embed(texts);
 
         const client = await pool.connect();
