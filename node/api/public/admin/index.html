@@ -159,7 +159,7 @@
                                                 <strong>{{ msg.from_agent }}</strong>
                                                 <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
                                             </div>
-                                            <pre class="chat-text">{{ msg.message }}</pre>
+                                            <div class="chat-text">{{ msg.message }}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -202,7 +202,7 @@
                             <p><strong>Date:</strong> {{ formatDate(selectedMessage.sent_at) }}
                                 <span v-if="selectedMessage.channel"> | <strong>Channel:</strong> {{ selectedMessage.channel }}</span>
                             </p>
-                            <pre class="mail-body">{{ selectedMessage.message }}</pre>
+                            <div class="mail-body">{{ selectedMessage.message }}</div>
                         </article>
                     </dialog>
                 </div>
@@ -239,7 +239,7 @@
                             </header>
                             <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
                             <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
-                            <pre class="mail-body">{{ selectedMail.body }}</pre>
+                            <div class="mail-body">{{ selectedMail.body }}</div>
                         </article>
                     </dialog>
                 </div>

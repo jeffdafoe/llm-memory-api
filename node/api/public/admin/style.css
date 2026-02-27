@@ -59,6 +59,7 @@ nav a.active {
     word-wrap: break-word;
     max-height: 60vh;
     overflow-y: auto;
+    font-family: inherit;
 }
 
 .vote-card {
@@ -117,4 +118,5 @@ dialog article {
     word-wrap: break-word;
     margin: 0;
     font-size: 0.9em;
+    font-family: inherit;
 }
