@@ -242,7 +242,7 @@
                                     <td>{{ msg.channel || '—' }}</td>
                                     <td class="message-cell">{{ msg.message }}</td>
                                     <td>{{ formatDate(msg.sent_at) }}</td>
-                                    <td>{{ msg.acked_at ? 'Yes' : 'No' }}</td>
+                                    <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -270,7 +270,7 @@
                                     <td>{{ msg.to_agent }}</td>
                                     <td>{{ msg.subject }}</td>
                                     <td>{{ formatDate(msg.sent_at) }}</td>
-                                    <td>{{ msg.acked_at ? 'Yes' : 'No' }}</td>
+                                    <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
                                 </tr>
                             </tbody>
                         </table>
