@@ -8,6 +8,10 @@
     ProxyPreserveHost On
     ProxyPass /v1/ http://127.0.0.1:{{ memory_api_port }}/v1/
     ProxyPassReverse /v1/ http://127.0.0.1:{{ memory_api_port }}/v1/
+    ProxyPass /admin http://127.0.0.1:{{ memory_api_port }}/admin
+    ProxyPassReverse /admin http://127.0.0.1:{{ memory_api_port }}/admin
+    ProxyPass /health http://127.0.0.1:{{ memory_api_port }}/health
+    ProxyPassReverse /health http://127.0.0.1:{{ memory_api_port }}/health
 
     RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
     RequestHeader set X-Forwarded-Proto "https"
