@@ -97,7 +97,7 @@
                         </div>
                     </div>
 
-                    <h4><i class="icon-mail"></i> Mail</h4>
+                    <h4><i class="icon-mail"></i> Mail <span class="unread-count">({{ dashboard.mail.filter(m => !m.acked_at).length }} unread)</span></h4>
                     <div class="table-wrap" v-if="dashboard.mail.filter(m => !m.acked_at).length">
                         <table class="fixed-table">
                             <colgroup>
@@ -127,7 +127,6 @@
                             </tbody>
                         </table>
                     </div>
-                    <p v-else class="muted">No unread mail.</p>
                     <details v-if="dashboard.mail.filter(m => m.acked_at).length">
                         <summary><i class="icon-chevron-right summary-chevron"></i> All mail</summary>
                         <div class="table-wrap">
@@ -158,7 +157,7 @@
                         </div>
                     </details>
 
-                    <h4><i class="icon-message-square"></i> Chat</h4>
+                    <h4><i class="icon-message-square"></i> Chat <span class="unread-count">({{ dashboard.chat.filter(m => !m.acked_at).length }} unread)</span></h4>
                     <div class="table-wrap" v-if="dashboard.chat.filter(m => !m.acked_at).length">
                         <table class="fixed-table">
                             <colgroup>
@@ -188,7 +187,6 @@
                             </tbody>
                         </table>
                     </div>
-                    <p v-else class="muted">No unread chat.</p>
                     <details v-if="dashboard.chat.filter(m => m.acked_at).length">
                         <summary><i class="icon-chevron-right summary-chevron"></i> All chat</summary>
                         <div class="table-wrap">
@@ -219,8 +217,9 @@
                         </div>
                     </details>
 
+                    <h4><i class="icon-radio"></i> System Messages <span class="unread-count">({{ dashboard.system_messages.filter(m => !m.acked_at).length }} unread)</span></h4>
                     <details>
-                        <summary><i class="icon-chevron-right summary-chevron"></i> <i class="icon-radio"></i> System Messages</summary>
+                        <summary><i class="icon-chevron-right summary-chevron"></i> Show</summary>
                         <div class="table-wrap">
                             <table class="fixed-table">
                                 <colgroup>
