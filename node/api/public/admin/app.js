@@ -1,4 +1,4 @@
-const { createApp, ref, onMounted, watch } = Vue;
+const { createApp, ref, onMounted, onUnmounted, watch } = Vue;
 
 const API_BASE = '/v1';
 
@@ -64,6 +64,7 @@ createApp({
                 }));
                 loginForm.value = { username: '', password: '' };
                 loadCurrentView();
+                startPolling();
             } catch (err) {
                 loginError.value = err.message;
             } finally {
@@ -77,6 +78,7 @@ createApp({
             } catch (err) {
                 // Ignore — clear local state regardless
             }
+            stopPolling();
             authenticated.value = false;
             sessionToken.value = null;
             user.value = null;
@@ -186,6 +188,37 @@ createApp({
             selectedMail.value = null;
         }
 
+        // Auto-refresh polling
+        const POLL_INTERVAL_MS = 30000;
+        let pollTimer = null;
+
+        function startPolling() {
+            stopPolling();
+            pollTimer = setInterval(() => {
+                if (authenticated.value) {
+                    loadCurrentView();
+                }
+            }, POLL_INTERVAL_MS);
+        }
+
+        function stopPolling() {
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+        }
+
+        function handleVisibility() {
+            if (document.hidden) {
+                stopPolling();
+            } else {
+                if (authenticated.value) {
+                    loadCurrentView();
+                }
+                startPolling();
+            }
+        }
+
         // Watch view changes to load data
         watch(currentView, loadCurrentView);
 
@@ -201,6 +234,7 @@ createApp({
                     closeAllDialogs();
                 }
             });
+            document.addEventListener('visibilitychange', handleVisibility);
             const saved = localStorage.getItem('admin_session');
             if (saved) {
                 try {
@@ -210,6 +244,7 @@ createApp({
                         user.value = session.user;
                         authenticated.value = true;
                         loadCurrentView();
+                        startPolling();
                     } else {
                         localStorage.removeItem('admin_session');
                     }
@@ -217,6 +252,11 @@ createApp({
                     localStorage.removeItem('admin_session');
                 }
             }
+        });
+
+        onUnmounted(() => {
+            stopPolling();
+            document.removeEventListener('visibilitychange', handleVisibility);
         });
 
         return {
