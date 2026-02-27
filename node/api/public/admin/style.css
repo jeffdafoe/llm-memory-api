@@ -77,3 +77,42 @@ dialog article {
     max-width: 800px;
     width: 90vw;
 }
+
+.inline-button {
+    display: inline;
+    width: auto;
+    padding: 0.2em 0.8em;
+    margin-left: 0.5em;
+    font-size: 0.85em;
+}
+
+.chat-transcript {
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.chat-bubble {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--pico-muted-border-color);
+}
+
+.chat-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+}
+
+.chat-time {
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.chat-text {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+    font-size: 0.9em;
+}

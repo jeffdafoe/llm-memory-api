@@ -17,6 +17,7 @@ createApp({
         const discussions = ref([]);
         const discussionFilter = ref('');
         const selectedDiscussion = ref(null);
+        const discussionChat = ref(null);
         const chatMessages = ref([]);
         const selectedMessage = ref(null);
         const mailMessages = ref([]);
@@ -105,11 +106,21 @@ createApp({
         }
 
         async function viewDiscussion(id) {
+            discussionChat.value = null;
             try {
                 const data = await api('/admin/discussions/detail', { discussion_id: id });
                 selectedDiscussion.value = data;
             } catch (err) {
                 console.error('Failed to load discussion:', err);
+            }
+        }
+
+        async function loadDiscussionChat(id) {
+            try {
+                const data = await api('/admin/chat', { channel: 'discuss-' + id, limit: 500 });
+                discussionChat.value = data.messages.reverse();
+            } catch (err) {
+                console.error('Failed to load discussion chat:', err);
             }
         }
 
@@ -191,7 +202,9 @@ createApp({
             discussions,
             discussionFilter,
             selectedDiscussion,
+            discussionChat,
             viewDiscussion,
+            loadDiscussionChat,
             chatMessages,
             selectedMessage,
             mailMessages,
