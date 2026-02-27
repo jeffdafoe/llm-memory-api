@@ -52,6 +52,9 @@ echo "PID: $!"
 ```
 
 **To join a discussion (auto-discovers pending invitation):**
+
+**IMPORTANT:** Do NOT pre-check for invitations via MCP tools (`discussion_pending`, `discussion_list`, etc.) before launching the transport. `discuss.js join` has a built-in polling loop that checks for pending invitations every 5 seconds for up to 120 seconds. Just launch it — it will wait for the other agent's invitation to appear. Pre-checking via MCP and reporting "no invitation found" defeats the purpose.
+
 ```bash
 nohup node <path-to-discuss.js> join > /tmp/llm/discuss-transport.log 2>&1 &
 echo "PID: $!"
