@@ -150,11 +150,20 @@ router.post('/admin/dashboard', async (req, res) => {
              LIMIT 15`
         );
 
+        const systemMessages = await pool.query(
+            `SELECT id, to_agent, channel, message, sent_at, acked_at
+             FROM chat_messages
+             WHERE from_agent = 'system'
+             ORDER BY sent_at DESC
+             LIMIT 15`
+        );
+
         res.json({
             agents: agents.rows,
             discussions: discussions.rows,
             chat: chat.rows,
-            mail: mail.rows
+            mail: mail.rows,
+            system_messages: systemMessages.rows
         });
     } catch (err) {
         console.error('Admin dashboard error:', err.message);
