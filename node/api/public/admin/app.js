@@ -167,11 +167,28 @@ createApp({
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
         }
 
+        function closeAllDialogs() {
+            selectedDiscussion.value = null;
+            discussionChat.value = null;
+            selectedMessage.value = null;
+            selectedMail.value = null;
+        }
+
         // Watch view changes to load data
         watch(currentView, loadCurrentView);
 
-        // Restore session from localStorage
+        // Restore session from localStorage + global key/click handlers
         onMounted(() => {
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closeAllDialogs();
+                }
+            });
+            document.addEventListener('click', (e) => {
+                if (e.target.tagName === 'DIALOG') {
+                    closeAllDialogs();
+                }
+            });
             const saved = localStorage.getItem('admin_session');
             if (saved) {
                 try {

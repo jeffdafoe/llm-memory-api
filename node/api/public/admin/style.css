@@ -80,13 +80,6 @@ dialog article {
     overflow-y: auto;
 }
 
-dialog article header {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--pico-background-color);
-}
-
 .inline-button {
     display: inline;
     width: auto;
