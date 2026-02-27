@@ -125,3 +125,8 @@ tr.unread {
     font-weight: bold;
     background: rgba(45, 106, 45, 0.15);
 }
+
+.table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}

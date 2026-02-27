@@ -54,88 +54,96 @@
                     <div class="grid">
                         <div>
                             <h4>Agents</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Agent</th>
-                                        <th>Status</th>
-                                        <th>Last Seen</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="agent in dashboard.agents" :key="agent.agent">
-                                        <td>{{ agent.agent }}</td>
-                                        <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
-                                        <td>{{ formatDate(agent.last_seen) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Agent</th>
+                                            <th>Status</th>
+                                            <th>Last Seen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="agent in dashboard.agents" :key="agent.agent">
+                                            <td>{{ agent.agent }}</td>
+                                            <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
+                                            <td>{{ formatDate(agent.last_seen) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
                         <div>
                             <h4>Discussions</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Topic</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="d in dashboard.discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
-                                        <td>{{ d.id }}</td>
-                                        <td class="message-cell">{{ d.topic }}</td>
-                                        <td><span :class="'badge badge-' + d.status">{{ d.status }}</span></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Topic</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="d in dashboard.discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
+                                            <td>{{ d.id }}</td>
+                                            <td class="message-cell">{{ d.topic }}</td>
+                                            <td><span :class="'badge badge-' + d.status">{{ d.status }}</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
                     <div class="grid">
                         <div>
                             <h4>Chat</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>From</th>
-                                        <th>To</th>
-                                        <th>Message</th>
-                                        <th>Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="msg in dashboard.chat" :key="msg.id" @click="selectedMessage = msg" class="clickable" :class="{ unread: !msg.acked_at }">
-                                        <td>{{ msg.from_agent }}</td>
-                                        <td>{{ msg.to_agent }}</td>
-                                        <td class="message-cell">{{ msg.message }}</td>
-                                        <td>{{ formatDate(msg.sent_at) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Message</th>
+                                            <th>Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="msg in dashboard.chat" :key="msg.id" @click="selectedMessage = msg" class="clickable" :class="{ unread: !msg.acked_at }">
+                                            <td>{{ msg.from_agent }}</td>
+                                            <td>{{ msg.to_agent }}</td>
+                                            <td class="message-cell">{{ msg.message }}</td>
+                                            <td>{{ formatDate(msg.sent_at) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
                         <div>
                             <h4>Mail</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>From</th>
-                                        <th>To</th>
-                                        <th>Subject</th>
-                                        <th>Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="msg in dashboard.mail" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
-                                        <td>{{ msg.from_agent }}</td>
-                                        <td>{{ msg.to_agent }}</td>
-                                        <td class="message-cell">{{ msg.subject }}</td>
-                                        <td>{{ formatDate(msg.sent_at) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Subject</th>
+                                            <th>Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="msg in dashboard.mail" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
+                                            <td>{{ msg.from_agent }}</td>
+                                            <td>{{ msg.to_agent }}</td>
+                                            <td class="message-cell">{{ msg.subject }}</td>
+                                            <td>{{ formatDate(msg.sent_at) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -143,26 +151,28 @@
                 <!-- Agents view -->
                 <div v-if="currentView === 'agents'">
                     <h2>Agents</h2>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Agent</th>
-                                <th>Status</th>
-                                <th>Last Seen</th>
-                                <th>Registered</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="agent in agents" :key="agent.agent">
-                                <td>{{ agent.agent }}</td>
-                                <td>
-                                    <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
-                                </td>
-                                <td>{{ formatDate(agent.last_seen) }}</td>
-                                <td>{{ formatDate(agent.registered_at) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Agent</th>
+                                    <th>Status</th>
+                                    <th>Last Seen</th>
+                                    <th>Registered</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="agent in agents" :key="agent.agent">
+                                    <td>{{ agent.agent }}</td>
+                                    <td>
+                                        <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
+                                    </td>
+                                    <td>{{ formatDate(agent.last_seen) }}</td>
+                                    <td>{{ formatDate(agent.registered_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <!-- Discussions view -->
@@ -176,82 +186,88 @@
                             <option value="timed_out">Timed Out</option>
                         </select>
                     </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Topic</th>
-                                <th>Status</th>
-                                <th>Created By</th>
-                                <th>Participants</th>
-                                <th>Created</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="d in discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
-                                <td>{{ d.id }}</td>
-                                <td>{{ d.topic }}</td>
-                                <td>
-                                    <span :class="'badge badge-' + d.status">{{ d.status }}</span>
-                                </td>
-                                <td>{{ d.created_by }}</td>
-                                <td>{{ d.participant_count }}</td>
-                                <td>{{ formatDate(d.created_at) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Topic</th>
+                                    <th>Status</th>
+                                    <th>Created By</th>
+                                    <th>Participants</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="d in discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
+                                    <td>{{ d.id }}</td>
+                                    <td>{{ d.topic }}</td>
+                                    <td>
+                                        <span :class="'badge badge-' + d.status">{{ d.status }}</span>
+                                    </td>
+                                    <td>{{ d.created_by }}</td>
+                                    <td>{{ d.participant_count }}</td>
+                                    <td>{{ formatDate(d.created_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
                 </div>
 
                 <!-- Chat view -->
                 <div v-if="currentView === 'chat'">
                     <h2>Chat Messages</h2>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>From</th>
-                                <th>To</th>
-                                <th>Channel</th>
-                                <th>Message</th>
-                                <th>Time</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="msg in chatMessages" :key="msg.id" @click="selectedMessage = msg" class="clickable">
-                                <td>{{ msg.from_agent }}</td>
-                                <td>{{ msg.to_agent }}</td>
-                                <td>{{ msg.channel || '—' }}</td>
-                                <td class="message-cell">{{ msg.message }}</td>
-                                <td>{{ formatDate(msg.sent_at) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Channel</th>
+                                    <th>Message</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="msg in chatMessages" :key="msg.id" @click="selectedMessage = msg" class="clickable">
+                                    <td>{{ msg.from_agent }}</td>
+                                    <td>{{ msg.to_agent }}</td>
+                                    <td>{{ msg.channel || '—' }}</td>
+                                    <td class="message-cell">{{ msg.message }}</td>
+                                    <td>{{ formatDate(msg.sent_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
                 </div>
 
                 <!-- Mail view -->
                 <div v-if="currentView === 'mail'">
                     <h2>Mail</h2>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>From</th>
-                                <th>To</th>
-                                <th>Subject</th>
-                                <th>Time</th>
-                                <th>Acked</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="msg in mailMessages" :key="msg.id" @click="viewMail(msg)" class="clickable">
-                                <td>{{ msg.from_agent }}</td>
-                                <td>{{ msg.to_agent }}</td>
-                                <td>{{ msg.subject }}</td>
-                                <td>{{ formatDate(msg.sent_at) }}</td>
-                                <td>{{ msg.acked_at ? 'Yes' : 'No' }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Subject</th>
+                                    <th>Time</th>
+                                    <th>Acked</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="msg in mailMessages" :key="msg.id" @click="viewMail(msg)" class="clickable">
+                                    <td>{{ msg.from_agent }}</td>
+                                    <td>{{ msg.to_agent }}</td>
+                                    <td>{{ msg.subject }}</td>
+                                    <td>{{ formatDate(msg.sent_at) }}</td>
+                                    <td>{{ msg.acked_at ? 'Yes' : 'No' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
                 </div>
 
