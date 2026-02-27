@@ -35,14 +35,14 @@
         <div v-else>
             <nav class="container-fluid">
                 <ul>
-                    <li><strong>Memory API Admin</strong></li>
-                    <li>—</li>
+                    <li><strong>Memory API Admin — {{ currentView.charAt(0).toUpperCase() + currentView.slice(1) }}</strong></li>
+                </ul>
+                <ul>
                     <li><a href="#" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">Dashboard</a></li>
                     <li><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
                     <li><a href="#" :class="{ active: currentView === 'discussions' }" @click.prevent="currentView = 'discussions'">Discussions</a></li>
                     <li><a href="#" :class="{ active: currentView === 'chat' }" @click.prevent="currentView = 'chat'">Chat</a></li>
                     <li><a href="#" :class="{ active: currentView === 'mail' }" @click.prevent="currentView = 'mail'">Mail</a></li>
-                    <li class="nav-spacer"></li>
                     <li><a href="#" @click.prevent="logout">Logout</a></li>
                 </ul>
             </nav>
@@ -50,7 +50,6 @@
             <main :class="currentView === 'dashboard' ? 'container-fluid' : 'container'">
                 <!-- Dashboard view -->
                 <div v-if="currentView === 'dashboard' && dashboard">
-                    <h2>Dashboard</h2>
 
                     <div class="grid">
                         <div>
@@ -256,7 +255,6 @@
 
                 <!-- Agents view -->
                 <div v-if="currentView === 'agents'">
-                    <h2>Agents</h2>
                     <div class="table-wrap">
                         <table>
                             <thead>
@@ -283,7 +281,6 @@
 
                 <!-- Discussions view -->
                 <div v-if="currentView === 'discussions'">
-                    <h2>Discussions</h2>
                     <div class="filters">
                         <select v-model="discussionFilter" @change="loadDiscussions">
                             <option value="">All</option>
@@ -323,7 +320,6 @@
 
                 <!-- Chat view -->
                 <div v-if="currentView === 'chat'">
-                    <h2>Chat Messages</h2>
                     <div class="table-wrap">
                         <table>
                             <thead>
@@ -353,7 +349,6 @@
 
                 <!-- Mail view -->
                 <div v-if="currentView === 'mail'">
-                    <h2>Mail</h2>
                     <div class="table-wrap">
                         <table>
                             <thead>
