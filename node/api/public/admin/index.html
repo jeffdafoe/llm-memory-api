@@ -98,7 +98,7 @@
                         </div>
                     </div>
 
-                    <h4>Mail</h4>
+                    <h4><i class="icon-mail"></i> Mail</h4>
                     <div class="table-wrap" v-if="dashboard.mail.filter(m => !m.acked_at).length">
                         <table>
                             <thead>
@@ -123,7 +123,7 @@
                     </div>
                     <p v-else class="muted">No unread mail.</p>
                     <details v-if="dashboard.mail.filter(m => m.acked_at).length">
-                        <summary>All mail</summary>
+                        <summary><i class="icon-chevron-right summary-chevron"></i> All mail</summary>
                         <div class="table-wrap">
                             <table>
                                 <thead>
@@ -146,7 +146,7 @@
                         </div>
                     </details>
 
-                    <h4>Chat</h4>
+                    <h4><i class="icon-message-square"></i> Chat</h4>
                     <div class="table-wrap" v-if="dashboard.chat.filter(m => !m.acked_at).length">
                         <table>
                             <thead>
@@ -171,7 +171,7 @@
                     </div>
                     <p v-else class="muted">No unread chat.</p>
                     <details v-if="dashboard.chat.filter(m => m.acked_at).length">
-                        <summary>All chat</summary>
+                        <summary><i class="icon-chevron-right summary-chevron"></i> All chat</summary>
                         <div class="table-wrap">
                             <table>
                                 <thead>
@@ -195,7 +195,7 @@
                     </details>
 
                     <details>
-                        <summary>System Messages</summary>
+                        <summary><i class="icon-chevron-right summary-chevron"></i> <i class="icon-radio"></i> System Messages</summary>
                         <div class="table-wrap">
                             <table>
                                 <thead>

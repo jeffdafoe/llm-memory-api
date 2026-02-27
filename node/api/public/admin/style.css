@@ -158,3 +158,34 @@ tr.unread {
     color: var(--pico-muted-color);
     font-style: italic;
 }
+
+details summary {
+    list-style: none;
+    cursor: pointer;
+    color: var(--pico-muted-color);
+    font-size: 0.9em;
+}
+
+details summary::after {
+    display: none;
+}
+
+details summary::-webkit-details-marker {
+    display: none;
+}
+
+.summary-chevron {
+    display: inline-block;
+    transition: transform 0.2s;
+    font-size: 0.85em;
+}
+
+details[open] .summary-chevron {
+    transform: rotate(90deg);
+}
+
+h4 i {
+    vertical-align: middle;
+    font-size: 0.9em;
+    opacity: 0.7;
+}
