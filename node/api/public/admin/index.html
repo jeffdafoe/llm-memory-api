@@ -89,7 +89,7 @@
                                         <tr v-for="d in dashboard.discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
                                             <td>{{ d.id }}</td>
                                             <td class="message-cell">{{ d.topic }}</td>
-                                            <td class="nowrap"><span :class="'badge badge-' + d.status">{{ d.status }}</span></td>
+                                            <td class="icon-cell"><i :class="'status-icon status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i></td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -299,7 +299,7 @@
                             <colgroup>
                                 <col style="width: 3.5em;">
                                 <col>
-                                <col style="width: 5.5em;">
+                                <col class="col-icon">
                                 <col class="col-agent">
                                 <col style="width: 3em;">
                                 <col class="col-time">
@@ -318,8 +318,8 @@
                                 <tr v-for="d in discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
                                     <td>{{ d.id }}</td>
                                     <td class="message-cell">{{ d.topic }}</td>
-                                    <td class="nowrap">
-                                        <span :class="'badge badge-' + d.status">{{ d.status }}</span>
+                                    <td class="icon-cell">
+                                        <i :class="'status-icon status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i>
                                     </td>
                                     <td>{{ d.created_by }}</td>
                                     <td>{{ d.participant_count }}</td>
