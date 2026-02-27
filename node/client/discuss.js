@@ -187,6 +187,10 @@ const SUBAGENT_DEAD_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
 let stallWarningLogged = false;
 const STALL_WARNING_MS = 90000;
 
+// Server-side status polling (check every N poll cycles)
+let statusCheckCounter = 0;
+const STATUS_CHECK_INTERVAL = 10;
+
 // ---------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------
@@ -820,8 +824,8 @@ async function waitForReady() {
             throw new Error('Discussion timed out waiting for required participants');
         }
 
-        if (status === 'concluded') {
-            throw new Error('Discussion was concluded before it started');
+        if (status === 'concluded' || status === 'cancelled') {
+            throw new Error('Discussion was ' + status + ' before it started');
         }
 
         // Still waiting
@@ -969,16 +973,42 @@ async function runTransport() {
         // 8. Poll pending votes
         await checkPendingVotes();
 
+        // 9. Periodic server-side status check
+        statusCheckCounter++;
+        if (statusCheckCounter >= STATUS_CHECK_INTERVAL) {
+            statusCheckCounter = 0;
+            try {
+                const statusResult = await apiCall('discussion/status', { discussion_id: discussionId });
+                const serverStatus = statusResult.discussion.status;
+                if (serverStatus === 'cancelled' || serverStatus === 'concluded') {
+                    log(`Discussion ${serverStatus} server-side. Notifying subagent and shutting down.`);
+                    const notice = `[SYSTEM] This discussion has been ${serverStatus}. Please wrap up and write your result file.`;
+                    fs.writeFileSync(path.join(INBOX_DIR, `${serverStatus}.txt`), notice);
+                    appendTranscript('system', `Discussion ${serverStatus} server-side`);
+                    await sleep(15000);
+                    const outMsg = checkOutbox();
+                    if (outMsg) {
+                        await sendMessage(outMsg);
+                    }
+                    fs.writeFileSync(DONE_FILE, serverStatus);
+                    setStatus('DONE');
+                    return;
+                }
+            } catch (err) {
+                log(`Status check failed: ${err.message}`);
+            }
+        }
+
         if (allIds.length > 0) {
-            // 9. Delayed ack
+            // 10. Delayed ack
             if (newIds.length > 0) {
                 await waitForSubagentReads(newIds);
             }
 
-            // 10. Ack all
+            // 11. Ack all
             await ackMessages(allIds);
 
-            // 11. Record last-delivered-id
+            // 12. Record last-delivered-id
             const maxId = Math.max(...allIds);
             if (isFinite(maxId)) {
                 lastDeliveredId = maxId;

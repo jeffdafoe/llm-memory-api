@@ -23,17 +23,19 @@ Examples:
 
 ## Step 1: Determine your agent name
 
-Call the `discussion_pending` MCP tool (no args needed — it defaults to your configured agent). The response context tells you your agent name. You'll need this so you don't list yourself as a participant.
+Call the `agent_status` MCP tool (no args needed — it defaults to your configured agent). The response tells you your agent name. You'll need this so you don't list yourself as a participant.
 
-## Step 2: Research the topic
+## Step 2: Research the topic (create only — skip for join)
 
-Before launching the discussion, gather relevant context so the subagent is well-informed:
+Before launching a **create** discussion, gather relevant context so the subagent is well-informed:
 
 1. Search vector memory for the topic (`search` MCP tool with `namespace: "*"`). Review the results — keep chunks that are relevant, discard noise.
 2. Check for related task files in `shared/tasks/` and `work/tasks/` if applicable.
 3. If the current conversation has relevant context (decisions made, files discussed, etc.), summarize the key points.
 
 Write a context file to `C:/temp/llm/discuss-context.md` combining the curated results. Include source file paths so the subagent can read full files if needed. Pass this to discuss.js via `--context-file C:/temp/llm/discuss-context.md`.
+
+For **join** actions, skip this step — the creating agent provides the context.
 
 ## Step 3: Find discuss.js
 
@@ -103,7 +105,7 @@ The subagent handles the actual discussion — reading messages from `inbox/`, w
 
 ## If joining and no invitation is found
 
-If `discuss.js join` reports "No pending discussion invitations found", the other agent hasn't created the discussion yet. Wait and try again, or ask the user.
+`discuss.js join` (without a discussion ID) automatically polls for pending invitations every 5 seconds for up to 120 seconds. If the other agent hasn't created the discussion yet, the transport will wait — you don't need to do anything. Just monitor the transport log for progress. If it exits with "No pending discussion invitations found after 120s", the other agent likely isn't starting a discussion. Ask the user.
 
 ## Troubleshooting
 

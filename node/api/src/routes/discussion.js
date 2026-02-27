@@ -526,7 +526,7 @@ router.post('/discussion/conclude', async (req, res) => {
         }
 
         const discussion = await pool.query(
-            'SELECT status FROM discussions WHERE id = $1',
+            'SELECT status, created_by, topic FROM discussions WHERE id = $1',
             [discussion_id]
         );
         if (discussion.rows.length === 0) {
@@ -534,20 +534,41 @@ router.post('/discussion/conclude', async (req, res) => {
                 error: { code: 'NOT_FOUND', message: 'Discussion not found' }
             });
         }
-        if (discussion.rows[0].status !== 'active') {
+        const dStatus = discussion.rows[0].status;
+        if (dStatus === 'waiting') {
+            if (discussion.rows[0].created_by !== agent) {
+                return res.status(403).json({
+                    error: { code: 'FORBIDDEN', message: 'Only the creator can cancel a waiting discussion' }
+                });
+            }
+        } else if (dStatus !== 'active') {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'Discussion is not active' }
             });
         }
 
+        const newStatus = dStatus === 'waiting' ? 'cancelled' : 'concluded';
         await pool.query(
             'UPDATE discussions SET status = $1, concluded_at = NOW() WHERE id = $2',
-            ['concluded', discussion_id]
+            [newStatus, discussion_id]
         );
 
-        logDiscussion('conclude', { discussion_id, agent });
+        logDiscussion(newStatus === 'cancelled' ? 'cancel' : 'conclude', { discussion_id, agent });
 
-        res.json({ discussion_id, status: 'concluded' });
+        const participants = await pool.query(
+            'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND agent != $2',
+            [discussion_id, agent]
+        );
+        if (participants.rows.length > 0) {
+            const others = participants.rows.map(r => r.agent);
+            const topic = discussion.rows[0].topic;
+            const msg = `Discussion #${discussion_id} ("${topic}") was ${newStatus} by ${agent}`;
+            sendSystemMessageToMany(others, msg, null).catch(err => {
+                console.error('Failed to notify participants of conclude:', err.message);
+            });
+        }
+
+        res.json({ discussion_id, status: newStatus });
     } catch (err) {
         console.error('Discussion conclude error:', err.message);
         res.status(500).json({
