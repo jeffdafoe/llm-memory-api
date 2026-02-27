@@ -151,6 +151,51 @@ router.post('/memory/search', async (req, res) => {
     }
 });
 
+// Deletes orphaned chunks — DB entries whose source_file no longer exists on disk.
+// Caller provides the list of valid source_files for a namespace; everything else is removed.
+router.post('/memory/cleanup', async (req, res) => {
+    const { namespace, valid_source_files } = req.body;
+
+    if (!namespace || !Array.isArray(valid_source_files)) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace (string), valid_source_files (array)' }
+        });
+    }
+
+    try {
+        // Find source_files in this namespace that aren't in the valid list
+        const existing = await pool.query(
+            'SELECT DISTINCT source_file FROM memory_chunks WHERE namespace = $1',
+            [namespace]
+        );
+
+        const validSet = new Set(valid_source_files);
+        const orphans = existing.rows
+            .map(r => r.source_file)
+            .filter(sf => !validSet.has(sf));
+
+        if (orphans.length === 0) {
+            return res.json({ orphans_deleted: 0, orphan_files: [] });
+        }
+
+        // Delete orphan chunks in one query using ANY
+        const result = await pool.query(
+            'DELETE FROM memory_chunks WHERE namespace = $1 AND source_file = ANY($2)',
+            [namespace, orphans]
+        );
+
+        res.json({
+            orphans_deleted: result.rowCount,
+            orphan_files: orphans
+        });
+    } catch (err) {
+        console.error('Memory cleanup error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
 router.post('/memory/delete', async (req, res) => {
     const { namespace, source_file } = req.body;
 
