@@ -67,6 +67,11 @@ nav a.active {
     font-size: 0.5em;
 }
 
+.status-cancelled {
+    color: #888;
+    font-size: 0.9em;
+}
+
 .fixed-table {
     table-layout: fixed;
     width: 100%;
