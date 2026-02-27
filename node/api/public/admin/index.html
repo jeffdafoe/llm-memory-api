@@ -164,7 +164,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="msg in chatMessages" :key="msg.id">
+                            <tr v-for="msg in chatMessages" :key="msg.id" @click="selectedMessage = msg" class="clickable">
                                 <td>{{ msg.from_agent }}</td>
                                 <td>{{ msg.to_agent }}</td>
                                 <td>{{ msg.channel || '—' }}</td>
@@ -173,6 +173,20 @@
                             </tr>
                         </tbody>
                     </table>
+
+                    <dialog :open="selectedMessage !== null" @close="selectedMessage = null">
+                        <article v-if="selectedMessage">
+                            <header>
+                                <button aria-label="Close" rel="prev" @click="selectedMessage = null"></button>
+                                <h3>Chat Message</h3>
+                            </header>
+                            <p><strong>From:</strong> {{ selectedMessage.from_agent }} <strong>To:</strong> {{ selectedMessage.to_agent }}</p>
+                            <p><strong>Date:</strong> {{ formatDate(selectedMessage.sent_at) }}
+                                <span v-if="selectedMessage.channel"> | <strong>Channel:</strong> {{ selectedMessage.channel }}</span>
+                            </p>
+                            <pre class="mail-body">{{ selectedMessage.message }}</pre>
+                        </article>
+                    </dialog>
                 </div>
 
                 <!-- Mail view -->
