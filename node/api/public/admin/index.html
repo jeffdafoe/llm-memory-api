@@ -285,9 +285,9 @@
                     <article v-if="selectedDiscussion">
                         <header>
                             <button aria-label="Close" rel="prev" @click="selectedDiscussion = null"></button>
-                            <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
                         </header>
                         <div class="dialog-body">
+                            <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
                             <div class="grid">
                                 <div>
                                     <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
@@ -347,9 +347,9 @@
                     <article v-if="selectedMessage">
                         <header>
                             <button aria-label="Close" rel="prev" @click="selectedMessage = null"></button>
-                            <h3>Chat Message</h3>
                         </header>
                         <div class="dialog-body">
+                            <h3>Chat Message</h3>
                             <p><strong>From:</strong> {{ selectedMessage.from_agent }} <strong>To:</strong> {{ selectedMessage.to_agent }}</p>
                             <p><strong>Date:</strong> {{ formatDate(selectedMessage.sent_at) }}
                                 <span v-if="selectedMessage.channel"> | <strong>Channel:</strong> {{ selectedMessage.channel }}</span>
@@ -364,9 +364,9 @@
                     <article v-if="selectedMail">
                         <header>
                             <button aria-label="Close" rel="prev" @click="selectedMail = null"></button>
-                            <h3>{{ selectedMail.subject }}</h3>
                         </header>
                         <div class="dialog-body">
+                            <h3>{{ selectedMail.subject }}</h3>
                             <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
                             <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
                             <div class="mail-body">{{ selectedMail.body }}</div>
