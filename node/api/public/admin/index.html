@@ -98,13 +98,36 @@
                         </div>
                     </div>
 
-                    <details>
-                        <summary>Mail</summary>
+                    <h4>Mail</h4>
+                    <div class="table-wrap" v-if="dashboard.mail.filter(m => !m.acked_at).length">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Subject</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="msg in dashboard.mail.filter(m => !m.acked_at)" :key="msg.id" @click="viewMail(msg)" class="clickable unread">
+                                    <td class="icon-cell"><i class="icon-circle unacked-icon"></i></td>
+                                    <td>{{ msg.from_agent }}</td>
+                                    <td>{{ msg.to_agent }}</td>
+                                    <td class="message-cell">{{ msg.subject }}</td>
+                                    <td>{{ formatDate(msg.sent_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p v-else class="muted">No unread mail.</p>
+                    <details v-if="dashboard.mail.filter(m => m.acked_at).length">
+                        <summary>All mail</summary>
                         <div class="table-wrap">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th></th>
                                         <th>From</th>
                                         <th>To</th>
                                         <th>Subject</th>
@@ -112,8 +135,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="msg in dashboard.mail" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
-                                        <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                                    <tr v-for="msg in dashboard.mail.filter(m => m.acked_at)" :key="msg.id" @click="viewMail(msg)" class="clickable">
                                         <td>{{ msg.from_agent }}</td>
                                         <td>{{ msg.to_agent }}</td>
                                         <td class="message-cell">{{ msg.subject }}</td>
@@ -124,13 +146,36 @@
                         </div>
                     </details>
 
-                    <details>
-                        <summary>Chat</summary>
+                    <h4>Chat</h4>
+                    <div class="table-wrap" v-if="dashboard.chat.filter(m => !m.acked_at).length">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Message</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="msg in dashboard.chat.filter(m => !m.acked_at)" :key="msg.id" @click="selectedMessage = msg" class="clickable unread">
+                                    <td class="icon-cell"><i class="icon-circle unacked-icon"></i></td>
+                                    <td>{{ msg.from_agent }}</td>
+                                    <td>{{ msg.to_agent }}</td>
+                                    <td class="message-cell">{{ msg.message }}</td>
+                                    <td>{{ formatDate(msg.sent_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p v-else class="muted">No unread chat.</p>
+                    <details v-if="dashboard.chat.filter(m => m.acked_at).length">
+                        <summary>All chat</summary>
                         <div class="table-wrap">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th></th>
                                         <th>From</th>
                                         <th>To</th>
                                         <th>Message</th>
@@ -138,8 +183,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="msg in dashboard.chat" :key="msg.id" @click="selectedMessage = msg" class="clickable" :class="{ unread: !msg.acked_at }">
-                                        <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                                    <tr v-for="msg in dashboard.chat.filter(m => m.acked_at)" :key="msg.id" @click="selectedMessage = msg" class="clickable">
                                         <td>{{ msg.from_agent }}</td>
                                         <td>{{ msg.to_agent }}</td>
                                         <td class="message-cell">{{ msg.message }}</td>
