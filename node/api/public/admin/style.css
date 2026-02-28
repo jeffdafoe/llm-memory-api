@@ -267,7 +267,15 @@ h4 i {
 }
 
 .live-votes {
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.live-vote-card {
+    padding: 0.4rem 0.75rem;
+    margin-bottom: 0.25rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 4px;
+    font-size: 0.85em;
 }
 
 .live-chat-transcript {
