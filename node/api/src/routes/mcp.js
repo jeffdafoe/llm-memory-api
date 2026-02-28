@@ -139,7 +139,7 @@ function createMcpServer(req) {
             if (name === 'search') {
                 const data = await searchMemory(args.query, namespace, args.limit || 5);
                 const lines = data.results.map(r => {
-                    return `[${r.namespace}] ${r.source_file} — ${r.heading} (${(r.similarity * 100).toFixed(1)}%)\n${r.content}`;
+                    return `[${r.namespace}] ${r.source_file} — ${r.heading} (${(r.similarity * 100).toFixed(1)}%)\n${r.chunk_text}`;
                 });
                 result = lines.join('\n\n') || 'No results found.';
             } else if (name === 'save_note') {
