@@ -449,7 +449,7 @@ function processReceivedMessages(messages) {
         seenIds.add(msg.id);
         newIds.push(msg.id);
 
-        const inboxContent = `From: ${msg.from_agent}\n\n${msg.message}`;
+        const inboxContent = `From: ${msg.from_agent}\nSent: ${msg.sent_at}\n\n${msg.message}`;
         fs.writeFileSync(path.join(INBOX_DIR, `${msg.id}.txt`), inboxContent);
         appendTranscript(msg.from_agent, msg.message);
         log(`RECEIVED: id=${msg.id} from=${msg.from_agent}`);
