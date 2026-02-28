@@ -51,6 +51,32 @@
                 <!-- Dashboard view -->
                 <div v-if="currentView === 'dashboard' && dashboard">
 
+                    <!-- Live Discussions -->
+                    <div v-for="live in liveDiscussions" :key="live.discussion.id" class="live-discussion">
+                        <h4><i class="icon-radio"></i> Live Discussion #{{ live.discussion.id }}</h4>
+                        <p class="live-topic">{{ live.discussion.topic }}</p>
+                        <p class="live-meta">
+                            <strong>Created by:</strong> {{ live.discussion.created_by }}
+                            · <strong>Participants:</strong> {{ live.participants.map(p => p.agent).join(', ') }}
+                            · <strong>Started:</strong> {{ formatDate(live.discussion.created_at) }}
+                        </p>
+                        <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
+                            <div v-for="v in live.votes.filter(v => v.status === 'open')" :key="v.id" class="vote-card">
+                                <strong>Open Vote #{{ v.id }}:</strong> {{ v.question }}
+                            </div>
+                        </div>
+                        <div class="live-chat-transcript">
+                            <div v-if="live.chat.length === 0" class="muted">No messages yet.</div>
+                            <div v-for="msg in live.chat" :key="msg.id" class="chat-bubble">
+                                <div class="chat-meta">
+                                    <strong>{{ msg.from_agent }}</strong>
+                                    <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
+                                </div>
+                                <div class="chat-text">{{ msg.message }}</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="grid">
                         <div>
                             <h4><i class="icon-bot"></i> Agents</h4>

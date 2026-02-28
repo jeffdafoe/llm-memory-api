@@ -248,3 +248,36 @@ h4 i {
     font-size: 0.8em;
     color: var(--pico-muted-color);
 }
+
+.live-discussion {
+    border: 1px solid #2d6a2d;
+    border-radius: 6px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.live-discussion h4 {
+    margin-bottom: 0.25rem;
+}
+
+.live-topic {
+    margin-bottom: 0.25rem;
+    font-size: 1.1em;
+}
+
+.live-meta {
+    font-size: 0.85em;
+    color: var(--pico-muted-color);
+    margin-bottom: 0.75rem;
+}
+
+.live-votes {
+    margin-bottom: 0.75rem;
+}
+
+.live-chat-transcript {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border-top: 1px solid var(--pico-muted-border-color);
+}
