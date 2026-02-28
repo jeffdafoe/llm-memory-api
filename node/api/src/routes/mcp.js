@@ -195,18 +195,18 @@ router.post('/mcp', mcpAuth, async (req, res) => {
 
     await server.connect(transport);
 
-    // Store session for subsequent requests
+    // handleRequest processes the initialize and generates the session ID
+    await transport.handleRequest(req, res, req.body);
+
+    // Store session so subsequent requests can find it
     const newSessionId = transport.sessionId;
     if (newSessionId) {
         sessions.set(newSessionId, { server, transport });
 
-        // Clean up on close
         transport.onclose = () => {
             sessions.delete(newSessionId);
         };
     }
-
-    await transport.handleRequest(req, res, req.body);
 });
 
 // Handle GET /mcp (SSE stream for server-initiated messages)
