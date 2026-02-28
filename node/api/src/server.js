@@ -3,6 +3,7 @@ const path = require('path');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
 const oauthRoutes = require('./routes/oauth');
+const mcpRoutes = require('./routes/mcp');
 const agentRoutes = require('./routes/agent');
 const chatRoutes = require('./routes/chat');
 const discussionRoutes = require('./routes/discussion');
@@ -20,6 +21,9 @@ app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')))
 
 // OAuth discovery + token endpoint (no auth required, root-level)
 app.use(oauthRoutes);
+
+// MCP Streamable HTTP endpoint (JWT auth via mcp-auth middleware)
+app.use(mcpRoutes);
 
 app.use('/v1', auth);
 app.use('/v1', opportunisticHeartbeat);
