@@ -14,7 +14,7 @@ function titleToSlug(title) {
         .substring(0, 200);
 }
 
-async function saveNote(namespace, title, content, slug) {
+async function saveNote(namespace, title, content, slug, createdBy) {
     if (!title || !content) {
         throw Object.assign(new Error('Required fields: title, content'), { statusCode: 400 });
     }
@@ -26,14 +26,14 @@ async function saveNote(namespace, title, content, slug) {
     }
 
     const result = await pool.query(`
-        INSERT INTO documents (namespace, slug, title, content)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO documents (namespace, slug, title, content, created_by)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (namespace, slug) DO UPDATE
         SET title = EXCLUDED.title,
             content = EXCLUDED.content,
             updated_at = NOW()
-        RETURNING id, namespace, slug, title, created_at, updated_at
-    `, [namespace, resolvedSlug, title, content]);
+        RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+    `, [namespace, resolvedSlug, title, content, createdBy || null]);
 
     const doc = result.rows[0];
 
@@ -52,7 +52,7 @@ async function listNotes(namespace, limit, offset) {
     const result = await pool.query(`
         SELECT id, slug, title,
                LEFT(content, 200) AS snippet,
-               created_at, updated_at
+               created_by, created_at, updated_at
         FROM documents
         WHERE namespace = $1
         ORDER BY updated_at DESC
@@ -64,7 +64,7 @@ async function listNotes(namespace, limit, offset) {
 
 async function readNote(namespace, slug) {
     const result = await pool.query(`
-        SELECT id, namespace, slug, title, content, created_at, updated_at
+        SELECT id, namespace, slug, title, content, created_by, created_at, updated_at
         FROM documents
         WHERE namespace = $1 AND slug = $2
     `, [namespace, slug]);

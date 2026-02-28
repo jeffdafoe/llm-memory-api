@@ -4,7 +4,7 @@ const { saveNote, listNotes, readNote, deleteNote } = require('../services/docum
 const router = Router();
 
 router.post('/documents/save', async (req, res) => {
-    const { namespace, title, content, slug } = req.body;
+    const { namespace, title, content, slug, created_by } = req.body;
 
     if (!namespace || !title || !content) {
         return res.status(400).json({
@@ -13,7 +13,7 @@ router.post('/documents/save', async (req, res) => {
     }
 
     try {
-        const result = await saveNote(namespace, title, content, slug);
+        const result = await saveNote(namespace, title, content, slug, created_by);
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
