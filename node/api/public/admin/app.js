@@ -302,6 +302,24 @@ createApp({
             return statusIcons[status] || 'icon-help-circle';
         }
 
+        const agentColors = {
+            home: '#5b9bd5',
+            work: '#e07b53',
+            system: '#888'
+        };
+        const fallbackColors = ['#8e6bbf', '#4caf88', '#c9a83e', '#d46a8e'];
+
+        function agentColor(agent) {
+            if (agentColors[agent]) {
+                return agentColors[agent];
+            }
+            let hash = 0;
+            for (let i = 0; i < agent.length; i++) {
+                hash = agent.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return fallbackColors[Math.abs(hash) % fallbackColors.length];
+        }
+
         function closeAllDialogs() {
             selectedDiscussion.value = null;
             discussionChat.value = null;
@@ -406,7 +424,8 @@ createApp({
             liveDiscussions,
             loadDiscussions,
             formatDate,
-            statusIcon
+            statusIcon,
+            agentColor
         };
     }
 }).mount('#app');

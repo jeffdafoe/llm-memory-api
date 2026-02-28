@@ -69,7 +69,7 @@
                             <div v-if="live.chat.length === 0" class="muted">No messages yet.</div>
                             <div v-for="msg in live.chat" :key="msg.id" class="chat-bubble">
                                 <div class="chat-meta">
-                                    <strong>{{ msg.from_agent }}</strong>
+                                    <strong :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</strong>
                                     <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
                                 </div>
                                 <div class="chat-text">{{ msg.message }}</div>
@@ -476,7 +476,7 @@
                                     <div v-else class="chat-transcript">
                                         <div v-for="msg in discussionChat" :key="msg.id" class="chat-bubble" :class="'chat-from-' + msg.from_agent">
                                             <div class="chat-meta">
-                                                <strong>{{ msg.from_agent }}</strong>
+                                                <strong :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</strong>
                                                 <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
                                             </div>
                                             <div class="chat-text">{{ msg.message }}</div>
