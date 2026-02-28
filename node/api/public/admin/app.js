@@ -323,6 +323,14 @@ createApp({
             return fallbackColors[Math.abs(hash) % fallbackColors.length];
         }
 
+        function voteQuestion(text) {
+            const match = text.match(/^(.*?\?)\s*(.+)$/);
+            if (match) {
+                return { question: match[1], choices: match[2] };
+            }
+            return { question: text, choices: null };
+        }
+
         function closeAllDialogs() {
             selectedDiscussion.value = null;
             discussionChat.value = null;
@@ -428,7 +436,8 @@ createApp({
             loadDiscussions,
             formatDate,
             statusIcon,
-            agentColor
+            agentColor,
+            voteQuestion
         };
     }
 }).mount('#app');
