@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Generate an API key for an agent and insert it into agent_api_keys.
 // Usage: node scripts/generate-api-key.js <agent> [label]
-// Must be run from the app root with env vars loaded.
+// Run from the deployed app root (/var/www/memory-api) with env vars loaded.
 
-const pool = require('../src/db');
-const { hash, generateSalt, generateKey } = require('../src/services/hashing');
+const path = require('path');
+const appRoot = process.cwd();
+const pool = require(path.join(appRoot, 'src', 'db'));
+const { hash, generateSalt, generateKey } = require(path.join(appRoot, 'src', 'services', 'hashing'));
 
 async function run() {
     const agent = process.argv[2];
