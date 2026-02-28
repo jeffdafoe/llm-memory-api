@@ -19,6 +19,17 @@ async function sendSystemMessageToMany(toAgents, message, channel) {
     return results;
 }
 
+// Post a single system event to a discussion channel.
+// Uses to_agent='*' so it appears once in admin UI and is ignored by transports
+// (which filter by to_agent=self).
+async function sendDiscussionEvent(channel, message) {
+    const result = await pool.query(
+        'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+        [SYSTEM_AGENT, '*', message, channel]
+    );
+    return result.rows[0];
+}
+
 async function notifyDiscussionInvite(discussionId, topic, createdBy, invitedAgents) {
     const message = `You've been invited to discussion #${discussionId}: "${topic}" (created by ${createdBy})`;
     return sendSystemMessageToMany(invitedAgents, message, null);
@@ -27,5 +38,6 @@ async function notifyDiscussionInvite(discussionId, topic, createdBy, invitedAge
 module.exports = {
     sendSystemMessage,
     sendSystemMessageToMany,
+    sendDiscussionEvent,
     notifyDiscussionInvite,
 };

@@ -276,3 +276,15 @@ h4 i {
     padding: 0.5rem;
     border-top: 1px solid var(--pico-muted-border-color);
 }
+
+.chat-event {
+    text-align: center;
+    font-size: 0.8em;
+    font-style: italic;
+    color: var(--pico-muted-color);
+    margin: 0.5rem 0;
+}
+
+.chat-event .chat-time {
+    margin-left: 0.5em;
+}

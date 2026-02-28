@@ -1,12 +1,20 @@
 const { Router } = require('express');
 const pool = require('../db');
 const { log } = require('../services/logger');
-const { notifyDiscussionInvite, sendSystemMessageToMany } = require('../services/system-notify');
+const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent } = require('../services/system-notify');
 
 const router = Router();
 
 function logDiscussion(action, details) {
     log('discussion', action, details);
+}
+
+async function getDiscussionChannel(discussionId) {
+    const result = await pool.query('SELECT channel FROM discussions WHERE id = $1', [discussionId]);
+    if (result.rows.length === 0) {
+        return `discuss-${discussionId}`;
+    }
+    return result.rows[0].channel || `discuss-${discussionId}`;
 }
 
 async function getConfig(key, defaultValue) {
@@ -559,14 +567,20 @@ router.post('/discussion/conclude', async (req, res) => {
             'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND agent != $2',
             [discussion_id, agent]
         );
+        const topic = discussion.rows[0].topic;
         if (participants.rows.length > 0) {
             const others = participants.rows.map(r => r.agent);
-            const topic = discussion.rows[0].topic;
             const msg = `Discussion #${discussion_id} ("${topic}") was ${newStatus} by ${agent}`;
             sendSystemMessageToMany(others, msg, null).catch(err => {
                 console.error('Failed to notify participants of conclude:', err.message);
             });
         }
+
+        getDiscussionChannel(discussion_id).then(ch => {
+            sendDiscussionEvent(ch, `Discussion ${newStatus} by ${agent}`).catch(err => {
+                console.error('Failed to send conclude event:', err.message);
+            });
+        });
 
         res.json({ discussion_id, status: newStatus });
     } catch (err) {
@@ -631,6 +645,12 @@ router.post('/discussion/join', async (req, res) => {
 
         logDiscussion('join', { discussion_id, agent });
 
+        getDiscussionChannel(discussion_id).then(ch => {
+            sendDiscussionEvent(ch, `${agent} joined the discussion`).catch(err => {
+                console.error('Failed to send join event:', err.message);
+            });
+        });
+
         // Evaluate readiness if still waiting
         if (dStatus === 'waiting') {
             await evaluateReadiness(discussion_id);
@@ -675,6 +695,12 @@ router.post('/discussion/leave', async (req, res) => {
         );
 
         logDiscussion('leave', { discussion_id, agent });
+
+        getDiscussionChannel(discussion_id).then(ch => {
+            sendDiscussionEvent(ch, `${agent} left the discussion`).catch(err => {
+                console.error('Failed to send leave event:', err.message);
+            });
+        });
 
         res.json({ discussion_id, agent, status: 'left' });
     } catch (err) {
@@ -730,6 +756,13 @@ router.post('/discussion/vote/propose', async (req, res) => {
         );
 
         logDiscussion('vote_propose', { discussion_id, vote_id: result.rows[0].id, proposed_by, question, type: voteType });
+
+        getDiscussionChannel(discussion_id).then(ch => {
+            const msg = `${proposed_by} proposed ${voteType} vote #${result.rows[0].id}: ${question}`;
+            sendDiscussionEvent(ch, msg).catch(err => {
+                console.error('Failed to send vote propose event:', err.message);
+            });
+        });
 
         res.json({
             vote: {
@@ -814,31 +847,30 @@ router.post('/discussion/vote/cast', async (req, res) => {
 
         logDiscussion('vote_cast', { vote_id, agent, choice });
 
-        // Notify all joined participants about the vote
+        // Post vote event to discussion channel
         const discussionId = vote.rows[0].discussion_id;
-        const disc = await pool.query('SELECT channel FROM discussions WHERE id = $1', [discussionId]);
-        const channel = disc.rows[0].channel || `discuss-${discussionId}`;
-        const participants = await pool.query(
-            'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
-            [discussionId, 'joined']
-        );
         const voteType = vote.rows[0].type || 'general';
         const voteStatus = updated.rows[0].status;
-        const totalJoined = participants.rows.length;
-        const ballots = await pool.query('SELECT COUNT(*) as count FROM discussion_ballots WHERE vote_id = $1', [vote_id]);
-        const castCount = parseInt(ballots.rows[0].count);
 
-        let msg = `[Vote] ${agent} voted ${choice} on vote #${vote_id} (${voteType}).`;
-        if (voteStatus === 'passed') {
-            msg += ' Passed.';
-        } else if (voteStatus === 'failed') {
-            msg += ' Failed.';
-        } else {
-            msg += ` ${castCount}/${totalJoined} votes cast.`;
-        }
+        getDiscussionChannel(discussionId).then(async (ch) => {
+            const participants = await pool.query(
+                'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
+                [discussionId, 'joined']
+            );
+            const totalJoined = participants.rows.length;
+            const ballotResult = await pool.query('SELECT COUNT(*) as count FROM discussion_ballots WHERE vote_id = $1', [vote_id]);
+            const castCount = parseInt(ballotResult.rows[0].count);
 
-        const recipients = participants.rows.map(r => r.agent);
-        await sendSystemMessageToMany(recipients, msg, channel);
+            let msg = `${agent} voted ${choice} on ${voteType} vote #${vote_id}.`;
+            if (voteStatus === 'closed') {
+                msg += ' Vote closed.';
+            } else {
+                msg += ` ${castCount}/${totalJoined} votes cast.`;
+            }
+            sendDiscussionEvent(ch, msg);
+        }).catch(err => {
+            console.error('Failed to send vote cast event:', err.message);
+        });
 
         res.json({
             vote_id,
