@@ -413,10 +413,11 @@ router.post('/agent/status', async (req, res) => {
         const result = await pool.query(
             `SELECT
                 a.agent,
+                a.status,
                 a.last_seen,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
-            FROM agents a
+            FROM agent_status a
             LEFT JOIN (
                 SELECT from_agent, COUNT(*) AS unread_count
                 FROM chat_messages
@@ -451,26 +452,14 @@ router.post('/agent/status', async (req, res) => {
             }
         }
 
-        const agents = result.rows.map(row => {
-            let status = 'unknown';
-            if (row.last_seen) {
-                const minutesAgo = (Date.now() - new Date(row.last_seen).getTime()) / 60000;
-                if (minutesAgo < ONLINE_THRESHOLD_MINUTES) {
-                    status = 'online';
-                } else {
-                    status = 'offline';
-                }
-            }
-
-            return {
-                agent: row.agent,
-                status,
-                last_seen: row.last_seen,
-                subsystems: subsystemsByAgent[row.agent] || [],
-                unread_chat: row.unread_chat,
-                unread_mail: row.unread_mail
-            };
-        });
+        const agents = result.rows.map(row => ({
+            agent: row.agent,
+            status: row.status,
+            last_seen: row.last_seen,
+            subsystems: subsystemsByAgent[row.agent] || [],
+            unread_chat: row.unread_chat,
+            unread_mail: row.unread_mail
+        }));
 
         res.json({ agents });
     } catch (err) {
