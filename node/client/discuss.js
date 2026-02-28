@@ -31,7 +31,7 @@ let mcpConfigPath = null;
 let workDirBase = null;
 let maxMessages = 200;
 let timeoutMinutes = 120;
-let joinTimeout = 120;
+let joinTimeout = 300;
 
 for (let i = 1; i < args.length; i++) {
     if (args[i] === '--topic' && args[i + 1]) {
