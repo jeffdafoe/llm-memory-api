@@ -1,9 +1,5 @@
-const crypto = require('crypto');
 const pool = require('../db');
-
-function hashToken(plaintext, salt) {
-    return crypto.pbkdf2Sync(plaintext, salt, 100000, 64, 'sha512').toString('hex');
-}
+const { hash: hashToken } = require('../services/hashing');
 
 // Cache session tokens in memory to avoid DB lookup on every request
 // Key: bearer token, Value: { agent, expires }
@@ -105,6 +101,5 @@ async function auth(req, res, next) {
 
 // Exported so login/logout/rotate handlers can manage the cache
 auth.sessionCache = sessionCache;
-auth.hashToken = hashToken;
 
 module.exports = auth;

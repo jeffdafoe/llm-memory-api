@@ -2,15 +2,12 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
 const { log } = require('../services/logger');
+const { hash: hashToken, generateSalt } = require('../services/hashing');
 
 const router = Router();
 
 const SESSION_TTL_HOURS = 24;
-const DUMMY_SALT = crypto.randomBytes(32).toString('hex');
-
-function hashToken(plaintext, salt) {
-    return crypto.pbkdf2Sync(plaintext, salt, 100000, 64, 'sha512').toString('hex');
-}
+const DUMMY_SALT = generateSalt();
 
 function generateSessionToken() {
     return crypto.randomBytes(48).toString('base64url');
