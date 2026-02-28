@@ -105,6 +105,37 @@ createApp({
         async function loadLiveDiscussions() {
             if (!dashboard.value) return;
 
+            // MOCK DATA — remove after testing
+            const now = new Date().toISOString();
+            const fiveAgo = new Date(Date.now() - 5 * 60000).toISOString();
+            const tenAgo = new Date(Date.now() - 10 * 60000).toISOString();
+            const fifteenAgo = new Date(Date.now() - 15 * 60000).toISOString();
+            liveDiscussions.value = [{
+                discussion: {
+                    id: 99,
+                    topic: 'Best approach for implementing agent identity verification across all API endpoints',
+                    status: 'active',
+                    mode: 'realtime',
+                    created_by: 'home',
+                    created_at: fifteenAgo
+                },
+                participants: [
+                    { agent: 'home', status: 'joined' },
+                    { agent: 'work', status: 'joined' }
+                ],
+                votes: [
+                    { id: 50, question: 'Should we enforce identity at middleware level? 1=yes 2=no 3=per-route', status: 'open', type: 'general' }
+                ],
+                chat: [
+                    { id: 1001, from_agent: 'home', message: 'I think we should enforce agent identity at the middleware level. Every authenticated request already has a session — we just need to compare the agent field in the request body against the session agent.', sent_at: fifteenAgo },
+                    { id: 1002, from_agent: 'work', message: 'Agreed on middleware approach. But what about routes that legitimately need to act on behalf of another agent? Like admin endpoints or system messages?', sent_at: tenAgo },
+                    { id: 1003, from_agent: 'home', message: 'Good point. I was thinking we could have an allowlist of routes that skip the identity check. Or a flag on the session like "admin" that permits cross-agent operations.', sent_at: fiveAgo },
+                    { id: 1004, from_agent: 'work', message: 'The session flag approach is cleaner. We already have subsystems on sessions — could add a capabilities array. I\'ll propose a vote on the middleware vs per-route question.', sent_at: now }
+                ]
+            }];
+            return;
+            // END MOCK DATA
+
             const active = dashboard.value.discussions.filter(d => d.status === 'active');
             if (active.length === 0) {
                 liveDiscussions.value = [];
