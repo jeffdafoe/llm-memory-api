@@ -7,6 +7,7 @@ const chatRoutes = require('./routes/chat');
 const discussionRoutes = require('./routes/discussion');
 const mailRoutes = require('./routes/mail');
 const memoryRoutes = require('./routes/memory');
+const documentRoutes = require('./routes/documents');
 const systemRoutes = require('./routes/system');
 const adminRoutes = require('./routes/admin');
 
@@ -22,6 +23,7 @@ app.use('/v1', chatRoutes);
 app.use('/v1', discussionRoutes);
 app.use('/v1', mailRoutes);
 app.use('/v1', memoryRoutes);
+app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
 app.use('/v1', adminRoutes);
 
