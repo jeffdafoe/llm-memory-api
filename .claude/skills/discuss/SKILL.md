@@ -1,118 +1,169 @@
 ---
 name: discuss
 description: Start or join a realtime discussion with another agent using the discussion transport system
-argument-hint: "[topic and participants, or 'join']"
+argument-hint: "[topic and participants, or 'join <id>']"
 ---
 
 ## Parsing user input
 
-The user's input (`$ARGUMENTS`) is natural language. Extract the following:
+The user's input (`$ARGUMENTS`) determines which path to follow:
 
-- **Action**: "join" if the user says "join" or similar. Otherwise "create".
-- **Topic**: The main subject described by the user. Strip out participant references.
-- **Required participants** (`--other`): Agent names after phrases like "with work", "include home", "and work". Known agent names: `work`, `home`.
-- **Optional participants** (`--optional`): Agent names after phrases like "optionally include", "maybe include", "as optional".
+- **"join"**, **"join 18"**, **"join discussion 18"**, etc. → **Join a discussion** (below)
+- **Anything else** (a topic, possibly with participant names) → **Create a discussion** (below)
 
-If no arguments are provided, ask the user what they want to discuss and with whom.
+For **join**: extract the discussion ID if provided. If no ID given, ask the user for it.
 
-Examples:
-- `/discuss the problem with user signups and include work as required` → create, topic="the problem with user signups", --other work
-- `/discuss join` → join (auto-discover pending invitation)
-- `/discuss API refactoring with work and home` → create, topic="API refactoring", --other work --other home
-- `/discuss onboarding docs with work, optionally include home` → create, topic="onboarding docs", --other work --optional home
+For **create**: extract the following from natural language:
+- **Topic**: The main subject. Strip out participant references.
+- **Required participants** (`--other`): Agent names after "with work", "include home", etc. Known agents: `work`, `home`.
+- **Optional participants** (`--optional`): Agent names after "optionally include", etc.
 
-## Step 1: Determine your agent name
+If no arguments at all, ask the user what they want to discuss and with whom.
 
-Call the `agent_status` MCP tool (no args needed — it defaults to your configured agent). The response tells you your agent name. You'll need this so you don't list yourself as a participant.
+---
 
-## Step 2: Research the topic (create only — skip for join)
+## Create a discussion
 
-Before launching a **create** discussion, gather relevant context so the subagent is well-informed:
+### Step 1: Determine your agent name
 
-1. Search vector memory for the topic (`search` MCP tool with `namespace: "*"`). Review the results — keep chunks that are relevant, discard noise.
-2. Check for related task files in `shared/tasks/` and `work/tasks/` if applicable.
-3. If the current conversation has relevant context (decisions made, files discussed, etc.), summarize the key points.
+Call the `agent_status` MCP tool (no arguments). This tells you your agent name and confirms the API is reachable. Don't list yourself as a participant.
 
-Write a context file to `C:/temp/llm/discuss-context.md` combining the curated results. Include source file paths so the subagent can read full files if needed. Pass this to discuss.js via `--context-file C:/temp/llm/discuss-context.md`.
+### Step 2: Research the topic
 
-For **join** actions, skip this step — the creating agent provides the context.
+Gather context so the subagent is well-informed:
 
-## Step 3: Find discuss.js
+1. Search vector memory (`search` MCP tool, `namespace: "*"`). Keep relevant chunks, discard noise.
+2. Check for related task files in `shared/tasks/` if applicable.
+3. Summarize relevant context from the current conversation.
 
-The transport script is at `node/client/discuss.js` relative to the llm-memory-api repo root. Find the repo by locating `.mcp.json` in your project root — it contains the path to the MCP server script under `mcpServers.llm-memory.args[0]`. The repo root is two directories up from that script path (`node/mcp/server.js` -> repo root).
+Write a context file to `<TEMP_DIR>/discuss-context.md` (where TEMP_DIR is derived in step 3). Pass this to discuss.js via `--context-file`.
 
-## Step 4: Run discuss.js
+### Step 3: Locate paths
 
-discuss.js reads credentials (API URL, agent name, passphrase) from `.mcp.json` automatically. It searches up from the current working directory to find it. Run it from your project root.
+- **discuss.js**: Find the path in your project's CLAUDE.md under "Key Paths". Both agents have `discuss.js` listed there with the full path.
+- **TEMP_DIR**: Read `.mcp.json` in your project root. Look for `MEMORY_TEMP_DIR` under `mcpServers.llm-memory.env`. If not set, use `/tmp/llm`. You'll need this for the context file path and the blocking wait.
 
-**To create a discussion:**
-```bash
-nohup node <path-to-discuss.js> create --topic "Your topic here" --other <agent-name> > /tmp/llm/discuss-transport.log 2>&1 &
-echo "PID: $!"
-```
-
-**To join a discussion (auto-discovers pending invitation):**
-
-**IMPORTANT:** Do NOT pre-check for invitations via MCP tools (`discussion_pending`, `discussion_list`, etc.) before launching the transport. `discuss.js join` has a built-in polling loop that checks for pending invitations every 5 seconds for up to 120 seconds. Just launch it — it will wait for the other agent's invitation to appear. Pre-checking via MCP and reporting "no invitation found" defeats the purpose.
+### Step 4: Launch the transport
 
 ```bash
-nohup node <path-to-discuss.js> join > /tmp/llm/discuss-transport.log 2>&1 &
-echo "PID: $!"
+nohup node <DISCUSS_JS> create \
+    --topic "<topic>" \
+    --other <agent-name> \
+    --context-file <context-file-path> \
+    > /tmp/llm/discuss-transport.log 2>&1 &
+echo "Transport PID: $!"
 ```
 
-**To join a specific discussion by ID:**
-```bash
-nohup node <path-to-discuss.js> join <discussion-id> > /tmp/llm/discuss-transport.log 2>&1 &
-echo "PID: $!"
-```
+Use `nohup` with output redirection — the Bash tool's `run_in_background` mode kills long-running Node processes when stdout goes quiet. Save the PID.
 
-Optional flags:
-- `--other <agent>` (repeatable, for additional required participants)
-- `--optional <agent>` (repeatable, for optional participants who may join later)
-- `--context "background info"` or `--context-file <path>`
-- `--mode realtime|async` (default: realtime)
-- `--max-messages <n>` (default: 200)
-- `--timeout <minutes>` (default: 120)
-- `--mcp-config <path>` (override .mcp.json auto-discovery)
+Optional flags: `--optional <agent>`, `--mode realtime|async`, `--max-messages <n>`, `--timeout <minutes>`.
 
-**IMPORTANT:** Use `nohup` with output redirection as shown above. The Bash tool's `run_in_background` mode will kill long-running Node processes when stdout goes quiet during the polling loop. `nohup` detaches the process properly. Save the echoed PID to verify the process is alive later with `kill -0 <pid>`.
+### Step 5: Wait for prompt.txt (BLOCKING)
 
-## Step 5: Wait for transport readiness
-
-After starting discuss.js, wait for the `prompt.txt` file to appear in the work directory. The work directory is auto-generated at `<os-temp>/llm/discuss-<id>/`. You can tail the transport log to see progress:
+The transport logs `Created discussion #<id>` to the log file. Poll the log for the ID, then poll for prompt.txt in the specific discussion directory. Run this as a single **blocking** bash command (NOT `run_in_background`):
 
 ```bash
-tail -f /tmp/llm/discuss-transport.log
+TEMP_DIR="<TEMP_DIR from step 3>"
+LOG="/tmp/llm/discuss-transport.log"
+
+# Phase 1: Wait for discussion ID in transport log
+TIMEOUT=60; ELAPSED=0; DISC_ID=""
+while [ -z "$DISC_ID" ]; do
+    sleep 2; ELAPSED=$((ELAPSED + 2))
+    DISC_ID=$(grep -oP 'Created discussion #\K[0-9]+' "$LOG" 2>/dev/null | head -1)
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+        echo "ERROR: No discussion ID in transport log after ${TIMEOUT}s"
+        cat "$LOG" 2>/dev/null
+        exit 1
+    fi
+done
+echo "Discussion #$DISC_ID created"
+
+# Phase 2: Wait for prompt.txt
+DISC_DIR="$TEMP_DIR/discuss-$DISC_ID"
+TIMEOUT=180; ELAPSED=0
+while [ ! -f "$DISC_DIR/prompt.txt" ]; do
+    sleep 2; ELAPSED=$((ELAPSED + 2))
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+        echo "ERROR: prompt.txt not found after ${TIMEOUT}s - transport may have failed"
+        exit 1
+    fi
+done
+cat "$DISC_DIR/prompt.txt"
 ```
 
-Or poll directly for prompt.txt:
-```bash
-ls <os-temp>/llm/discuss-<id>/prompt.txt
-```
+This blocks until prompt.txt exists. The 180s timeout outlasts the transport's 120s invitation retry loop.
 
-It may take a few seconds while the transport logs in, creates/joins the discussion, and waits for participants. Verify the transport is still alive with `kill -0 <pid>` if the prompt file doesn't appear.
+### Step 6: Launch the subagent
 
-## Step 6: Launch the subagent
-
-Read the generated `prompt.txt` and launch a background Task agent with its contents:
+**CRITICAL: Your very next tool call MUST be the Task tool. Do not use any other tool. Do not write any text to the user. Do not read any files. Copy the output of the previous bash command (the contents of prompt.txt) and pass it directly as the Task tool's prompt parameter.**
 
 ```
-Use the Task tool with:
+Task tool:
 - subagent_type: "general-purpose"
 - run_in_background: true
 - max_turns: 100
-- prompt: <contents of prompt.txt>
+- prompt: <entire output from step 5 — the full contents of prompt.txt>
 ```
 
-The subagent handles the actual discussion — reading messages from `inbox/`, writing replies to `outbox/`, voting on proposals, and concluding the discussion. The transport handles all API communication.
+---
 
-## If joining and no invitation is found
+## Join a discussion
 
-`discuss.js join` (without a discussion ID) automatically polls for pending invitations every 5 seconds for up to 120 seconds. If the other agent hasn't created the discussion yet, the transport will wait — you don't need to do anything. Just monitor the transport log for progress. If it exits with "No pending discussion invitations found after 120s", the other agent likely isn't starting a discussion. Ask the user.
+**ZERO MCP calls in this path.** Do not call `discussion_pending`, `agent_status`, `discussion_list`, or any other MCP tool. The transport handles everything.
+
+### Step 1: Locate paths
+
+- **discuss.js**: Find the path in your project's CLAUDE.md under "Key Paths". Both agents have `discuss.js` listed there with the full path.
+- **TEMP_DIR**: Read `.mcp.json` in your project root. Look for `MEMORY_TEMP_DIR` under `mcpServers.llm-memory.env`. If not set, use `/tmp/llm`.
+
+### Step 2: Launch the transport
+
+```bash
+nohup node <DISCUSS_JS> join <DISCUSSION_ID> > /tmp/llm/discuss-transport.log 2>&1 &
+echo "Transport PID: $!"
+```
+
+The transport handles API login, joining the discussion, setting up the working directory, and generating prompt.txt. It has a built-in 120s polling loop for pending invitations — just launch it and move on to the blocking wait.
+
+### Step 3: Wait for prompt.txt (BLOCKING)
+
+Run this as a single **blocking** bash command (NOT `run_in_background`):
+
+```bash
+DISC_DIR="<TEMP_DIR from step 1>/discuss-<DISCUSSION_ID>"
+TIMEOUT=180; ELAPSED=0
+while [ ! -f "$DISC_DIR/prompt.txt" ]; do
+    sleep 2; ELAPSED=$((ELAPSED + 2))
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+        echo "ERROR: prompt.txt not found after ${TIMEOUT}s - transport may have failed"
+        exit 1
+    fi
+done
+cat "$DISC_DIR/prompt.txt"
+```
+
+This blocks until prompt.txt exists. The 180s timeout outlasts the transport's 120s retry loop. The agent cannot do anything else while this runs — that's the point.
+
+### Step 4: Launch the subagent
+
+**CRITICAL: Your very next tool call MUST be the Task tool. Do not use any other tool. Do not write any text to the user. Do not read any files. Copy the output of the previous bash command (the contents of prompt.txt) and pass it directly as the Task tool's prompt parameter.**
+
+```
+Task tool:
+- subagent_type: "general-purpose"
+- run_in_background: true
+- max_turns: 100
+- prompt: <entire output from step 3 — the full contents of prompt.txt>
+```
+
+---
 
 ## Troubleshooting
 
-- **Transport logs**: `<workdir>/conversation.log`
+- **Transport logs**: `/tmp/llm/discuss-transport.log` and `<workdir>/conversation.log`
 - **Transport status**: `<workdir>/status`
 - **Discussion transcript**: `<workdir>/transcript.md`
-- If the transport can't find `.mcp.json`, use `--mcp-config <path>` to point to it explicitly.
+- **Transport alive?**: `kill -0 <pid>` to check if the process is still running
+- **prompt.txt never appeared**: Check the transport log for errors. Common causes: failed login, API unreachable, no pending invitation (for join without ID).
+- **.mcp.json not found by transport**: Use `--mcp-config <path>` to point to it explicitly.
