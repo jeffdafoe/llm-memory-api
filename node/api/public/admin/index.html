@@ -56,8 +56,8 @@
                         <h4><i class="icon-radio"></i> Live Discussion #{{ live.discussion.id }}</h4>
                         <p class="live-topic">{{ live.discussion.topic }}</p>
                         <p class="live-meta">
-                            <strong>Created by:</strong> {{ live.discussion.created_by }}
-                            · <strong>Participants:</strong> {{ live.participants.map(p => p.agent).join(', ') }}
+                            <strong>Created by:</strong> <span :style="{ color: agentColor(live.discussion.created_by) }">{{ live.discussion.created_by }}</span>
+                            · <strong>Participants:</strong> <template v-for="(p, i) in live.participants" :key="p.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(p.agent) }">{{ p.agent }}</span></template>
                             · <strong>Started:</strong> {{ formatDate(live.discussion.created_at) }}
                         </p>
                         <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
