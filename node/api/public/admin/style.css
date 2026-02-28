@@ -27,23 +27,18 @@ nav a.active {
     font-size: 0.85em;
 }
 
-.badge-active {
+.badge-online {
     background: #2d6a2d;
     color: white;
 }
 
-.badge-concluded {
+.badge-offline {
     background: #555;
     color: white;
 }
 
-.badge-timed_out {
+.badge-unknown {
     background: #8b4513;
-    color: white;
-}
-
-.badge-pending {
-    background: #b8860b;
     color: white;
 }
 
