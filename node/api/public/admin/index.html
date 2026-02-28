@@ -61,7 +61,7 @@
                             · <strong>Started:</strong> {{ formatDate(live.discussion.created_at) }}
                         </p>
                         <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
-                            <div v-for="v in live.votes.filter(v => v.status === 'open')" :key="v.id" class="vote-card">
+                            <div v-for="v in live.votes.filter(v => v.status === 'open')" :key="v.id" class="live-vote-card">
                                 <strong>Open Vote #{{ v.id }}:</strong> {{ v.question }}
                             </div>
                         </div>
