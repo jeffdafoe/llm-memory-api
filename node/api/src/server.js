@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
+const oauthRoutes = require('./routes/oauth');
 const agentRoutes = require('./routes/agent');
 const chatRoutes = require('./routes/chat');
 const discussionRoutes = require('./routes/discussion');
@@ -16,6 +17,10 @@ const port = process.env.PORT || 3100;
 
 app.use(express.json({ limit: '5mb' }));
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
+
+// OAuth discovery + token endpoint (no auth required, root-level)
+app.use(oauthRoutes);
+
 app.use('/v1', auth);
 app.use('/v1', opportunisticHeartbeat);
 app.use('/v1', agentRoutes);
