@@ -10,6 +10,11 @@ const { hash } = require('../services/hashing');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Opportunistic heartbeat — update last_seen on every authenticated MCP request
+function heartbeat(agent) {
+    pool.query('UPDATE agents SET last_seen = NOW() WHERE agent = $1', [agent]).catch(() => {});
+}
+
 function getResourceMetadataUrl(req) {
     if (process.env.BASE_URL) {
         return `${process.env.BASE_URL}/.well-known/oauth-protected-resource`;
@@ -67,6 +72,7 @@ async function mcpAuth(req, res, next) {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.mcpAgent = decoded.agent;
         req.mcpPermissions = decoded.permissions || [];
+        heartbeat(decoded.agent);
         return next();
     } catch (err) {
         // Not a valid JWT — fall through to API key check
@@ -78,6 +84,7 @@ async function mcpAuth(req, res, next) {
         if (result) {
             req.mcpAgent = result.agent;
             req.mcpPermissions = result.permissions;
+            heartbeat(result.agent);
             return next();
         }
     } catch (err) {
