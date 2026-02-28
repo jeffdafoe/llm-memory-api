@@ -1,8 +1,5 @@
 const { Router } = require('express');
-const pool = require('../db');
-const { embed } = require('../services/embeddings');
-const { chunkByHeading } = require('../services/chunker');
-const pgvector = require('pgvector');
+const { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus } = require('../services/memory');
 
 const router = Router();
 
@@ -16,79 +13,23 @@ router.post('/memory/ingest', async (req, res) => {
     }
 
     try {
-        const chunks = chunkByHeading(content);
-
-        if (chunks.length === 0) {
-            return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'No chunks extracted from content' }
-            });
-        }
-
-        const texts = chunks.map(c => c.chunk_text);
-        const embeddings = await embed(texts);
-
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-
-            await client.query(
-                'DELETE FROM memory_chunks WHERE namespace = $1 AND source_file = $2',
-                [namespace, source_file]
-            );
-
-            for (let i = 0; i < chunks.length; i++) {
-                await client.query(
-                    'INSERT INTO memory_chunks (namespace, source_file, heading, chunk_text, embedding) VALUES ($1, $2, $3, $4, $5)',
-                    [namespace, source_file, chunks[i].heading, chunks[i].chunk_text, pgvector.toSql(embeddings[i])]
-                );
-            }
-
-            await client.query('COMMIT');
-        } catch (err) {
-            await client.query('ROLLBACK');
-            throw err;
-        } finally {
-            client.release();
-        }
-
-        res.json({
-            chunks_created: chunks.length,
-            source_file,
-            namespace
-        });
+        const result = await ingestContent(namespace, source_file, content);
+        res.json(result);
     } catch (err) {
+        const status = err.statusCode || 500;
         console.error('Memory ingest error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+        res.status(status).json({
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });
 
-// Returns all indexed source files with their latest ingestion timestamp and chunk count.
-// Optional namespace filter in request body. Used by the MCP ingest_notes tool to determine
-// which files need re-ingestion by comparing against local filesystem mtimes.
 router.post('/memory/ingest/status', async (req, res) => {
     const { namespace } = req.body;
 
     try {
-        let query = `
-            SELECT namespace, source_file, MAX(ingested_at) as ingested_at, COUNT(*) as chunk_count
-            FROM memory_chunks
-        `;
-        const params = [];
-
-        if (namespace) {
-            query += ' WHERE namespace = $1';
-            params.push(namespace);
-        }
-
-        query += ' GROUP BY namespace, source_file ORDER BY namespace, source_file';
-
-        const result = await pool.query(query, params);
-
-        res.json({
-            files: result.rows
-        });
+        const result = await ingestStatus(namespace);
+        res.json(result);
     } catch (err) {
         console.error('Memory ingest/status error:', err.message);
         res.status(500).json({
@@ -107,54 +48,8 @@ router.post('/memory/search', async (req, res) => {
     }
 
     try {
-        const maxResults = limit || 5;
-        const embeddings = await embed(query);
-        const queryVector = pgvector.toSql(embeddings[0]);
-
-        // Build ILIKE pattern from query words to boost chunks whose source_file
-        // matches the search terms. This catches cases where the filename is the
-        // most relevant signal but the chunk content uses different terminology.
-        const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-
-        let sql;
-        let params;
-
-        if (!namespace || namespace === '*') {
-            // Params: $1=vector, $2=limit, $3+=ILIKE patterns
-            const filenameClauses = queryWords.map((_, i) => `source_file ILIKE $${i + 3}`);
-            const boostExpression = filenameClauses.length > 0
-                ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
-                : '0';
-            sql = `
-                SELECT source_file, heading, chunk_text, namespace,
-                       (1 - (embedding <=> $1)) + ${boostExpression} AS similarity
-                FROM memory_chunks
-                ORDER BY similarity DESC
-                LIMIT $2
-            `;
-            params = [queryVector, maxResults, ...queryWords.map(w => `%${w}%`)];
-        } else {
-            // Params: $1=vector, $2=namespace, $3=limit, $4+=ILIKE patterns
-            const filenameClauses = queryWords.map((_, i) => `source_file ILIKE $${i + 4}`);
-            const boostExpression = filenameClauses.length > 0
-                ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
-                : '0';
-            sql = `
-                SELECT source_file, heading, chunk_text, namespace,
-                       (1 - (embedding <=> $1)) + ${boostExpression} AS similarity
-                FROM memory_chunks
-                WHERE namespace = $2
-                ORDER BY similarity DESC
-                LIMIT $3
-            `;
-            params = [queryVector, namespace, maxResults, ...queryWords.map(w => `%${w}%`)];
-        }
-
-        const result = await pool.query(sql, params);
-
-        res.json({
-            results: result.rows
-        });
+        const result = await searchMemory(query, namespace, limit);
+        res.json(result);
     } catch (err) {
         console.error('Memory search error:', err.message);
         res.status(500).json({
@@ -163,8 +58,6 @@ router.post('/memory/search', async (req, res) => {
     }
 });
 
-// Deletes orphaned chunks — DB entries whose source_file no longer exists on disk.
-// Caller provides the list of valid source_files for a namespace; everything else is removed.
 router.post('/memory/cleanup', async (req, res) => {
     const { namespace, valid_source_files } = req.body;
 
@@ -175,31 +68,8 @@ router.post('/memory/cleanup', async (req, res) => {
     }
 
     try {
-        // Find source_files in this namespace that aren't in the valid list
-        const existing = await pool.query(
-            'SELECT DISTINCT source_file FROM memory_chunks WHERE namespace = $1',
-            [namespace]
-        );
-
-        const validSet = new Set(valid_source_files);
-        const orphans = existing.rows
-            .map(r => r.source_file)
-            .filter(sf => !validSet.has(sf));
-
-        if (orphans.length === 0) {
-            return res.json({ orphans_deleted: 0, orphan_files: [] });
-        }
-
-        // Delete orphan chunks in one query using ANY
-        const result = await pool.query(
-            'DELETE FROM memory_chunks WHERE namespace = $1 AND source_file = ANY($2)',
-            [namespace, orphans]
-        );
-
-        res.json({
-            orphans_deleted: result.rowCount,
-            orphan_files: orphans
-        });
+        const result = await cleanupMemory(namespace, valid_source_files);
+        res.json(result);
     } catch (err) {
         console.error('Memory cleanup error:', err.message);
         res.status(500).json({
@@ -218,14 +88,8 @@ router.post('/memory/delete', async (req, res) => {
     }
 
     try {
-        const result = await pool.query(
-            'DELETE FROM memory_chunks WHERE namespace = $1 AND source_file = $2',
-            [namespace, source_file]
-        );
-
-        res.json({
-            chunks_deleted: result.rowCount
-        });
+        const result = await deleteMemory(namespace, source_file);
+        res.json(result);
     } catch (err) {
         console.error('Memory delete error:', err.message);
         res.status(500).json({
