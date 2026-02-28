@@ -62,7 +62,7 @@
                         </p>
                         <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
                             <div v-for="v in live.votes.filter(v => v.status === 'open')" :key="v.id" class="live-vote-card">
-                                <strong>Open Vote #{{ v.id }}:</strong> {{ voteQuestion(v.question).question }} <em v-if="voteQuestion(v.question).choices">{{ voteQuestion(v.question).choices }}</em>
+                                <strong>Open Vote #{{ v.id }}:</strong> {{ voteQuestion(v.question).question }} <strong v-for="c in voteQuestion(v.question).choices" :key="c" class="vote-choice">{{ c }}</strong>
                             </div>
                         </div>
                         <div class="live-chat-transcript">

@@ -109,6 +109,10 @@ nav a.active {
     border-radius: 4px;
 }
 
+.vote-choice {
+    margin-left: 0.5em;
+}
+
 .filters {
     margin-bottom: 1rem;
     max-width: 200px;

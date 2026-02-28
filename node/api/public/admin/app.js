@@ -325,10 +325,14 @@ createApp({
 
         function voteQuestion(text) {
             const match = text.match(/^(.*?\?)\s*(.+)$/);
-            if (match) {
-                return { question: match[1], choices: match[2] };
+            if (!match) {
+                return { question: text, choices: [] };
             }
-            return { question: text, choices: null };
+            const choiceMatches = match[2].match(/\d+=\S+/g);
+            if (choiceMatches) {
+                return { question: match[1], choices: choiceMatches };
+            }
+            return { question: text, choices: [] };
         }
 
         function closeAllDialogs() {
