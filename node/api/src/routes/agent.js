@@ -6,6 +6,7 @@ const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
 const { log } = require('../services/logger');
 const auth = require('../middleware/auth');
+const { hash: hashToken, generateSalt } = require('../services/hashing');
 
 const router = Router();
 
@@ -24,11 +25,7 @@ function logAgent(action, details) {
 
 // Dummy salt for timing-safe rejections — ensures agent-not-found paths
 // take the same time as invalid-credential paths (prevents enumeration)
-const DUMMY_SALT = crypto.randomBytes(32).toString('hex');
-
-function hashToken(plaintext, salt) {
-    return crypto.pbkdf2Sync(plaintext, salt, 100000, 64, 'sha512').toString('hex');
-}
+const DUMMY_SALT = generateSalt();
 
 function generatePassphraseToken() {
     const words = generatePassphrase(3);
@@ -78,7 +75,7 @@ router.post('/agent/register', async (req, res) => {
             }
             // Status is 'pending' — regenerate token (they haven't acked yet)
             const token = generatePassphraseToken();
-            const salt = crypto.randomBytes(32).toString('hex');
+            const salt = generateSalt();
             const hash = hashToken(token, salt);
 
             await pool.query(
@@ -99,7 +96,7 @@ router.post('/agent/register', async (req, res) => {
 
         // New agent
         const token = generatePassphraseToken();
-        const salt = crypto.randomBytes(32).toString('hex');
+        const salt = generateSalt();
         const hash = hashToken(token, salt);
 
         await pool.query(
@@ -212,7 +209,7 @@ router.post('/agent/login', async (req, res) => {
 
         // Generate session token and store hashed in database
         const sessionToken = generateSessionToken();
-        const sessionSalt = crypto.randomBytes(32).toString('hex');
+        const sessionSalt = generateSalt();
         const sessionHash = hashToken(sessionToken, sessionSalt);
         const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
@@ -326,7 +323,7 @@ router.post('/agent/rotate', async (req, res) => {
 
         // Generate new passphrase
         const passphrase = generatePassphraseToken();
-        const salt = crypto.randomBytes(32).toString('hex');
+        const salt = generateSalt();
         const hash = hashToken(passphrase, salt);
 
         await pool.query(
