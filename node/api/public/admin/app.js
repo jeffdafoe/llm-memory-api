@@ -23,6 +23,7 @@ createApp({
         const selectedMessage = ref(null);
         const mailMessages = ref([]);
         const selectedMail = ref(null);
+        const liveDiscussions = ref([]);
 
         // API helper
         async function api(endpoint, body = {}) {
@@ -79,6 +80,7 @@ createApp({
                 // Ignore — clear local state regardless
             }
             stopPolling();
+            stopLivePolling();
             authenticated.value = false;
             sessionToken.value = null;
             user.value = null;
@@ -90,8 +92,70 @@ createApp({
             try {
                 const data = await api('/admin/dashboard');
                 dashboard.value = data;
+                loadLiveDiscussions();
             } catch (err) {
                 console.error('Failed to load dashboard:', err);
+            }
+        }
+
+        // Live discussion polling
+        const LIVE_POLL_MS = 5000;
+        let liveTimer = null;
+
+        async function loadLiveDiscussions() {
+            if (!dashboard.value) return;
+
+            const active = dashboard.value.discussions.filter(d => d.status === 'active');
+            if (active.length === 0) {
+                liveDiscussions.value = [];
+                stopLivePolling();
+                return;
+            }
+
+            const results = [];
+            for (const d of active) {
+                try {
+                    const detail = await api('/admin/discussions/detail', { discussion_id: d.id });
+                    const chat = await api('/admin/chat', { channel: 'discuss-' + d.id, limit: 500 });
+                    results.push({
+                        discussion: detail.discussion,
+                        participants: detail.participants,
+                        votes: detail.votes,
+                        chat: chat.messages.reverse()
+                    });
+                } catch (err) {
+                    console.error('Failed to load live discussion ' + d.id + ':', err);
+                }
+            }
+
+            liveDiscussions.value = results;
+            startLivePolling();
+        }
+
+        async function refreshLiveChats() {
+            for (const live of liveDiscussions.value) {
+                try {
+                    const chat = await api('/admin/chat', { channel: 'discuss-' + live.discussion.id, limit: 500 });
+                    live.chat = chat.messages.reverse();
+                } catch (err) {
+                    console.error('Failed to refresh live chat:', err);
+                }
+            }
+        }
+
+        function startLivePolling() {
+            if (liveTimer) return;
+            liveTimer = setInterval(() => {
+                if (authenticated.value && currentView.value === 'dashboard') {
+                    refreshLiveChats();
+                }
+            }, LIVE_POLL_MS);
+        }
+
+        function stopLivePolling() {
+            if (liveTimer) {
+                clearInterval(liveTimer);
+                liveTimer = null;
             }
         }
 
@@ -159,6 +223,9 @@ createApp({
         }
 
         function loadCurrentView() {
+            if (currentView.value !== 'dashboard') {
+                stopLivePolling();
+            }
             if (currentView.value === 'dashboard') {
                 loadDashboard();
             } else if (currentView.value === 'agents') {
@@ -223,6 +290,7 @@ createApp({
         function handleVisibility() {
             if (document.hidden) {
                 stopPolling();
+                stopLivePolling();
             } else {
                 if (authenticated.value) {
                     loadCurrentView();
@@ -268,6 +336,7 @@ createApp({
 
         onUnmounted(() => {
             stopPolling();
+            stopLivePolling();
             document.removeEventListener('visibilitychange', handleVisibility);
         });
 
@@ -292,6 +361,7 @@ createApp({
             mailMessages,
             selectedMail,
             viewMail,
+            liveDiscussions,
             loadDiscussions,
             formatDate,
             statusIcon
