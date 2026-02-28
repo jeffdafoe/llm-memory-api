@@ -6,6 +6,12 @@
     SSLCertificateKeyFile /etc/letsencrypt/live/{{ server_name }}/privkey.pem
 
     ProxyPreserveHost On
+    ProxyPass /.well-known/ http://127.0.0.1:{{ memory_api_port }}/.well-known/
+    ProxyPassReverse /.well-known/ http://127.0.0.1:{{ memory_api_port }}/.well-known/
+    ProxyPass /oauth/ http://127.0.0.1:{{ memory_api_port }}/oauth/
+    ProxyPassReverse /oauth/ http://127.0.0.1:{{ memory_api_port }}/oauth/
+    ProxyPass /mcp http://127.0.0.1:{{ memory_api_port }}/mcp
+    ProxyPassReverse /mcp http://127.0.0.1:{{ memory_api_port }}/mcp
     ProxyPass /v1/ http://127.0.0.1:{{ memory_api_port }}/v1/
     ProxyPassReverse /v1/ http://127.0.0.1:{{ memory_api_port }}/v1/
     ProxyPass /admin http://127.0.0.1:{{ memory_api_port }}/admin
