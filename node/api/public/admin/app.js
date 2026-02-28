@@ -1,4 +1,4 @@
-const { createApp, ref, onMounted, onUnmounted, watch } = Vue;
+const { createApp, ref, onMounted, onUnmounted, watch, nextTick } = Vue;
 
 const API_BASE = '/v1';
 
@@ -133,6 +133,7 @@ createApp({
                     { id: 1004, from_agent: 'work', message: 'The session flag approach is cleaner. We already have subsystems on sessions — could add a capabilities array. I\'ll propose a vote on the middleware vs per-route question.', sent_at: now }
                 ]
             }];
+            scrollLiveChats();
             return;
             // END MOCK DATA
 
@@ -160,6 +161,7 @@ createApp({
             }
 
             liveDiscussions.value = results;
+            scrollLiveChats();
             startLivePolling();
         }
 
@@ -172,6 +174,15 @@ createApp({
                     console.error('Failed to refresh live chat:', err);
                 }
             }
+            scrollLiveChats();
+        }
+
+        function scrollLiveChats() {
+            nextTick(() => {
+                document.querySelectorAll('.live-chat-transcript').forEach(el => {
+                    el.scrollTop = el.scrollHeight;
+                });
+            });
         }
 
         function startLivePolling() {
