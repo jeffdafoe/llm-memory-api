@@ -156,7 +156,7 @@ createApp({
             }
 
             liveDiscussions.value = results;
-            scrollLiveChats();
+            scrollLiveChats(true);
             startLivePolling();
         }
 
@@ -172,10 +172,15 @@ createApp({
             scrollLiveChats();
         }
 
-        function scrollLiveChats() {
+        function scrollLiveChats(force) {
             nextTick(() => {
                 document.querySelectorAll('.live-chat-transcript').forEach(el => {
-                    el.scrollTop = el.scrollHeight;
+                    // Only auto-scroll if the user is already near the bottom,
+                    // or if this is the initial load (force=true)
+                    const atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
+                    if (force || atBottom) {
+                        el.scrollTop = el.scrollHeight;
+                    }
                 });
             });
         }
