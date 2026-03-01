@@ -112,7 +112,11 @@ function walkMarkdownFiles(dir) {
 
 const server = new Server(
     { name: 'llm-memory', version: '2.0.0' },
-    { capabilities: { tools: {} } }
+    {
+        capabilities: { tools: {} },
+        // Returned to clients on connect — tells agents to load their instructions automatically
+        instructions: 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.'
+    }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
