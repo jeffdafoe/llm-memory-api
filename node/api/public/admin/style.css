@@ -300,3 +300,231 @@ h4 i {
 .chat-event .chat-time {
     margin-left: 0.5em;
 }
+
+/* Notes view */
+
+.notes-layout {
+    display: flex;
+    gap: 1rem;
+    height: calc(100vh - 6rem);
+}
+
+.notes-sidebar {
+    width: 320px;
+    min-width: 280px;
+    overflow-y: auto;
+    border-right: 1px solid var(--pico-muted-border-color);
+    padding-right: 1rem;
+}
+
+.notes-content {
+    flex: 1;
+    overflow-y: auto;
+    min-width: 0;
+}
+
+.notes-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.notes-search {
+    margin-bottom: 1rem;
+}
+
+.notes-search-input {
+    margin-bottom: 0;
+}
+
+.notes-search-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.notes-search-results {
+    margin-bottom: 1rem;
+}
+
+.search-result-item {
+    padding: 0.4rem 0.6rem;
+    cursor: pointer;
+    border-radius: 4px;
+    margin-bottom: 0.25rem;
+    font-size: 0.85em;
+}
+
+.search-result-item:hover {
+    background: var(--pico-table-row-stripped-background-color);
+}
+
+.search-result-source {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-result-heading {
+    color: var(--pico-muted-color);
+    font-size: 0.9em;
+}
+
+.search-result-similarity {
+    color: var(--pico-muted-color);
+    font-size: 0.8em;
+}
+
+.tree-namespace {
+    margin-bottom: 0.25rem;
+}
+
+.tree-namespace-header {
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.3rem 0.4rem;
+    cursor: pointer;
+    border-radius: 4px;
+    user-select: none;
+}
+
+.tree-namespace-header:hover {
+    background: var(--pico-table-row-stripped-background-color);
+}
+
+.tree-count {
+    color: var(--pico-muted-color);
+    font-size: 0.85em;
+    font-weight: normal;
+}
+
+.tree-chevron {
+    font-size: 0.7em;
+    width: 1em;
+    text-align: center;
+}
+
+.tree-children {
+    margin-left: 0.25rem;
+}
+
+.tree-folder-header {
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.2rem 0.4rem;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.9em;
+    user-select: none;
+}
+
+.tree-folder-header:hover {
+    background: var(--pico-table-row-stripped-background-color);
+}
+
+.tree-file {
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.2rem 0.4rem;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tree-file:hover {
+    background: var(--pico-table-row-stripped-background-color);
+}
+
+.tree-file-active {
+    background: rgba(45, 106, 45, 0.2);
+    font-weight: bold;
+}
+
+.tree-file i, .tree-folder-header i, .tree-namespace-header i {
+    font-size: 0.9em;
+    opacity: 0.7;
+}
+
+.notes-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    gap: 1rem;
+}
+
+.notes-title-bar h4 {
+    margin-bottom: 0.1rem;
+}
+
+.notes-meta {
+    font-size: 0.8em;
+    color: var(--pico-muted-color);
+}
+
+.notes-actions {
+    display: flex;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.notes-actions .inline-button {
+    margin: 0;
+}
+
+.inline-button.secondary {
+    background: var(--pico-secondary-background);
+    border-color: var(--pico-secondary-border);
+    color: var(--pico-secondary-inverse);
+}
+
+.inline-button.danger {
+    background: var(--pico-del-color);
+    border-color: var(--pico-del-color);
+    color: white;
+}
+
+.notes-body {
+    overflow: auto;
+}
+
+.notes-pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.85em;
+    line-height: 1.5;
+    padding: 1rem;
+    margin: 0;
+    background: var(--pico-code-background-color);
+    border-radius: 4px;
+    max-height: calc(100vh - 14rem);
+    overflow-y: auto;
+}
+
+.notes-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.notes-edit-title {
+    margin-bottom: 0;
+}
+
+.notes-edit-textarea {
+    width: 100%;
+    min-height: calc(100vh - 16rem);
+    font-family: monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    resize: vertical;
+}

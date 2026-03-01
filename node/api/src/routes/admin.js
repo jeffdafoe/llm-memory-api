@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const pool = require('../db');
 const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
+const { listNotes, readNote, saveNote, deleteNote } = require('../services/documents');
+const { searchMemory } = require('../services/memory');
 
 const router = Router();
 
@@ -294,6 +296,128 @@ router.post('/admin/mail', async (req, res) => {
         console.error('Admin mail error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to fetch mail' }
+        });
+    }
+});
+
+// POST /admin/notes/list — list notes in a namespace
+router.post('/admin/notes/list', async (req, res) => {
+    const { namespace, limit, offset, prefix } = req.body;
+    if (!namespace) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: namespace' }
+        });
+    }
+    try {
+        const data = await listNotes(namespace, limit || 200, offset, prefix);
+        res.json(data);
+    } catch (err) {
+        console.error('Admin notes list error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to list notes' }
+        });
+    }
+});
+
+// POST /admin/notes/read — read a single note
+router.post('/admin/notes/read', async (req, res) => {
+    const { namespace, slug } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug' }
+        });
+    }
+    try {
+        const note = await readNote(namespace, slug);
+        res.json({ note });
+    } catch (err) {
+        if (err.statusCode === 404) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: err.message }
+            });
+        }
+        console.error('Admin notes read error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to read note' }
+        });
+    }
+});
+
+// POST /admin/notes/save — save (update) a note
+router.post('/admin/notes/save', async (req, res) => {
+    const { namespace, slug, title, content } = req.body;
+    if (!namespace || !slug || !title || content === undefined) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug, title, content' }
+        });
+    }
+    try {
+        const doc = await saveNote(namespace, title, content, slug, 'admin');
+        logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
+        res.json({ note: doc });
+    } catch (err) {
+        console.error('Admin notes save error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to save note' }
+        });
+    }
+});
+
+// POST /admin/notes/delete — delete a note
+router.post('/admin/notes/delete', async (req, res) => {
+    const { namespace, slug } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug' }
+        });
+    }
+    try {
+        await deleteNote(namespace, slug);
+        logAdmin('note_delete', { namespace, slug, user_id: req.authenticatedUser.id });
+        res.json({ deleted: true, namespace, slug });
+    } catch (err) {
+        if (err.statusCode === 404) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: err.message }
+            });
+        }
+        console.error('Admin notes delete error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to delete note' }
+        });
+    }
+});
+
+// POST /admin/notes/search — semantic search across notes
+router.post('/admin/notes/search', async (req, res) => {
+    const { query, namespace, limit } = req.body;
+    if (!query) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: query' }
+        });
+    }
+    try {
+        const data = await searchMemory(query, namespace || '*', limit || 10);
+        res.json(data);
+    } catch (err) {
+        console.error('Admin notes search error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Search failed' }
+        });
+    }
+});
+
+// POST /admin/notes/namespaces — get list of namespaces with note counts
+router.post('/admin/notes/namespaces', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT namespace, COUNT(*) AS count FROM documents GROUP BY namespace ORDER BY namespace'
+        );
+        res.json({ namespaces: result.rows });
+    } catch (err) {
+        console.error('Admin notes namespaces error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to fetch namespaces' }
         });
     }
 });
