@@ -200,6 +200,13 @@ createApp({
             try {
                 const data = await api('/admin/agents');
                 agents.value = data.agents;
+                // Re-select the same agent after refresh so the detail panel stays open
+                if (selectedAgent.value) {
+                    const updated = data.agents.find(a => a.agent === selectedAgent.value.agent);
+                    if (updated) {
+                        selectedAgent.value = updated;
+                    }
+                }
             } catch (err) {
                 console.error('Failed to load agents:', err);
             }
@@ -500,7 +507,6 @@ createApp({
             if (currentView.value === 'dashboard') {
                 loadDashboard();
             } else if (currentView.value === 'agents') {
-                selectedAgent.value = null;
                 loadAgents();
             } else if (currentView.value === 'discussions') {
                 loadDiscussions();
@@ -603,8 +609,11 @@ createApp({
             }
         }
 
-        // Watch view changes to load data
-        watch(currentView, loadCurrentView);
+        // Watch view changes to load data — clear agent selection on navigate
+        watch(currentView, () => {
+            selectedAgent.value = null;
+            loadCurrentView();
+        });
 
         // Restore session from localStorage + global key/click handlers
         onMounted(() => {
