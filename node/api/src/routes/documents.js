@@ -25,7 +25,7 @@ router.post('/documents/save', async (req, res) => {
 });
 
 router.post('/documents/list', async (req, res) => {
-    const { namespace, limit, offset } = req.body;
+    const { namespace, limit, offset, prefix } = req.body;
 
     if (!namespace) {
         return res.status(400).json({
@@ -34,7 +34,7 @@ router.post('/documents/list', async (req, res) => {
     }
 
     try {
-        const result = await listNotes(namespace, limit, offset);
+        const result = await listNotes(namespace, limit, offset, prefix);
         res.json(result);
     } catch (err) {
         console.error('Document list error:', err.message);
