@@ -329,6 +329,24 @@
 
                         <div class="agent-section">
                             <div class="agent-section-header">
+                                <h5>Expertise</h5>
+                                <div class="notes-actions">
+                                    <button v-if="!agentExpertiseEditing" class="inline-button" @click="startEditExpertise">Edit</button>
+                                    <button v-if="agentExpertiseEditing" class="inline-button" @click="saveExpertise" :disabled="agentExpertiseSaving">{{ agentExpertiseSaving ? 'Saving...' : 'Save' }}</button>
+                                    <button v-if="agentExpertiseEditing" class="inline-button secondary" @click="cancelEditExpertise">Cancel</button>
+                                </div>
+                            </div>
+                            <div v-if="agentExpertiseEditing">
+                                <input type="text" v-model="agentExpertiseEditText" placeholder="Comma-separated areas (e.g. codebase, devops, payments)" class="expertise-input" @keydown.enter.prevent="saveExpertise">
+                            </div>
+                            <div v-else>
+                                <span v-if="agentExpertise.length === 0" class="muted">No expertise areas set.</span>
+                                <span v-for="tag in agentExpertise" :key="tag" class="expertise-tag">{{ tag }}</span>
+                            </div>
+                        </div>
+
+                        <div class="agent-section">
+                            <div class="agent-section-header">
                                 <h5>Startup Instructions</h5>
                                 <div class="notes-actions">
                                     <button v-if="!agentInstructionsEditing" class="inline-button" @click="startEditInstructions">Edit</button>

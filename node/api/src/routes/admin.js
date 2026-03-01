@@ -246,6 +246,39 @@ router.post('/admin/agents/instructions/save', async (req, res) => {
     }
 });
 
+// POST /admin/agents/expertise/save — update an agent's expertise list
+router.post('/admin/agents/expertise/save', async (req, res) => {
+    const { agent, expertise } = req.body;
+    if (!agent || !Array.isArray(expertise)) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: agent, expertise (array of strings)' }
+        });
+    }
+    try {
+        const cleaned = expertise
+            .filter(e => typeof e === 'string' && e.trim().length > 0)
+            .map(e => e.trim().toLowerCase());
+        const json = JSON.stringify(cleaned);
+
+        const result = await pool.query(
+            'UPDATE agents SET expertise = $1 WHERE agent = $2 RETURNING agent',
+            [json, agent]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+        logAdmin('agent_expertise_save', { agent, expertise: cleaned, user_id: req.authenticatedUser.id });
+        res.json({ agent, expertise: cleaned, message: 'Expertise saved' });
+    } catch (err) {
+        console.error('Admin agent expertise save error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to save expertise' }
+        });
+    }
+});
+
 // POST /admin/agents/reset-passphrase — generate new passphrase, invalidate all sessions
 router.post('/admin/agents/reset-passphrase', async (req, res) => {
     const { agent } = req.body;

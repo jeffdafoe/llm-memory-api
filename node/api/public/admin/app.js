@@ -20,6 +20,10 @@ createApp({
         const agentInstructionsEditing = ref(false);
         const agentInstructionsEditContent = ref('');
         const agentInstructionsSaving = ref(false);
+        const agentExpertise = ref([]);
+        const agentExpertiseEditing = ref(false);
+        const agentExpertiseEditText = ref('');
+        const agentExpertiseSaving = ref(false);
         const discussions = ref([]);
         const discussionFilter = ref('');
         const selectedDiscussion = ref(null);
@@ -220,6 +224,13 @@ createApp({
         async function viewAgent(agent) {
             selectedAgent.value = agent;
             agentInstructionsEditing.value = false;
+            agentExpertiseEditing.value = false;
+            // Parse expertise from the agent row (comes from agent_status view as JSON string)
+            try {
+                agentExpertise.value = typeof agent.expertise === 'string' ? JSON.parse(agent.expertise) : (agent.expertise || []);
+            } catch (e) {
+                agentExpertise.value = [];
+            }
             try {
                 const data = await api('/admin/agents/instructions/read', { agent: agent.agent });
                 agentInstructions.value = data.instructions;
@@ -252,6 +263,36 @@ createApp({
                 alert('Failed to save: ' + err.message);
             } finally {
                 agentInstructionsSaving.value = false;
+            }
+        }
+
+        function startEditExpertise() {
+            agentExpertiseEditing.value = true;
+            agentExpertiseEditText.value = agentExpertise.value.join(', ');
+        }
+
+        function cancelEditExpertise() {
+            agentExpertiseEditing.value = false;
+        }
+
+        async function saveExpertise() {
+            agentExpertiseSaving.value = true;
+            try {
+                const items = agentExpertiseEditText.value
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(s => s.length > 0);
+                const data = await api('/admin/agents/expertise/save', {
+                    agent: selectedAgent.value.agent,
+                    expertise: items
+                });
+                agentExpertise.value = data.expertise;
+                agentExpertiseEditing.value = false;
+            } catch (err) {
+                console.error('Failed to save expertise:', err);
+                alert('Failed to save: ' + err.message);
+            } finally {
+                agentExpertiseSaving.value = false;
             }
         }
 
@@ -673,10 +714,17 @@ createApp({
             agentInstructionsEditing,
             agentInstructionsEditContent,
             agentInstructionsSaving,
+            agentExpertise,
+            agentExpertiseEditing,
+            agentExpertiseEditText,
+            agentExpertiseSaving,
             viewAgent,
             startEditInstructions,
             cancelEditInstructions,
             saveInstructions,
+            startEditExpertise,
+            cancelEditExpertise,
+            saveExpertise,
             resetAgentPassphrase,
             discussions,
             discussionFilter,

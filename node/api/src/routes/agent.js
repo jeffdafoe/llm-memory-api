@@ -412,6 +412,7 @@ router.post('/agent/status', async (req, res) => {
                 a.agent,
                 a.status,
                 a.last_seen,
+                a.expertise,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
@@ -453,6 +454,7 @@ router.post('/agent/status', async (req, res) => {
             agent: row.agent,
             status: row.status,
             last_seen: row.last_seen,
+            expertise: JSON.parse(row.expertise || '[]'),
             subsystems: subsystemsByAgent[row.agent] || [],
             unread_chat: row.unread_chat,
             unread_mail: row.unread_mail
@@ -461,6 +463,52 @@ router.post('/agent/status', async (req, res) => {
         res.json({ agents });
     } catch (err) {
         console.error('Agent status error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/expertise — update the authenticated agent's expertise list.
+// Auth: session token (via middleware).
+// Body: { expertise: ["area1", "area2", ...] }
+router.post('/agent/expertise', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        if (!agent) {
+            return res.status(401).json({
+                error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+            });
+        }
+
+        const { expertise } = req.body;
+        if (!Array.isArray(expertise)) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required field: expertise (array of strings)' }
+            });
+        }
+
+        // Validate each entry is a non-empty string
+        const cleaned = expertise
+            .filter(e => typeof e === 'string' && e.trim().length > 0)
+            .map(e => e.trim().toLowerCase());
+
+        const json = JSON.stringify(cleaned);
+
+        await pool.query(
+            'UPDATE agents SET expertise = $1 WHERE agent = $2',
+            [json, agent]
+        );
+
+        logAgent('expertise_update', { agent, expertise: cleaned });
+
+        res.json({
+            agent,
+            expertise: cleaned,
+            message: 'Expertise updated'
+        });
+    } catch (err) {
+        console.error('Agent expertise update error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

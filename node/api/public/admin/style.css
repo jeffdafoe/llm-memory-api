@@ -223,6 +223,23 @@ tr.row-active {
     resize: vertical;
 }
 
+/* Expertise tags */
+
+.expertise-tag {
+    display: inline-block;
+    padding: 0.15em 0.6em;
+    margin: 0.15em 0.3em 0.15em 0;
+    border-radius: 12px;
+    font-size: 0.85em;
+    background: rgba(91, 155, 213, 0.2);
+    color: #5b9bd5;
+    border: 1px solid rgba(91, 155, 213, 0.3);
+}
+
+.expertise-input {
+    margin-bottom: 0;
+}
+
 .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
