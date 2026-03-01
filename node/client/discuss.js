@@ -32,6 +32,8 @@ let workDirBase = null;
 let maxMessages = 200;
 let timeoutMinutes = 120;
 let joinTimeout = 300;
+let cliAgent = null;
+let cliPassphrase = null;
 
 for (let i = 1; i < args.length; i++) {
     if (args[i] === '--topic' && args[i + 1]) {
@@ -67,6 +69,12 @@ for (let i = 1; i < args.length; i++) {
     } else if (args[i] === '--join-timeout' && args[i + 1]) {
         joinTimeout = parseInt(args[i + 1], 10);
         i++;
+    } else if (args[i] === '--agent' && args[i + 1]) {
+        cliAgent = args[i + 1];
+        i++;
+    } else if (args[i] === '--passphrase' && args[i + 1]) {
+        cliPassphrase = args[i + 1];
+        i++;
     } else if (command === 'join' && !discussionId && /^\d+$/.test(args[i])) {
         discussionId = parseInt(args[i], 10);
     }
@@ -101,12 +109,37 @@ if (!mcpPath) {
 
 const mcpConfig = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
 const memoryServer = mcpConfig.mcpServers && mcpConfig.mcpServers['llm-memory'];
-if (!memoryServer || !memoryServer.env) {
+if (!memoryServer) {
     console.error('.mcp.json does not contain an llm-memory server configuration');
     process.exit(1);
 }
 
-const mcpEnv = memoryServer.env;
+// Support both formats:
+//   Old (local server): { env: { MEMORY_API_URL, MEMORY_DEFAULT_AGENT, MEMORY_AGENT_PASSPHRASE, ... } }
+//   New (HTTP):         { type: "http", url: "https://host/mcp", headers: { Authorization: "Bearer ..." } }
+// For HTTP format, derive API URL from MCP URL and require --agent/--passphrase CLI args.
+let mcpEnv;
+if (memoryServer.env) {
+    mcpEnv = memoryServer.env;
+} else if (memoryServer.type === 'http' && memoryServer.url) {
+    // Derive REST API base URL: strip /mcp path, add /v1
+    const mcpUrl = new URL(memoryServer.url);
+    const apiUrl = `${mcpUrl.protocol}//${mcpUrl.host}/v1`;
+    mcpEnv = {
+        MEMORY_API_URL: apiUrl,
+        MEMORY_DEFAULT_AGENT: cliAgent || process.env.MEMORY_DEFAULT_AGENT,
+        MEMORY_AGENT_PASSPHRASE: cliPassphrase || process.env.MEMORY_AGENT_PASSPHRASE,
+    };
+    if (!mcpEnv.MEMORY_DEFAULT_AGENT || !mcpEnv.MEMORY_AGENT_PASSPHRASE) {
+        console.error('HTTP-format .mcp.json detected — agent and passphrase required.');
+        console.error('Use: --agent <name> --passphrase <phrase>');
+        console.error('  or: MEMORY_DEFAULT_AGENT and MEMORY_AGENT_PASSPHRASE env vars');
+        process.exit(1);
+    }
+} else {
+    console.error('.mcp.json llm-memory server: expected env block or type:"http" with url');
+    process.exit(1);
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -114,8 +147,8 @@ const mcpEnv = memoryServer.env;
 
 const cfg = {
     apiUrl: mcpEnv.MEMORY_API_URL,
-    passphrase: mcpEnv.MEMORY_AGENT_PASSPHRASE,
-    agent: mcpEnv.MEMORY_DEFAULT_AGENT,
+    passphrase: cliPassphrase || mcpEnv.MEMORY_AGENT_PASSPHRASE,
+    agent: cliAgent || mcpEnv.MEMORY_DEFAULT_AGENT,
     repoPath: mcpEnv.MEMORY_REPO_PATH || null,
     others: others,
     optionalParticipants: optionalParticipants,
