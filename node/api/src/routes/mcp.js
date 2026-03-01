@@ -3,6 +3,7 @@
 // Auth is via JWT bearer tokens issued by /oauth/token.
 
 const { Router } = require('express');
+const crypto = require('crypto');
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
@@ -427,6 +428,13 @@ const TOOL_PERMISSIONS = {
     discussion_vote_status: 'mcp_discussion_vote_status'
 };
 
+// Hash of tool definitions — changes when tools are added/modified/removed.
+// Used to detect stale sessions after deploys that changed the MCP tools.
+const TOOLS_HASH = crypto.createHash('sha256')
+    .update(JSON.stringify(TOOLS))
+    .digest('hex')
+    .slice(0, 16);
+
 // Tool handler functions — each takes (args, agent, namespace) and returns a text string
 const TOOL_HANDLERS = {
     // --- Memory ---
@@ -789,19 +797,69 @@ function createMcpServer(req) {
 // Map of session ID -> { server, transport }
 const sessions = new Map();
 
+// Rehydrate a session from the database after a server restart.
+// Creates fresh transport + server objects and marks the transport as initialized
+// so it can handle non-initialize requests with the existing session ID.
+async function rehydrateSession(sessionId, req) {
+    const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => sessionId
+    });
+
+    const server = createMcpServer(req);
+    await server.connect(transport);
+
+    // Mark the transport as initialized with the existing session ID.
+    // Normally this happens when handleRequest processes an initialize message,
+    // but rehydrated sessions skip that — the client already initialized before the restart.
+    const inner = transport._webStandardTransport;
+    inner.sessionId = sessionId;
+    inner._initialized = true;
+
+    sessions.set(sessionId, { server, transport });
+
+    transport.onclose = () => {
+        sessions.delete(sessionId);
+        pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId]).catch(() => {});
+    };
+
+    return { server, transport };
+}
+
 // Handle POST /mcp (new request or existing session message)
 router.post('/mcp', mcpAuth, async (req, res) => {
     const sessionId = req.headers['mcp-session-id'];
 
+    // Fast path — session is already in memory
     if (sessionId && sessions.has(sessionId)) {
         const session = sessions.get(sessionId);
         await session.transport.handleRequest(req, res, req.body);
         return;
     }
 
-    // Stale session — client is sending a session ID we don't recognize (e.g. after
-    // a server restart). Return 404 so the client knows to re-initialize.
+    // Session ID provided but not in memory — check the database for rehydration
     if (sessionId) {
+        try {
+            const { rows } = await pool.query(
+                'SELECT agent, tools_hash FROM mcp_sessions WHERE session_id = $1',
+                [sessionId]
+            );
+
+            if (rows.length > 0 && rows[0].tools_hash === TOOLS_HASH) {
+                // Tools haven't changed — rehydrate the session
+                const session = await rehydrateSession(sessionId, req);
+                await session.transport.handleRequest(req, res, req.body);
+                return;
+            }
+
+            // Either not in DB or tools changed — clean up stale DB row if present
+            if (rows.length > 0) {
+                await pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId]);
+            }
+        } catch (err) {
+            // DB error — fall through to 404 so the client re-initializes
+            console.error('MCP session rehydration DB error:', err.message);
+        }
+
         return res.status(404).json({
             jsonrpc: '2.0',
             error: { code: -32000, message: 'Session not found. Please re-initialize.' },
@@ -809,9 +867,9 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         });
     }
 
-    // New session — create server + transport
+    // No session ID — new session (initialize request)
     const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => require('crypto').randomUUID()
+        sessionIdGenerator: () => crypto.randomUUID()
     });
 
     const server = createMcpServer(req);
@@ -821,14 +879,21 @@ router.post('/mcp', mcpAuth, async (req, res) => {
     // handleRequest processes the initialize and generates the session ID
     await transport.handleRequest(req, res, req.body);
 
-    // Store session so subsequent requests can find it
+    // Store session in memory and database
     const newSessionId = transport.sessionId;
     if (newSessionId) {
         sessions.set(newSessionId, { server, transport });
 
         transport.onclose = () => {
             sessions.delete(newSessionId);
+            pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [newSessionId]).catch(() => {});
         };
+
+        // Persist to DB for rehydration after restart
+        pool.query(
+            'INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)',
+            [newSessionId, req.mcpAgent, TOOLS_HASH]
+        ).catch(err => console.error('MCP session persist error:', err.message));
     }
 });
 
@@ -842,6 +907,21 @@ router.get('/mcp', mcpAuth, async (req, res) => {
             error: { code: -32000, message: 'Bad Request: Mcp-Session-Id header is required' },
             id: null
         });
+    }
+
+    // Try in-memory first, then rehydrate from DB
+    if (!sessions.has(sessionId)) {
+        try {
+            const { rows } = await pool.query(
+                'SELECT agent, tools_hash FROM mcp_sessions WHERE session_id = $1',
+                [sessionId]
+            );
+            if (rows.length > 0 && rows[0].tools_hash === TOOLS_HASH) {
+                await rehydrateSession(sessionId, req);
+            }
+        } catch (err) {
+            console.error('MCP session rehydration DB error:', err.message);
+        }
     }
 
     if (!sessions.has(sessionId)) {
@@ -864,6 +944,11 @@ router.delete('/mcp', mcpAuth, async (req, res) => {
         const session = sessions.get(sessionId);
         await session.transport.close();
         sessions.delete(sessionId);
+    }
+
+    // Clean up DB row regardless of whether it was in memory
+    if (sessionId) {
+        pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId]).catch(() => {});
     }
 
     res.status(200).end();
