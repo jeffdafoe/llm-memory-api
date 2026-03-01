@@ -467,4 +467,68 @@ router.post('/agent/status', async (req, res) => {
     }
 });
 
+// POST /agent/instructions/read — read the authenticated agent's startup instructions.
+// Auth: session token (via middleware).
+router.post('/agent/instructions/read', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        if (!agent) {
+            return res.status(401).json({
+                error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+            });
+        }
+
+        const result = await pool.query(
+            'SELECT startup_instructions FROM agents WHERE agent = $1',
+            [agent]
+        );
+
+        res.json({
+            agent,
+            instructions: result.rows[0]?.startup_instructions || null
+        });
+    } catch (err) {
+        console.error('Instructions read error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/instructions/save — save startup instructions for the authenticated agent.
+// Auth: session token (via middleware).
+router.post('/agent/instructions/save', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        if (!agent) {
+            return res.status(401).json({
+                error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+            });
+        }
+
+        const { content } = req.body;
+        if (content === undefined) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required field: content' }
+            });
+        }
+
+        await pool.query(
+            'UPDATE agents SET startup_instructions = $1 WHERE agent = $2',
+            [content, agent]
+        );
+
+        res.json({
+            agent,
+            message: 'Instructions saved',
+            length: content ? content.length : 0
+        });
+    } catch (err) {
+        console.error('Instructions save error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
 module.exports = router;

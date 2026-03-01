@@ -148,6 +148,26 @@ const TOOLS = [
             required: ['pattern']
         }
     },
+    // --- Instructions tools ---
+    {
+        name: 'read_instructions',
+        description: 'Read your startup instructions. Returns the instructions text that was previously saved, or empty if none set.',
+        inputSchema: {
+            type: 'object',
+            properties: {}
+        }
+    },
+    {
+        name: 'save_instructions',
+        description: 'Save your startup instructions. These are read at session start to configure your behavior. Overwrites any existing instructions.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                content: { type: 'string', description: 'The instructions text to save (markdown)' }
+            },
+            required: ['content']
+        }
+    },
     // --- Chat tools ---
     {
         name: 'chat_send',
@@ -385,6 +405,8 @@ const TOOL_PERMISSIONS = {
     delete_note: 'mcp_delete_note',
     edit_note: 'mcp_save_note',
     grep: 'mcp_search',
+    read_instructions: 'mcp_read_note',
+    save_instructions: 'mcp_save_note',
     chat_send: 'mcp_chat_send',
     chat_receive: 'mcp_chat_receive',
     chat_ack: 'mcp_chat_ack',
@@ -470,6 +492,29 @@ const TOOL_HANDLERS = {
             return `${header}\n${lines}`;
         });
         return sections.join('\n\n---\n\n');
+    },
+
+    // --- Instructions ---
+    async read_instructions(args, agent, namespace) {
+        const result = await pool.query(
+            'SELECT startup_instructions FROM agents WHERE agent = $1',
+            [agent]
+        );
+        if (result.rows.length === 0) {
+            throw new Error('Agent not found');
+        }
+        return result.rows[0].startup_instructions || '(no instructions set)';
+    },
+
+    async save_instructions(args, agent, namespace) {
+        if (!args.content) {
+            throw Object.assign(new Error('Required field: content'), { statusCode: 400 });
+        }
+        await pool.query(
+            'UPDATE agents SET startup_instructions = $1 WHERE agent = $2',
+            [args.content, agent]
+        );
+        return `Instructions saved (${args.content.length} characters)`;
     },
 
     // --- Chat ---
