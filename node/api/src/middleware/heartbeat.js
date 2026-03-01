@@ -1,10 +1,11 @@
 const pool = require('../db');
 
 // Express middleware that piggybacks heartbeat updates onto normal API calls.
-// Any request with an agent identifier in the body gets a fire-and-forget
-// last_seen update, so active agents stay "online" without explicit heartbeats.
+// Uses the authenticated agent identity (set by auth middleware) rather than
+// request body fields, so admin routes that reference other agents by name
+// don't accidentally heartbeat them.
 function opportunisticHeartbeat(req, res, next) {
-    const agent = req.body.from_agent || req.body.agent;
+    const agent = req.authenticatedAgent;
     if (agent) {
         pool.query(
             'UPDATE agents SET last_seen = NOW() WHERE agent = $1',
