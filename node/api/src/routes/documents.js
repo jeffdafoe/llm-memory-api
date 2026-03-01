@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { saveNote, listNotes, readNote, deleteNote, editNote, grepNotes } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes } = require('../services/documents');
 
 const router = Router();
 
@@ -82,6 +82,27 @@ router.post('/documents/delete', async (req, res) => {
         console.error('Document delete error:', err.message);
         res.status(status).json({
             error: { code: status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+router.post('/documents/restore', async (req, res) => {
+    const { namespace, slug } = req.body;
+
+    if (!namespace || !slug) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug' }
+        });
+    }
+
+    try {
+        const result = await restoreNote(namespace, slug);
+        res.json(result);
+    } catch (err) {
+        const status = err.statusCode || 500;
+        console.error('Document restore error:', err.message);
+        res.status(status).json({
+            error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });
