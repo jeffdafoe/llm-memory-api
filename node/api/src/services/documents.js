@@ -45,20 +45,37 @@ async function saveNote(namespace, title, content, slug, createdBy) {
     return doc;
 }
 
-async function listNotes(namespace, limit, offset) {
+async function listNotes(namespace, limit, offset, prefix) {
     const maxResults = limit || 50;
     const skip = offset || 0;
 
-    const result = await pool.query(`
-        SELECT id, slug, title,
-               LEFT(content, 200) AS snippet,
-               created_by, created_at, updated_at
-        FROM documents
-        WHERE namespace = $1
-        ORDER BY updated_at DESC
-        LIMIT $2 OFFSET $3
-    `, [namespace, maxResults, skip]);
+    let sql, params;
+    if (prefix) {
+        // Filter by slug prefix — like listing a directory (e.g., "tasks/pending/")
+        sql = `
+            SELECT id, slug, title,
+                   LEFT(content, 200) AS snippet,
+                   created_by, created_at, updated_at
+            FROM documents
+            WHERE namespace = $1 AND slug LIKE $4
+            ORDER BY slug ASC
+            LIMIT $2 OFFSET $3
+        `;
+        params = [namespace, maxResults, skip, prefix + '%'];
+    } else {
+        sql = `
+            SELECT id, slug, title,
+                   LEFT(content, 200) AS snippet,
+                   created_by, created_at, updated_at
+            FROM documents
+            WHERE namespace = $1
+            ORDER BY updated_at DESC
+            LIMIT $2 OFFSET $3
+        `;
+        params = [namespace, maxResults, skip];
+    }
 
+    const result = await pool.query(sql, params);
     return { notes: result.rows };
 }
 

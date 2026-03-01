@@ -91,7 +91,8 @@ const TOOLS = [
             properties: {
                 namespace: { type: 'string', description: 'Namespace (default: agent namespace)' },
                 limit: { type: 'number', description: 'Max results (default: 50)' },
-                offset: { type: 'number', description: 'Pagination offset (default: 0)' }
+                offset: { type: 'number', description: 'Pagination offset (default: 0)' },
+                prefix: { type: 'string', description: 'Filter by slug prefix (e.g., "notes/" to list only notes in that path). Results sorted by slug when prefix is used.' }
             }
         }
     },
@@ -432,7 +433,7 @@ const TOOL_HANDLERS = {
     },
 
     async list_notes(args, agent, namespace) {
-        const data = await listNotes(args.namespace || namespace, args.limit, args.offset);
+        const data = await listNotes(args.namespace || namespace, args.limit, args.offset, args.prefix);
         if (data.notes.length === 0) {
             return 'No notes found.';
         }
