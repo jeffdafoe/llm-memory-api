@@ -95,6 +95,68 @@ async function deleteNote(namespace, slug) {
     return { deleted: true, slug };
 }
 
+// Search-and-replace edit on a note's content — like the Edit tool in Claude Code.
+// Finds old_string in the document and replaces it with new_string.
+// By default, old_string must appear exactly once (prevents ambiguous edits).
+// Set replace_all to true to replace every occurrence.
+async function editNote(namespace, slug, oldString, newString, replaceAll) {
+    if (!oldString || newString === undefined || newString === null) {
+        throw Object.assign(new Error('Required fields: old_string, new_string'), { statusCode: 400 });
+    }
+
+    // Fetch the current document
+    const doc = await readNote(namespace, slug);
+    const content = doc.content;
+
+    // Count occurrences to validate uniqueness
+    let count = 0;
+    let pos = 0;
+    while ((pos = content.indexOf(oldString, pos)) !== -1) {
+        count++;
+        pos += oldString.length;
+    }
+
+    if (count === 0) {
+        throw Object.assign(
+            new Error('old_string not found in document'),
+            { statusCode: 400 }
+        );
+    }
+
+    if (count > 1 && !replaceAll) {
+        throw Object.assign(
+            new Error(`old_string appears ${count} times — use replace_all to replace all occurrences, or provide more context to make it unique`),
+            { statusCode: 400 }
+        );
+    }
+
+    // Perform the replacement
+    let updatedContent;
+    if (replaceAll) {
+        updatedContent = content.split(oldString).join(newString);
+    } else {
+        updatedContent = content.replace(oldString, newString);
+    }
+
+    // Save the updated content
+    const result = await pool.query(`
+        UPDATE documents
+        SET content = $1, updated_at = NOW()
+        WHERE namespace = $2 AND slug = $3
+        RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+    `, [updatedContent, namespace, slug]);
+
+    // Re-index into vector DB (fire-and-forget)
+    ingestContent(namespace, slug, updatedContent).catch(err => {
+        console.error(`Document re-index failed for ${namespace}/${slug}:`, err.message);
+    });
+
+    return {
+        ...result.rows[0],
+        replacements: replaceAll ? count : 1
+    };
+}
+
 // Text search across notes — like grep but for the notes database.
 // Returns matching documents with line numbers and surrounding context.
 async function grepNotes(pattern, namespace, limit) {
@@ -170,4 +232,4 @@ async function grepNotes(pattern, namespace, limit) {
     });
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, grepNotes, titleToSlug };
+module.exports = { saveNote, listNotes, readNote, deleteNote, editNote, grepNotes, titleToSlug };
