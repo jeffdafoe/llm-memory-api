@@ -95,4 +95,79 @@ async function deleteNote(namespace, slug) {
     return { deleted: true, slug };
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, titleToSlug };
+// Text search across notes — like grep but for the notes database.
+// Returns matching documents with line numbers and surrounding context.
+async function grepNotes(pattern, namespace, limit) {
+    if (!pattern) {
+        throw Object.assign(new Error('Required field: pattern'), { statusCode: 400 });
+    }
+
+    const maxResults = limit || 20;
+    const ilikePattern = `%${pattern}%`;
+
+    let sql, params;
+    if (namespace && namespace !== '*') {
+        sql = `
+            SELECT id, namespace, slug, title, content, updated_at
+            FROM documents
+            WHERE namespace = $1 AND (content ILIKE $2 OR title ILIKE $2)
+            ORDER BY updated_at DESC
+            LIMIT $3
+        `;
+        params = [namespace, ilikePattern, maxResults];
+    } else {
+        sql = `
+            SELECT id, namespace, slug, title, content, updated_at
+            FROM documents
+            WHERE content ILIKE $1 OR title ILIKE $1
+            ORDER BY updated_at DESC
+            LIMIT $2
+        `;
+        params = [ilikePattern, maxResults];
+    }
+
+    const result = await pool.query(sql, params);
+
+    // Extract matching lines with context (±2 lines, like grep -C 2)
+    const lowerPattern = pattern.toLowerCase();
+    return result.rows.map(doc => {
+        const lines = doc.content.split('\n');
+        const matchLineNumbers = new Set();
+
+        // Find lines that contain the pattern
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].toLowerCase().includes(lowerPattern)) {
+                matchLineNumbers.add(i);
+            }
+        }
+
+        // Expand to include context lines (±2)
+        const contextLineNumbers = new Set();
+        for (const lineNum of matchLineNumbers) {
+            for (let offset = -2; offset <= 2; offset++) {
+                const idx = lineNum + offset;
+                if (idx >= 0 && idx < lines.length) {
+                    contextLineNumbers.add(idx);
+                }
+            }
+        }
+
+        // Build match groups (consecutive context lines grouped together)
+        const sortedLines = Array.from(contextLineNumbers).sort((a, b) => a - b);
+        const matches = sortedLines.map(idx => ({
+            lineNumber: idx + 1,
+            line: lines[idx],
+            isMatch: matchLineNumbers.has(idx)
+        }));
+
+        return {
+            namespace: doc.namespace,
+            slug: doc.slug,
+            title: doc.title,
+            matchCount: matchLineNumbers.size,
+            matches
+        };
+    });
+}
+
+module.exports = { saveNote, listNotes, readNote, deleteNote, grepNotes, titleToSlug };

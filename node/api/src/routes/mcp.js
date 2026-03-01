@@ -11,7 +11,7 @@ const pool = require('../db');
 
 // Services
 const { searchMemory, ingestContent, deleteMemory } = require('../services/memory');
-const { saveNote, listNotes, readNote, deleteNote } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, grepNotes } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailAck } = require('../services/mail');
 const {
@@ -117,6 +117,19 @@ const TOOLS = [
                 slug: { type: 'string', description: 'Note slug' }
             },
             required: ['slug']
+        }
+    },
+    {
+        name: 'grep',
+        description: 'Search notes for exact text matches (case-insensitive). Use this for finding specific strings, identifiers, file paths, or references across all notes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                pattern: { type: 'string', description: 'Text pattern to search for (case-insensitive substring match)' },
+                namespace: { type: 'string', description: 'Namespace to search (default: agent namespace, "*" for all)' },
+                limit: { type: 'number', description: 'Max matching notes to return (default: 20)' }
+            },
+            required: ['pattern']
         }
     },
     // --- Chat tools ---
@@ -354,6 +367,7 @@ const TOOL_PERMISSIONS = {
     list_notes: 'mcp_list_notes',
     read_note: 'mcp_read_note',
     delete_note: 'mcp_delete_note',
+    grep: 'mcp_search',
     chat_send: 'mcp_chat_send',
     chat_receive: 'mcp_chat_receive',
     chat_ack: 'mcp_chat_ack',
@@ -417,6 +431,23 @@ const TOOL_HANDLERS = {
     async delete_note(args, agent, namespace) {
         await deleteNote(args.namespace || namespace, args.slug);
         return `Deleted: ${args.namespace || namespace}/${args.slug}`;
+    },
+
+    async grep(args, agent, namespace) {
+        const results = await grepNotes(args.pattern, args.namespace || namespace, args.limit);
+        if (results.length === 0) {
+            return `No notes matching "${args.pattern}".`;
+        }
+        // Format like grep output: file header, then matching lines with context
+        const sections = results.map(doc => {
+            const header = `[${doc.namespace}] ${doc.slug} — ${doc.title} (${doc.matchCount} match${doc.matchCount === 1 ? '' : 'es'})`;
+            const lines = doc.matches.map(m => {
+                const prefix = m.isMatch ? '>' : ' ';
+                return `${prefix} ${String(m.lineNumber).padStart(4)}: ${m.line}`;
+            }).join('\n');
+            return `${header}\n${lines}`;
+        });
+        return sections.join('\n\n---\n\n');
     },
 
     // --- Chat ---
