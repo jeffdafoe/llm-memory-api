@@ -25,16 +25,28 @@ async function saveNote(namespace, title, content, slug, createdBy) {
         throw Object.assign(new Error('Could not generate slug from title'), { statusCode: 400 });
     }
 
-    const result = await pool.query(`
-        INSERT INTO documents (namespace, slug, title, content, created_by)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (namespace, slug) DO UPDATE
-        SET title = EXCLUDED.title,
-            content = EXCLUDED.content,
-            deleted_at = NULL,
-            updated_at = NOW()
-        RETURNING id, namespace, slug, title, created_by, created_at, updated_at
-    `, [namespace, resolvedSlug, title, content, createdBy || null]);
+    // Check if the slug already exists (including soft-deleted rows)
+    const existing = await pool.query(
+        'SELECT id FROM documents WHERE namespace = $1 AND slug = $2',
+        [namespace, resolvedSlug]
+    );
+
+    let result;
+    if (existing.rows.length > 0) {
+        // Update existing row — also clears deleted_at if it was soft-deleted
+        result = await pool.query(`
+            UPDATE documents
+            SET title = $1, content = $2, created_by = $3, deleted_at = NULL, updated_at = NOW()
+            WHERE namespace = $4 AND slug = $5
+            RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+        `, [title, content, createdBy || null, namespace, resolvedSlug]);
+    } else {
+        result = await pool.query(`
+            INSERT INTO documents (namespace, slug, title, content, created_by)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+        `, [namespace, resolvedSlug, title, content, createdBy || null]);
+    }
 
     const doc = result.rows[0];
 
