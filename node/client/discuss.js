@@ -323,6 +323,38 @@ async function saveTranscript() {
     }
 }
 
+// Save the subagent's result.md as a remote note so it's searchable and
+// accessible to both agents. Saved to the agent's own namespace under
+// notes/discussions/discussion-<id>-result.md.
+async function saveResult() {
+    const resultFile = path.join(cfg.workDir, 'result.md');
+    if (!fs.existsSync(resultFile)) {
+        log('No result.md found — skipping result save');
+        return;
+    }
+
+    const content = fs.readFileSync(resultFile, 'utf-8');
+    if (!content.trim()) {
+        log('result.md is empty — skipping result save');
+        return;
+    }
+
+    const slug = `notes/discussions/discussion-${discussionId}-result.md`;
+    const title = `Discussion #${discussionId} Result — ${cfg.topic || 'untitled'}`;
+
+    try {
+        await apiCall('documents/save', {
+            namespace: cfg.agent,
+            slug: slug,
+            title: title,
+            content: content,
+        });
+        log(`Result saved as remote note: ${cfg.agent}/${slug}`);
+    } catch (err) {
+        log(`Result save failed (non-fatal): ${err.message}`);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // API client
 // ---------------------------------------------------------------------------
@@ -1345,6 +1377,9 @@ async function main() {
 
         // Save transcript to persistent location and ingest into vector memory
         await saveTranscript();
+
+        // Save result.md as a remote note for cross-agent access
+        await saveResult();
 
         // Clean exit
         await transportLogout();
