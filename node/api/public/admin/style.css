@@ -177,6 +177,52 @@ tr.unread {
     background: rgba(45, 106, 45, 0.15);
 }
 
+tr.row-active {
+    background: rgba(45, 106, 45, 0.2);
+}
+
+.agent-detail {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--pico-muted-border-color);
+    padding-top: 1rem;
+}
+
+.agent-detail-header {
+    margin-bottom: 1rem;
+}
+
+.agent-detail-header h4 {
+    margin-bottom: 0.1rem;
+}
+
+.agent-section {
+    margin-bottom: 1.5rem;
+}
+
+.agent-section h5 {
+    margin-bottom: 0.5rem;
+}
+
+.agent-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.agent-section-header h5 {
+    margin-bottom: 0;
+}
+
+.agent-instructions-textarea {
+    width: 100%;
+    min-height: 300px;
+    font-family: monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    resize: vertical;
+}
+
 .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
