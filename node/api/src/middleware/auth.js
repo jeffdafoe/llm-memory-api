@@ -6,6 +6,11 @@ const { hash: hashToken } = require('../services/hashing');
 const sessionCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Opportunistic heartbeat — update last_seen on every authenticated agent request
+function heartbeat(agent) {
+    pool.query('UPDATE agents SET last_seen = NOW() WHERE agent = $1', [agent]).catch(() => {});
+}
+
 // Routes that don't require authentication
 const UNAUTHENTICATED_ROUTES = [
     '/agent/register',
@@ -39,6 +44,7 @@ async function auth(req, res, next) {
             req.authenticatedUser = cached.user;
         } else {
             req.authenticatedAgent = cached.agent;
+            heartbeat(cached.agent);
         }
         return next();
     }
@@ -62,6 +68,7 @@ async function auth(req, res, next) {
                 });
                 req.authMethod = 'session';
                 req.authenticatedAgent = row.agent;
+                heartbeat(row.agent);
                 return next();
             }
         }
