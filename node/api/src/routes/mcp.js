@@ -11,7 +11,7 @@ const pool = require('../db');
 
 // Services
 const { searchMemory, ingestContent, deleteMemory } = require('../services/memory');
-const { saveNote, listNotes, readNote, deleteNote, grepNotes } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, editNote, grepNotes } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailAck } = require('../services/mail');
 const {
@@ -117,6 +117,21 @@ const TOOLS = [
                 slug: { type: 'string', description: 'Note slug' }
             },
             required: ['slug']
+        }
+    },
+    {
+        name: 'edit_note',
+        description: 'Edit a note by replacing a specific text string. Like search-and-replace — finds old_string in the note and replaces it with new_string. Fails if old_string is not found or appears more than once (unless replace_all is true).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                slug: { type: 'string', description: 'Note slug to edit' },
+                namespace: { type: 'string', description: 'Namespace (default: agent namespace)' },
+                old_string: { type: 'string', description: 'The exact text to find and replace' },
+                new_string: { type: 'string', description: 'The replacement text' },
+                replace_all: { type: 'boolean', description: 'Replace all occurrences (default: false — requires old_string to be unique)' }
+            },
+            required: ['slug', 'old_string', 'new_string']
         }
     },
     {
@@ -367,6 +382,7 @@ const TOOL_PERMISSIONS = {
     list_notes: 'mcp_list_notes',
     read_note: 'mcp_read_note',
     delete_note: 'mcp_delete_note',
+    edit_note: 'mcp_save_note',
     grep: 'mcp_search',
     chat_send: 'mcp_chat_send',
     chat_receive: 'mcp_chat_receive',
@@ -431,6 +447,11 @@ const TOOL_HANDLERS = {
     async delete_note(args, agent, namespace) {
         await deleteNote(args.namespace || namespace, args.slug);
         return `Deleted: ${args.namespace || namespace}/${args.slug}`;
+    },
+
+    async edit_note(args, agent, namespace) {
+        const result = await editNote(args.namespace || namespace, args.slug, args.old_string, args.new_string, args.replace_all);
+        return `Edited: ${result.namespace}/${result.slug} (${result.replacements} replacement${result.replacements === 1 ? '' : 's'})`;
     },
 
     async grep(args, agent, namespace) {
