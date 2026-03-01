@@ -304,7 +304,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="agent in agents" :key="agent.agent">
+                                <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable" :class="{ 'row-active': selectedAgent && selectedAgent.agent === agent.agent }">
                                     <td>{{ agent.agent }}</td>
                                     <td>
                                         <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
@@ -314,6 +314,41 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Agent detail panel -->
+                    <div v-if="selectedAgent" class="agent-detail">
+                        <div class="agent-detail-header">
+                            <h4>{{ selectedAgent.agent }}</h4>
+                            <span class="notes-meta">
+                                <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
+                                · Last seen: {{ formatDate(selectedAgent.last_seen) }}
+                                · Passphrase rotated: {{ formatDate(selectedAgent.passphrase_rotated_at) }}
+                            </span>
+                        </div>
+
+                        <div class="agent-section">
+                            <div class="agent-section-header">
+                                <h5>Startup Instructions</h5>
+                                <div class="notes-actions">
+                                    <button v-if="!agentInstructionsEditing" class="inline-button" @click="startEditInstructions">Edit</button>
+                                    <button v-if="agentInstructionsEditing" class="inline-button" @click="saveInstructions" :disabled="agentInstructionsSaving">{{ agentInstructionsSaving ? 'Saving...' : 'Save' }}</button>
+                                    <button v-if="agentInstructionsEditing" class="inline-button secondary" @click="cancelEditInstructions">Cancel</button>
+                                </div>
+                            </div>
+                            <div v-if="agentInstructionsEditing">
+                                <textarea v-model="agentInstructionsEditContent" class="agent-instructions-textarea"></textarea>
+                            </div>
+                            <div v-else>
+                                <pre v-if="agentInstructions" class="notes-pre">{{ agentInstructions }}</pre>
+                                <p v-else class="muted">No startup instructions set.</p>
+                            </div>
+                        </div>
+
+                        <div class="agent-section">
+                            <h5>Passphrase</h5>
+                            <button class="inline-button danger" @click="resetAgentPassphrase">Reset Passphrase</button>
+                        </div>
                     </div>
                 </div>
 

@@ -5,6 +5,8 @@ const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote } = require('../services/documents');
 const { searchMemory } = require('../services/memory');
+const generatePassphrase = require('eff-diceware-passphrase');
+const auth = require('../middleware/auth');
 
 const router = Router();
 
@@ -185,6 +187,111 @@ router.post('/admin/agents', async (req, res) => {
         console.error('Admin agents error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to fetch agents' }
+        });
+    }
+});
+
+// POST /admin/agents/instructions/read — read an agent's startup instructions
+router.post('/admin/agents/instructions/read', async (req, res) => {
+    const { agent } = req.body;
+    if (!agent) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
+        });
+    }
+    try {
+        const result = await pool.query(
+            'SELECT startup_instructions FROM agents WHERE agent = $1',
+            [agent]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+        res.json({ agent, instructions: result.rows[0].startup_instructions || '' });
+    } catch (err) {
+        console.error('Admin agent instructions read error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to read instructions' }
+        });
+    }
+});
+
+// POST /admin/agents/instructions/save — save an agent's startup instructions
+router.post('/admin/agents/instructions/save', async (req, res) => {
+    const { agent, content } = req.body;
+    if (!agent || content === undefined) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: agent, content' }
+        });
+    }
+    try {
+        const result = await pool.query(
+            'UPDATE agents SET startup_instructions = $1 WHERE agent = $2 RETURNING agent',
+            [content, agent]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+        logAdmin('agent_instructions_save', { agent, user_id: req.authenticatedUser.id });
+        res.json({ agent, message: 'Instructions saved', length: content.length });
+    } catch (err) {
+        console.error('Admin agent instructions save error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to save instructions' }
+        });
+    }
+});
+
+// POST /admin/agents/reset-passphrase — generate new passphrase, invalidate all sessions
+router.post('/admin/agents/reset-passphrase', async (req, res) => {
+    const { agent } = req.body;
+    if (!agent) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
+        });
+    }
+    try {
+        // Generate new passphrase
+        const words = generatePassphrase(3);
+        const passphrase = words.join('-');
+        const salt = generateSalt();
+        const hash = hashToken(passphrase, salt);
+
+        const result = await pool.query(
+            'UPDATE agents SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE agent = $3 RETURNING agent',
+            [hash, salt, agent]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+
+        // Invalidate all sessions
+        await pool.query('DELETE FROM agent_sessions WHERE agent = $1', [agent]);
+
+        // Clear cached sessions
+        for (const [key, value] of auth.sessionCache.entries()) {
+            if (value.agent === agent) {
+                auth.sessionCache.delete(key);
+            }
+        }
+
+        logAdmin('agent_passphrase_reset', { agent, user_id: req.authenticatedUser.id });
+
+        res.json({
+            agent,
+            passphrase,
+            message: 'Passphrase reset. All sessions invalidated.'
+        });
+    } catch (err) {
+        console.error('Admin agent passphrase reset error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to reset passphrase' }
         });
     }
 });

@@ -15,6 +15,11 @@ createApp({
         // Data
         const dashboard = ref(null);
         const agents = ref([]);
+        const selectedAgent = ref(null);
+        const agentInstructions = ref('');
+        const agentInstructionsEditing = ref(false);
+        const agentInstructionsEditContent = ref('');
+        const agentInstructionsSaving = ref(false);
         const discussions = ref([]);
         const discussionFilter = ref('');
         const selectedDiscussion = ref(null);
@@ -197,6 +202,63 @@ createApp({
                 agents.value = data.agents;
             } catch (err) {
                 console.error('Failed to load agents:', err);
+            }
+        }
+
+        async function viewAgent(agent) {
+            selectedAgent.value = agent;
+            agentInstructionsEditing.value = false;
+            try {
+                const data = await api('/admin/agents/instructions/read', { agent: agent.agent });
+                agentInstructions.value = data.instructions;
+            } catch (err) {
+                console.error('Failed to load agent instructions:', err);
+                agentInstructions.value = '';
+            }
+        }
+
+        function startEditInstructions() {
+            agentInstructionsEditing.value = true;
+            agentInstructionsEditContent.value = agentInstructions.value;
+        }
+
+        function cancelEditInstructions() {
+            agentInstructionsEditing.value = false;
+        }
+
+        async function saveInstructions() {
+            agentInstructionsSaving.value = true;
+            try {
+                await api('/admin/agents/instructions/save', {
+                    agent: selectedAgent.value.agent,
+                    content: agentInstructionsEditContent.value
+                });
+                agentInstructions.value = agentInstructionsEditContent.value;
+                agentInstructionsEditing.value = false;
+            } catch (err) {
+                console.error('Failed to save instructions:', err);
+                alert('Failed to save: ' + err.message);
+            } finally {
+                agentInstructionsSaving.value = false;
+            }
+        }
+
+        async function resetAgentPassphrase() {
+            const agent = selectedAgent.value.agent;
+            if (!confirm('Reset passphrase for "' + agent + '"? All sessions will be invalidated.')) {
+                return;
+            }
+            try {
+                const data = await api('/admin/agents/reset-passphrase', { agent });
+                alert('New passphrase for ' + agent + ':\n\n' + data.passphrase + '\n\nSave this — it will not be shown again.');
+                // Refresh agent list to update passphrase_rotated_at
+                await loadAgents();
+                // Re-select the same agent to refresh the detail panel
+                const updated = agents.value.find(a => a.agent === agent);
+                if (updated) selectedAgent.value = updated;
+            } catch (err) {
+                console.error('Failed to reset passphrase:', err);
+                alert('Failed to reset passphrase: ' + err.message);
             }
         }
 
@@ -438,6 +500,7 @@ createApp({
             if (currentView.value === 'dashboard') {
                 loadDashboard();
             } else if (currentView.value === 'agents') {
+                selectedAgent.value = null;
                 loadAgents();
             } else if (currentView.value === 'discussions') {
                 loadDiscussions();
@@ -591,6 +654,16 @@ createApp({
             logout,
             dashboard,
             agents,
+            selectedAgent,
+            agentInstructions,
+            agentInstructionsEditing,
+            agentInstructionsEditContent,
+            agentInstructionsSaving,
+            viewAgent,
+            startEditInstructions,
+            cancelEditInstructions,
+            saveInstructions,
+            resetAgentPassphrase,
             discussions,
             discussionFilter,
             selectedDiscussion,
