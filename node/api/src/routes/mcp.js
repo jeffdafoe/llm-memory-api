@@ -259,12 +259,23 @@ const TOOLS = [
     // --- Agent tools ---
     {
         name: 'agent_status',
-        description: 'Get presence info for all agents: online/offline status, last seen time, and unread chat/mail counts for the querying agent.',
+        description: 'Get presence info for all agents: online/offline status, last seen time, expertise areas, and unread chat/mail counts for the querying agent.',
         inputSchema: {
             type: 'object',
             properties: {
                 agent: { type: 'string', description: 'Agent requesting presence info (default: configured agent). Unread counts are relative to this agent.' }
             }
+        }
+    },
+    {
+        name: 'update_expertise',
+        description: 'Update your areas of expertise. Other agents see this when deciding who to include in discussions.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                expertise: { type: 'array', items: { type: 'string' }, description: 'List of expertise areas (e.g. ["codebase", "devops", "payments"])' }
+            },
+            required: ['expertise']
         }
     },
     // --- Discussion tools ---
@@ -416,6 +427,7 @@ const TOOL_PERMISSIONS = {
     mail_receive: 'mcp_mail_receive',
     mail_ack: 'mcp_mail_ack',
     agent_status: 'mcp_agent_status',
+    update_expertise: 'mcp_agent_status',
     discussion_create: 'mcp_discussion_create',
     discussion_list: 'mcp_discussion_list',
     discussion_status: 'mcp_discussion_status',
@@ -602,6 +614,7 @@ const TOOL_HANDLERS = {
                 a.agent,
                 a.status,
                 a.last_seen,
+                a.expertise,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
@@ -626,11 +639,29 @@ const TOOL_HANDLERS = {
             if (a.last_seen) {
                 parts.push(`last seen ${a.last_seen}`);
             }
+            const expertise = JSON.parse(a.expertise || '[]');
+            if (expertise.length > 0) {
+                parts.push(`expertise: ${expertise.join(', ')}`);
+            }
             parts.push(`${a.unread_chat || 0} unread chat`);
             parts.push(`${a.unread_mail || 0} unread mail`);
             return parts.join(' | ');
         });
         return lines.join('\n') || 'No agents registered.';
+    },
+
+    async update_expertise(args, agent, namespace) {
+        if (!Array.isArray(args.expertise)) {
+            throw Object.assign(new Error('expertise must be an array of strings'), { statusCode: 400 });
+        }
+
+        const cleaned = args.expertise
+            .filter(e => typeof e === 'string' && e.trim().length > 0)
+            .map(e => e.trim().toLowerCase());
+
+        const json = JSON.stringify(cleaned);
+        await pool.query('UPDATE agents SET expertise = $1 WHERE agent = $2', [json, agent]);
+        return `Expertise updated for ${agent}: ${cleaned.join(', ') || '(none)'}`;
     },
 
     // --- Discussion ---
