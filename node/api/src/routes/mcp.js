@@ -799,6 +799,16 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         return;
     }
 
+    // Stale session — client is sending a session ID we don't recognize (e.g. after
+    // a server restart). Return 404 so the client knows to re-initialize.
+    if (sessionId) {
+        return res.status(404).json({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Session not found. Please re-initialize.' },
+            id: null
+        });
+    }
+
     // New session — create server + transport
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => require('crypto').randomUUID()
@@ -826,10 +836,19 @@ router.post('/mcp', mcpAuth, async (req, res) => {
 router.get('/mcp', mcpAuth, async (req, res) => {
     const sessionId = req.headers['mcp-session-id'];
 
-    if (!sessionId || !sessions.has(sessionId)) {
+    if (!sessionId) {
         return res.status(400).json({
-            error: 'invalid_session',
-            error_description: 'Missing or invalid session ID'
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Bad Request: Mcp-Session-Id header is required' },
+            id: null
+        });
+    }
+
+    if (!sessions.has(sessionId)) {
+        return res.status(404).json({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Session not found. Please re-initialize.' },
+            id: null
         });
     }
 
