@@ -12,7 +12,7 @@ const pool = require('../db');
 
 // Services
 const { searchMemory, ingestContent, deleteMemory } = require('../services/memory');
-const { saveNote, listNotes, readNote, deleteNote, editNote, grepNotes } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailAck } = require('../services/mail');
 const {
@@ -117,6 +117,18 @@ const TOOLS = [
             properties: {
                 namespace: { type: 'string', description: 'Namespace (default: agent namespace)' },
                 slug: { type: 'string', description: 'Note slug' }
+            },
+            required: ['slug']
+        }
+    },
+    {
+        name: 'restore_note',
+        description: 'Restore a previously deleted note. Recovers the most recently deleted version and its vector chunks.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                namespace: { type: 'string', description: 'Namespace (default: agent namespace)' },
+                slug: { type: 'string', description: 'Note slug to restore' }
             },
             required: ['slug']
         }
@@ -415,6 +427,7 @@ const TOOL_PERMISSIONS = {
     list_notes: 'mcp_list_notes',
     read_note: 'mcp_read_note',
     delete_note: 'mcp_delete_note',
+    restore_note: 'mcp_delete_note',
     edit_note: 'mcp_save_note',
     grep: 'mcp_search',
     read_instructions: 'mcp_read_note',
@@ -502,6 +515,11 @@ const TOOL_HANDLERS = {
     async delete_note(args, agent, namespace) {
         await deleteNote(args.namespace || namespace, args.slug);
         return `Deleted: ${args.namespace || namespace}/${args.slug}`;
+    },
+
+    async restore_note(args, agent, namespace) {
+        const doc = await restoreNote(args.namespace || namespace, args.slug);
+        return `Restored: ${doc.namespace}/${doc.slug} — "${doc.title}"`;
     },
 
     async edit_note(args, agent, namespace) {

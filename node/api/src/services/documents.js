@@ -2,7 +2,7 @@
 // Documents are stored in the documents table and auto-indexed into the vector DB.
 
 const pool = require('../db');
-const { ingestContent, deleteMemory } = require('./memory');
+const { ingestContent } = require('./memory');
 
 function titleToSlug(title) {
     return title
@@ -31,6 +31,7 @@ async function saveNote(namespace, title, content, slug, createdBy) {
         ON CONFLICT (namespace, slug) DO UPDATE
         SET title = EXCLUDED.title,
             content = EXCLUDED.content,
+            deleted_at = NULL,
             updated_at = NOW()
         RETURNING id, namespace, slug, title, created_by, created_at, updated_at
     `, [namespace, resolvedSlug, title, content, createdBy || null]);
@@ -57,7 +58,7 @@ async function listNotes(namespace, limit, offset, prefix) {
                    LEFT(content, 200) AS snippet,
                    created_by, created_at, updated_at
             FROM documents
-            WHERE namespace = $1 AND slug LIKE $4
+            WHERE namespace = $1 AND slug LIKE $4 AND deleted_at IS NULL
             ORDER BY slug ASC
             LIMIT $2 OFFSET $3
         `;
@@ -68,7 +69,7 @@ async function listNotes(namespace, limit, offset, prefix) {
                    LEFT(content, 200) AS snippet,
                    created_by, created_at, updated_at
             FROM documents
-            WHERE namespace = $1
+            WHERE namespace = $1 AND deleted_at IS NULL
             ORDER BY updated_at DESC
             LIMIT $2 OFFSET $3
         `;
@@ -83,7 +84,7 @@ async function readNote(namespace, slug) {
     const result = await pool.query(`
         SELECT id, namespace, slug, title, content, created_by, created_at, updated_at
         FROM documents
-        WHERE namespace = $1 AND slug = $2
+        WHERE namespace = $1 AND slug = $2 AND deleted_at IS NULL
     `, [namespace, slug]);
 
     if (result.rows.length === 0) {
@@ -94,9 +95,13 @@ async function readNote(namespace, slug) {
 }
 
 async function deleteNote(namespace, slug) {
+    // Soft delete — set deleted_at timestamp, keep vector chunks in place.
+    // Chunks are filtered out of search results via a NOT EXISTS join.
+    // Use restoreNote to undo.
     const result = await pool.query(`
-        DELETE FROM documents
-        WHERE namespace = $1 AND slug = $2
+        UPDATE documents
+        SET deleted_at = NOW()
+        WHERE namespace = $1 AND slug = $2 AND deleted_at IS NULL
         RETURNING id
     `, [namespace, slug]);
 
@@ -104,12 +109,23 @@ async function deleteNote(namespace, slug) {
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
 
-    // Clean up vector chunks too (fire-and-forget)
-    deleteMemory(namespace, slug).catch(err => {
-        console.error(`Document vector cleanup failed for ${namespace}/${slug}:`, err.message);
-    });
-
     return { deleted: true, slug };
+}
+
+async function restoreNote(namespace, slug) {
+    // Clear the deleted_at flag to restore the note and its vector chunks
+    const result = await pool.query(`
+        UPDATE documents
+        SET deleted_at = NULL
+        WHERE namespace = $1 AND slug = $2 AND deleted_at IS NOT NULL
+        RETURNING id, namespace, slug, title
+    `, [namespace, slug]);
+
+    if (result.rows.length === 0) {
+        throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
+    }
+
+    return result.rows[0];
 }
 
 // Search-and-replace edit on a note's content — like the Edit tool in Claude Code.
@@ -189,7 +205,7 @@ async function grepNotes(pattern, namespace, limit) {
         sql = `
             SELECT id, namespace, slug, title, content, updated_at
             FROM documents
-            WHERE namespace = $1 AND (content ILIKE $2 OR title ILIKE $2)
+            WHERE namespace = $1 AND deleted_at IS NULL AND (content ILIKE $2 OR title ILIKE $2)
             ORDER BY updated_at DESC
             LIMIT $3
         `;
@@ -198,7 +214,7 @@ async function grepNotes(pattern, namespace, limit) {
         sql = `
             SELECT id, namespace, slug, title, content, updated_at
             FROM documents
-            WHERE content ILIKE $1 OR title ILIKE $1
+            WHERE deleted_at IS NULL AND (content ILIKE $1 OR title ILIKE $1)
             ORDER BY updated_at DESC
             LIMIT $2
         `;
@@ -249,4 +265,4 @@ async function grepNotes(pattern, namespace, limit) {
     });
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, editNote, grepNotes, titleToSlug };
+module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, titleToSlug };

@@ -56,6 +56,16 @@ async function searchMemory(query, namespace, limit) {
     let sql;
     let params;
 
+    // Exclude chunks belonging to soft-deleted documents.
+    // Chunks with no matching document row (from raw ingest) are kept.
+    const softDeleteFilter = `
+        AND NOT EXISTS (
+            SELECT 1 FROM documents d
+            WHERE d.namespace = mc.namespace
+            AND d.slug = mc.source_file
+            AND d.deleted_at IS NOT NULL
+        )`;
+
     if (!namespace || namespace === '*') {
         const filenameClauses = queryWords.map((_, i) => `source_file ILIKE $${i + 3}`);
         const boostExpression = filenameClauses.length > 0
@@ -64,7 +74,8 @@ async function searchMemory(query, namespace, limit) {
         sql = `
             SELECT source_file, heading, chunk_text, namespace,
                    (1 - (embedding <=> $1)) + ${boostExpression} AS similarity
-            FROM memory_chunks
+            FROM memory_chunks mc
+            WHERE 1=1 ${softDeleteFilter}
             ORDER BY similarity DESC
             LIMIT $2
         `;
@@ -77,8 +88,8 @@ async function searchMemory(query, namespace, limit) {
         sql = `
             SELECT source_file, heading, chunk_text, namespace,
                    (1 - (embedding <=> $1)) + ${boostExpression} AS similarity
-            FROM memory_chunks
-            WHERE namespace = $2
+            FROM memory_chunks mc
+            WHERE namespace = $2 ${softDeleteFilter}
             ORDER BY similarity DESC
             LIMIT $3
         `;
