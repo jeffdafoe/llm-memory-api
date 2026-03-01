@@ -1,4 +1,4 @@
-const { createApp, ref, onMounted, onUnmounted, watch, nextTick } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted, watch, nextTick } = Vue;
 
 const API_BASE = '/v1';
 
@@ -24,6 +24,28 @@ createApp({
         const mailMessages = ref([]);
         const selectedMail = ref(null);
         const liveDiscussions = ref([]);
+
+        // Notes data
+        const notesNamespaces = ref([]);
+        const notesTreesRaw = ref({});
+        const expandedNamespaces = ref({});
+        const expandedFolders = ref({});
+        const selectedNote = ref(null);
+        const notesEditing = ref(false);
+        const notesEditTitle = ref('');
+        const notesEditContent = ref('');
+        const notesSaving = ref(false);
+        const notesSearchQuery = ref('');
+        const notesSearchResults = ref(null);
+
+        // Computed: visible tree nodes per namespace (filters by expanded folders)
+        const notesTrees = computed(() => {
+            const result = {};
+            for (const ns of notesNamespaces.value) {
+                result[ns.namespace] = visibleTree(ns.namespace);
+            }
+            return result;
+        });
 
         // API helper
         async function api(endpoint, body = {}) {
@@ -232,6 +254,183 @@ createApp({
             selectedMail.value = msg;
         }
 
+        // Notes functions
+
+        // Build a flat tree structure from a list of slugs.
+        // Each slug like "instructions/codebase/architecture.md" becomes
+        // folder nodes for "instructions" and "codebase", plus a file node.
+        function buildTree(notes) {
+            const tree = [];
+            const folders = new Set();
+
+            // Sort slugs so folders appear before their children
+            const sorted = [...notes].sort((a, b) => a.slug.localeCompare(b.slug));
+
+            for (const note of sorted) {
+                const parts = note.slug.split('/');
+                // Add folder nodes for each directory level
+                let path = '';
+                for (let i = 0; i < parts.length - 1; i++) {
+                    path = path ? path + '/' + parts[i] : parts[i];
+                    if (!folders.has(path)) {
+                        folders.add(path);
+                        tree.push({
+                            type: 'folder',
+                            name: parts[i],
+                            path: path,
+                            depth: i + 1
+                        });
+                    }
+                }
+
+                // Add file node
+                tree.push({
+                    type: 'file',
+                    name: parts[parts.length - 1],
+                    slug: note.slug,
+                    title: note.title,
+                    depth: parts.length
+                });
+            }
+
+            // Filter: only show items whose parent folder is expanded (or top-level)
+            return tree;
+        }
+
+        // Return visible tree nodes — only show children if their parent folder is expanded
+        function visibleTree(namespace) {
+            const allNodes = notesTreesRaw.value[namespace];
+            if (!allNodes) return [];
+
+            const result = [];
+            for (const node of allNodes) {
+                // Top-level items (depth 1) always visible
+                if (node.depth === 1) {
+                    result.push(node);
+                    continue;
+                }
+
+                // For deeper items, check if the parent folder path is expanded
+                let parentPath;
+                if (node.type === 'folder') {
+                    const lastSlash = node.path.lastIndexOf('/');
+                    parentPath = lastSlash > 0 ? node.path.substring(0, lastSlash) : null;
+                } else {
+                    const lastSlash = node.slug.lastIndexOf('/');
+                    parentPath = lastSlash > 0 ? node.slug.substring(0, lastSlash) : null;
+                }
+
+                if (!parentPath) {
+                    result.push(node);
+                } else if (expandedFolders.value[namespace + '/' + parentPath]) {
+                    result.push(node);
+                }
+            }
+            return result;
+        }
+
+        async function loadNotes() {
+            try {
+                const data = await api('/admin/notes/namespaces');
+                notesNamespaces.value = data.namespaces;
+
+                // Load notes for each namespace and build trees
+                for (const ns of data.namespaces) {
+                    const notesData = await api('/admin/notes/list', { namespace: ns.namespace, limit: 500 });
+                    notesTreesRaw.value[ns.namespace] = buildTree(notesData.notes);
+                }
+            } catch (err) {
+                console.error('Failed to load notes:', err);
+            }
+        }
+
+        function toggleNamespace(namespace) {
+            expandedNamespaces.value[namespace] = !expandedNamespaces.value[namespace];
+        }
+
+        function toggleFolder(namespace, path) {
+            const key = namespace + '/' + path;
+            expandedFolders.value[key] = !expandedFolders.value[key];
+        }
+
+        async function openNote(namespace, slug) {
+            notesEditing.value = false;
+            try {
+                const data = await api('/admin/notes/read', { namespace, slug });
+                selectedNote.value = { ...data.note, namespace };
+            } catch (err) {
+                console.error('Failed to open note:', err);
+            }
+        }
+
+        async function openNoteFromSearch(result) {
+            // Search results have namespace and source_file (which is the slug)
+            await openNote(result.namespace, result.source_file);
+        }
+
+        function startEditNote() {
+            notesEditing.value = true;
+            notesEditTitle.value = selectedNote.value.title;
+            notesEditContent.value = selectedNote.value.content;
+        }
+
+        function cancelEditNote() {
+            notesEditing.value = false;
+        }
+
+        async function saveEditedNote() {
+            notesSaving.value = true;
+            try {
+                await api('/admin/notes/save', {
+                    namespace: selectedNote.value.namespace,
+                    slug: selectedNote.value.slug,
+                    title: notesEditTitle.value,
+                    content: notesEditContent.value
+                });
+                // Refresh the note
+                selectedNote.value.title = notesEditTitle.value;
+                selectedNote.value.content = notesEditContent.value;
+                notesEditing.value = false;
+            } catch (err) {
+                console.error('Failed to save note:', err);
+                alert('Failed to save: ' + err.message);
+            } finally {
+                notesSaving.value = false;
+            }
+        }
+
+        async function confirmDeleteNote() {
+            if (!confirm('Delete "' + selectedNote.value.slug + '"? This cannot be undone.')) {
+                return;
+            }
+            try {
+                await api('/admin/notes/delete', {
+                    namespace: selectedNote.value.namespace,
+                    slug: selectedNote.value.slug
+                });
+                selectedNote.value = null;
+                // Reload the tree
+                await loadNotes();
+            } catch (err) {
+                console.error('Failed to delete note:', err);
+                alert('Failed to delete: ' + err.message);
+            }
+        }
+
+        async function searchNotes() {
+            if (!notesSearchQuery.value.trim()) return;
+            try {
+                const data = await api('/admin/notes/search', {
+                    query: notesSearchQuery.value,
+                    namespace: '*',
+                    limit: 15
+                });
+                notesSearchResults.value = data.results;
+            } catch (err) {
+                console.error('Search failed:', err);
+            }
+        }
+
         function loadCurrentView() {
             if (currentView.value !== 'dashboard') {
                 stopLivePolling();
@@ -246,6 +445,8 @@ createApp({
                 loadChat();
             } else if (currentView.value === 'mail') {
                 loadMail();
+            } else if (currentView.value === 'notes') {
+                loadNotes();
             }
         }
 
@@ -406,7 +607,27 @@ createApp({
             formatDate,
             statusIcon,
             agentColor,
-            voteQuestion
+            voteQuestion,
+            notesNamespaces,
+            notesTrees,
+            expandedNamespaces,
+            expandedFolders,
+            selectedNote,
+            notesEditing,
+            notesEditTitle,
+            notesEditContent,
+            notesSaving,
+            notesSearchQuery,
+            notesSearchResults,
+            toggleNamespace,
+            toggleFolder,
+            openNote,
+            openNoteFromSearch,
+            startEditNote,
+            cancelEditNote,
+            saveEditedNote,
+            confirmDeleteNote,
+            searchNotes
         };
     }
 }).mount('#app');
