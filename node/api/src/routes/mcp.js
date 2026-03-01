@@ -435,6 +435,18 @@ const TOOLS_HASH = crypto.createHash('sha256')
     .digest('hex')
     .slice(0, 16);
 
+// Validate that an identity parameter matches the authenticated agent.
+// Keeps params in schemas for visibility but prevents impersonation.
+function validateIdentity(argValue, authAgent, paramName) {
+    if (argValue && argValue !== authAgent) {
+        throw Object.assign(
+            new Error(`Identity mismatch: ${paramName} "${argValue}" does not match authenticated agent "${authAgent}"`),
+            { statusCode: 403 }
+        );
+    }
+    return authAgent;
+}
+
 // Tool handler functions — each takes (args, agent, namespace) and returns a text string
 const TOOL_HANDLERS = {
     // --- Memory ---
@@ -527,7 +539,7 @@ const TOOL_HANDLERS = {
 
     // --- Chat ---
     async chat_send(args, agent, namespace) {
-        const fromAgent = args.from || agent;
+        const fromAgent = validateIdentity(args.from, agent, 'from');
         let toAgents = null;
         if (args.to) {
             toAgents = [args.to];
@@ -538,7 +550,7 @@ const TOOL_HANDLERS = {
     },
 
     async chat_receive(args, agent, namespace) {
-        const data = await chatReceive(args.agent || agent, args.channel);
+        const data = await chatReceive(validateIdentity(args.agent, agent, 'agent'), args.channel);
         if (data.messages.length === 0) {
             return 'No new messages.';
         }
@@ -550,23 +562,23 @@ const TOOL_HANDLERS = {
     },
 
     async chat_ack(args, agent, namespace) {
-        const data = await chatAck(args.agent || agent, args.message_ids);
+        const data = await chatAck(validateIdentity(args.agent, agent, 'agent'), args.message_ids);
         return `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]`;
     },
 
     async chat_status(args, agent, namespace) {
-        const data = await chatStatus(args.agent || agent, args.channel);
+        const data = await chatStatus(validateIdentity(args.agent, agent, 'agent'), args.channel);
         return `Chat status for ${data.agent}:\n  Pending: ${data.pending_count}\n  Max message ID: ${data.max_message_id}\n  Last message: ${data.last_message_at}\n  Last ack: ${data.last_ack_at}`;
     },
 
     // --- Mail ---
     async mail_send(args, agent, namespace) {
-        const data = await mailSend(args.to, args.from || agent, args.subject, args.body);
+        const data = await mailSend(args.to, validateIdentity(args.from, agent, 'from'), args.subject, args.body);
         return `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")`;
     },
 
     async mail_receive(args, agent, namespace) {
-        const data = await mailReceive(args.agent || agent);
+        const data = await mailReceive(validateIdentity(args.agent, agent, 'agent'));
         if (data.messages.length === 0) {
             return 'No new mail.';
         }
@@ -578,13 +590,13 @@ const TOOL_HANDLERS = {
     },
 
     async mail_ack(args, agent, namespace) {
-        const data = await mailAck(args.agent || agent, args.ids);
+        const data = await mailAck(validateIdentity(args.agent, agent, 'agent'), args.ids);
         return `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]`;
     },
 
     // --- Agent ---
     async agent_status(args, agent, namespace) {
-        const queryAgent = args.agent || agent;
+        const queryAgent = validateIdentity(args.agent, agent, 'agent');
         const result = await pool.query(
             `SELECT
                 a.agent,
@@ -623,7 +635,7 @@ const TOOL_HANDLERS = {
 
     // --- Discussion ---
     async discussion_create(args, agent, namespace) {
-        const creator = args.created_by || agent;
+        const creator = validateIdentity(args.created_by, agent, 'created_by');
         const data = await discussionCreate(
             args.topic, creator, args.participants,
             null, args.channel, args.mode, args.context
@@ -672,7 +684,7 @@ const TOOL_HANDLERS = {
     },
 
     async discussion_pending(args, agent, namespace) {
-        const data = await discussionPending(args.agent || agent);
+        const data = await discussionPending(validateIdentity(args.agent, agent, 'agent'));
         const sections = [];
         if (data.invited_discussions.length > 0) {
             const lines = data.invited_discussions.map(d => `  #${d.id} [${d.mode || 'realtime'}] "${d.topic}"`);
@@ -689,22 +701,22 @@ const TOOL_HANDLERS = {
     },
 
     async discussion_conclude(args, agent, namespace) {
-        const data = await discussionConclude(args.discussion_id, args.agent || agent);
+        const data = await discussionConclude(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
         return `Discussion #${data.discussion_id} ${data.status}.`;
     },
 
     async discussion_join(args, agent, namespace) {
-        const data = await discussionJoin(args.discussion_id, args.agent || agent);
+        const data = await discussionJoin(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
         return `${data.agent} joined discussion #${data.discussion_id}.`;
     },
 
     async discussion_leave(args, agent, namespace) {
-        const data = await discussionLeave(args.discussion_id, args.agent || agent);
+        const data = await discussionLeave(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
         return `${data.agent} left discussion #${data.discussion_id}.`;
     },
 
     async discussion_vote_propose(args, agent, namespace) {
-        const proposer = args.proposed_by || agent;
+        const proposer = validateIdentity(args.proposed_by, agent, 'proposed_by');
         const data = await votePropose(
             args.discussion_id, proposer, args.question,
             args.type, args.threshold, args.closes_at
@@ -713,7 +725,7 @@ const TOOL_HANDLERS = {
     },
 
     async discussion_vote_cast(args, agent, namespace) {
-        const data = await voteCast(args.vote_id, args.agent || agent, args.choice, args.reason);
+        const data = await voteCast(args.vote_id, validateIdentity(args.agent, agent, 'agent'), args.choice, args.reason);
         return `Vote cast on #${data.vote_id}: choice ${data.choice}. Vote status: ${data.vote_status}`;
     },
 

@@ -10,7 +10,15 @@ function logMail(action, details) {
 
 router.post('/mail/send', async (req, res) => {
     try {
-        const { to_agent, from_agent, subject, body } = req.body;
+        let { to_agent, from_agent, subject, body } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (from_agent && from_agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'from_agent does not match authenticated agent' } });
+            }
+            from_agent = req.authenticatedAgent;
+        }
 
         if (!to_agent || !from_agent || !subject || !body) {
             return res.status(400).json({
@@ -49,7 +57,15 @@ router.post('/mail/send', async (req, res) => {
 
 router.post('/mail/receive', async (req, res) => {
     try {
-        const { agent } = req.body;
+        let { agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!agent) {
             return res.status(400).json({
@@ -75,7 +91,15 @@ router.post('/mail/receive', async (req, res) => {
 
 router.post('/mail/ack', async (req, res) => {
     try {
-        const { agent, message_ids } = req.body;
+        let { agent, message_ids } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!agent || !message_ids || !Array.isArray(message_ids) || message_ids.length === 0) {
             return res.status(400).json({

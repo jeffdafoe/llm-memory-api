@@ -22,7 +22,15 @@ function logChat(action, details) {
 
 router.post('/chat/send', async (req, res) => {
     try {
-        const { from_agent, to_agents, discussion_id, message, channel } = req.body;
+        let { from_agent, to_agents, discussion_id, message, channel } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (from_agent && from_agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'from_agent does not match authenticated agent' } });
+            }
+            from_agent = req.authenticatedAgent;
+        }
 
         if (!from_agent || !message) {
             return res.status(400).json({
@@ -129,7 +137,15 @@ router.post('/chat/send', async (req, res) => {
 
 router.post('/chat/receive', async (req, res) => {
     try {
-        const { agent, channel, after_id, from_agent } = req.body;
+        let { agent, channel, after_id, from_agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!agent) {
             return res.status(400).json({
@@ -197,7 +213,15 @@ router.post('/chat/receive', async (req, res) => {
 
 router.post('/chat/ack', async (req, res) => {
     try {
-        const { agent, message_ids } = req.body;
+        let { agent, message_ids } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!agent || !message_ids || !Array.isArray(message_ids) || message_ids.length === 0) {
             return res.status(400).json({
@@ -227,7 +251,15 @@ router.post('/chat/ack', async (req, res) => {
 
 router.post('/chat/status', async (req, res) => {
     try {
-        const { agent, channel } = req.body;
+        let { agent, channel } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!agent) {
             return res.status(400).json({

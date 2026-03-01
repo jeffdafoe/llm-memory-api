@@ -175,7 +175,15 @@ function evaluateThreshold(choiceRows, participantCount, threshold) {
 
 router.post('/discussion/create', async (req, res) => {
     try {
-        const { topic, created_by, participants, optional_participants, channel, mode, context } = req.body;
+        let { topic, created_by, participants, optional_participants, channel, mode, context } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (created_by && created_by !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'created_by does not match authenticated agent' } });
+            }
+            created_by = req.authenticatedAgent;
+        }
 
         if (!topic || !created_by || !participants || !Array.isArray(participants)) {
             return res.status(400).json({
@@ -460,7 +468,15 @@ router.post('/discussion/status', async (req, res) => {
 
 router.post('/discussion/pending', async (req, res) => {
     try {
-        const { agent, discussion_id } = req.body;
+        let { agent, discussion_id } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!agent) {
             return res.status(400).json({
@@ -520,7 +536,15 @@ router.post('/discussion/pending', async (req, res) => {
 
 router.post('/discussion/conclude', async (req, res) => {
     try {
-        const { discussion_id, agent } = req.body;
+        let { discussion_id, agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!discussion_id || !agent) {
             return res.status(400).json({
@@ -593,7 +617,15 @@ router.post('/discussion/conclude', async (req, res) => {
 
 router.post('/discussion/join', async (req, res) => {
     try {
-        const { discussion_id, agent } = req.body;
+        let { discussion_id, agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!discussion_id || !agent) {
             return res.status(400).json({
@@ -670,7 +702,15 @@ router.post('/discussion/join', async (req, res) => {
 
 router.post('/discussion/leave', async (req, res) => {
     try {
-        const { discussion_id, agent } = req.body;
+        let { discussion_id, agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!discussion_id || !agent) {
             return res.status(400).json({
@@ -713,7 +753,15 @@ router.post('/discussion/leave', async (req, res) => {
 
 router.post('/discussion/vote/propose', async (req, res) => {
     try {
-        const { discussion_id, proposed_by, question, type, threshold, closes_at } = req.body;
+        let { discussion_id, proposed_by, question, type, threshold, closes_at } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (proposed_by && proposed_by !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'proposed_by does not match authenticated agent' } });
+            }
+            proposed_by = req.authenticatedAgent;
+        }
 
         if (!discussion_id || !proposed_by || !question) {
             return res.status(400).json({
@@ -786,7 +834,15 @@ router.post('/discussion/vote/propose', async (req, res) => {
 
 router.post('/discussion/vote/cast', async (req, res) => {
     try {
-        const { vote_id, agent, choice, reason } = req.body;
+        let { vote_id, agent, choice, reason } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
 
         if (!vote_id || !agent || choice === undefined || choice === null) {
             return res.status(400).json({
