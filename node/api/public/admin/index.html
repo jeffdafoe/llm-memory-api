@@ -93,6 +93,7 @@
                                         <tr>
                                             <th>Agent</th>
                                             <th>Status</th>
+                                            <th>Provider / Model</th>
                                             <th>Last Seen</th>
                                         </tr>
                                     </thead>
@@ -100,6 +101,7 @@
                                         <tr v-for="agent in dashboard.agents" :key="agent.agent">
                                             <td>{{ agent.agent }}</td>
                                             <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
+                                            <td class="muted">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}</td>
                                             <td>{{ formatDate(agent.last_seen) }}</td>
                                         </tr>
                                     </tbody>
@@ -327,6 +329,7 @@
                             <colgroup>
                                 <col class="col-agent">
                                 <col style="width: 5.5em;">
+                                <col style="width: 14em;">
                                 <col class="col-time">
                                 <col class="col-time">
                             </colgroup>
@@ -334,6 +337,7 @@
                                 <tr>
                                     <th>Agent</th>
                                     <th>Status</th>
+                                    <th>Provider / Model</th>
                                     <th class="time-cell">Last Seen</th>
                                     <th class="time-cell">Registered</th>
                                 </tr>
@@ -344,6 +348,7 @@
                                     <td>
                                         <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                     </td>
+                                    <td class="muted">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}</td>
                                     <td class="time-cell">{{ formatDate(agent.last_seen) }}</td>
                                     <td class="time-cell">{{ formatDate(agent.registered_at) }}</td>
                                 </tr>
@@ -357,6 +362,9 @@
                             <h4>{{ selectedAgent.agent }}</h4>
                             <span class="notes-meta">
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
+                                <template v-if="selectedAgent.provider || selectedAgent.model">
+                                    · {{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}
+                                </template>
                                 · Last seen: {{ formatDate(selectedAgent.last_seen) }}
                                 · Passphrase rotated: {{ formatDate(selectedAgent.passphrase_rotated_at) }}
                             </span>
