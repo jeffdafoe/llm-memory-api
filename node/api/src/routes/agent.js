@@ -98,10 +98,11 @@ router.post('/agent/register', async (req, res) => {
         const token = generatePassphraseToken();
         const salt = generateSalt();
         const hash = hashToken(token, salt);
+        const { provider, model } = req.body;
 
         await pool.query(
-            'INSERT INTO agents (agent, token_hash, token_salt, status) VALUES ($1, $2, $3, $4)',
-            [agent, hash, salt, 'pending']
+            'INSERT INTO agents (agent, token_hash, token_salt, status, provider, model) VALUES ($1, $2, $3, $4, $5, $6)',
+            [agent, hash, salt, 'pending', provider || null, model || null]
         );
 
         logAgent('register', { agent });
@@ -413,6 +414,8 @@ router.post('/agent/status', async (req, res) => {
                 a.status,
                 a.last_seen,
                 a.expertise,
+                a.provider,
+                a.model,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
@@ -455,6 +458,8 @@ router.post('/agent/status', async (req, res) => {
             status: row.status,
             last_seen: row.last_seen,
             expertise: JSON.parse(row.expertise || '[]'),
+            provider: row.provider || null,
+            model: row.model || null,
             subsystems: subsystemsByAgent[row.agent] || [],
             unread_chat: row.unread_chat,
             unread_mail: row.unread_mail
@@ -509,6 +514,60 @@ router.post('/agent/expertise', async (req, res) => {
         });
     } catch (err) {
         console.error('Agent expertise update error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/profile — update the authenticated agent's provider and/or model.
+// Auth: session token (via middleware).
+// Body: { provider?: "anthropic", model?: "claude-4-sonnet" }
+router.post('/agent/profile', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        if (!agent) {
+            return res.status(401).json({
+                error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+            });
+        }
+
+        const { provider, model } = req.body;
+        if (provider === undefined && model === undefined) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'At least one field required: provider, model' }
+            });
+        }
+
+        const sets = [];
+        const vals = [];
+        let idx = 1;
+
+        if (provider !== undefined) {
+            sets.push(`provider = $${idx++}`);
+            vals.push(provider);
+        }
+        if (model !== undefined) {
+            sets.push(`model = $${idx++}`);
+            vals.push(model);
+        }
+        vals.push(agent);
+
+        await pool.query(
+            `UPDATE agents SET ${sets.join(', ')} WHERE agent = $${idx}`,
+            vals
+        );
+
+        logAgent('profile_update', { agent, provider, model });
+
+        res.json({
+            agent,
+            provider: provider !== undefined ? provider : undefined,
+            model: model !== undefined ? model : undefined,
+            message: 'Profile updated'
+        });
+    } catch (err) {
+        console.error('Agent profile update error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

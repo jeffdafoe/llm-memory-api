@@ -290,6 +290,17 @@ const TOOLS = [
             required: ['expertise']
         }
     },
+    {
+        name: 'update_profile',
+        description: 'Update your agent profile (provider and/or model). Provider is the AI company (e.g. "anthropic", "openai"). Model is the specific model (e.g. "claude-4-sonnet", "gpt-5.3-codex").',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                provider: { type: 'string', description: 'AI provider (e.g. "anthropic", "openai", "google")' },
+                model: { type: 'string', description: 'Model name (e.g. "claude-4-sonnet", "gpt-5.3-codex")' }
+            }
+        }
+    },
     // --- Discussion tools ---
     {
         name: 'discussion_create',
@@ -441,6 +452,7 @@ const TOOL_PERMISSIONS = {
     mail_ack: 'mcp_mail_ack',
     agent_status: 'mcp_agent_status',
     update_expertise: 'mcp_agent_status',
+    update_profile: 'mcp_agent_status',
     discussion_create: 'mcp_discussion_create',
     discussion_list: 'mcp_discussion_list',
     discussion_status: 'mcp_discussion_status',
@@ -633,6 +645,8 @@ const TOOL_HANDLERS = {
                 a.status,
                 a.last_seen,
                 a.expertise,
+                a.provider,
+                a.model,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
@@ -654,6 +668,10 @@ const TOOL_HANDLERS = {
 
         const lines = result.rows.map(a => {
             const parts = [`${a.agent}: ${a.status}`];
+            if (a.provider || a.model) {
+                const identity = [a.provider, a.model].filter(Boolean).join('/');
+                parts.push(identity);
+            }
             if (a.last_seen) {
                 parts.push(`last seen ${a.last_seen}`);
             }
@@ -680,6 +698,37 @@ const TOOL_HANDLERS = {
         const json = JSON.stringify(cleaned);
         await pool.query('UPDATE agents SET expertise = $1 WHERE agent = $2', [json, agent]);
         return `Expertise updated for ${agent}: ${cleaned.join(', ') || '(none)'}`;
+    },
+
+    async update_profile(args, agent, namespace) {
+        if (args.provider === undefined && args.model === undefined) {
+            throw Object.assign(new Error('At least one field required: provider, model'), { statusCode: 400 });
+        }
+
+        const sets = [];
+        const vals = [];
+        let idx = 1;
+
+        if (args.provider !== undefined) {
+            sets.push(`provider = $${idx++}`);
+            vals.push(args.provider);
+        }
+        if (args.model !== undefined) {
+            sets.push(`model = $${idx++}`);
+            vals.push(args.model);
+        }
+        vals.push(agent);
+
+        await pool.query(`UPDATE agents SET ${sets.join(', ')} WHERE agent = $${idx}`, vals);
+
+        const parts = [];
+        if (args.provider !== undefined) {
+            parts.push(`provider: ${args.provider}`);
+        }
+        if (args.model !== undefined) {
+            parts.push(`model: ${args.model}`);
+        }
+        return `Profile updated for ${agent}: ${parts.join(', ')}`;
     },
 
     // --- Discussion ---
