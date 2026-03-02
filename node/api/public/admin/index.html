@@ -130,6 +130,41 @@
                         </div>
                     </div>
 
+                    <!-- API Log -->
+                    <h4><i class="icon-activity"></i> API Log <button class="inline-button" @click="apiLogPaused = !apiLogPaused">{{ apiLogPaused ? 'Resume' : 'Pause' }}</button></h4>
+                    <div class="api-log-container" ref="apiLogContainer">
+                        <table class="fixed-table api-log-table">
+                            <colgroup>
+                                <col class="col-time">
+                                <col style="width: 4.5em;">
+                                <col>
+                                <col style="width: 4em;">
+                                <col style="width: 5em;">
+                                <col style="width: 7em;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Method</th>
+                                    <th>Path</th>
+                                    <th>Status</th>
+                                    <th>Duration</th>
+                                    <th>Agent</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="entry in apiLogEntries" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
+                                    <td class="time-cell log-mono">{{ formatTime(entry.timestamp) }}</td>
+                                    <td class="log-mono">{{ entry.method }}</td>
+                                    <td class="message-cell log-mono">{{ entry.path }}</td>
+                                    <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '...' }}</td>
+                                    <td class="log-mono time-cell">{{ entry.duration !== null ? entry.duration + 'ms' : '' }}</td>
+                                    <td>{{ entry.agent || '' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
                     <h4><i class="icon-mail"></i> Mail <span class="unread-count">({{ dashboard.mail.filter(m => !m.acked_at).length }} unread)</span></h4>
                     <div class="table-wrap" v-if="dashboard.mail.filter(m => !m.acked_at).length">
                         <table class="fixed-table">

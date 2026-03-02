@@ -364,6 +364,65 @@ h4 i {
     margin-left: 0.5em;
 }
 
+/* API Log */
+
+.api-log-container {
+    max-height: 350px;
+    overflow-y: auto;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 4px;
+}
+
+.api-log-table {
+    margin-bottom: 0;
+    font-size: 0.82em;
+}
+
+.api-log-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--pico-background-color);
+}
+
+.api-log-table tbody tr {
+    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+}
+
+.log-mono {
+    font-family: monospace;
+    font-size: 0.95em;
+}
+
+.log-status-ok {
+    color: #4caf88;
+}
+
+.log-status-redirect {
+    color: #5b9bd5;
+}
+
+.log-status-client {
+    color: #c9a83e;
+}
+
+.log-status-server {
+    color: #e07b53;
+}
+
+.log-status-pending {
+    color: var(--pico-muted-color);
+}
+
+.status-row-server {
+    background: rgba(224, 123, 83, 0.08);
+}
+
+.status-row-client {
+    background: rgba(201, 168, 62, 0.06);
+}
+
 /* Notes view */
 
 .notes-layout {

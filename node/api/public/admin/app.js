@@ -34,6 +34,13 @@ createApp({
         const selectedMail = ref(null);
         const liveDiscussions = ref([]);
 
+        // API Log data
+        const apiLogEntries = ref([]);
+        const apiLogLastId = ref(0);
+        const apiLogPaused = ref(false);
+        const apiLogContainer = ref(null);
+        let apiLogTimer = null;
+
         // Notes data
         const notesNamespaces = ref([]);
         const notesTreesRaw = ref({});
@@ -112,6 +119,7 @@ createApp({
             }
             stopPolling();
             stopLivePolling();
+            stopApiLogPolling();
             authenticated.value = false;
             sessionToken.value = null;
             user.value = null;
@@ -203,6 +211,70 @@ createApp({
                 clearInterval(liveTimer);
                 liveTimer = null;
             }
+        }
+
+        // API Log polling
+        const API_LOG_POLL_MS = 2000;
+        const API_LOG_MAX_ENTRIES = 200;
+
+        async function pollApiLog() {
+            if (apiLogPaused.value) return;
+            try {
+                const data = await api('/admin/api-log', { since_id: apiLogLastId.value, limit: 200 });
+                if (data.entries.length > 0) {
+                    apiLogEntries.value.push(...data.entries);
+                    // Trim the front if we're over capacity
+                    if (apiLogEntries.value.length > API_LOG_MAX_ENTRIES) {
+                        apiLogEntries.value.splice(0, apiLogEntries.value.length - API_LOG_MAX_ENTRIES);
+                    }
+                    apiLogLastId.value = data.entries[data.entries.length - 1].id;
+                    scrollApiLog();
+                }
+            } catch (err) {
+                console.error('Failed to poll API log:', err);
+            }
+        }
+
+        function scrollApiLog() {
+            nextTick(() => {
+                const el = apiLogContainer.value;
+                if (!el) return;
+                const atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
+                if (atBottom) {
+                    el.scrollTop = el.scrollHeight;
+                }
+            });
+        }
+
+        function startApiLogPolling() {
+            if (apiLogTimer) return;
+            pollApiLog();
+            apiLogTimer = setInterval(() => {
+                if (authenticated.value && currentView.value === 'dashboard') {
+                    pollApiLog();
+                }
+            }, API_LOG_POLL_MS);
+        }
+
+        function stopApiLogPolling() {
+            if (apiLogTimer) {
+                clearInterval(apiLogTimer);
+                apiLogTimer = null;
+            }
+        }
+
+        function statusCategory(status) {
+            if (!status) return 'pending';
+            if (status < 300) return 'ok';
+            if (status < 400) return 'redirect';
+            if (status < 500) return 'client';
+            return 'server';
+        }
+
+        function formatTime(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.toLocaleTimeString();
         }
 
         async function loadAgents() {
@@ -549,9 +621,11 @@ createApp({
         function loadCurrentView() {
             if (currentView.value !== 'dashboard') {
                 stopLivePolling();
+                stopApiLogPolling();
             }
             if (currentView.value === 'dashboard') {
                 loadDashboard();
+                startApiLogPolling();
             } else if (currentView.value === 'agents') {
                 loadAgents();
             } else if (currentView.value === 'discussions') {
@@ -647,6 +721,7 @@ createApp({
             if (document.hidden) {
                 stopPolling();
                 stopLivePolling();
+                stopApiLogPolling();
             } else {
                 if (authenticated.value) {
                     loadCurrentView();
@@ -696,6 +771,7 @@ createApp({
         onUnmounted(() => {
             stopPolling();
             stopLivePolling();
+            stopApiLogPolling();
             document.removeEventListener('visibilitychange', handleVisibility);
         });
 
@@ -739,6 +815,11 @@ createApp({
             viewMail,
             liveDiscussions,
             loadDiscussions,
+            apiLogEntries,
+            apiLogPaused,
+            apiLogContainer,
+            statusCategory,
+            formatTime,
             formatDate,
             statusIcon,
             agentColor,
