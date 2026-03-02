@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
+const { requestLog } = require('./middleware/request-log');
 const oauthRoutes = require('./routes/oauth');
 const mcpRoutes = require('./routes/mcp');
 const agentRoutes = require('./routes/agent');
@@ -18,6 +19,9 @@ const port = process.env.PORT || 3100;
 
 app.use(express.json({ limit: '5mb' }));
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
+
+// Log all API requests to in-memory ring buffer (admin dashboard live view)
+app.use('/v1', requestLog);
 
 // OAuth discovery + token endpoint (no auth required, root-level)
 app.use(oauthRoutes);

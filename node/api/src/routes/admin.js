@@ -5,6 +5,7 @@ const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote } = require('../services/documents');
 const { searchMemory } = require('../services/memory');
+const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
 
@@ -170,6 +171,20 @@ router.post('/admin/dashboard', async (req, res) => {
         console.error('Admin dashboard error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to fetch dashboard data' }
+        });
+    }
+});
+
+// POST /admin/api-log — recent API requests from in-memory ring buffer
+router.post('/admin/api-log', async (req, res) => {
+    const { since_id, limit } = req.body;
+    try {
+        const entries = getRequestLogEntries(since_id || 0, limit || 100);
+        res.json({ entries });
+    } catch (err) {
+        console.error('Admin api-log error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to fetch API log' }
         });
     }
 });
