@@ -21,7 +21,7 @@ app.use(express.json({ limit: '5mb' }));
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
 
 // Log all API requests to in-memory ring buffer (admin dashboard live view)
-app.use('/v1', requestLog);
+app.use(requestLog);
 
 // OAuth discovery + token endpoint (no auth required, root-level)
 app.use(oauthRoutes);
