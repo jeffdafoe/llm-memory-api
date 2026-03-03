@@ -44,9 +44,11 @@ function requestLog(req, res, next) {
         entry.status = res.statusCode;
         entry.duration = Date.now() - start;
 
-        // Pull agent from auth middleware (set on req by auth.js)
+        // Pull agent from whichever auth middleware ran
         if (req.authenticatedAgent) {
             entry.agent = req.authenticatedAgent;
+        } else if (req.mcpAgent) {
+            entry.agent = req.mcpAgent;
         } else if (req.authenticatedUser) {
             entry.agent = 'admin:' + req.authenticatedUser.username;
         }
