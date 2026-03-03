@@ -373,12 +373,24 @@ h4 i {
     margin-bottom: 1.5rem;
 }
 
+/* Dashboard panels — shared container style for agents + API log */
+
+.dashboard-panel {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.dashboard-panel-table {
+    margin-bottom: 0;
+    font-size: 0.82em;
+}
+
 /* API Log */
 
 .api-log-container {
     max-height: 350px;
     overflow-y: auto;
-    margin-bottom: 1.5rem;
     border: 1px solid var(--pico-muted-border-color);
     border-radius: 4px;
 }
