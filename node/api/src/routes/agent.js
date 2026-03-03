@@ -1,7 +1,5 @@
 const { Router } = require('express');
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
 const { log } = require('../services/logger');
@@ -35,18 +33,6 @@ function generatePassphraseToken() {
 // Generate a random session token (URL-safe base64, 48 bytes = 64 chars)
 function generateSessionToken() {
     return crypto.randomBytes(48).toString('base64url');
-}
-
-const ONBOARDING_PATH = path.join(__dirname, '..', '..', '..', '..', 'templates', 'onboarding.md');
-
-function buildOnboarding(agent) {
-    try {
-        const template = fs.readFileSync(ONBOARDING_PATH, 'utf-8');
-        return template.replace(/\{\{agent\}\}/g, agent);
-    } catch (err) {
-        console.error('Failed to read onboarding template:', err.message);
-        return null;
-    }
 }
 
 // POST /agent/register — create agent, generate token, return plaintext
@@ -89,8 +75,7 @@ router.post('/agent/register', async (req, res) => {
                 agent,
                 token,
                 status: 'pending',
-                message: 'Token regenerated. Call POST /agent/register/ack with your agent name and token to activate.',
-                onboarding: buildOnboarding(agent)
+                message: 'Token regenerated. Call POST /agent/register/ack with your agent name and token to activate.'
             });
         }
 
@@ -111,8 +96,7 @@ router.post('/agent/register', async (req, res) => {
             agent,
             token,
             status: 'pending',
-            message: 'Save this token — it will not be shown again. Call POST /agent/register/ack with your agent name and token to activate.',
-            onboarding: buildOnboarding(agent)
+            message: 'Save this token — it will not be shown again. Call POST /agent/register/ack with your agent name and token to activate.'
         });
     } catch (err) {
         console.error('Agent register error:', err.message);

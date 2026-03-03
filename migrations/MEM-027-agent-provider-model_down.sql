@@ -10,7 +10,8 @@ SELECT agent,
        END AS status,
        last_seen,
        passphrase_rotated_at,
-       registered_at
+       registered_at,
+       expertise
 FROM agents;
 
 ALTER TABLE agents DROP COLUMN IF EXISTS provider;
