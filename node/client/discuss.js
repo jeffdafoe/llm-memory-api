@@ -976,6 +976,29 @@ function generatePrompt(proxyPort) {
         '[INITIATOR_LINE]': cfg.initiator
             ? 'You are the INITIATOR. Send the first message to start the discussion.'
             : 'You are JOINING. Wait for the first message from another participant.',
+        '[FIRST_CONTACT]': cfg.initiator
+            ? `## First Contact
+
+You are the CREATOR of this discussion. Send your opening message immediately after completing
+your setup steps (defining helper functions). Do not wait for the other side to message first.
+Your opening message should introduce the topic and your initial position.
+
+If no reply arrives within 90 seconds of your opening message, write a diagnostic to outbox:
+"Sent opening message but no reply yet. Is the other participant's transport running?"
+
+If no contact from the other side after 5 minutes total, write "No contact after 5 minutes.
+Exiting." to outbox and exit.`
+            : `## First Contact
+
+You are JOINING this discussion. After completing your setup steps (defining helper functions),
+begin your polling loop. Your inbox may be empty initially — this is normal, the creator may
+still be launching.
+
+If no message arrives within 90 seconds of your first poll, write a diagnostic to outbox:
+"Joined and waiting — is the creator side running?"
+
+If no contact after 5 minutes total, write "No contact after 5 minutes. Exiting." to outbox
+and exit.`,
     };
 
     let prompt = template;
