@@ -50,7 +50,9 @@ function requestLog(req, res, next) {
         } else if (req.mcpAgent) {
             entry.agent = req.mcpAgent;
         } else if (req.authenticatedUser) {
-            entry.agent = 'admin:' + req.authenticatedUser.username;
+            // Skip admin requests — they clutter the log with dashboard polling
+            originalEnd.apply(res, args);
+            return;
         }
 
         buffer.push(entry);
