@@ -339,7 +339,7 @@ async function saveResult() {
         return;
     }
 
-    const slug = `notes/discussions/discussion-${discussionId}-result.md`;
+    const slug = `notes/discussions/discussion-${discussionId}-result`;
     const title = `Discussion #${discussionId} Result — ${cfg.topic || 'untitled'}`;
 
     try {
@@ -973,9 +973,6 @@ function generatePrompt(proxyPort) {
         '[MY_AGENT]': cfg.agent,
         '[CONTEXT]': cfg.context || '(none)',
         '[GUIDELINES]': guidelines,
-        '[INITIATOR_LINE]': cfg.initiator
-            ? 'You are the INITIATOR. Send the first message to start the discussion.'
-            : 'You are JOINING. Wait for the first message from another participant.',
         '[FIRST_CONTACT]': cfg.initiator
             ? `## First Contact
 
