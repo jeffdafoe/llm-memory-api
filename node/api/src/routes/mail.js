@@ -89,6 +89,68 @@ router.post('/mail/receive', async (req, res) => {
     }
 });
 
+router.post('/mail/edit', async (req, res) => {
+    try {
+        let { id, from_agent, subject, body } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (from_agent && from_agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'from_agent does not match authenticated agent' } });
+            }
+            from_agent = req.authenticatedAgent;
+        }
+
+        if (!id || !from_agent) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required fields: id, from_agent. Optional: subject, body' }
+            });
+        }
+
+        if (!subject && !body) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'At least one of subject or body must be provided' }
+            });
+        }
+
+        // Build dynamic SET clause
+        const setClauses = [];
+        const values = [];
+        let paramIndex = 1;
+
+        if (subject) {
+            setClauses.push(`subject = $${paramIndex++}`);
+            values.push(subject);
+        }
+        if (body) {
+            setClauses.push(`body = $${paramIndex++}`);
+            values.push(body);
+        }
+
+        values.push(id, from_agent);
+
+        const result = await pool.query(
+            `UPDATE mail SET ${setClauses.join(', ')} WHERE id = $${paramIndex++} AND from_agent = $${paramIndex} AND acked_at IS NULL RETURNING id, to_agent, subject, sent_at`,
+            values
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Mail not found, not owned by you, or already acked' }
+            });
+        }
+
+        logMail('edit', { from_agent, mail_id: id, fields: [subject ? 'subject' : null, body ? 'body' : null].filter(Boolean) });
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Mail edit error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
 router.post('/mail/ack', async (req, res) => {
     try {
         let { agent, message_ids } = req.body;
