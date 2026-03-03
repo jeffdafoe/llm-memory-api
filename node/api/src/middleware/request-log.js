@@ -15,10 +15,22 @@ function requestLog(req, res, next) {
     }
 
     const start = Date.now();
+
+    // For MCP requests, extract the tool/method from the JSON-RPC body
+    let displayPath = path;
+    if (path === '/mcp' && req.body) {
+        const rpcMethod = req.body.method;
+        if (rpcMethod === 'tools/call' && req.body.params?.name) {
+            displayPath = '/mcp → ' + req.body.params.name;
+        } else if (rpcMethod) {
+            displayPath = '/mcp → ' + rpcMethod;
+        }
+    }
+
     const entry = {
         id: nextId++,
         method: req.method,
-        path: req.originalUrl || req.url,
+        path: displayPath,
         agent: null,
         timestamp: new Date().toISOString(),
         status: null,
