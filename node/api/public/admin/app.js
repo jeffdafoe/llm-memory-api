@@ -222,28 +222,17 @@ createApp({
             try {
                 const data = await api('/admin/api-log', { since_id: apiLogLastId.value, limit: 200 });
                 if (data.entries.length > 0) {
-                    apiLogEntries.value.push(...data.entries);
-                    // Trim the front if we're over capacity
+                    // Newest first — prepend in reverse so newest is at top
+                    apiLogEntries.value.unshift(...data.entries.reverse());
+                    // Trim the tail if we're over capacity
                     if (apiLogEntries.value.length > API_LOG_MAX_ENTRIES) {
-                        apiLogEntries.value.splice(0, apiLogEntries.value.length - API_LOG_MAX_ENTRIES);
+                        apiLogEntries.value.length = API_LOG_MAX_ENTRIES;
                     }
-                    apiLogLastId.value = data.entries[data.entries.length - 1].id;
-                    scrollApiLog();
+                    apiLogLastId.value = data.entries[0].id; // entries already reversed, [0] is newest
                 }
             } catch (err) {
                 console.error('Failed to poll API log:', err);
             }
-        }
-
-        function scrollApiLog() {
-            nextTick(() => {
-                const el = apiLogContainer.value;
-                if (!el) return;
-                const atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
-                if (atBottom) {
-                    el.scrollTop = el.scrollHeight;
-                }
-            });
         }
 
         function startApiLogPolling() {
