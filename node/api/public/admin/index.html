@@ -84,23 +84,28 @@
                         </div>
                     </div>
 
-                    <div class="dashboard-top-grid">
+                    <div class="grid">
                         <div>
                             <h4><i class="icon-bot"></i> Agents</h4>
-                            <div class="dashboard-panel">
-                                <table class="dashboard-panel-table">
+                            <div class="table-wrap">
+                                <table class="fixed-table">
+                                    <colgroup>
+                                        <col class="col-agent">
+                                        <col style="width: 5.5em;">
+                                        <col class="col-time">
+                                    </colgroup>
                                     <thead>
                                         <tr>
                                             <th>Agent</th>
                                             <th>Status</th>
-                                            <th>Last Seen</th>
+                                            <th class="time-cell">Last Seen</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr v-for="agent in dashboard.agents" :key="agent.agent">
                                             <td>{{ agent.agent }}</td>
                                             <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
-                                            <td class="nowrap">{{ formatDate(agent.last_seen) }}</td>
+                                            <td class="time-cell">{{ formatDate(agent.last_seen) }}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -109,21 +114,21 @@
 
                         <div>
                             <h4><i class="icon-activity"></i> API Log <a href="#" class="log-toggle" @click.prevent="apiLogPaused = !apiLogPaused">{{ apiLogPaused ? '▶ resume' : '⏸ pause' }}</a></h4>
-                            <div class="api-log-container" ref="apiLogContainer">
-                                <table class="fixed-table api-log-table">
+                            <div class="api-log-scroll" ref="apiLogContainer">
+                                <table class="fixed-table">
                                     <colgroup>
                                         <col style="width: 7em;">
                                         <col>
                                         <col style="width: 3.5em;">
                                         <col style="width: 4em;">
-                                        <col style="width: 7em;">
+                                        <col class="col-agent">
                                     </colgroup>
                                     <thead>
                                         <tr>
                                             <th>Time</th>
                                             <th>Path</th>
                                             <th>Status</th>
-                                            <th>ms</th>
+                                            <th class="time-cell">ms</th>
                                             <th>Agent</th>
                                         </tr>
                                     </thead>

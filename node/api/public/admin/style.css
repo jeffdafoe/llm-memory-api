@@ -364,51 +364,18 @@ h4 i {
     margin-left: 0.5em;
 }
 
-/* Dashboard top grid — agents narrow, API log wide */
-
-.dashboard-top-grid {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: var(--pico-grid-column-gap, 1rem);
-    margin-bottom: 1.5rem;
-}
-
-/* Dashboard panels — shared container style for agents + API log */
-
-.dashboard-panel {
-    border: 1px solid var(--pico-muted-border-color);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.dashboard-panel-table {
-    margin-bottom: 0;
-    font-size: 0.82em;
-}
-
 /* API Log */
 
-.api-log-container {
+.api-log-scroll {
     max-height: 350px;
     overflow-y: auto;
-    border: 1px solid var(--pico-muted-border-color);
-    border-radius: 4px;
 }
 
-.api-log-table {
-    margin-bottom: 0;
-    font-size: 0.82em;
-}
-
-.api-log-table thead {
+.api-log-scroll thead {
     position: sticky;
     top: 0;
     z-index: 1;
     background: var(--pico-background-color);
-}
-
-.api-log-table tbody tr {
-    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
 }
 
 .log-mono {
