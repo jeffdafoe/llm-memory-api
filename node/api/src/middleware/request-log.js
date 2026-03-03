@@ -5,7 +5,15 @@ const MAX_ENTRIES = 1000;
 const buffer = [];
 let nextId = 1;
 
+// Paths to exclude from logging (high-frequency polling endpoints)
+const EXCLUDED_PATHS = ['/v1/admin/api-log', '/v1/admin/dashboard'];
+
 function requestLog(req, res, next) {
+    const path = req.originalUrl || req.url;
+    if (EXCLUDED_PATHS.some(p => path.startsWith(p))) {
+        return next();
+    }
+
     const start = Date.now();
     const entry = {
         id: nextId++,
