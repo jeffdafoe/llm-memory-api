@@ -364,6 +364,28 @@ h4 i {
     margin-left: 0.5em;
 }
 
+/* Dashboard top — agents left (auto-width), API log right (fills rest) */
+
+.dashboard-top {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.dashboard-agents {
+    flex-shrink: 0;
+}
+
+.dashboard-agents table {
+    margin-bottom: 0;
+}
+
+.dashboard-apilog {
+    flex: 1;
+    min-width: 0;
+}
+
 /* API Log */
 
 .api-log-scroll {
