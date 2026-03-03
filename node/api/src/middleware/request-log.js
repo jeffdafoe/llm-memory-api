@@ -54,8 +54,13 @@ function requestLog(req, res, next) {
 
 // Return entries newer than the given id (for incremental polling).
 // If sinceId is 0 or omitted, returns the last `limit` entries.
+// If sinceId >= nextId, the server restarted — return all entries so the client resyncs.
 function getEntries(sinceId, limit) {
     if (sinceId) {
+        if (sinceId >= nextId) {
+            // Client has a stale id from before a restart — return everything
+            return buffer.slice();
+        }
         return buffer.filter(e => e.id > sinceId);
     }
     const start = Math.max(0, buffer.length - (limit || 100));
