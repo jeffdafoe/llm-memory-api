@@ -74,7 +74,7 @@ router.post('/mail/receive', async (req, res) => {
         }
 
         const result = await pool.query(
-            'SELECT id, from_agent, to_agent, subject, body, sent_at FROM mail WHERE to_agent = $1 AND acked_at IS NULL ORDER BY sent_at ASC',
+            'SELECT id, from_agent, to_agent, subject, body, sent_at FROM mail WHERE to_agent = $1 AND acked_at IS NULL AND deleted_at IS NULL ORDER BY sent_at ASC',
             [agent]
         );
 
@@ -130,7 +130,7 @@ router.post('/mail/edit', async (req, res) => {
         values.push(id, from_agent);
 
         const result = await pool.query(
-            `UPDATE mail SET ${setClauses.join(', ')} WHERE id = $${paramIndex++} AND from_agent = $${paramIndex} AND acked_at IS NULL RETURNING id, to_agent, subject, sent_at`,
+            `UPDATE mail SET ${setClauses.join(', ')} WHERE id = $${paramIndex++} AND from_agent = $${paramIndex++} AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, to_agent, subject, sent_at`,
             values
         );
 
@@ -145,6 +145,47 @@ router.post('/mail/edit', async (req, res) => {
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Mail edit error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// Sender can unsend (delete) mail before recipient acks it
+router.post('/mail/unsend', async (req, res) => {
+    try {
+        let { id, from_agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (from_agent && from_agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'from_agent does not match authenticated agent' } });
+            }
+            from_agent = req.authenticatedAgent;
+        }
+
+        if (!id || !from_agent) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required fields: id, from_agent' }
+            });
+        }
+
+        const result = await pool.query(
+            'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND from_agent = $2 AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, to_agent, subject',
+            [id, from_agent]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Mail not found, not owned by you, or already acked' }
+            });
+        }
+
+        logMail('unsend', { from_agent, mail_id: id, to_agent: result.rows[0].to_agent, subject: result.rows[0].subject });
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Mail unsend error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

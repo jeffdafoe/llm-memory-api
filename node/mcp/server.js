@@ -247,6 +247,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
+                name: 'mail_unsend',
+                description: 'Unsend (delete) a mail message you sent, before the recipient acks it. Only the sender can unsend.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string', description: 'Mail UUID to unsend' }
+                    },
+                    required: ['id']
+                }
+            },
+            {
                 name: 'mail_ack',
                 description: 'Manually ack specific mail messages by UUID. Use this if mail_receive failed after downloading but before acking.',
                 inputSchema: {
@@ -571,6 +582,15 @@ async function handleToolCall(name, args) {
             body: args.body
         });
         return { content: [{ type: 'text', text: `Mail ${data.id} updated (to: ${data.to_agent}, subject: "${data.subject}")` }] };
+    }
+
+    if (name === 'mail_unsend') {
+        const from_agent = DEFAULT_AGENT;
+        const data = await apiCall('/mail/unsend', {
+            id: args.id,
+            from_agent
+        });
+        return { content: [{ type: 'text', text: `Mail ${data.id} unsent (was to: ${data.to_agent}, subject: "${data.subject}")` }] };
     }
 
     if (name === 'mail_ack') {
