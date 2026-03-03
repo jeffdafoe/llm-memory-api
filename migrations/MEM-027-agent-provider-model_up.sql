@@ -15,6 +15,7 @@ SELECT agent,
        last_seen,
        passphrase_rotated_at,
        registered_at,
+       expertise,
        provider,
        model
 FROM agents;
