@@ -234,6 +234,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
+                name: 'mail_edit',
+                description: 'Edit an unsent (unacked) mail message. Only the sender can edit, and only before the recipient acks it. Use to fix mistakes in mail you just sent.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string', description: 'Mail UUID to edit' },
+                        subject: { type: 'string', description: 'New subject (optional if body provided)' },
+                        body: { type: 'string', description: 'New body (optional if subject provided)' }
+                    },
+                    required: ['id']
+                }
+            },
+            {
                 name: 'mail_ack',
                 description: 'Manually ack specific mail messages by UUID. Use this if mail_receive failed after downloading but before acking.',
                 inputSchema: {
@@ -547,6 +560,17 @@ async function handleToolCall(name, args) {
         ).join('\n\n---\n\n');
 
         return { content: [{ type: 'text', text: `${formatted}\n\n(mail_ids: [${ids.join(', ')}] — call mail_ack to mark as read)` }] };
+    }
+
+    if (name === 'mail_edit') {
+        const from_agent = DEFAULT_AGENT;
+        const data = await apiCall('/mail/edit', {
+            id: args.id,
+            from_agent,
+            subject: args.subject,
+            body: args.body
+        });
+        return { content: [{ type: 'text', text: `Mail ${data.id} updated (to: ${data.to_agent}, subject: "${data.subject}")` }] };
     }
 
     if (name === 'mail_ack') {
