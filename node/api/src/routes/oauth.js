@@ -1,7 +1,8 @@
 // OAuth 2.1 endpoints for MCP client authentication.
-// Supports two grant types:
+// Supports three grant types:
 //   1. client_credentials — for machine-to-machine (Claude Code, scripts)
 //   2. authorization_code with PKCE — for browser-based clients (claude.ai)
+//   3. refresh_token — silent re-auth when access tokens expire
 // Both use agent API keys from agent_api_keys table. Issues JWTs with permissions.
 
 const express = require('express');
@@ -9,12 +10,13 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
-const { hash } = require('../services/hashing');
+const { generateSalt, hash, generateKey } = require('../services/hashing');
 
 const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_TTL_SECONDS = 3600; // 1 hour
+const REFRESH_TOKEN_TTL_DAYS = 30;
 
 // In-memory store for authorization codes. Codes expire after 60 seconds.
 // Map of code -> { clientId, redirectUri, codeChallenge, codeChallengeMethod, expiresAt }
@@ -73,6 +75,57 @@ function issueToken(agent, permissions) {
     );
 }
 
+// Generate an opaque refresh token, store its hash in the DB, return the plaintext token.
+// Refresh tokens are long-lived (30 days) and allow silent re-auth when access tokens expire.
+async function issueRefreshToken(agent) {
+    const plaintext = generateKey();
+    const salt = generateSalt();
+    const tokenHash = hash(plaintext, salt);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+    await pool.query(
+        'INSERT INTO oauth_refresh_tokens (token_hash, token_salt, agent, expires_at) VALUES ($1, $2, $3, $4)',
+        [tokenHash, salt, agent, expiresAt]
+    );
+
+    return plaintext;
+}
+
+// Validate a refresh token. Returns the agent name if valid, null otherwise.
+// Consumes the token (deletes it) on success — caller must issue a new one (rotation).
+async function validateRefreshToken(token) {
+    const result = await pool.query(
+        'SELECT id, token_hash, token_salt, agent, expires_at FROM oauth_refresh_tokens WHERE revoked_at IS NULL'
+    );
+
+    for (const row of result.rows) {
+        const computed = hash(token, row.token_salt);
+        if (computed === row.token_hash) {
+            if (new Date() > new Date(row.expires_at)) {
+                // Expired — clean it up
+                pool.query('DELETE FROM oauth_refresh_tokens WHERE id = $1', [row.id]).catch(() => {});
+                return null;
+            }
+            // Consume the token (one-time use, rotation on each refresh)
+            pool.query('DELETE FROM oauth_refresh_tokens WHERE id = $1', [row.id]).catch(() => {});
+            return row.agent;
+        }
+    }
+
+    return null;
+}
+
+// Periodic cleanup of expired and revoked refresh tokens
+setInterval(async () => {
+    try {
+        await pool.query(
+            'DELETE FROM oauth_refresh_tokens WHERE expires_at < NOW() OR revoked_at IS NOT NULL'
+        );
+    } catch (err) {
+        // Cleanup failure is non-fatal
+    }
+}, 3600000); // every hour
+
 // RFC 9728 — Protected Resource Metadata
 // Tells MCP clients where to find the authorization server
 router.get('/.well-known/oauth-protected-resource', (req, res) => {
@@ -93,7 +146,7 @@ router.get('/.well-known/oauth-authorization-server', (req, res) => {
         authorization_endpoint: `${baseUrl}/authorize`,
         token_endpoint: `${baseUrl}/oauth/token`,
         token_endpoint_auth_methods_supported: ['client_secret_post'],
-        grant_types_supported: ['authorization_code', 'client_credentials'],
+        grant_types_supported: ['authorization_code', 'client_credentials', 'refresh_token'],
         response_types_supported: ['code'],
         code_challenge_methods_supported: ['S256']
     });
@@ -154,9 +207,10 @@ router.get('/authorize', async (req, res) => {
     res.redirect(302, redirectUrl.toString());
 });
 
-// OAuth token endpoint — handles both grant types.
-// client_credentials: client_id + client_secret → token directly
-// authorization_code: code + code_verifier → token (with PKCE validation)
+// OAuth token endpoint — handles all three grant types.
+// client_credentials: client_id + client_secret → access token + refresh token
+// authorization_code: code + code_verifier → access token + refresh token (with PKCE validation)
+// refresh_token: refresh_token → new access token + new refresh token (rotation)
 router.post('/oauth/token', express.urlencoded({ extended: false }), async (req, res) => {
     const { grant_type } = req.body;
 
@@ -164,10 +218,12 @@ router.post('/oauth/token', express.urlencoded({ extended: false }), async (req,
         return handleClientCredentials(req, res);
     } else if (grant_type === 'authorization_code') {
         return handleAuthorizationCode(req, res);
+    } else if (grant_type === 'refresh_token') {
+        return handleRefreshToken(req, res);
     } else {
         return res.status(400).json({
             error: 'unsupported_grant_type',
-            error_description: 'Supported grant types: authorization_code, client_credentials'
+            error_description: 'Supported grant types: authorization_code, client_credentials, refresh_token'
         });
     }
 });
@@ -194,11 +250,13 @@ async function handleClientCredentials(req, res) {
 
         const permissions = await getPermissions(agent);
         const token = issueToken(agent, permissions);
+        const refreshToken = await issueRefreshToken(agent);
 
         res.json({
             access_token: token,
             token_type: 'Bearer',
-            expires_in: TOKEN_TTL_SECONDS
+            expires_in: TOKEN_TTL_SECONDS,
+            refresh_token: refreshToken
         });
     } catch (err) {
         console.error('OAuth client_credentials error:', err.message);
@@ -283,17 +341,60 @@ async function handleAuthorizationCode(req, res) {
 
         const permissions = await getPermissions(codeData.clientId);
         const token = issueToken(codeData.clientId, permissions);
+        const refreshToken = await issueRefreshToken(codeData.clientId);
 
         res.json({
             access_token: token,
             token_type: 'Bearer',
-            expires_in: TOKEN_TTL_SECONDS
+            expires_in: TOKEN_TTL_SECONDS,
+            refresh_token: refreshToken
         });
     } catch (err) {
         console.error('OAuth authorization_code error:', err.message);
         res.status(500).json({
             error: 'server_error',
             error_description: 'Token generation failed'
+        });
+    }
+}
+
+// refresh_token grant — silent re-auth when the 1-hour access token expires.
+// Validates the refresh token, consumes it (one-time use), and issues a new
+// access token + new refresh token (rotation).
+async function handleRefreshToken(req, res) {
+    const { refresh_token } = req.body;
+
+    if (!refresh_token) {
+        return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'refresh_token is required'
+        });
+    }
+
+    try {
+        const agent = await validateRefreshToken(refresh_token);
+        if (!agent) {
+            return res.status(401).json({
+                error: 'invalid_grant',
+                error_description: 'Invalid or expired refresh token'
+            });
+        }
+
+        const permissions = await getPermissions(agent);
+        const token = issueToken(agent, permissions);
+        const newRefreshToken = await issueRefreshToken(agent);
+
+        res.json({
+            access_token: token,
+            token_type: 'Bearer',
+            expires_in: TOKEN_TTL_SECONDS,
+            refresh_token: newRefreshToken
+        });
+    } catch (err) {
+        console.error('OAuth refresh_token error:', err.message);
+        res.status(500).json({
+            error: 'server_error',
+            error_description: 'Token refresh failed'
         });
     }
 }
