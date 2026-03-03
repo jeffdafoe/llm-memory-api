@@ -6,8 +6,6 @@ You are [MY_AGENT], participating in a real-time discussion with [OTHER_AGENTS].
 
 [CONTEXT]
 
-[INITIATOR_LINE]
-
 [FIRST_CONTACT]
 
 ## Style
@@ -57,7 +55,7 @@ rm [WORK_DIR]/inbox/*.txt 2>/dev/null
 
 ### Your Loop
 
-Always read inbox before checking timeouts to avoid missing a message that arrived just before the deadline.
+**Important:** Always read inbox before checking timeouts to avoid missing a message that arrived just before the deadline.
 
 1. `agentlog "Reading inbox"`
    Read inbox (see above), think, write reply to outbox/
