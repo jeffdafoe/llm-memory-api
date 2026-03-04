@@ -23,6 +23,8 @@ const {
 
 const router = Router();
 
+const MCP_PROTOCOL_VERSION = '2025-03-26';
+
 // Permission check — does the JWT include the required permission?
 function hasPermission(req, permission) {
     return req.mcpPermissions.includes(permission);
@@ -958,6 +960,12 @@ async function rehydrateSession(sessionId, req) {
 
     return { server, transport };
 }
+
+// Handle HEAD /mcp (protocol discovery — no auth required)
+router.head('/mcp', (req, res) => {
+    res.setHeader('Mcp-Protocol-Version', MCP_PROTOCOL_VERSION);
+    res.status(200).end();
+});
 
 // Handle POST /mcp (new request or existing session message)
 router.post('/mcp', mcpAuth, async (req, res) => {
