@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
 
 const router = Router();
 
@@ -124,6 +124,27 @@ router.post('/documents/edit', async (req, res) => {
         console.error('Document edit error:', err.message);
         res.status(status).json({
             error: { code: status === 400 ? 'BAD_REQUEST' : status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+router.post('/documents/move', async (req, res) => {
+    const { namespace, slug, new_slug, new_namespace } = req.body;
+
+    if (!namespace || !slug || !new_slug) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug, new_slug. Optional: new_namespace' }
+        });
+    }
+
+    try {
+        const result = await moveNote(namespace, slug, new_slug, new_namespace);
+        res.json(result);
+    } catch (err) {
+        const status = err.statusCode || 500;
+        console.error('Document move error:', err.message);
+        res.status(status).json({
+            error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });

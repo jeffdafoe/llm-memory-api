@@ -12,7 +12,7 @@ const pool = require('../db');
 
 // Services
 const { searchMemory, ingestContent, deleteMemory } = require('../services/memory');
-const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailAck } = require('../services/mail');
 const {
@@ -146,6 +146,20 @@ const TOOLS = [
                 replace_all: { type: 'boolean', description: 'Replace all occurrences (default: false — requires old_string to be unique)' }
             },
             required: ['slug', 'old_string', 'new_string']
+        }
+    },
+    {
+        name: 'move_note',
+        description: 'Move/rename a note by changing its slug. Also updates associated vector chunks. Optionally move to a different namespace.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                slug: { type: 'string', description: 'Current slug of the note' },
+                new_slug: { type: 'string', description: 'New slug for the note' },
+                namespace: { type: 'string', description: 'Current namespace (default: agent namespace)' },
+                new_namespace: { type: 'string', description: 'Target namespace (optional, defaults to current namespace)' }
+            },
+            required: ['slug', 'new_slug']
         }
     },
     {
@@ -440,6 +454,7 @@ const TOOL_PERMISSIONS = {
     delete_note: 'mcp_delete_note',
     restore_note: 'mcp_delete_note',
     edit_note: 'mcp_save_note',
+    move_note: 'mcp_save_note',
     grep: 'mcp_search',
     read_instructions: 'mcp_read_note',
     save_instructions: 'mcp_save_note',
@@ -537,6 +552,11 @@ const TOOL_HANDLERS = {
     async edit_note(args, agent, namespace) {
         const result = await editNote(args.namespace || namespace, args.slug, args.old_string, args.new_string, args.replace_all);
         return `Edited: ${result.namespace}/${result.slug} (${result.replacements} replacement${result.replacements === 1 ? '' : 's'})`;
+    },
+
+    async move_note(args, agent, namespace) {
+        const doc = await moveNote(args.namespace || namespace, args.slug, args.new_slug, args.new_namespace);
+        return `Moved: ${args.namespace || namespace}/${args.slug} → ${doc.namespace}/${doc.slug}`;
     },
 
     async grep(args, agent, namespace) {

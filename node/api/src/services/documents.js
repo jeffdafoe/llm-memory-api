@@ -277,4 +277,47 @@ async function grepNotes(pattern, namespace, limit) {
     });
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, titleToSlug };
+// Move/rename a note by changing its slug (and optionally namespace).
+// Updates both the document row and any associated vector chunks.
+async function moveNote(namespace, slug, newSlug, newNamespace) {
+    const targetNamespace = newNamespace || namespace;
+
+    // Verify source exists and isn't deleted
+    const source = await pool.query(
+        'SELECT id, title FROM documents WHERE namespace = $1 AND slug = $2 AND deleted_at IS NULL',
+        [namespace, slug]
+    );
+    if (source.rows.length === 0) {
+        throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
+    }
+
+    // Check target slug isn't already taken (including soft-deleted — unique constraint covers both)
+    const conflict = await pool.query(
+        'SELECT id FROM documents WHERE namespace = $1 AND slug = $2',
+        [targetNamespace, newSlug]
+    );
+    if (conflict.rows.length > 0) {
+        throw Object.assign(
+            new Error(`Target slug already exists: ${targetNamespace}/${newSlug}`),
+            { statusCode: 409 }
+        );
+    }
+
+    // Update the document
+    const result = await pool.query(`
+        UPDATE documents
+        SET slug = $1, namespace = $2, updated_at = NOW()
+        WHERE namespace = $3 AND slug = $4
+        RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+    `, [newSlug, targetNamespace, namespace, slug]);
+
+    // Update vector chunks to match the new slug/namespace
+    await pool.query(
+        'UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND source_file = $4',
+        [newSlug, targetNamespace, namespace, slug]
+    );
+
+    return result.rows[0];
+}
+
+module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, titleToSlug };
