@@ -43,6 +43,7 @@
                     <li><a href="#" :class="{ active: currentView === 'discussions' }" @click.prevent="currentView = 'discussions'">Discussions</a></li>
                     <li><a href="#" :class="{ active: currentView === 'chat' }" @click.prevent="currentView = 'chat'">Chat</a></li>
                     <li><a href="#" :class="{ active: currentView === 'mail' }" @click.prevent="currentView = 'mail'">Mail</a></li>
+                    <li><a href="#" :class="{ active: currentView === 'apilog' }" @click.prevent="currentView = 'apilog'">API Log</a></li>
                     <li><a href="#" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">Notes</a></li>
                     <li><a href="#" @click.prevent="logout">Logout</a></li>
                 </ul>
@@ -520,6 +521,65 @@
                                     <td>{{ msg.to_agent }}</td>
                                     <td class="message-cell">{{ msg.subject }}</td>
                                     <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- API Log view -->
+                <div v-if="currentView === 'apilog'" class="apilog-page">
+                    <div class="apilog-toolbar">
+                        <div class="apilog-filters">
+                            <select v-model="apiLogFilterAgent" class="apilog-filter-select">
+                                <option value="">All agents</option>
+                                <option v-for="a in apiLogAgents" :key="a" :value="a">{{ a }}</option>
+                            </select>
+                            <select v-model="apiLogFilterStatus" class="apilog-filter-select">
+                                <option value="">All statuses</option>
+                                <option value="ok">2xx OK</option>
+                                <option value="redirect">3xx Redirect</option>
+                                <option value="client">4xx Client Error</option>
+                                <option value="server">5xx Server Error</option>
+                            </select>
+                            <input type="text" v-model="apiLogFilterPath" placeholder="Filter path..." class="apilog-filter-input">
+                        </div>
+                        <div class="apilog-controls">
+                            <span class="apilog-count">{{ apiLogFiltered.length }} entries</span>
+                            <button class="inline-button" @click="apiLogPaused = !apiLogPaused">
+                                {{ apiLogPaused ? 'Resume' : 'Pause' }}
+                            </button>
+                            <button class="inline-button secondary" @click="apiLogEntries = []; apiLogLastId = 0; pollApiLog()">Clear</button>
+                        </div>
+                    </div>
+                    <div class="apilog-scroll">
+                        <table class="fixed-table">
+                            <colgroup>
+                                <col style="width: 6em;">
+                                <col style="width: 5em;">
+                                <col>
+                                <col style="width: 4.5em;">
+                                <col style="width: 4em;">
+                                <col style="width: 10em;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th class="nowrap">Agent</th>
+                                    <th class="nowrap">Method</th>
+                                    <th>Path</th>
+                                    <th class="nowrap">Status</th>
+                                    <th class="time-cell nowrap">ms</th>
+                                    <th class="time-cell nowrap">Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="entry in apiLogFiltered" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
+                                    <td class="nowrap">{{ entry.agent || '' }}</td>
+                                    <td class="log-mono">{{ entry.method }}</td>
+                                    <td class="message-cell log-mono">{{ entry.path }}</td>
+                                    <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '...' }}</td>
+                                    <td class="log-mono time-cell">{{ entry.duration !== null ? entry.duration : '' }}</td>
+                                    <td class="log-mono time-cell nowrap">{{ formatTime(entry.timestamp) }}</td>
                                 </tr>
                             </tbody>
                         </table>

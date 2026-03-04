@@ -446,6 +446,70 @@ h4 i {
     opacity: 1;
 }
 
+/* API Log full page */
+
+.apilog-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 6rem);
+}
+
+.apilog-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.apilog-filters {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.apilog-filter-select {
+    width: auto;
+    min-width: 10em;
+    margin-bottom: 0;
+    padding: 0.3em 0.6em;
+    font-size: 0.9em;
+}
+
+.apilog-filter-input {
+    width: 14em;
+    margin-bottom: 0;
+    padding: 0.3em 0.6em;
+    font-size: 0.9em;
+}
+
+.apilog-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.apilog-count {
+    font-size: 0.85em;
+    color: var(--pico-muted-color);
+    white-space: nowrap;
+}
+
+.apilog-scroll {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.apilog-scroll thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--pico-background-color);
+}
+
 /* Notes view */
 
 .notes-layout {
