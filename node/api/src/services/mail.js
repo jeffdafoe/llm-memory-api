@@ -64,4 +64,63 @@ async function mailAck(agent, messageIds) {
     return { agent, acked: result.rows.length, acked_ids: result.rows.map(r => r.id) };
 }
 
-module.exports = { mailSend, mailReceive, mailAck };
+// Edit an unacked mail message (sender only, before recipient acks)
+async function mailEdit(id, fromAgent, subject, body) {
+    if (!id || !fromAgent) {
+        throw Object.assign(new Error('Required fields: id, from_agent. Optional: subject, body'), { statusCode: 400 });
+    }
+    if (!subject && !body) {
+        throw Object.assign(new Error('At least one of subject or body must be provided'), { statusCode: 400 });
+    }
+
+    // Build dynamic SET clause
+    const setClauses = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (subject) {
+        setClauses.push(`subject = $${paramIndex++}`);
+        values.push(subject);
+    }
+    if (body) {
+        setClauses.push(`body = $${paramIndex++}`);
+        values.push(body);
+    }
+
+    values.push(id, fromAgent);
+
+    const result = await pool.query(
+        `UPDATE mail SET ${setClauses.join(', ')} WHERE id = $${paramIndex++} AND from_agent = $${paramIndex++} AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, to_agent, subject, sent_at`,
+        values
+    );
+
+    if (result.rows.length === 0) {
+        throw Object.assign(new Error('Mail not found, not owned by you, or already acked'), { statusCode: 404 });
+    }
+
+    logMail('edit', { from_agent: fromAgent, mail_id: id, fields: [subject ? 'subject' : null, body ? 'body' : null].filter(Boolean) });
+
+    return result.rows[0];
+}
+
+// Unsend (soft delete) an unacked mail message (sender only)
+async function mailUnsend(id, fromAgent) {
+    if (!id || !fromAgent) {
+        throw Object.assign(new Error('Required fields: id, from_agent'), { statusCode: 400 });
+    }
+
+    const result = await pool.query(
+        'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND from_agent = $2 AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, to_agent, subject',
+        [id, fromAgent]
+    );
+
+    if (result.rows.length === 0) {
+        throw Object.assign(new Error('Mail not found, not owned by you, or already acked'), { statusCode: 404 });
+    }
+
+    logMail('unsend', { from_agent: fromAgent, mail_id: id, to_agent: result.rows[0].to_agent, subject: result.rows[0].subject });
+
+    return result.rows[0];
+}
+
+module.exports = { mailSend, mailReceive, mailAck, mailEdit, mailUnsend };

@@ -14,7 +14,7 @@ const pool = require('../db');
 const { searchMemory, ingestContent, deleteMemory } = require('../services/memory');
 const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
-const { mailSend, mailReceive, mailAck } = require('../services/mail');
+const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend } = require('../services/mail');
 const {
     discussionCreate, discussionList, discussionStatus, discussionPending,
     discussionConclude, discussionJoin, discussionLeave,
@@ -284,6 +284,30 @@ const TOOLS = [
             required: ['ids']
         }
     },
+    {
+        name: 'mail_edit',
+        description: 'Edit an unsent (unacked) mail message. Only the sender can edit, and only before the recipient acks it. Use to fix mistakes in mail you just sent.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'string', description: 'Mail UUID to edit' },
+                subject: { type: 'string', description: 'New subject (optional if body provided)' },
+                body: { type: 'string', description: 'New body (optional if subject provided)' }
+            },
+            required: ['id']
+        }
+    },
+    {
+        name: 'mail_unsend',
+        description: 'Unsend (delete) a mail message you sent, before the recipient acks it. Only the sender can unsend.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'string', description: 'Mail UUID to unsend' }
+            },
+            required: ['id']
+        }
+    },
     // --- Agent tools ---
     {
         name: 'agent_status',
@@ -467,6 +491,8 @@ const TOOL_PERMISSIONS = {
     mail_send: 'mcp_mail_send',
     mail_receive: 'mcp_mail_receive',
     mail_ack: 'mcp_mail_ack',
+    mail_edit: 'mcp_mail_send',
+    mail_unsend: 'mcp_mail_send',
     agent_status: 'mcp_agent_status',
     update_expertise: 'mcp_agent_status',
     update_profile: 'mcp_agent_status',
@@ -656,6 +682,16 @@ const TOOL_HANDLERS = {
     async mail_ack(args, agent, namespace) {
         const data = await mailAck(validateIdentity(args.agent, agent, 'agent'), args.ids);
         return `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]`;
+    },
+
+    async mail_edit(args, agent, namespace) {
+        const data = await mailEdit(args.id, agent, args.subject, args.body);
+        return `Mail ${data.id} updated (to: ${data.to_agent}, subject: "${data.subject}")`;
+    },
+
+    async mail_unsend(args, agent, namespace) {
+        const data = await mailUnsend(args.id, agent);
+        return `Mail ${data.id} unsent (was to: ${data.to_agent}, subject: "${data.subject}")`;
     },
 
     // --- Agent ---
