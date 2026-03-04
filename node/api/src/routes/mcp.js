@@ -970,35 +970,30 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         return;
     }
 
-    // Session ID provided but not in memory — check the database for rehydration
+    // Session ID provided but not in memory — rehydrate it.
+    // Works whether the session is in the DB or not, and whether tools changed or not.
+    // The client is already authenticated, so we just rebuild the server-side state.
     if (sessionId) {
         try {
-            const { rows } = await pool.query(
-                'SELECT agent, tools_hash FROM mcp_sessions WHERE session_id = $1',
-                [sessionId]
-            );
+            const session = await rehydrateSession(sessionId, req);
 
-            if (rows.length > 0 && rows[0].tools_hash === TOOLS_HASH) {
-                // Tools haven't changed — rehydrate the session
-                const session = await rehydrateSession(sessionId, req);
-                await session.transport.handleRequest(req, res, req.body);
-                return;
-            }
+            // Persist session to DB (replace any stale row)
+            pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId])
+                .then(() => pool.query(
+                    'INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)',
+                    [sessionId, req.mcpAgent, TOOLS_HASH]
+                )).catch(() => {});
 
-            // Either not in DB or tools changed — clean up stale DB row if present
-            if (rows.length > 0) {
-                await pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId]);
-            }
+            await session.transport.handleRequest(req, res, req.body);
+            return;
         } catch (err) {
-            // DB error — fall through to 404 so the client re-initializes
-            console.error('MCP session rehydration DB error:', err.message);
+            console.error('MCP session rehydration error:', err.message);
+            return res.status(500).json({
+                jsonrpc: '2.0',
+                error: { code: -32000, message: 'Session rehydration failed' },
+                id: null
+            });
         }
-
-        return res.status(404).json({
-            jsonrpc: '2.0',
-            error: { code: -32000, message: 'Session not found. Please re-initialize.' },
-            id: null
-        });
     }
 
     // No session ID — new session (initialize request)
@@ -1043,27 +1038,23 @@ router.get('/mcp', mcpAuth, async (req, res) => {
         });
     }
 
-    // Try in-memory first, then rehydrate from DB
+    // Try in-memory first, then rehydrate unconditionally
     if (!sessions.has(sessionId)) {
         try {
-            const { rows } = await pool.query(
-                'SELECT agent, tools_hash FROM mcp_sessions WHERE session_id = $1',
-                [sessionId]
-            );
-            if (rows.length > 0 && rows[0].tools_hash === TOOLS_HASH) {
-                await rehydrateSession(sessionId, req);
-            }
-        } catch (err) {
-            console.error('MCP session rehydration DB error:', err.message);
-        }
-    }
+            await rehydrateSession(sessionId, req);
 
-    if (!sessions.has(sessionId)) {
-        return res.status(404).json({
-            jsonrpc: '2.0',
-            error: { code: -32000, message: 'Session not found. Please re-initialize.' },
-            id: null
-        });
+            pool.query(`
+                INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)
+                ON CONFLICT (session_id) DO UPDATE SET tools_hash = $3
+            `, [sessionId, req.mcpAgent, TOOLS_HASH]).catch(() => {});
+        } catch (err) {
+            console.error('MCP session rehydration error:', err.message);
+            return res.status(500).json({
+                jsonrpc: '2.0',
+                error: { code: -32000, message: 'Session rehydration failed' },
+                id: null
+            });
+        }
     }
 
     const session = sessions.get(sessionId);
