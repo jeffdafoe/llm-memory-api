@@ -11,7 +11,7 @@
 ## Architecture
 
 - **API server**: `node/api/src/` — Express app, routes in `routes/`, middleware in `middleware/`
-- **MCP server**: `node/mcp/server.js` — stdio MCP server, talks to the API
+- **MCP endpoint**: `node/api/src/routes/mcp.js` — Streamable HTTP MCP endpoint, all agents connect here
 - **Migrations**: `migrations/` — raw SQL, sequential MEM-XXX numbering
 - **Infrastructure**: `infrastructure/` — Ansible playbooks for deployment
 

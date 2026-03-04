@@ -1,15 +1,10 @@
 {
     "mcpServers": {
         "llm-memory": {
-            "command": "node",
-            "args": ["/path/to/llm-memory-api/node/mcp/server.js"],
-            "env": {
-                "MEMORY_API_URL": "https://memory.jeffdafoe.com/v1",
-                "MEMORY_DEFAULT_NAMESPACE": "your-namespace",
-                "MEMORY_DEFAULT_AGENT": "your-agent-name",
-                "MEMORY_AGENT_PASSPHRASE": "your-passphrase-from-registration",
-                "MEMORY_REPO_PATH": "/path/to/llm-memory",
-                "MEMORY_TEMP_DIR": "/path/to/temp/dir"
+            "type": "http",
+            "url": "https://memory.jeffdafoe.com/mcp",
+            "headers": {
+                "Authorization": "Bearer YOUR_JWT_TOKEN"
             }
         }
     }
