@@ -270,6 +270,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
+                name: 'move_note',
+                description: 'Move/rename a note by changing its slug. Also updates associated vector chunks. Optionally move to a different namespace.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        slug: { type: 'string', description: 'Current slug of the note' },
+                        new_slug: { type: 'string', description: 'New slug for the note' },
+                        namespace: { type: 'string', description: 'Current namespace (default: agent namespace)' },
+                        new_namespace: { type: 'string', description: 'Target namespace (optional, defaults to current namespace)' }
+                    },
+                    required: ['slug', 'new_slug']
+                }
+            },
+            {
                 name: 'ingest_notes',
                 description: 'Ingest all markdown notes from the llm-memory repo that have changed since last indexing. Compares local file modification times against the API index. Requires MEMORY_REPO_PATH env var.',
                 inputSchema: {
@@ -597,6 +611,17 @@ async function handleToolCall(name, args) {
         const agent = args.agent || DEFAULT_AGENT;
         const data = await apiCall('/mail/ack', { agent, message_ids: args.ids });
         return { content: [{ type: 'text', text: `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]` }] };
+    }
+
+    if (name === 'move_note') {
+        const ns = args.namespace || DEFAULT_NAMESPACE;
+        const data = await apiCall('/documents/move', {
+            namespace: ns,
+            slug: args.slug,
+            new_slug: args.new_slug,
+            new_namespace: args.new_namespace
+        });
+        return { content: [{ type: 'text', text: `Moved: ${ns}/${args.slug} → ${data.namespace}/${data.slug}` }] };
     }
 
     if (name === 'ingest_notes') {
