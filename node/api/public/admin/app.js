@@ -39,6 +39,9 @@ createApp({
         const apiLogLastId = ref(0);
         const apiLogPaused = ref(false);
         const apiLogContainer = ref(null);
+        const apiLogFilterAgent = ref('');
+        const apiLogFilterStatus = ref('');
+        const apiLogFilterPath = ref('');
         let apiLogTimer = null;
 
         // Notes data
@@ -61,6 +64,31 @@ createApp({
                 result[ns.namespace] = visibleTree(ns.namespace);
             }
             return result;
+        });
+
+        // Computed: unique agent names from log entries for filter dropdown
+        const apiLogAgents = computed(() => {
+            const agents = new Set();
+            for (const e of apiLogEntries.value) {
+                if (e.agent) agents.add(e.agent);
+            }
+            return [...agents].sort();
+        });
+
+        // Computed: filtered API log entries
+        const apiLogFiltered = computed(() => {
+            let entries = apiLogEntries.value;
+            if (apiLogFilterAgent.value) {
+                entries = entries.filter(e => e.agent === apiLogFilterAgent.value);
+            }
+            if (apiLogFilterStatus.value) {
+                entries = entries.filter(e => statusCategory(e.status) === apiLogFilterStatus.value);
+            }
+            if (apiLogFilterPath.value) {
+                const q = apiLogFilterPath.value.toLowerCase();
+                entries = entries.filter(e => e.path && e.path.toLowerCase().includes(q));
+            }
+            return entries;
         });
 
         // API helper
@@ -215,7 +243,7 @@ createApp({
 
         // API Log polling
         const API_LOG_POLL_MS = 2000;
-        const API_LOG_MAX_ENTRIES = 200;
+        const API_LOG_MAX_ENTRIES = 500;
 
         async function pollApiLog() {
             if (apiLogPaused.value) return;
@@ -239,7 +267,7 @@ createApp({
             if (apiLogTimer) return;
             pollApiLog();
             apiLogTimer = setInterval(() => {
-                if (authenticated.value && currentView.value === 'dashboard') {
+                if (authenticated.value && (currentView.value === 'dashboard' || currentView.value === 'apilog')) {
                     pollApiLog();
                 }
             }, API_LOG_POLL_MS);
@@ -610,10 +638,14 @@ createApp({
         function loadCurrentView() {
             if (currentView.value !== 'dashboard') {
                 stopLivePolling();
+            }
+            if (currentView.value !== 'dashboard' && currentView.value !== 'apilog') {
                 stopApiLogPolling();
             }
             if (currentView.value === 'dashboard') {
                 loadDashboard();
+                startApiLogPolling();
+            } else if (currentView.value === 'apilog') {
                 startApiLogPolling();
             } else if (currentView.value === 'agents') {
                 loadAgents();
@@ -807,6 +839,12 @@ createApp({
             apiLogEntries,
             apiLogPaused,
             apiLogContainer,
+            apiLogFilterAgent,
+            apiLogFilterStatus,
+            apiLogFilterPath,
+            apiLogAgents,
+            apiLogFiltered,
+            pollApiLog,
             statusCategory,
             formatTime,
             formatDate,
