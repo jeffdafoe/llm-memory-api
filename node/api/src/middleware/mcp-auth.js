@@ -1,14 +1,16 @@
 // Validates bearer tokens on the /mcp endpoint.
-// Accepts two token types:
-//   1. JWT tokens issued by /oauth/token (for claude.com OAuth flow)
+// Accepts three token types (tried in order):
+//   1. HMAC OAuth tokens — format "agent:hmac_hex", issued by /oauth/token.
+//      Deterministic and never expire. Verified by recomputing HMAC. Fast path.
 //   2. API keys from agent_api_keys table (for Claude Code direct auth)
+//   3. JWT tokens (legacy, still accepted for backwards compatibility)
 // Sets req.mcpAgent and req.mcpPermissions for downstream handlers.
 
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
+const config = require('../services/config');
 const { hash } = require('../services/hashing');
-
-const JWT_SECRET = process.env.JWT_SECRET;
 
 // Opportunistic heartbeat — update last_seen on every authenticated MCP request
 function heartbeat(agent) {
@@ -20,6 +22,33 @@ function getResourceMetadataUrl(req) {
         return `${process.env.BASE_URL}/.well-known/oauth-protected-resource`;
     }
     return `${req.protocol}://${req.get('host')}/.well-known/oauth-protected-resource`;
+}
+
+// Fetch permissions for an agent from DB
+async function getPermissions(agent) {
+    const result = await pool.query(
+        'SELECT p.name FROM agent_permissions ap JOIN permissions p ON p.id = ap.permission_id WHERE ap.agent = $1',
+        [agent]
+    );
+    return result.rows.map(r => r.name);
+}
+
+// Try HMAC OAuth token auth. Format: "agent:hmac_hex".
+// Returns agent name on success, null on failure.
+function tryHmacAuth(token) {
+    const colonIndex = token.indexOf(':');
+    if (colonIndex === -1) return null;
+
+    const agent = token.substring(0, colonIndex);
+    const providedHmac = token.substring(colonIndex + 1);
+
+    const secret = config.get('oauth_hmac_secret');
+    const expectedHmac = crypto.createHmac('sha256', secret).update(agent).digest('hex');
+
+    // Timing-safe comparison to prevent timing attacks
+    if (providedHmac.length !== expectedHmac.length) return null;
+    const match = crypto.timingSafeEqual(Buffer.from(providedHmac), Buffer.from(expectedHmac));
+    return match ? agent : null;
 }
 
 // Try to authenticate with an API key from agent_api_keys.
@@ -38,16 +67,8 @@ async function tryApiKeyAuth(token) {
                 [row.agent, row.key_salt]
             ).catch(() => {});
 
-            // Fetch permissions
-            const perms = await pool.query(
-                'SELECT p.name FROM agent_permissions ap JOIN permissions p ON p.id = ap.permission_id WHERE ap.agent = $1',
-                [row.agent]
-            );
-
-            return {
-                agent: row.agent,
-                permissions: perms.rows.map(r => r.name)
-            };
+            const permissions = await getPermissions(row.agent);
+            return { agent: row.agent, permissions };
         }
     }
 
@@ -67,15 +88,13 @@ async function mcpAuth(req, res, next) {
 
     const token = header.slice(7);
 
-    // Try JWT first (fast path)
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.mcpAgent = decoded.agent;
-        req.mcpPermissions = decoded.permissions || [];
-        heartbeat(decoded.agent);
+    // Try HMAC OAuth token first (fast path — no DB lookup)
+    const hmacAgent = tryHmacAuth(token);
+    if (hmacAgent) {
+        req.mcpAgent = hmacAgent;
+        req.mcpPermissions = await getPermissions(hmacAgent);
+        heartbeat(hmacAgent);
         return next();
-    } catch (err) {
-        // Not a valid JWT — fall through to API key check
     }
 
     // Try API key auth (slower path — iterates keys)
@@ -88,7 +107,19 @@ async function mcpAuth(req, res, next) {
             return next();
         }
     } catch (err) {
-        // API key check failed — fall through to 401
+        // API key check failed — fall through
+    }
+
+    // Try JWT (legacy — still accepted for backwards compatibility)
+    try {
+        const jwtSecret = config.get('oauth_hmac_secret');
+        const decoded = jwt.verify(token, jwtSecret);
+        req.mcpAgent = decoded.agent;
+        req.mcpPermissions = decoded.permissions || [];
+        heartbeat(decoded.agent);
+        return next();
+    } catch (err) {
+        // Not a valid JWT — fall through to 401
     }
 
     res.set('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);

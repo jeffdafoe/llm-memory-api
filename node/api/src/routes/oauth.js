@@ -2,19 +2,20 @@
 // Supports two grant types:
 //   1. client_credentials — for machine-to-machine (Claude Code, scripts)
 //   2. authorization_code with PKCE — for browser-based clients (claude.ai)
-// Both use agent API keys from agent_api_keys table. Issues JWTs with permissions.
+// Both use agent API keys from agent_api_keys table.
+// Returns deterministic HMAC-based tokens (not JWTs) that never expire server-side.
+// Format: "agent:hmac_hex" — same token every time for a given agent.
 
 const express = require('express');
 const { Router } = require('express');
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const pool = require('../db');
+const config = require('../services/config');
 const { hash } = require('../services/hashing');
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const TOKEN_TTL_SECONDS = 86400; // 24 hours
+const TOKEN_TTL_SECONDS = 86400; // 24 hours (cosmetic — token never actually expires server-side)
 
 // In-memory store for authorization codes. Codes expire after 60 seconds.
 // Map of code -> { clientId, redirectUri, codeChallenge, codeChallengeMethod, expiresAt }
@@ -55,22 +56,13 @@ async function validateClientCredentials(clientId, clientSecret) {
     return null;
 }
 
-// Fetch permissions for an agent
-async function getPermissions(agent) {
-    const result = await pool.query(
-        'SELECT p.name FROM agent_permissions ap JOIN permissions p ON p.id = ap.permission_id WHERE ap.agent = $1',
-        [agent]
-    );
-    return result.rows.map(r => r.name);
-}
-
-// Issue a JWT access token for an agent
-function issueToken(agent, permissions) {
-    return jwt.sign(
-        { agent, permissions },
-        JWT_SECRET,
-        { expiresIn: TOKEN_TTL_SECONDS }
-    );
+// Issue a deterministic HMAC token for an agent.
+// Same agent always gets the same token. Token never expires server-side.
+// Format: "agent:hmac_hex" — mcp-auth verifies by recomputing the HMAC.
+function issueOAuthToken(agent) {
+    const secret = config.get('oauth_hmac_secret');
+    const hmac = crypto.createHmac('sha256', secret).update(agent).digest('hex');
+    return `${agent}:${hmac}`;
 }
 
 // RFC 9728 — Protected Resource Metadata
@@ -192,8 +184,7 @@ async function handleClientCredentials(req, res) {
             });
         }
 
-        const permissions = await getPermissions(agent);
-        const token = issueToken(agent, permissions);
+        const token = issueOAuthToken(agent);
 
         res.json({
             access_token: token,
@@ -281,8 +272,7 @@ async function handleAuthorizationCode(req, res) {
             }
         }
 
-        const permissions = await getPermissions(codeData.clientId);
-        const token = issueToken(codeData.clientId, permissions);
+        const token = issueOAuthToken(codeData.clientId);
 
         res.json({
             access_token: token,
