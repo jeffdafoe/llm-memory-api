@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const config = require('./services/config');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
 const { requestLog } = require('./middleware/request-log');
@@ -26,7 +27,7 @@ app.use(requestLog);
 // OAuth discovery + token endpoint (no auth required, root-level)
 app.use(oauthRoutes);
 
-// MCP Streamable HTTP endpoint (JWT auth via mcp-auth middleware)
+// MCP Streamable HTTP endpoint (HMAC auth via mcp-auth middleware)
 app.use(mcpRoutes);
 
 app.use('/v1', auth);
@@ -44,6 +45,12 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-app.listen(port, () => {
-    console.log(`Memory API listening on port ${port}`);
+// Load config from DB before accepting requests
+config.init().then(() => {
+    app.listen(port, () => {
+        console.log(`Memory API listening on port ${port}`);
+    });
+}).catch(err => {
+    console.error('Failed to load config:', err.message);
+    process.exit(1);
 });
