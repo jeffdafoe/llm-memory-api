@@ -294,6 +294,13 @@ createApp({
             return 'server';
         }
 
+        function formatBytes(bytes) {
+            if (bytes === null || bytes === undefined) return '';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
         function formatTime(dateStr) {
             if (!dateStr) return '';
             const d = new Date(dateStr);
@@ -939,6 +946,7 @@ createApp({
             apiLogFiltered,
             pollApiLog,
             statusCategory,
+            formatBytes,
             formatTime,
             formatDate,
             timeAgo,
