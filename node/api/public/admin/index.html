@@ -618,6 +618,9 @@
                                 <input type="text" v-model="notesSearchQuery" placeholder="Search notes..." class="notes-search-input">
                             </form>
                         </div>
+                        <div class="notes-toolbar-row">
+                            <button class="inline-button danger" @click="reindexNotes" :disabled="notesReindexing">{{ notesReindexing ? 'Reindexing...' : 'Reindex Vectors' }}</button>
+                        </div>
                         <div v-if="notesSearchResults" class="notes-search-results">
                             <div class="notes-search-header">
                                 <strong>Search Results</strong>

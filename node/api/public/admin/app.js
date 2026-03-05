@@ -61,6 +61,7 @@ createApp({
         const notesSaving = ref(false);
         const notesSearchQuery = ref('');
         const notesSearchResults = ref(null);
+        const notesReindexing = ref(false);
 
         // Computed: visible tree nodes per namespace (filters by expanded folders)
         const notesTrees = computed(() => {
@@ -671,6 +672,30 @@ createApp({
             }
         }
 
+        async function reindexNotes() {
+            if (!confirm('This will delete ALL vector chunks and re-ingest every note. This may take a while. Continue?')) {
+                return;
+            }
+            notesReindexing.value = true;
+            try {
+                const data = await api('/admin/notes/reindex');
+                let msg = 'Reindex complete.\n\n' +
+                    'Chunks deleted: ' + data.chunks_deleted + '\n' +
+                    'Documents indexed: ' + data.docs_indexed + '\n' +
+                    'Chunks created: ' + data.chunks_created;
+                if (data.errors.length > 0) {
+                    msg += '\n\nErrors (' + data.errors.length + '):\n' +
+                        data.errors.map(e => e.namespace + '/' + e.slug + ': ' + e.error).join('\n');
+                }
+                alert(msg);
+            } catch (err) {
+                console.error('Reindex failed:', err);
+                alert('Reindex failed: ' + err.message);
+            } finally {
+                notesReindexing.value = false;
+            }
+        }
+
         function loadCurrentView() {
             if (currentView.value !== 'dashboard') {
                 stopLivePolling();
@@ -932,6 +957,8 @@ createApp({
             notesSaving,
             notesSearchQuery,
             notesSearchResults,
+            notesReindexing,
+            reindexNotes,
             toggleNamespace,
             toggleFolder,
             openNote,
