@@ -670,6 +670,13 @@ createApp({
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
         }
 
+        function formatShortDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' +
+                   d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+
         function timeAgo(dateStr) {
             if (!dateStr) return '';
             const now = Date.now();
@@ -866,6 +873,7 @@ createApp({
             formatTime,
             formatDate,
             timeAgo,
+            formatShortDate,
             statusIcon,
             agentColor,
             voteQuestion,
