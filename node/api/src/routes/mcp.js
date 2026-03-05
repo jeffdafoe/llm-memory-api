@@ -905,17 +905,28 @@ const TOOL_HANDLERS = {
     }
 };
 
-function createMcpServer(req) {
+async function createMcpServer(req) {
+    const agent = req.mcpAgent;
+
+    // Load agent's startup instructions from DB to return in the initialize response.
+    // This way Claude gets instructions on connect — no tool call needed.
+    let instructions = 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.';
+    try {
+        const result = await pool.query('SELECT startup_instructions FROM agents WHERE agent = $1', [agent]);
+        if (result.rows.length > 0 && result.rows[0].startup_instructions) {
+            instructions = result.rows[0].startup_instructions;
+        }
+    } catch (err) {
+        // Fall back to generic instructions if DB query fails
+    }
+
     const server = new Server(
         { name: 'llm-memory', version: '2.0.0' },
         {
             capabilities: { tools: {} },
-            // Returned to clients on connect — tells agents to load their instructions automatically
-            instructions: 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.'
+            instructions
         }
     );
-
-    const agent = req.mcpAgent;
     const defaultNamespace = agent;
 
     server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -977,7 +988,7 @@ async function rehydrateSession(sessionId, req) {
         sessionIdGenerator: () => sessionId
     });
 
-    const server = createMcpServer(req);
+    const server = await createMcpServer(req);
     await server.connect(transport);
 
     // Mark the transport as initialized with the existing session ID.
@@ -1045,7 +1056,7 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         sessionIdGenerator: () => crypto.randomUUID()
     });
 
-    const server = createMcpServer(req);
+    const server = await createMcpServer(req);
 
     await server.connect(transport);
 
