@@ -42,7 +42,7 @@ function tryHmacAuth(token) {
     const agent = token.substring(0, colonIndex);
     const providedHmac = token.substring(colonIndex + 1);
 
-    const secret = config.get('oauth_hmac_secret');
+    const secret = config.get('mcp_oauth_bearer_secret');
     const expectedHmac = crypto.createHmac('sha256', secret).update(agent).digest('hex');
 
     // Timing-safe comparison to prevent timing attacks
@@ -112,7 +112,7 @@ async function mcpAuth(req, res, next) {
 
     // Try JWT (legacy — still accepted for backwards compatibility)
     try {
-        const jwtSecret = config.get('oauth_hmac_secret');
+        const jwtSecret = config.get('mcp_oauth_bearer_secret');
         const decoded = jwt.verify(token, jwtSecret);
         req.mcpAgent = decoded.agent;
         req.mcpPermissions = decoded.permissions || [];
