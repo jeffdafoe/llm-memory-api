@@ -249,6 +249,9 @@ tr.row-active {
     margin-bottom: 0;
 }
 
+details .table-wrap {
+    overflow-x: hidden;
+}
 
 .icon-cell {
     width: 1.5em;
