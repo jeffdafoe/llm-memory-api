@@ -493,7 +493,8 @@ createApp({
                     name: parts[parts.length - 1],
                     slug: note.slug,
                     title: note.title,
-                    depth: parts.length
+                    depth: parts.length,
+                    updated_at: note.updated_at
                 });
             }
 
@@ -667,6 +668,22 @@ createApp({
             }
             const d = new Date(dateStr);
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+        }
+
+        function timeAgo(dateStr) {
+            if (!dateStr) return '';
+            const now = Date.now();
+            const then = new Date(dateStr).getTime();
+            const seconds = Math.floor((now - then) / 1000);
+            if (seconds < 60) return 'just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return minutes + 'm ago';
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return hours + 'h ago';
+            const days = Math.floor(hours / 24);
+            if (days < 30) return days + 'd ago';
+            const months = Math.floor(days / 30);
+            return months + 'mo ago';
         }
 
         const statusIcons = {
@@ -848,6 +865,7 @@ createApp({
             statusCategory,
             formatTime,
             formatDate,
+            timeAgo,
             statusIcon,
             agentColor,
             voteQuestion,

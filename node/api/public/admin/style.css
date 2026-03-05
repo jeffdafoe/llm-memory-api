@@ -653,6 +653,21 @@ h4 i {
     background: var(--pico-table-row-stripped-background-color);
 }
 
+.tree-file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tree-file-time {
+    flex-shrink: 0;
+    font-size: 0.75em;
+    color: var(--pico-muted-color);
+    opacity: 0.7;
+    margin-left: auto;
+    padding-left: 0.5em;
+}
+
 .tree-file-active {
     background: rgba(45, 106, 45, 0.2);
     font-weight: bold;

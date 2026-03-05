@@ -625,7 +625,8 @@
                                         </div>
                                         <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
                                             <i class="icon-file-text"></i>
-                                            {{ node.name }}
+                                            <span class="tree-file-name">{{ node.name }}</span>
+                                            <span v-if="node.updated_at" class="tree-file-time">{{ timeAgo(node.updated_at) }}</span>
                                         </div>
                                     </template>
                                 </div>
@@ -641,6 +642,7 @@
                                 <div class="notes-title-bar">
                                     <h4>{{ selectedNote.title }}</h4>
                                     <span class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</span>
+                                    <span class="notes-meta" v-if="selectedNote.created_at">Created {{ formatDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatDate(selectedNote.updated_at) }}</template></span>
                                 </div>
                                 <div class="notes-actions">
                                     <button v-if="!notesEditing" class="inline-button" @click="startEditNote">Edit</button>
