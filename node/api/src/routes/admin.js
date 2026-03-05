@@ -4,7 +4,7 @@ const pool = require('../db');
 const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote } = require('../services/documents');
-const { searchMemory } = require('../services/memory');
+const { searchMemory, ingestContent } = require('../services/memory');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
@@ -616,6 +616,56 @@ router.post('/admin/notes/namespaces', async (req, res) => {
         console.error('Admin notes namespaces error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to fetch namespaces' }
+        });
+    }
+});
+
+// POST /admin/notes/reindex — delete all vector chunks and re-ingest every current note.
+// Useful for purging orphaned chunks from old slugs or recovering from drift.
+router.post('/admin/notes/reindex', async (req, res) => {
+    try {
+        // Delete all existing vector chunks
+        const deleteResult = await pool.query('DELETE FROM memory_chunks');
+        const chunksDeleted = deleteResult.rowCount;
+
+        // Fetch all non-deleted documents
+        const docs = await pool.query(
+            'SELECT namespace, slug, content FROM documents WHERE deleted_at IS NULL ORDER BY namespace, slug'
+        );
+
+        // Re-ingest each document sequentially to avoid hammering the embeddings API
+        let docsIndexed = 0;
+        let totalChunks = 0;
+        const errors = [];
+
+        for (const doc of docs.rows) {
+            try {
+                const result = await ingestContent(doc.namespace, doc.slug, doc.content);
+                docsIndexed++;
+                totalChunks += result.chunks_created;
+            } catch (err) {
+                errors.push({ namespace: doc.namespace, slug: doc.slug, error: err.message });
+            }
+        }
+
+        logAdmin('notes_reindex', {
+            user_id: req.authenticatedUser.id,
+            chunks_deleted: chunksDeleted,
+            docs_indexed: docsIndexed,
+            chunks_created: totalChunks,
+            errors: errors.length
+        });
+
+        res.json({
+            chunks_deleted: chunksDeleted,
+            docs_indexed: docsIndexed,
+            chunks_created: totalChunks,
+            errors
+        });
+    } catch (err) {
+        console.error('Admin notes reindex error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Reindex failed: ' + err.message }
         });
     }
 });
