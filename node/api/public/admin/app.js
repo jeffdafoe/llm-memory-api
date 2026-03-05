@@ -32,6 +32,11 @@ createApp({
         const selectedMessage = ref(null);
         const mailMessages = ref([]);
         const selectedMail = ref(null);
+        const mailComposing = ref(false);
+        const mailTo = ref('');
+        const mailSubject = ref('');
+        const mailBody = ref('');
+        const mailSending = ref(false);
         const liveDiscussions = ref([]);
 
         // API Log data
@@ -458,6 +463,36 @@ createApp({
             selectedMail.value = msg;
         }
 
+        function startComposeMail() {
+            mailComposing.value = true;
+            mailTo.value = '';
+            mailSubject.value = '';
+            mailBody.value = '';
+        }
+
+        function cancelComposeMail() {
+            mailComposing.value = false;
+        }
+
+        async function sendMail() {
+            if (!mailTo.value || !mailSubject.value || !mailBody.value) return;
+            mailSending.value = true;
+            try {
+                await api('/admin/mail/send', {
+                    to: mailTo.value,
+                    subject: mailSubject.value,
+                    body: mailBody.value
+                });
+                mailComposing.value = false;
+                loadMail();
+            } catch (err) {
+                console.error('Failed to send mail:', err);
+                alert('Failed to send: ' + err.message);
+            } finally {
+                mailSending.value = false;
+            }
+        }
+
         // Notes functions
 
         // Build a flat tree structure from a list of slugs.
@@ -656,6 +691,7 @@ createApp({
                 loadChat();
             } else if (currentView.value === 'mail') {
                 loadMail();
+                if (agents.value.length === 0) loadAgents();
             } else if (currentView.value === 'notes') {
                 loadNotes();
             }
@@ -858,6 +894,14 @@ createApp({
             mailMessages,
             selectedMail,
             viewMail,
+            mailComposing,
+            mailTo,
+            mailSubject,
+            mailBody,
+            mailSending,
+            startComposeMail,
+            cancelComposeMail,
+            sendMail,
             liveDiscussions,
             loadDiscussions,
             apiLogEntries,

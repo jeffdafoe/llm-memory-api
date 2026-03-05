@@ -496,6 +496,30 @@
 
                 <!-- Mail view -->
                 <div v-if="currentView === 'mail'">
+                    <div class="mail-toolbar">
+                        <button v-if="!mailComposing" class="inline-button" @click="startComposeMail"><i class="icon-edit"></i> Compose</button>
+                    </div>
+                    <div v-if="mailComposing" class="mail-compose">
+                        <div class="mail-compose-row">
+                            <label>To</label>
+                            <select v-model="mailTo">
+                                <option value="" disabled>Select agent...</option>
+                                <option v-for="a in agents" :key="a.agent" :value="a.agent">{{ a.agent }}</option>
+                            </select>
+                        </div>
+                        <div class="mail-compose-row">
+                            <label>Subject</label>
+                            <input type="text" v-model="mailSubject" placeholder="Subject">
+                        </div>
+                        <div class="mail-compose-row">
+                            <label>Body</label>
+                            <textarea v-model="mailBody" rows="4" placeholder="Message body (markdown)"></textarea>
+                        </div>
+                        <div class="mail-compose-actions">
+                            <button class="inline-button" @click="sendMail" :disabled="mailSending || !mailTo || !mailSubject || !mailBody">{{ mailSending ? 'Sending...' : 'Send' }}</button>
+                            <button class="inline-button secondary" @click="cancelComposeMail">Cancel</button>
+                        </div>
+                    </div>
                     <div class="table-wrap">
                         <table class="fixed-table">
                             <colgroup>
