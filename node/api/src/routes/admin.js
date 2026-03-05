@@ -175,11 +175,11 @@ router.post('/admin/dashboard', async (req, res) => {
     }
 });
 
-// POST /admin/api-log — recent API requests from in-memory ring buffer
+// POST /admin/api-log — recent API requests from request_log table
 router.post('/admin/api-log', async (req, res) => {
     const { since_id, limit } = req.body;
     try {
-        const entries = getRequestLogEntries(since_id || 0, limit || 100);
+        const entries = await getRequestLogEntries(since_id || 0, limit || 100);
         res.json({ entries });
     } catch (err) {
         console.error('Admin api-log error:', err.message);
