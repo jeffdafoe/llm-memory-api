@@ -60,7 +60,7 @@ async function validateClientCredentials(clientId, clientSecret) {
 // Same agent always gets the same token. Token never expires server-side.
 // Format: "agent:hmac_hex" — mcp-auth verifies by recomputing the HMAC.
 function issueOAuthToken(agent) {
-    const secret = config.get('oauth_hmac_secret');
+    const secret = config.get('mcp_oauth_bearer_secret');
     const hmac = crypto.createHmac('sha256', secret).update(agent).digest('hex');
     return `${agent}:${hmac}`;
 }
