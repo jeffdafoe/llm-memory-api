@@ -241,7 +241,8 @@ tr.row-active {
 }
 
 .table-wrap {
-    overflow-x: hidden;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .table-wrap table {

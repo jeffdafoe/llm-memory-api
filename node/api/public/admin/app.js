@@ -728,7 +728,7 @@ createApp({
                 return '—';
             }
             const d = new Date(dateStr);
-            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         }
 
         function formatShortDate(dateStr) {
