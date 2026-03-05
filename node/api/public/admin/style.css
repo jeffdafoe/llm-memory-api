@@ -241,17 +241,13 @@ tr.row-active {
 }
 
 .table-wrap {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
 }
 
 .table-wrap table {
     margin-bottom: 0;
 }
 
-details .table-wrap {
-    overflow-x: hidden;
-}
 
 .icon-cell {
     width: 1.5em;
