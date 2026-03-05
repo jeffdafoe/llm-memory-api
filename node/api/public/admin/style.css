@@ -381,6 +381,18 @@ h4 i {
     margin-bottom: 0;
 }
 
+.agents-scroll {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.agents-scroll thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--pico-background-color);
+}
+
 .dashboard-apilog {
     flex: 1;
     min-width: 0;
