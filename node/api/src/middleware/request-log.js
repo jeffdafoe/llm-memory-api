@@ -52,11 +52,18 @@ function requestLog(req, res, next) {
         // Get client IP (respect X-Forwarded-For from nginx)
         const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || null;
 
+        // Capture response length from Content-Length header, or measure the body chunk
+        let responseLength = res.getHeader('content-length') ? parseInt(res.getHeader('content-length'), 10) : null;
+        if (responseLength === null && args[0]) {
+            // args[0] is the body chunk passed to res.end()
+            responseLength = Buffer.byteLength(args[0]);
+        }
+
         // Fire-and-forget insert
         pool.query(
-            `INSERT INTO request_log (method, path, status, duration_ms, agent, ip, request_length)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [req.method, displayPath, status, duration, agent, ip, requestLength]
+            `INSERT INTO request_log (method, path, status, duration_ms, agent, ip, request_length, response_length)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [req.method, displayPath, status, duration, agent, ip, requestLength, responseLength]
         ).catch(() => {});
 
         originalEnd.apply(res, args);
@@ -68,7 +75,7 @@ function requestLog(req, res, next) {
 // Query entries from DB. Supports since_id for incremental polling and limit for initial load.
 // Aliases duration_ms → duration and timestamp → timestamp for frontend compatibility.
 async function getEntries(sinceId, limit) {
-    const cols = 'id, timestamp, method, path, status, duration_ms AS duration, agent, ip, request_length';
+    const cols = 'id, timestamp, method, path, status, duration_ms AS duration, agent, ip, request_length, response_length';
     if (sinceId) {
         const result = await pool.query(
             `SELECT ${cols} FROM request_log WHERE id > $1 ORDER BY id ASC LIMIT 500`,
