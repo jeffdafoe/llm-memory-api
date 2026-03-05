@@ -641,8 +641,8 @@
                             <div class="notes-toolbar">
                                 <div class="notes-title-bar">
                                     <h4>{{ selectedNote.title }}</h4>
-                                    <span class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</span>
-                                    <span class="notes-meta" v-if="selectedNote.created_at">Created {{ formatDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatDate(selectedNote.updated_at) }}</template></span>
+                                    <div class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</div>
+                                    <div class="notes-meta" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
                                 </div>
                                 <div class="notes-actions">
                                     <button v-if="!notesEditing" class="inline-button" @click="startEditNote">Edit</button>
