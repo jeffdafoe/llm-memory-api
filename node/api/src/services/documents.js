@@ -4,15 +4,6 @@
 const pool = require('../db');
 const { ingestContent } = require('./memory');
 
-// Strip .md suffix from slugs — agents habitually pass "foo.md" but slugs are identifiers, not filenames.
-// Applied on every operation so .md slugs can never enter (or be looked up in) the database.
-function normalizeSlug(slug) {
-    if (slug && slug.endsWith('.md')) {
-        return slug.slice(0, -3);
-    }
-    return slug;
-}
-
 function titleToSlug(title) {
     return title
         .toLowerCase()
@@ -28,7 +19,7 @@ async function saveNote(namespace, title, content, slug, createdBy) {
         throw Object.assign(new Error('Required fields: title, content'), { statusCode: 400 });
     }
 
-    const resolvedSlug = normalizeSlug(slug) || titleToSlug(title);
+    const resolvedSlug = slug || titleToSlug(title);
 
     if (!resolvedSlug) {
         throw Object.assign(new Error('Could not generate slug from title'), { statusCode: 400 });
@@ -102,7 +93,6 @@ async function listNotes(namespace, limit, offset, prefix) {
 }
 
 async function readNote(namespace, slug) {
-    slug = normalizeSlug(slug);
     const result = await pool.query(`
         SELECT id, namespace, slug, title, content, created_by, created_at, updated_at
         FROM documents
@@ -117,7 +107,6 @@ async function readNote(namespace, slug) {
 }
 
 async function deleteNote(namespace, slug) {
-    slug = normalizeSlug(slug);
     // Soft delete — set deleted_at timestamp, keep vector chunks in place.
     // Chunks are filtered out of search results via a NOT EXISTS join.
     // Use restoreNote to undo.
@@ -136,7 +125,6 @@ async function deleteNote(namespace, slug) {
 }
 
 async function restoreNote(namespace, slug) {
-    slug = normalizeSlug(slug);
     // Clear the deleted_at flag to restore the note and its vector chunks
     const result = await pool.query(`
         UPDATE documents
@@ -157,7 +145,6 @@ async function restoreNote(namespace, slug) {
 // By default, old_string must appear exactly once (prevents ambiguous edits).
 // Set replace_all to true to replace every occurrence.
 async function editNote(namespace, slug, oldString, newString, replaceAll) {
-    slug = normalizeSlug(slug);
     if (!oldString || newString === undefined || newString === null) {
         throw Object.assign(new Error('Required fields: old_string, new_string'), { statusCode: 400 });
     }
@@ -293,8 +280,6 @@ async function grepNotes(pattern, namespace, limit) {
 // Move/rename a note by changing its slug (and optionally namespace).
 // Updates both the document row and any associated vector chunks.
 async function moveNote(namespace, slug, newSlug, newNamespace) {
-    slug = normalizeSlug(slug);
-    newSlug = normalizeSlug(newSlug);
     const targetNamespace = newNamespace || namespace;
 
     // Verify source exists and isn't deleted
