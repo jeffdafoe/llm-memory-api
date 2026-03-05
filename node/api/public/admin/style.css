@@ -752,3 +752,43 @@ h4 i {
     line-height: 1.5;
     resize: vertical;
 }
+
+.mail-toolbar {
+    margin-bottom: 0.5rem;
+}
+
+.mail-compose {
+    background: var(--pico-card-background-color);
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 4px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.mail-compose-row {
+    margin-bottom: 0.5rem;
+}
+
+.mail-compose-row label {
+    display: block;
+    font-size: 0.85em;
+    font-weight: bold;
+    margin-bottom: 0.2rem;
+}
+
+.mail-compose-row select,
+.mail-compose-row input,
+.mail-compose-row textarea {
+    margin-bottom: 0;
+}
+
+.mail-compose-row textarea {
+    font-family: monospace;
+    font-size: 0.85em;
+}
+
+.mail-compose-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}

@@ -455,6 +455,49 @@ router.post('/admin/mail', async (req, res) => {
     }
 });
 
+// POST /admin/mail/send — send mail to an agent from the admin dashboard
+router.post('/admin/mail/send', async (req, res) => {
+    const { to, subject, body } = req.body;
+
+    if (!to || !subject || !body) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: to, subject, body' }
+        });
+    }
+
+    try {
+        // Verify recipient agent exists
+        const agentCheck = await pool.query(
+            'SELECT agent FROM agents WHERE agent = $1',
+            [to]
+        );
+        if (agentCheck.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: `Agent "${to}" not found` }
+            });
+        }
+
+        const from = req.authenticatedUser.username;
+        const result = await pool.query(
+            'INSERT INTO mail (to_agent, from_agent, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+            [to, from, subject, body]
+        );
+
+        logAdmin('mail_send', { from, to, mail_id: result.rows[0].id, subject, user_id: req.authenticatedUser.id });
+
+        res.json({
+            id: result.rows[0].id,
+            sent_at: result.rows[0].sent_at,
+            message: 'Mail sent'
+        });
+    } catch (err) {
+        console.error('Admin mail send error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to send mail' }
+        });
+    }
+});
+
 // POST /admin/notes/list — list notes in a namespace
 router.post('/admin/notes/list', async (req, res) => {
     const { namespace, limit, offset, prefix } = req.body;
