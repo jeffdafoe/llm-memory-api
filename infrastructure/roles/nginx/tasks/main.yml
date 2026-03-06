@@ -10,6 +10,12 @@
     state: absent
   notify: Reload nginx
 
+- name: Deploy rate limiting configuration
+  template:
+    src: rate-limiting.conf.j2
+    dest: /etc/nginx/conf.d/rate-limiting.conf
+  notify: Reload nginx
+
 - name: Create nginx site configuration
   template:
     src: "site-{{ deploy_environment }}.conf.j2"
