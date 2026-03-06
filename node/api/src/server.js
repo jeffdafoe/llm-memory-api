@@ -19,7 +19,14 @@ const app = express();
 const port = process.env.PORT || 3100;
 
 app.use(express.json({ limit: '5mb' }));
-app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
+app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin'), {
+    setHeaders: (res, filePath) => {
+        // No caching for HTML/JS/CSS — ensures deploys take effect immediately
+        if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+    }
+}));
 
 // Log all API requests to in-memory ring buffer (admin dashboard live view)
 app.use(requestLog);
