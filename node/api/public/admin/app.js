@@ -808,6 +808,7 @@ createApp({
             discussionChat.value = null;
             selectedMessage.value = null;
             selectedMail.value = null;
+            selectedAgent.value = null;
         }
 
         // Auto-refresh polling
@@ -845,7 +846,6 @@ createApp({
 
         // Watch view changes to load data — clear agent selection on navigate
         watch(currentView, () => {
-            selectedAgent.value = null;
             loadCurrentView();
         });
 

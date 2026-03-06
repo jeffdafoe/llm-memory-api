@@ -98,7 +98,7 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="agent in dashboard.agents" :key="agent.agent">
+                                        <tr v-for="agent in dashboard.agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
                                             <td class="nowrap">{{ agent.agent }}</td>
                                             <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
                                             <td class="time-cell nowrap">{{ formatDate(agent.last_seen) }}</td>
@@ -348,7 +348,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable" :class="{ 'row-active': selectedAgent && selectedAgent.agent === agent.agent }">
+                                <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
                                     <td>{{ agent.agent }}</td>
                                     <td>
                                         <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
@@ -361,61 +361,6 @@
                         </table>
                     </div>
 
-                    <!-- Agent detail panel -->
-                    <div v-if="selectedAgent" class="agent-detail">
-                        <div class="agent-detail-header">
-                            <h4>{{ selectedAgent.agent }}</h4>
-                            <span class="notes-meta">
-                                <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
-                                <template v-if="selectedAgent.provider || selectedAgent.model">
-                                    · {{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}
-                                </template>
-                                · Last seen: {{ formatDate(selectedAgent.last_seen) }}
-                                · Passphrase rotated: {{ formatDate(selectedAgent.passphrase_rotated_at) }}
-                            </span>
-                        </div>
-
-                        <div class="agent-section">
-                            <div class="agent-section-header">
-                                <h5>Expertise</h5>
-                                <div class="notes-actions">
-                                    <button v-if="!agentExpertiseEditing" class="inline-button" @click="startEditExpertise">Edit</button>
-                                    <button v-if="agentExpertiseEditing" class="inline-button" @click="saveExpertise" :disabled="agentExpertiseSaving">{{ agentExpertiseSaving ? 'Saving...' : 'Save' }}</button>
-                                    <button v-if="agentExpertiseEditing" class="inline-button secondary" @click="cancelEditExpertise">Cancel</button>
-                                </div>
-                            </div>
-                            <div v-if="agentExpertiseEditing">
-                                <input type="text" v-model="agentExpertiseEditText" placeholder="Comma-separated areas (e.g. codebase, devops, payments)" class="expertise-input" @keydown.enter.prevent="saveExpertise">
-                            </div>
-                            <div v-else>
-                                <span v-if="agentExpertise.length === 0" class="muted">No expertise areas set.</span>
-                                <span v-for="tag in agentExpertise" :key="tag" class="expertise-tag">{{ tag }}</span>
-                            </div>
-                        </div>
-
-                        <div class="agent-section">
-                            <div class="agent-section-header">
-                                <h5>Startup Instructions</h5>
-                                <div class="notes-actions">
-                                    <button v-if="!agentInstructionsEditing" class="inline-button" @click="startEditInstructions">Edit</button>
-                                    <button v-if="agentInstructionsEditing" class="inline-button" @click="saveInstructions" :disabled="agentInstructionsSaving">{{ agentInstructionsSaving ? 'Saving...' : 'Save' }}</button>
-                                    <button v-if="agentInstructionsEditing" class="inline-button secondary" @click="cancelEditInstructions">Cancel</button>
-                                </div>
-                            </div>
-                            <div v-if="agentInstructionsEditing">
-                                <textarea v-model="agentInstructionsEditContent" class="agent-instructions-textarea"></textarea>
-                            </div>
-                            <div v-else>
-                                <pre v-if="agentInstructions" class="notes-pre">{{ agentInstructions }}</pre>
-                                <p v-else class="muted">No startup instructions set.</p>
-                            </div>
-                        </div>
-
-                        <div class="agent-section">
-                            <h5>Passphrase</h5>
-                            <button class="inline-button danger" @click="resetAgentPassphrase">Reset Passphrase</button>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Discussions view -->
@@ -789,6 +734,58 @@
                             <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
                             <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
                             <div class="mail-body">{{ selectedMail.body }}</div>
+                        </div>
+                    </article>
+                </dialog>
+
+                <!-- Agent detail modal -->
+                <dialog :open="selectedAgent !== null" @close="selectedAgent = null">
+                    <article v-if="selectedAgent" class="agent-detail-dialog">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="selectedAgent = null"></button>
+                        </header>
+                        <div class="dialog-body">
+                            <h3>{{ selectedAgent.agent }}</h3>
+                            <p>
+                                <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
+                                <span v-if="selectedAgent.provider || selectedAgent.model" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
+                            </p>
+                            <p class="muted">
+                                Last seen: {{ formatDate(selectedAgent.last_seen) }}<br>
+                                Registered: {{ formatDate(selectedAgent.registered_at) }}
+                            </p>
+
+                            <h4>
+                                Expertise
+                                <button v-if="!agentExpertiseEditing" class="inline-button" @click="startEditExpertise"><i class="icon-edit"></i></button>
+                            </h4>
+                            <div v-if="agentExpertiseEditing">
+                                <input type="text" v-model="agentExpertiseEditText" placeholder="comma-separated areas">
+                                <div class="button-row">
+                                    <button @click="saveExpertise" :disabled="agentExpertiseSaving">Save</button>
+                                    <button class="secondary" @click="cancelEditExpertise">Cancel</button>
+                                </div>
+                            </div>
+                            <div v-else>
+                                <span v-if="agentExpertise.length === 0" class="muted">None set</span>
+                                <span v-for="area in agentExpertise" :key="area" class="badge" style="margin-right: 0.3em;">{{ area }}</span>
+                            </div>
+
+                            <h4>
+                                Startup Instructions
+                                <button v-if="!agentInstructionsEditing" class="inline-button" @click="startEditInstructions"><i class="icon-edit"></i></button>
+                            </h4>
+                            <div v-if="agentInstructionsEditing">
+                                <textarea v-model="agentInstructionsEditContent" rows="10"></textarea>
+                                <div class="button-row">
+                                    <button @click="saveInstructions" :disabled="agentInstructionsSaving">Save</button>
+                                    <button class="secondary" @click="cancelEditInstructions">Cancel</button>
+                                </div>
+                            </div>
+                            <pre v-else class="instructions-pre">{{ agentInstructions || '(none)' }}</pre>
+
+                            <hr>
+                            <button class="secondary outline" @click="resetAgentPassphrase"><i class="icon-key"></i> Reset Passphrase</button>
                         </div>
                     </article>
                 </dialog>
