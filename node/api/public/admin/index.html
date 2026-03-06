@@ -45,7 +45,6 @@
                     <li><a href="#" :class="{ active: currentView === 'mail' }" @click.prevent="currentView = 'mail'">Mail</a></li>
                     <li><a href="#" :class="{ active: currentView === 'apilog' }" @click.prevent="currentView = 'apilog'">API Log</a></li>
                     <li><a href="#" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">Notes</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'templates' }" @click.prevent="currentView = 'templates'">Templates</a></li>
                     <li><a href="#" @click.prevent="logout">Logout</a></li>
                 </ul>
             </nav>
@@ -333,44 +332,123 @@
                     </details>
                 </div>
 
-                <!-- Agents view -->
+                <!-- Agents view (with sub-tabs) -->
                 <div v-if="currentView === 'agents'">
-                    <div class="mail-toolbar">
-                        <button class="inline-button" @click="startCreateAgent"><i class="icon-plus"></i> Create Agent</button>
+                    <div class="sub-tabs">
+                        <a href="#" :class="{ active: agentSubTab === 'list' }" @click.prevent="agentSubTab = 'list'">Agents</a>
+                        <a href="#" :class="{ active: agentSubTab === 'templates' }" @click.prevent="agentSubTab = 'templates'; loadTemplates()">Templates</a>
                     </div>
 
-                    <div class="table-wrap">
-                        <table class="fixed-table">
-                            <colgroup>
-                                <col class="col-agent">
-                                <col style="width: 5.5em;">
-                                <col style="width: 14em;">
-                                <col class="col-time">
-                                <col class="col-time">
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th>Agent</th>
-                                    <th>Status</th>
-                                    <th>Provider / Model</th>
-                                    <th class="time-cell">Last Seen</th>
-                                    <th class="time-cell">Registered</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
-                                    <td>{{ agent.agent }}</td>
-                                    <td>
-                                        <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
-                                    </td>
-                                    <td class="muted">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}</td>
-                                    <td class="time-cell">{{ formatDate(agent.last_seen) }}</td>
-                                    <td class="time-cell">{{ formatDate(agent.registered_at) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- Agents sub-tab -->
+                    <div v-if="agentSubTab === 'list'">
+                        <div class="mail-toolbar">
+                            <button class="inline-button" @click="startCreateAgent"><i class="icon-plus"></i> Create Agent</button>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="fixed-table">
+                                <colgroup>
+                                    <col class="col-agent">
+                                    <col style="width: 5.5em;">
+                                    <col style="width: 14em;">
+                                    <col class="col-time">
+                                    <col class="col-time">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>Agent</th>
+                                        <th>Status</th>
+                                        <th>Provider / Model</th>
+                                        <th class="time-cell">Last Seen</th>
+                                        <th class="time-cell">Registered</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                                        <td>{{ agent.agent }}</td>
+                                        <td>
+                                            <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
+                                        </td>
+                                        <td class="muted">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}</td>
+                                        <td class="time-cell">{{ formatDate(agent.last_seen) }}</td>
+                                        <td class="time-cell">{{ formatDate(agent.registered_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
+                    <!-- Templates sub-tab -->
+                    <div v-if="agentSubTab === 'templates'">
+                        <div class="mail-toolbar">
+                            <button v-if="!templateEditing" class="inline-button" @click="startNewTemplate"><i class="icon-plus"></i> New Template</button>
+                        </div>
+
+                        <div v-if="templateEditing" class="compose-form">
+                            <div class="form-row">
+                                <label>
+                                    Name
+                                    <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label>
+                                    Description (optional)
+                                    <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label>
+                                    Mail subject
+                                    <input type="text" v-model="templateEditSubject" placeholder="e.g. Welcome, {agent}!">
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label>
+                                    Mail body
+                                    <textarea v-model="templateEditBody" rows="12" placeholder="Use {agent} as a placeholder for the agent's name."></textarea>
+                                </label>
+                            </div>
+                            <div class="dialog-actions">
+                                <button @click="saveTemplate" :disabled="templateSaving || !templateEditName || !templateEditSubject || !templateEditBody">
+                                    {{ templateSaving ? 'Saving...' : (templateEditId ? 'Update' : 'Create') }}
+                                </button>
+                                <button class="secondary" @click="templateEditing = false">Cancel</button>
+                            </div>
+                        </div>
+
+                        <div v-if="!templateEditing" class="table-wrap">
+                            <table class="fixed-table">
+                                <colgroup>
+                                    <col style="width: 12em;">
+                                    <col>
+                                    <col style="width: 16em;">
+                                    <col class="col-time">
+                                    <col style="width: 5em;">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Subject</th>
+                                        <th class="time-cell">Updated</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="t in welcomeTemplates" :key="t.id">
+                                        <td><a href="#" @click.prevent="editTemplate(t)">{{ t.name }}</a></td>
+                                        <td class="muted message-cell">{{ t.description || '—' }}</td>
+                                        <td class="message-cell">{{ t.subject }}</td>
+                                        <td class="time-cell">{{ formatDate(t.updated_at) }}</td>
+                                        <td><button class="inline-button" @click="confirmDeleteTemplate(t)" title="Delete"><i class="icon-trash-2"></i></button></td>
+                                    </tr>
+                                    <tr v-if="welcomeTemplates.length === 0">
+                                        <td colspan="5" class="muted">No templates yet. Create one to auto-send welcome mail when creating agents.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Discussions view -->
@@ -747,81 +825,6 @@
                         </div>
                     </article>
                 </dialog>
-
-                <!-- Templates view -->
-                <div v-if="currentView === 'templates'">
-                    <div class="mail-toolbar">
-                        <button v-if="!templateEditing" class="inline-button" @click="startNewTemplate"><i class="icon-plus"></i> New Template</button>
-                    </div>
-
-                    <!-- Template editor -->
-                    <div v-if="templateEditing" class="compose-form">
-                        <div class="form-row">
-                            <label>
-                                Name
-                                <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
-                            </label>
-                        </div>
-                        <div class="form-row">
-                            <label>
-                                Description (optional)
-                                <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
-                            </label>
-                        </div>
-                        <div class="form-row">
-                            <label>
-                                Mail subject
-                                <input type="text" v-model="templateEditSubject" placeholder="e.g. Welcome, {agent}!">
-                            </label>
-                        </div>
-                        <div class="form-row">
-                            <label>
-                                Mail body
-                                <textarea v-model="templateEditBody" rows="12" placeholder="Use {agent} as a placeholder for the agent's name."></textarea>
-                            </label>
-                        </div>
-                        <div class="button-row">
-                            <button @click="saveTemplate" :disabled="templateSaving || !templateEditName || !templateEditSubject || !templateEditBody">
-                                {{ templateSaving ? 'Saving...' : (templateEditId ? 'Update' : 'Create') }}
-                            </button>
-                            <button class="secondary" @click="templateEditing = false">Cancel</button>
-                        </div>
-                    </div>
-
-                    <!-- Template list -->
-                    <div v-if="!templateEditing" class="table-wrap">
-                        <table class="fixed-table">
-                            <colgroup>
-                                <col style="width: 12em;">
-                                <col>
-                                <col style="width: 16em;">
-                                <col class="col-time">
-                                <col style="width: 5em;">
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Description</th>
-                                    <th>Subject</th>
-                                    <th class="time-cell">Updated</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="t in welcomeTemplates" :key="t.id">
-                                    <td><a href="#" @click.prevent="editTemplate(t)">{{ t.name }}</a></td>
-                                    <td class="muted message-cell">{{ t.description || '—' }}</td>
-                                    <td class="message-cell">{{ t.subject }}</td>
-                                    <td class="time-cell">{{ formatDate(t.updated_at) }}</td>
-                                    <td><button class="inline-button" @click="confirmDeleteTemplate(t)" title="Delete"><i class="icon-trash-2"></i></button></td>
-                                </tr>
-                                <tr v-if="welcomeTemplates.length === 0">
-                                    <td colspan="5" class="muted">No templates yet. Create one to auto-send welcome mail when creating agents.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
 
                 <!-- Agent detail modal -->
                 <dialog :open="selectedAgent !== null" @close="selectedAgent = null">

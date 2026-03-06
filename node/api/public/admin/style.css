@@ -228,6 +228,43 @@ tr.unread {
     user-select: all;
 }
 
+.sub-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.sub-tabs a {
+    padding: 0.4rem 1rem;
+    text-decoration: none;
+    font-size: 0.85em;
+    color: var(--pico-muted-color);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+.sub-tabs a.active {
+    color: var(--pico-primary);
+    border-bottom-color: var(--pico-primary);
+}
+
+.sub-tabs a:hover {
+    color: var(--pico-color);
+}
+
+.dialog-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+
+.dialog-actions button {
+    width: auto;
+    margin: 0;
+}
+
 .create-agent-dialog {
     max-width: 480px;
 }
