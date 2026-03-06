@@ -60,12 +60,31 @@ const logFile = path.join(workDir, 'discuss-transport.log');
 // Ensure work dir exists
 fs.mkdirSync(workDir, { recursive: true });
 
+// If --context-file is provided, copy it to a unique temp file so multiple
+// concurrent launches don't clobber each other's context.
+const childArgs = [...args];
+for (let i = 0; i < childArgs.length; i++) {
+    if (childArgs[i] === '--context-file' && childArgs[i + 1]) {
+        const origPath = childArgs[i + 1];
+        try {
+            const uniquePath = path.join(workDir, `discuss-context-${Date.now()}.md`);
+            fs.copyFileSync(origPath, uniquePath);
+            childArgs[i + 1] = uniquePath;
+            console.error(`Context copied to ${uniquePath}`);
+        } catch (e) {
+            console.error(`WARNING: Could not copy context file: ${e.message}`);
+            // Fall through with original path
+        }
+        break;
+    }
+}
+
 // Clear old log so we don't match stale "Prompt written to" lines
 try { fs.unlinkSync(logFile); } catch (e) { /* ignore */ }
 
 // Spawn discuss.js as a detached background process with stdout/stderr to log
 const logFd = fs.openSync(logFile, 'w');
-const child = spawn(process.execPath, [discussJs, ...args], {
+const child = spawn(process.execPath, [discussJs, ...childArgs], {
     detached: true,
     stdio: ['ignore', logFd, logFd],
 });
