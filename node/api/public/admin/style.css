@@ -177,22 +177,17 @@ tr.unread {
     background: rgba(45, 106, 45, 0.15);
 }
 
-tr.row-active {
-    background: rgba(45, 106, 45, 0.2);
+.agent-detail-dialog {
+    max-width: 700px;
 }
 
-.agent-detail {
-    margin-top: 1.5rem;
-    border-top: 1px solid var(--pico-muted-border-color);
-    padding-top: 1rem;
-}
-
-.agent-detail-header {
-    margin-bottom: 1rem;
-}
-
-.agent-detail-header h4 {
-    margin-bottom: 0.1rem;
+.agent-detail-dialog .instructions-pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    font-size: 0.85em;
+    line-height: 1.5;
 }
 
 .agent-section {
