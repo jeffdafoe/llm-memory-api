@@ -1,13 +1,11 @@
 // Validates bearer tokens on the /mcp endpoint.
-// Accepts three token types (tried in order):
+// Accepts two token types (tried in order):
 //   1. HMAC OAuth tokens — format "agent:hmac_hex", issued by /oauth/token.
 //      Deterministic and never expire. Verified by recomputing HMAC. Fast path.
 //   2. API keys from agent_api_keys table (for Claude Code direct auth)
-//   3. JWT tokens (legacy, still accepted for backwards compatibility)
 // Sets req.mcpAgent and req.mcpPermissions for downstream handlers.
 
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const config = require('../services/config');
 const { hash } = require('../services/hashing');
@@ -108,18 +106,6 @@ async function mcpAuth(req, res, next) {
         }
     } catch (err) {
         // API key check failed — fall through
-    }
-
-    // Try JWT (legacy — still accepted for backwards compatibility)
-    try {
-        const jwtSecret = config.get('mcp_oauth_bearer_secret');
-        const decoded = jwt.verify(token, jwtSecret);
-        req.mcpAgent = decoded.agent;
-        req.mcpPermissions = decoded.permissions || [];
-        heartbeat(decoded.agent);
-        return next();
-    } catch (err) {
-        // Not a valid JWT — fall through to 401
     }
 
     res.set('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);

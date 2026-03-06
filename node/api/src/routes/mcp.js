@@ -1,6 +1,6 @@
 // MCP Streamable HTTP endpoint.
 // Exposes all memory API tools over the MCP protocol via HTTP.
-// Auth is via JWT bearer tokens issued by /oauth/token.
+// Auth is via HMAC bearer tokens issued by /oauth/token, or API keys.
 
 const { Router } = require('express');
 const crypto = require('crypto');
@@ -25,7 +25,7 @@ const router = Router();
 
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 
-// Permission check — does the JWT include the required permission?
+// Permission check — does the token include the required permission?
 function hasPermission(req, permission) {
     return req.mcpPermissions.includes(permission);
 }
