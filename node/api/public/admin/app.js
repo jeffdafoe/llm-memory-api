@@ -1114,6 +1114,7 @@ createApp({
             templateEditSubject,
             templateEditBody,
             templateSaving,
+            loadTemplates,
             startNewTemplate,
             editTemplate,
             saveTemplate,
