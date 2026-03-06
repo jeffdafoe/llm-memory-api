@@ -13,8 +13,6 @@ function heartbeat(agent) {
 
 // Routes that don't require authentication
 const UNAUTHENTICATED_ROUTES = [
-    '/agent/register',
-    '/agent/register/ack',
     '/agent/login',
     '/admin/login',
 ];
