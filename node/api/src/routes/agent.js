@@ -97,9 +97,6 @@ router.post('/agent/login', async (req, res) => {
             rotationDue = true;
         }
 
-        // Lazy cleanup: delete expired sessions
-        await pool.query('DELETE FROM agent_sessions WHERE expires_at < NOW()');
-
         logAgent('login', { agent, subsystem: subsystem || null });
 
         res.json({
