@@ -64,6 +64,13 @@ async function evaluateReadiness(discussionId) {
             logDiscussion('ready', { discussion_id: discussionId, reason: 'timeout_required_present' });
         } else {
             await pool.query('UPDATE discussions SET status = $1 WHERE id = $2', ['timed_out', discussionId]);
+            // Mark remaining participants as 'left' so they aren't blocked
+            // from creating new discussions by the conflict check
+            await pool.query(
+                `UPDATE discussion_participants SET status = 'left'
+                 WHERE discussion_id = $1 AND status IN ('invited', 'joined')`,
+                [discussionId]
+            );
             logDiscussion('timed_out', { discussion_id: discussionId, reason: 'missing_required' });
         }
     }
@@ -137,6 +144,13 @@ async function evaluateVote(voteId) {
             await pool.query(
                 'UPDATE discussions SET status = $1, concluded_at = NOW() WHERE id = $2',
                 ['concluded', v.discussion_id]
+            );
+            // Mark all joined/invited participants as 'left' so they aren't
+            // blocked from creating new discussions by the conflict check
+            await pool.query(
+                `UPDATE discussion_participants SET status = 'left'
+                 WHERE discussion_id = $1 AND status IN ('invited', 'joined')`,
+                [v.discussion_id]
             );
             logDiscussion('auto_conclude', { discussion_id: v.discussion_id, vote_id: voteId });
         }
@@ -428,6 +442,13 @@ async function discussionConclude(discussionId, agent) {
 
     const newStatus = dStatus === 'waiting' ? 'cancelled' : 'concluded';
     await pool.query('UPDATE discussions SET status = $1, concluded_at = NOW() WHERE id = $2', [newStatus, discussionId]);
+    // Mark all joined/invited participants as 'left' so they aren't
+    // blocked from creating new discussions by the conflict check
+    await pool.query(
+        `UPDATE discussion_participants SET status = 'left'
+         WHERE discussion_id = $1 AND status IN ('invited', 'joined')`,
+        [discussionId]
+    );
 
     logDiscussion(newStatus === 'cancelled' ? 'cancel' : 'conclude', { discussion_id: discussionId, agent });
 
