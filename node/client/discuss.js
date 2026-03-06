@@ -796,33 +796,58 @@ async function setupCreate() {
             const idMatch = err.message.match(/discussion #(\d+)/);
             if (idMatch) {
                 const staleId = parseInt(idMatch[1], 10);
-                discussionId = staleId;
-                log(`Create rejected — already in discussion #${staleId}, trying to join`);
+                log(`Create rejected — already in discussion #${staleId}`);
+
+                // Check the stale discussion's status before deciding what to do
+                let staleStatus = null;
                 try {
-                    return await setupJoin();
-                } catch (joinErr) {
-                    // Join failed (likely timed out). Leave the stale discussion and retry create once.
-                    log(`Join #${staleId} failed (${joinErr.message}), leaving and retrying create`);
+                    const statusResult = await apiCall('discussion/status', { discussion_id: staleId });
+                    staleStatus = statusResult.discussion.status;
+                    log(`Discussion #${staleId} status: ${staleStatus}`);
+                } catch (statusErr) {
+                    log(`Could not check status of #${staleId}: ${statusErr.message}`);
+                }
+
+                // If the stale discussion is already dead, leave it and retry create
+                if (staleStatus && !['waiting', 'active'].includes(staleStatus)) {
+                    log(`Discussion #${staleId} is ${staleStatus} — leaving and retrying create`);
                     try {
                         await apiCall('discussion/leave', { discussion_id: staleId, agent: cfg.agent });
                         log(`Left stale discussion #${staleId}`);
                     } catch (leaveErr) {
                         log(`Leave #${staleId} failed: ${leaveErr.message}`);
                     }
-                    discussionId = null;
-                    const retryBody = {
-                        topic: cfg.topic,
-                        participants: participants,
-                        created_by: cfg.agent,
-                        mode: cfg.mode,
-                        context: createContext || undefined,
-                    };
-                    if (cfg.optionalParticipants.length > 0) {
-                        retryBody.optional_participants = cfg.optionalParticipants;
+                } else {
+                    // Discussion is still active/waiting — try to join it
+                    discussionId = staleId;
+                    log(`Discussion #${staleId} is still ${staleStatus || 'unknown'} — trying to join`);
+                    try {
+                        return await setupJoin();
+                    } catch (joinErr) {
+                        log(`Join #${staleId} failed (${joinErr.message}), leaving and retrying create`);
+                        try {
+                            await apiCall('discussion/leave', { discussion_id: staleId, agent: cfg.agent });
+                            log(`Left stale discussion #${staleId}`);
+                        } catch (leaveErr) {
+                            log(`Leave #${staleId} failed: ${leaveErr.message}`);
+                        }
                     }
-                    result = await apiCall('discussion/create', retryBody);
-                    log(`Created discussion #${result.discussion.id} (after clearing stale #${staleId})`);
                 }
+
+                // Retry create after clearing the stale discussion
+                discussionId = null;
+                const retryBody = {
+                    topic: cfg.topic,
+                    participants: participants,
+                    created_by: cfg.agent,
+                    mode: cfg.mode,
+                    context: createContext || undefined,
+                };
+                if (cfg.optionalParticipants.length > 0) {
+                    retryBody.optional_participants = cfg.optionalParticipants;
+                }
+                result = await apiCall('discussion/create', retryBody);
+                log(`Created discussion #${result.discussion.id} (after clearing stale #${staleId})`);
             }
         }
         if (!result) {
