@@ -41,6 +41,25 @@ createApp({
         const mailSending = ref(false);
         const liveDiscussions = ref([]);
 
+        // Agent creation
+        const agentCreating = ref(false);
+        const newAgentName = ref('');
+        const newAgentProvider = ref('');
+        const newAgentModel = ref('');
+        const newAgentTemplateId = ref(null);
+        const newAgentCreating = ref(false);
+        const newAgentPassphrase = ref(null);
+
+        // Welcome templates
+        const welcomeTemplates = ref([]);
+        const templateEditing = ref(false);
+        const templateEditId = ref(null);
+        const templateEditName = ref('');
+        const templateEditDescription = ref('');
+        const templateEditSubject = ref('');
+        const templateEditBody = ref('');
+        const templateSaving = ref(false);
+
         // API Log data
         const apiLogEntries = ref([]);
         const apiLogLastId = ref(0);
@@ -441,6 +460,111 @@ createApp({
             }
         }
 
+        // ---- Agent Creation ----
+
+        function startCreateAgent() {
+            agentCreating.value = true;
+            newAgentName.value = '';
+            newAgentProvider.value = '';
+            newAgentModel.value = '';
+            newAgentTemplateId.value = null;
+            newAgentCreating.value = false;
+            newAgentPassphrase.value = null;
+            // Load templates for dropdown
+            loadTemplates();
+        }
+
+        async function createAgent() {
+            if (!newAgentName.value) return;
+            newAgentCreating.value = true;
+            try {
+                const body = { agent: newAgentName.value };
+                if (newAgentProvider.value) body.provider = newAgentProvider.value;
+                if (newAgentModel.value) body.model = newAgentModel.value;
+                if (newAgentTemplateId.value) body.welcome_template_id = newAgentTemplateId.value;
+                const data = await api('/admin/agents/create', body);
+                newAgentPassphrase.value = data.passphrase;
+                showToast('Agent "' + data.agent + '" created' + (data.welcome_mail_sent ? ' with welcome mail' : ''), 'success');
+                loadAgents();
+            } catch (err) {
+                console.error('Failed to create agent:', err);
+                showToast('Failed: ' + err.message, 'error');
+            } finally {
+                newAgentCreating.value = false;
+            }
+        }
+
+        // ---- Welcome Templates ----
+
+        async function loadTemplates() {
+            try {
+                const data = await api('/admin/templates/list');
+                welcomeTemplates.value = data.templates;
+            } catch (err) {
+                console.error('Failed to load templates:', err);
+            }
+        }
+
+        function startNewTemplate() {
+            templateEditing.value = true;
+            templateEditId.value = null;
+            templateEditName.value = '';
+            templateEditDescription.value = '';
+            templateEditSubject.value = '';
+            templateEditBody.value = '';
+        }
+
+        async function editTemplate(t) {
+            try {
+                const data = await api('/admin/templates/read', { id: t.id });
+                const tpl = data.template;
+                templateEditing.value = true;
+                templateEditId.value = tpl.id;
+                templateEditName.value = tpl.name;
+                templateEditDescription.value = tpl.description || '';
+                templateEditSubject.value = tpl.subject;
+                templateEditBody.value = tpl.body;
+            } catch (err) {
+                console.error('Failed to read template:', err);
+                showToast('Failed to load template: ' + err.message, 'error');
+            }
+        }
+
+        async function saveTemplate() {
+            templateSaving.value = true;
+            try {
+                const body = {
+                    name: templateEditName.value,
+                    description: templateEditDescription.value || null,
+                    subject: templateEditSubject.value,
+                    body: templateEditBody.value
+                };
+                if (templateEditId.value) body.id = templateEditId.value;
+                await api('/admin/templates/save', body);
+                templateEditing.value = false;
+                showToast('Template saved', 'success');
+                loadTemplates();
+            } catch (err) {
+                console.error('Failed to save template:', err);
+                showToast('Failed: ' + err.message, 'error');
+            } finally {
+                templateSaving.value = false;
+            }
+        }
+
+        function confirmDeleteTemplate(t) {
+            showConfirm('Delete template "' + t.name + '"?', async () => {
+                try {
+                    await api('/admin/templates/delete', { id: t.id });
+                    showToast('Template deleted', 'success');
+                    loadTemplates();
+                } catch (err) {
+                    console.error('Failed to delete template:', err);
+                    showToast('Failed: ' + err.message, 'error');
+                }
+            });
+        }
+
         async function loadDiscussions() {
             try {
                 const body = {};
@@ -775,6 +899,8 @@ createApp({
                 if (agents.value.length === 0) loadAgents();
             } else if (currentView.value === 'notes') {
                 loadNotes();
+            } else if (currentView.value === 'templates') {
+                loadTemplates();
             }
         }
 
@@ -968,6 +1094,27 @@ createApp({
             cancelEditExpertise,
             saveExpertise,
             resetAgentPassphrase,
+            agentCreating,
+            newAgentName,
+            newAgentProvider,
+            newAgentModel,
+            newAgentTemplateId,
+            newAgentCreating,
+            newAgentPassphrase,
+            startCreateAgent,
+            createAgent,
+            welcomeTemplates,
+            templateEditing,
+            templateEditId,
+            templateEditName,
+            templateEditDescription,
+            templateEditSubject,
+            templateEditBody,
+            templateSaving,
+            startNewTemplate,
+            editTemplate,
+            saveTemplate,
+            confirmDeleteTemplate,
             discussions,
             discussionFilter,
             selectedDiscussion,
