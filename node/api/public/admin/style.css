@@ -229,7 +229,27 @@ tr.unread {
 }
 
 .confirm-dialog {
-    max-width: 450px;
+    max-width: 380px;
+    padding: 1.25rem;
+    margin: 0;
+}
+.confirm-dialog header {
+    padding: 0;
+    margin-bottom: 0.5rem;
+}
+.confirm-dialog .dialog-body p {
+    margin-bottom: 1rem;
+    font-size: 0.9em;
+}
+.confirm-dialog .button-row {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+.confirm-dialog .button-row button {
+    width: auto;
+    padding: 0.4rem 1rem;
+    font-size: 0.85em;
 }
 
 .toast {
