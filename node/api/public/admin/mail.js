@@ -1,5 +1,4 @@
 // mail.js — Mail view (list, detail, compose)
-const { ref } = Vue;
 
 function useMail({ api, showToast }) {
     const mailMessages = ref([]);
