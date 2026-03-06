@@ -16,6 +16,7 @@
       - lsb-release
       - acl
       - ufw
+      - fail2ban
     state: present
 
 # --- Firewall (UFW) ---
@@ -67,3 +68,25 @@
     regexp: "^#?PermitRootLogin"
     line: "PermitRootLogin no"
   notify: Restart sshd
+
+# --- fail2ban ---
+
+- name: Configure fail2ban SSH jail
+  copy:
+    content: |
+      [DEFAULT]
+      banaction = nftables
+      banaction_allports = nftables[type=allports]
+
+      [sshd]
+      backend = systemd
+      journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+      enabled = true
+    dest: /etc/fail2ban/jail.d/sshd.conf
+  notify: Restart fail2ban
+
+- name: Enable and start fail2ban
+  service:
+    name: fail2ban
+    enabled: yes
+    state: started
