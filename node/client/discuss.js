@@ -35,6 +35,7 @@ let joinTimeout = 300;
 let cliAgent = null;
 let cliPassphrase = null;
 let cliApiUrl = null;
+let configFilePath = null;
 
 for (let i = 1; i < args.length; i++) {
     if (args[i] === '--topic' && args[i + 1]) {
@@ -79,8 +80,29 @@ for (let i = 1; i < args.length; i++) {
     } else if (args[i] === '--api-url' && args[i + 1]) {
         cliApiUrl = args[i + 1];
         i++;
+    } else if (args[i] === '--config' && args[i + 1]) {
+        configFilePath = args[i + 1];
+        i++;
     } else if (command === 'join' && !discussionId && /^\d+$/.test(args[i])) {
         discussionId = parseInt(args[i], 10);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Config file — provides defaults for agent, passphrase, api_url, work_dir.
+// CLI flags take precedence over config file values.
+// ---------------------------------------------------------------------------
+
+if (configFilePath) {
+    try {
+        const fileConfig = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'));
+        if (!cliAgent && fileConfig.agent) cliAgent = fileConfig.agent;
+        if (!cliPassphrase && fileConfig.passphrase) cliPassphrase = fileConfig.passphrase;
+        if (!cliApiUrl && fileConfig.api_url) cliApiUrl = fileConfig.api_url;
+        if (!workDirBase && fileConfig.work_dir) workDirBase = fileConfig.work_dir;
+    } catch (e) {
+        console.error(`Failed to read config file ${configFilePath}: ${e.message}`);
+        process.exit(1);
     }
 }
 
