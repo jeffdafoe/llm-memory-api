@@ -228,6 +228,28 @@ tr.unread {
     user-select: all;
 }
 
+.create-agent-dialog {
+    max-width: 480px;
+}
+
+.create-agent-dialog .form-row-inline {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.create-agent-dialog .dialog-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+
+.create-agent-dialog .dialog-actions button {
+    width: auto;
+    margin: 0;
+}
+
 .confirm-dialog {
     max-width: 380px;
     padding: 1.25rem;

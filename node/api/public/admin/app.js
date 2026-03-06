@@ -984,6 +984,7 @@ createApp({
             selectedMessage.value = null;
             selectedMail.value = null;
             selectedAgent.value = null;
+            agentCreating.value = false;
             confirmPrompt.value = null;
         }
 

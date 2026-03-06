@@ -336,46 +336,7 @@
                 <!-- Agents view -->
                 <div v-if="currentView === 'agents'">
                     <div class="mail-toolbar">
-                        <button v-if="!agentCreating" class="inline-button" @click="startCreateAgent"><i class="icon-plus"></i> Create Agent</button>
-                    </div>
-
-                    <!-- Create Agent form -->
-                    <div v-if="agentCreating" class="compose-form">
-                        <div class="form-row">
-                            <label>
-                                Agent name
-                                <input type="text" v-model="newAgentName" placeholder="e.g. research" required>
-                            </label>
-                        </div>
-                        <div class="form-row">
-                            <label>
-                                Provider (optional)
-                                <input type="text" v-model="newAgentProvider" placeholder="e.g. anthropic">
-                            </label>
-                            <label>
-                                Model (optional)
-                                <input type="text" v-model="newAgentModel" placeholder="e.g. claude-opus-4-6">
-                            </label>
-                        </div>
-                        <div class="form-row">
-                            <label>
-                                Welcome template (optional)
-                                <select v-model="newAgentTemplateId">
-                                    <option :value="null">None</option>
-                                    <option v-for="t in welcomeTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
-                                </select>
-                            </label>
-                        </div>
-                        <div class="button-row">
-                            <button @click="createAgent" :disabled="newAgentCreating || !newAgentName">
-                                {{ newAgentCreating ? 'Creating...' : 'Create' }}
-                            </button>
-                            <button class="secondary" @click="agentCreating = false">Cancel</button>
-                        </div>
-                        <div v-if="newAgentPassphrase" class="passphrase-bar passphrase-result" style="margin-top: 0.5em;">
-                            Passphrase: <code>{{ newAgentPassphrase }}</code>
-                            <span class="muted" style="margin-left: 0.5em;">(save this — it won't be shown again)</span>
-                        </div>
+                        <button class="inline-button" @click="startCreateAgent"><i class="icon-plus"></i> Create Agent</button>
                     </div>
 
                     <div class="table-wrap">
@@ -918,6 +879,49 @@
                                 </div>
                             </div>
                             <pre v-else class="instructions-pre">{{ agentInstructions || '(none)' }}</pre>
+                        </div>
+                    </article>
+                </dialog>
+
+                <!-- Create Agent modal -->
+                <dialog :open="agentCreating" @close="agentCreating = false">
+                    <article v-if="agentCreating" class="create-agent-dialog">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="agentCreating = false"></button>
+                        </header>
+                        <div class="dialog-body">
+                            <h3>Create Agent</h3>
+                            <label>
+                                Agent name
+                                <input type="text" v-model="newAgentName" placeholder="e.g. research" autofocus>
+                            </label>
+                            <div class="form-row-inline">
+                                <label>
+                                    Provider
+                                    <input type="text" v-model="newAgentProvider" placeholder="e.g. anthropic">
+                                </label>
+                                <label>
+                                    Model
+                                    <input type="text" v-model="newAgentModel" placeholder="e.g. claude-opus-4-6">
+                                </label>
+                            </div>
+                            <label>
+                                Welcome template
+                                <select v-model="newAgentTemplateId">
+                                    <option :value="null">None</option>
+                                    <option v-for="t in welcomeTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                                </select>
+                            </label>
+                            <div v-if="newAgentPassphrase" class="passphrase-bar passphrase-result">
+                                Passphrase: <code>{{ newAgentPassphrase }}</code>
+                                <span class="muted">(save this — it won't be shown again)</span>
+                            </div>
+                            <div class="dialog-actions">
+                                <button @click="createAgent" :disabled="newAgentCreating || !newAgentName || newAgentPassphrase">
+                                    {{ newAgentCreating ? 'Creating...' : 'Create' }}
+                                </button>
+                                <button class="secondary" @click="agentCreating = false">{{ newAgentPassphrase ? 'Done' : 'Cancel' }}</button>
+                            </div>
                         </div>
                     </article>
                 </dialog>
