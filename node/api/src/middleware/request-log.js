@@ -1,10 +1,8 @@
 // Logs API request metadata to the request_log database table.
 // Fire-and-forget inserts — errors are swallowed to avoid impacting request handling.
-// Runs a daily cleanup to purge entries older than RETENTION_DAYS.
+// Retention cleanup is handled by the db-cleanup cron job.
 
 const pool = require('../db');
-
-const RETENTION_DAYS = 7;
 
 // Paths to exclude from logging (polling endpoints, static assets, health checks)
 const EXCLUDED_PATHS = ['/v1/admin/api-log', '/v1/admin/dashboard', '/v1/admin/notes/reindex-status', '/v1/admin/notes/reindex-clear', '/admin/', '/health'];
@@ -101,24 +99,5 @@ async function getEntries(sinceId, limit) {
     // Reverse so oldest-first (consistent with incremental polling order)
     return result.rows.reverse();
 }
-
-// Purge entries older than RETENTION_DAYS. Run periodically.
-async function cleanup() {
-    try {
-        const result = await pool.query(
-            `DELETE FROM request_log WHERE timestamp < NOW() - INTERVAL '1 day' * $1`,
-            [RETENTION_DAYS]
-        );
-        if (result.rowCount > 0) {
-            console.log(`request-log cleanup: purged ${result.rowCount} entries older than ${RETENTION_DAYS} days`);
-        }
-    } catch (err) {
-        console.error('request-log cleanup error:', err.message);
-    }
-}
-
-// Run cleanup once on startup and then every 24 hours
-cleanup();
-setInterval(cleanup, 24 * 60 * 60 * 1000);
 
 module.exports = { requestLog, getEntries };
