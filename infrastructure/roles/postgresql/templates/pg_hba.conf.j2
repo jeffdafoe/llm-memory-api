@@ -1,0 +1,17 @@
+# PostgreSQL client authentication — managed by Ansible
+# See https://www.postgresql.org/docs/17/auth-pg-hba-conf.html
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# postgres system user — peer auth only (must be the postgres OS user)
+local   all             postgres                                peer
+
+# Application user — password auth to its own database only
+local   {{ database_name }}  {{ database_user }}                scram-sha-256
+host    {{ database_name }}  {{ database_user }}  127.0.0.1/32  scram-sha-256
+host    {{ database_name }}  {{ database_user }}  ::1/128       scram-sha-256
+
+# Replication (local only)
+local   replication     all                                     peer
+host    replication     all             127.0.0.1/32            scram-sha-256
+host    replication     all             ::1/128                 scram-sha-256
