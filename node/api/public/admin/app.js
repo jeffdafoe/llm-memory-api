@@ -64,6 +64,8 @@ createApp({
         const notesSearchQuery = ref('');
         const notesSearchResults = ref(null);
         const notesReindexing = ref(false);
+        const reindexStatus = ref(null); // { running, current, total, result }
+        let reindexPollTimer = null;
 
         // Reusable confirm/toast
         const confirmPrompt = ref(null);
@@ -162,6 +164,7 @@ createApp({
                 loginForm.value = { username: '', password: '' };
                 loadCurrentView();
                 startPolling();
+                pollReindexStatus();
             } catch (err) {
                 loginError.value = err.message;
             } finally {
@@ -700,21 +703,53 @@ createApp({
 
         function reindexNotes() {
             showConfirm('Delete ALL vector chunks and re-ingest every note? This may take a while.', async () => {
-                notesReindexing.value = true;
                 try {
-                    const data = await api('/admin/notes/reindex');
-                    let msg = 'Reindex complete: ' + data.docs_indexed + ' docs, ' + data.chunks_created + ' chunks';
-                    if (data.errors.length > 0) {
-                        msg += ' (' + data.errors.length + ' errors)';
-                    }
-                    showToast(msg, data.errors.length > 0 ? 'error' : 'success', 8000);
+                    await api('/admin/notes/reindex');
+                    startReindexPolling();
                 } catch (err) {
                     console.error('Reindex failed:', err);
                     showToast('Reindex failed: ' + err.message, 'error');
-                } finally {
-                    notesReindexing.value = false;
                 }
             });
+        }
+
+        async function pollReindexStatus() {
+            try {
+                const data = await api('/admin/notes/reindex-status');
+                reindexStatus.value = data;
+                notesReindexing.value = data.running;
+                if (!data.running) {
+                    stopReindexPolling();
+                    if (data.result && !data.result.error) {
+                        let msg = 'Reindex complete: ' + data.result.docs_indexed + ' docs, ' + data.result.chunks_created + ' chunks';
+                        if (data.result.errors && data.result.errors.length > 0) {
+                            msg += ' (' + data.result.errors.length + ' errors)';
+                        }
+                        showToast(msg, (data.result.errors && data.result.errors.length > 0) ? 'error' : 'success', 8000);
+                    } else if (data.result && data.result.error) {
+                        showToast('Reindex failed: ' + data.result.error, 'error');
+                    }
+                    // Clear server-side state
+                    api('/admin/notes/reindex-clear').catch(() => {});
+                    reindexStatus.value = null;
+                }
+            } catch (err) {
+                console.error('Reindex status poll failed:', err);
+            }
+        }
+
+        function startReindexPolling() {
+            pollReindexStatus();
+            if (!reindexPollTimer) {
+                reindexPollTimer = setInterval(pollReindexStatus, 2000);
+            }
+        }
+
+        function stopReindexPolling() {
+            if (reindexPollTimer) {
+                clearInterval(reindexPollTimer);
+                reindexPollTimer = null;
+            }
         }
 
         function loadCurrentView() {
@@ -887,6 +922,7 @@ createApp({
                         authenticated.value = true;
                         loadCurrentView();
                         startPolling();
+                        pollReindexStatus();
                     } else {
                         localStorage.removeItem('admin_session');
                     }
@@ -983,6 +1019,7 @@ createApp({
             notesSearchQuery,
             notesSearchResults,
             notesReindexing,
+            reindexStatus,
             reindexNotes,
             toggleNamespace,
             toggleFolder,

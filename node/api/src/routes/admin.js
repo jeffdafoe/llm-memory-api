@@ -620,54 +620,83 @@ router.post('/admin/notes/namespaces', async (req, res) => {
     }
 });
 
-// POST /admin/notes/reindex — delete all vector chunks and re-ingest every current note.
-// Useful for purging orphaned chunks from old slugs or recovering from drift.
+// In-memory reindex state — survives tab switches and page refreshes, cleared on server restart.
+let reindexState = null; // { running, current, total, chunks_created, errors, result }
+
+// POST /admin/notes/reindex — kick off background reindex, return immediately.
 router.post('/admin/notes/reindex', async (req, res) => {
-    try {
-        // Delete all existing vector chunks
-        const deleteResult = await pool.query('DELETE FROM memory_chunks');
-        const chunksDeleted = deleteResult.rowCount;
-
-        // Fetch all non-deleted documents
-        const docs = await pool.query(
-            'SELECT namespace, slug, content FROM documents WHERE deleted_at IS NULL ORDER BY namespace, slug'
-        );
-
-        // Re-ingest each document sequentially to avoid hammering the embeddings API
-        let docsIndexed = 0;
-        let totalChunks = 0;
-        const errors = [];
-
-        for (const doc of docs.rows) {
-            try {
-                const result = await ingestContent(doc.namespace, doc.slug, doc.content);
-                docsIndexed++;
-                totalChunks += result.chunks_created;
-            } catch (err) {
-                errors.push({ namespace: doc.namespace, slug: doc.slug, error: err.message });
-            }
-        }
-
-        logAdmin('notes_reindex', {
-            user_id: req.authenticatedUser.id,
-            chunks_deleted: chunksDeleted,
-            docs_indexed: docsIndexed,
-            chunks_created: totalChunks,
-            errors: errors.length
-        });
-
-        res.json({
-            chunks_deleted: chunksDeleted,
-            docs_indexed: docsIndexed,
-            chunks_created: totalChunks,
-            errors
-        });
-    } catch (err) {
-        console.error('Admin notes reindex error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Reindex failed: ' + err.message }
+    if (reindexState && reindexState.running) {
+        return res.status(409).json({
+            error: { code: 'CONFLICT', message: 'Reindex already in progress' }
         });
     }
+
+    reindexState = { running: true, current: 0, total: 0, chunks_created: 0, errors: [], result: null };
+    res.json({ started: true });
+
+    // Run in background — not awaited
+    (async () => {
+        try {
+            const deleteResult = await pool.query('DELETE FROM memory_chunks');
+            const chunksDeleted = deleteResult.rowCount;
+
+            const docs = await pool.query(
+                'SELECT namespace, slug, content FROM documents WHERE deleted_at IS NULL ORDER BY namespace, slug'
+            );
+            reindexState.total = docs.rows.length;
+
+            for (const doc of docs.rows) {
+                try {
+                    const result = await ingestContent(doc.namespace, doc.slug, doc.content);
+                    reindexState.chunks_created += result.chunks_created;
+                } catch (err) {
+                    reindexState.errors.push({ namespace: doc.namespace, slug: doc.slug, error: err.message });
+                }
+                reindexState.current++;
+            }
+
+            reindexState.running = false;
+            reindexState.result = {
+                chunks_deleted: chunksDeleted,
+                docs_indexed: reindexState.current - reindexState.errors.length,
+                chunks_created: reindexState.chunks_created,
+                errors: reindexState.errors
+            };
+
+            logAdmin('notes_reindex', {
+                user_id: req.authenticatedUser.id,
+                ...reindexState.result,
+                errors: reindexState.errors.length
+            });
+        } catch (err) {
+            console.error('Admin notes reindex error:', err.message);
+            reindexState.running = false;
+            reindexState.result = { error: err.message };
+        }
+    })();
+});
+
+// POST /admin/notes/reindex-status — poll for reindex progress.
+router.post('/admin/notes/reindex-status', (req, res) => {
+    if (!reindexState) {
+        return res.json({ running: false });
+    }
+    res.json({
+        running: reindexState.running,
+        current: reindexState.current,
+        total: reindexState.total,
+        chunks_created: reindexState.chunks_created,
+        errors_count: reindexState.errors.length,
+        result: reindexState.result
+    });
+});
+
+// POST /admin/notes/reindex-clear — dismiss completed reindex result.
+router.post('/admin/notes/reindex-clear', (req, res) => {
+    if (reindexState && !reindexState.running) {
+        reindexState = null;
+    }
+    res.json({ ok: true });
 });
 
 module.exports = router;

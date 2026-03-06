@@ -49,6 +49,11 @@
                 </ul>
             </nav>
 
+            <!-- Global reindex banner -->
+            <div v-if="reindexStatus && reindexStatus.running" class="reindex-banner">
+                Reindexing vectors... {{ reindexStatus.current }}/{{ reindexStatus.total }} docs
+            </div>
+
             <main class="container-fluid">
                 <!-- Dashboard view -->
                 <div v-if="currentView === 'dashboard' && dashboard">

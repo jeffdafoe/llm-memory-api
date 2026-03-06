@@ -7,7 +7,7 @@ const pool = require('../db');
 const RETENTION_DAYS = 7;
 
 // Paths to exclude from logging (polling endpoints, static assets, health checks)
-const EXCLUDED_PATHS = ['/v1/admin/api-log', '/v1/admin/dashboard', '/admin/', '/health'];
+const EXCLUDED_PATHS = ['/v1/admin/api-log', '/v1/admin/dashboard', '/v1/admin/notes/reindex-status', '/v1/admin/notes/reindex-clear', '/admin/', '/health'];
 
 function requestLog(req, res, next) {
     const path = req.originalUrl || req.url;
