@@ -6,10 +6,20 @@
 # postgres system user — peer auth only (must be the postgres OS user)
 local   all             postgres                                peer
 
-# Application user — password auth to its own database only
+# Memory API — password auth to its own database only
 local   {{ database_name }}  {{ database_user }}                scram-sha-256
 host    {{ database_name }}  {{ database_user }}  127.0.0.1/32  scram-sha-256
 host    {{ database_name }}  {{ database_user }}  ::1/128       scram-sha-256
+
+# Interchange (subcultural.com, sunfunguide.com) — md5 until passwords are rotated to scram
+local   ichange_subcultural  subcult                            md5
+host    ichange_subcultural  subcult         127.0.0.1/32       md5
+local   ichange_sunfunguide  sunfun                             md5
+host    ichange_sunfunguide  sunfun          127.0.0.1/32       md5
+
+# ZBBS
+local   zbbs             zbbs                                   scram-sha-256
+host    zbbs             zbbs              127.0.0.1/32         scram-sha-256
 
 # Replication (local only)
 local   replication     all                                     peer
