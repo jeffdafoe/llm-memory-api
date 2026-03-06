@@ -41,6 +41,9 @@ createApp({
         const mailSending = ref(false);
         const liveDiscussions = ref([]);
 
+        // Agent sub-tabs
+        const agentSubTab = ref('list');
+
         // Agent creation
         const agentCreating = ref(false);
         const newAgentName = ref('');
@@ -899,8 +902,6 @@ createApp({
                 if (agents.value.length === 0) loadAgents();
             } else if (currentView.value === 'notes') {
                 loadNotes();
-            } else if (currentView.value === 'templates') {
-                loadTemplates();
             }
         }
 
@@ -1095,6 +1096,7 @@ createApp({
             cancelEditExpertise,
             saveExpertise,
             resetAgentPassphrase,
+            agentSubTab,
             agentCreating,
             newAgentName,
             newAgentProvider,
