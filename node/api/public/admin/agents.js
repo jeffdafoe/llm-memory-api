@@ -1,5 +1,4 @@
 // agents.js — Agents list, detail, creation, welcome templates
-const { ref } = Vue;
 
 function useAgents({ api, showToast, showConfirm }) {
     const agents = ref([]);

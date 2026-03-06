@@ -1,5 +1,4 @@
 // discussions.js — Discussions list, detail, chat transcript
-const { ref } = Vue;
 
 function useDiscussions({ api }) {
     const discussions = ref([]);

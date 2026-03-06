@@ -1,5 +1,5 @@
 // app.js — Thin shell that composes all feature modules
-const { createApp, ref, watch, onMounted, onUnmounted } = Vue;
+// Vue globals (ref, computed, etc.) are destructured in core.js
 
 createApp({
     setup() {
