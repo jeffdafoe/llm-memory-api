@@ -8,6 +8,7 @@ const { searchMemory, ingestContent } = require('../services/memory');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
+const { mailSend } = require('../services/mail');
 
 const router = Router();
 
@@ -697,6 +698,195 @@ router.post('/admin/notes/reindex-clear', (req, res) => {
         reindexState = null;
     }
     res.json({ ok: true });
+});
+
+// ---- Welcome Templates CRUD ----
+
+// POST /admin/templates/list — list all welcome templates
+router.post('/admin/templates/list', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, name, description, subject, created_at, updated_at FROM welcome_templates ORDER BY name'
+        );
+        res.json({ templates: result.rows });
+    } catch (err) {
+        console.error('Admin templates list error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to list templates' }
+        });
+    }
+});
+
+// POST /admin/templates/read — read a single template
+router.post('/admin/templates/read', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
+        });
+    }
+    try {
+        const result = await pool.query(
+            'SELECT * FROM welcome_templates WHERE id = $1',
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Template not found' }
+            });
+        }
+        res.json({ template: result.rows[0] });
+    } catch (err) {
+        console.error('Admin templates read error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to read template' }
+        });
+    }
+});
+
+// POST /admin/templates/save — create or update a template
+router.post('/admin/templates/save', async (req, res) => {
+    const { id, name, description, subject, body } = req.body;
+    if (!name || !subject || !body) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: name, subject, body' }
+        });
+    }
+    try {
+        let result;
+        if (id) {
+            // Update existing
+            result = await pool.query(
+                'UPDATE welcome_templates SET name = $1, description = $2, subject = $3, body = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
+                [name, description || null, subject, body, id]
+            );
+            if (result.rows.length === 0) {
+                return res.status(404).json({
+                    error: { code: 'NOT_FOUND', message: 'Template not found' }
+                });
+            }
+        } else {
+            // Check for duplicate name
+            const existing = await pool.query(
+                'SELECT id FROM welcome_templates WHERE name = $1',
+                [name]
+            );
+            if (existing.rows.length > 0) {
+                return res.status(409).json({
+                    error: { code: 'CONFLICT', message: 'A template with that name already exists' }
+                });
+            }
+            result = await pool.query(
+                'INSERT INTO welcome_templates (name, description, subject, body) VALUES ($1, $2, $3, $4) RETURNING *',
+                [name, description || null, subject, body]
+            );
+        }
+        logAdmin('template_save', { template_id: result.rows[0].id, name, user_id: req.authenticatedUser.id });
+        res.json({ template: result.rows[0] });
+    } catch (err) {
+        console.error('Admin templates save error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to save template' }
+        });
+    }
+});
+
+// POST /admin/templates/delete — delete a template
+router.post('/admin/templates/delete', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
+        });
+    }
+    try {
+        const result = await pool.query(
+            'DELETE FROM welcome_templates WHERE id = $1 RETURNING name',
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Template not found' }
+            });
+        }
+        logAdmin('template_delete', { template_id: id, name: result.rows[0].name, user_id: req.authenticatedUser.id });
+        res.json({ deleted: true });
+    } catch (err) {
+        console.error('Admin templates delete error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to delete template' }
+        });
+    }
+});
+
+// ---- Agent Creation ----
+
+// POST /admin/agents/create — create an agent (active immediately) with optional welcome mail
+router.post('/admin/agents/create', async (req, res) => {
+    const { agent, provider, model, welcome_template_id } = req.body;
+
+    if (!agent) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
+        });
+    }
+
+    try {
+        // Check if agent already exists
+        const existing = await pool.query(
+            'SELECT agent, status FROM agents WHERE agent = $1',
+            [agent]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(409).json({
+                error: { code: 'ALREADY_EXISTS', message: 'Agent already exists' }
+            });
+        }
+
+        // Generate passphrase and hash it
+        const words = generatePassphrase(3);
+        const passphrase = words.join('-');
+        const salt = generateSalt();
+        const hash = hashToken(passphrase, salt);
+
+        // Create agent as active (skip pending/ack dance — admin is creating it)
+        await pool.query(
+            'INSERT INTO agents (agent, token_hash, token_salt, status, provider, model) VALUES ($1, $2, $3, $4, $5, $6)',
+            [agent, hash, salt, 'active', provider || null, model || null]
+        );
+
+        // Send welcome mail if template selected
+        let welcomeMailSent = false;
+        if (welcome_template_id) {
+            const tplResult = await pool.query(
+                'SELECT subject, body FROM welcome_templates WHERE id = $1',
+                [welcome_template_id]
+            );
+            if (tplResult.rows.length > 0) {
+                const tpl = tplResult.rows[0];
+                // Replace {agent} placeholder in subject and body
+                const mailSubject = tpl.subject.replace(/\{agent\}/g, agent);
+                const mailBody = tpl.body.replace(/\{agent\}/g, agent);
+                await mailSend(agent, 'system', mailSubject, mailBody);
+                welcomeMailSent = true;
+            }
+        }
+
+        logAdmin('agent_create', { agent, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
+
+        res.json({
+            agent,
+            passphrase,
+            status: 'active',
+            welcome_mail_sent: welcomeMailSent,
+            message: 'Agent created. Save the passphrase — it will not be shown again.'
+        });
+    } catch (err) {
+        console.error('Admin agent create error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to create agent' }
+        });
+    }
 });
 
 module.exports = router;
