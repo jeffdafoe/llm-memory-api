@@ -17,8 +17,7 @@
     - role: ../roles/common
     - role: ../roles/nodejs
     - role: ../roles/postgresql
-    - role: ../roles/apache-proxy
-      when: deploy_environment == 'production'
+    - role: ../roles/nginx
     - role: ../roles/memory-api
 
   tasks:
