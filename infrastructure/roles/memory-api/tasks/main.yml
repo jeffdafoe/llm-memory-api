@@ -92,16 +92,14 @@
     enabled: yes
     state: started
 
-- name: Deploy database cleanup script
-  copy:
-    src: "{{ repo_root }}/infrastructure/scripts/db-cleanup.sh"
-    dest: /usr/local/bin/memory-api-db-cleanup
+- name: Ensure cleanup script is executable
+  file:
+    path: "{{ project_root }}/scripts/db-cleanup.sh"
     mode: "0755"
-    remote_src: yes
 
 - name: Configure daily database cleanup cron job
   cron:
     name: "memory-api db cleanup"
     minute: "15"
     hour: "3"
-    job: "/usr/local/bin/memory-api-db-cleanup >> /var/log/llm-memory-api/db-cleanup.log 2>&1"
+    job: "{{ project_root }}/scripts/db-cleanup.sh >> /var/log/llm-memory-api/db-cleanup.log 2>&1"
