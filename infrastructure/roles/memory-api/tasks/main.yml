@@ -103,3 +103,15 @@
     minute: "15"
     hour: "3"
     job: "{{ project_root }}/scripts/db-cleanup.sh >> /var/log/llm-memory-api/db-cleanup.log 2>&1"
+
+- name: Ensure backup script is executable
+  file:
+    path: "{{ project_root }}/scripts/pg-backup.sh"
+    mode: "0755"
+
+- name: Configure daily PostgreSQL backup cron job
+  cron:
+    name: "postgresql daily backup"
+    minute: "0"
+    hour: "2"
+    job: "{{ project_root }}/scripts/pg-backup.sh >> /var/log/llm-memory-api/pg-backup.log 2>&1"
