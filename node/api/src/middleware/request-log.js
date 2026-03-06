@@ -31,6 +31,16 @@ function requestLog(req, res, next) {
     // Capture request length from Content-Length header
     const requestLength = req.headers['content-length'] ? parseInt(req.headers['content-length'], 10) : null;
 
+    // Track bytes written via res.write() (SSE/streaming responses)
+    let bytesWritten = 0;
+    const originalWrite = res.write;
+    res.write = function (...args) {
+        if (args[0]) {
+            bytesWritten += Buffer.byteLength(args[0]);
+        }
+        return originalWrite.apply(res, args);
+    };
+
     // Hook res.end to capture status and duration after response completes
     const originalEnd = res.end;
     res.end = function (...args) {
@@ -52,11 +62,12 @@ function requestLog(req, res, next) {
         // Get client IP (respect X-Forwarded-For from nginx)
         const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || null;
 
-        // Capture response length from Content-Length header, or measure the body chunk
+        // Capture response length: Content-Length header, or body in end(), or accumulated write() bytes
         let responseLength = res.getHeader('content-length') ? parseInt(res.getHeader('content-length'), 10) : null;
         if (responseLength === null && args[0]) {
-            // args[0] is the body chunk passed to res.end()
-            responseLength = Buffer.byteLength(args[0]);
+            responseLength = bytesWritten + Buffer.byteLength(args[0]);
+        } else if (responseLength === null && bytesWritten > 0) {
+            responseLength = bytesWritten;
         }
 
         // Fire-and-forget insert
