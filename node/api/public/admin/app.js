@@ -65,6 +65,28 @@ createApp({
         const notesSearchResults = ref(null);
         const notesReindexing = ref(false);
 
+        // Reusable confirm/toast
+        const confirmPrompt = ref(null);
+        const toast = ref(null);
+        let toastTimer = null;
+
+        function showConfirm(message, action) {
+            confirmPrompt.value = { message, action };
+        }
+
+        function executeConfirm() {
+            if (confirmPrompt.value && confirmPrompt.value.action) {
+                confirmPrompt.value.action();
+            }
+            confirmPrompt.value = null;
+        }
+
+        function showToast(text, type, duration) {
+            if (toastTimer) clearTimeout(toastTimer);
+            toast.value = { text, type: type || 'info' };
+            toastTimer = setTimeout(() => { toast.value = null; }, duration || 5000);
+        }
+
         // Computed: visible tree nodes per namespace (filters by expanded folders)
         const notesTrees = computed(() => {
             const result = {};
@@ -366,7 +388,7 @@ createApp({
                 agentInstructionsEditing.value = false;
             } catch (err) {
                 console.error('Failed to save instructions:', err);
-                alert('Failed to save: ' + err.message);
+                showToast('Failed to save: ' + err.message, 'error');
             } finally {
                 agentInstructionsSaving.value = false;
             }
@@ -396,7 +418,7 @@ createApp({
                 agentExpertiseEditing.value = false;
             } catch (err) {
                 console.error('Failed to save expertise:', err);
-                alert('Failed to save: ' + err.message);
+                showToast('Failed to save: ' + err.message, 'error');
             } finally {
                 agentExpertiseSaving.value = false;
             }
@@ -494,7 +516,7 @@ createApp({
                 loadMail();
             } catch (err) {
                 console.error('Failed to send mail:', err);
-                alert('Failed to send: ' + err.message);
+                showToast('Failed to send: ' + err.message, 'error');
             } finally {
                 mailSending.value = false;
             }
@@ -640,28 +662,26 @@ createApp({
                 notesEditing.value = false;
             } catch (err) {
                 console.error('Failed to save note:', err);
-                alert('Failed to save: ' + err.message);
+                showToast('Failed to save: ' + err.message, 'error');
             } finally {
                 notesSaving.value = false;
             }
         }
 
-        async function confirmDeleteNote() {
-            if (!confirm('Delete "' + selectedNote.value.slug + '"? This cannot be undone.')) {
-                return;
-            }
-            try {
-                await api('/admin/notes/delete', {
-                    namespace: selectedNote.value.namespace,
-                    slug: selectedNote.value.slug
-                });
-                selectedNote.value = null;
-                // Reload the tree
-                await loadNotes();
-            } catch (err) {
-                console.error('Failed to delete note:', err);
-                alert('Failed to delete: ' + err.message);
-            }
+        function confirmDeleteNote() {
+            const ns = selectedNote.value.namespace;
+            const slug = selectedNote.value.slug;
+            showConfirm('Delete "' + slug + '"?', async () => {
+                try {
+                    await api('/admin/notes/delete', { namespace: ns, slug });
+                    selectedNote.value = null;
+                    await loadNotes();
+                    showToast('Note deleted', 'success');
+                } catch (err) {
+                    console.error('Failed to delete note:', err);
+                    showToast('Failed to delete: ' + err.message, 'error');
+                }
+            });
         }
 
         async function searchNotes() {
@@ -678,28 +698,23 @@ createApp({
             }
         }
 
-        async function reindexNotes() {
-            if (!confirm('This will delete ALL vector chunks and re-ingest every note. This may take a while. Continue?')) {
-                return;
-            }
-            notesReindexing.value = true;
-            try {
-                const data = await api('/admin/notes/reindex');
-                let msg = 'Reindex complete.\n\n' +
-                    'Chunks deleted: ' + data.chunks_deleted + '\n' +
-                    'Documents indexed: ' + data.docs_indexed + '\n' +
-                    'Chunks created: ' + data.chunks_created;
-                if (data.errors.length > 0) {
-                    msg += '\n\nErrors (' + data.errors.length + '):\n' +
-                        data.errors.map(e => e.namespace + '/' + e.slug + ': ' + e.error).join('\n');
+        function reindexNotes() {
+            showConfirm('Delete ALL vector chunks and re-ingest every note? This may take a while.', async () => {
+                notesReindexing.value = true;
+                try {
+                    const data = await api('/admin/notes/reindex');
+                    let msg = 'Reindex complete: ' + data.docs_indexed + ' docs, ' + data.chunks_created + ' chunks';
+                    if (data.errors.length > 0) {
+                        msg += ' (' + data.errors.length + ' errors)';
+                    }
+                    showToast(msg, data.errors.length > 0 ? 'error' : 'success', 8000);
+                } catch (err) {
+                    console.error('Reindex failed:', err);
+                    showToast('Reindex failed: ' + err.message, 'error');
+                } finally {
+                    notesReindexing.value = false;
                 }
-                alert(msg);
-            } catch (err) {
-                console.error('Reindex failed:', err);
-                alert('Reindex failed: ' + err.message);
-            } finally {
-                notesReindexing.value = false;
-            }
+            });
         }
 
         function loadCurrentView() {
@@ -808,6 +823,7 @@ createApp({
             selectedMessage.value = null;
             selectedMail.value = null;
             selectedAgent.value = null;
+            confirmPrompt.value = null;
         }
 
         // Auto-refresh polling
@@ -976,7 +992,11 @@ createApp({
             cancelEditNote,
             saveEditedNote,
             confirmDeleteNote,
-            searchNotes
+            searchNotes,
+            confirmPrompt,
+            executeConfirm,
+            toast,
+            showToast
         };
     }
 }).mount('#app');

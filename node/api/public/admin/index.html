@@ -797,6 +797,27 @@
                         </div>
                     </article>
                 </dialog>
+
+                <!-- Reusable confirm dialog -->
+                <dialog :open="confirmPrompt !== null" @close="confirmPrompt = null">
+                    <article v-if="confirmPrompt" class="confirm-dialog">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="confirmPrompt = null"></button>
+                        </header>
+                        <div class="dialog-body">
+                            <p>{{ confirmPrompt.message }}</p>
+                            <div class="button-row">
+                                <button @click="executeConfirm">Confirm</button>
+                                <button class="secondary" @click="confirmPrompt = null">Cancel</button>
+                            </div>
+                        </div>
+                    </article>
+                </dialog>
+
+                <!-- Toast notification -->
+                <div v-if="toast" class="toast" :class="'toast-' + toast.type" @click="toast = null">
+                    {{ toast.text }}
+                </div>
             </main>
         </div>
     </div>

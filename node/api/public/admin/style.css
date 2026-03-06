@@ -228,6 +228,38 @@ tr.unread {
     user-select: all;
 }
 
+.confirm-dialog {
+    max-width: 450px;
+}
+
+.toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 6px;
+    font-size: 0.85em;
+    z-index: 1000;
+    cursor: pointer;
+    max-width: 500px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.toast-success {
+    background: rgba(50, 150, 50, 0.95);
+    color: white;
+}
+
+.toast-error {
+    background: rgba(200, 50, 50, 0.95);
+    color: white;
+}
+
+.toast-info {
+    background: rgba(50, 100, 200, 0.95);
+    color: white;
+}
+
 .agent-section {
     margin-bottom: 1.5rem;
 }
