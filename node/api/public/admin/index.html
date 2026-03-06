@@ -742,9 +742,20 @@
                 <dialog :open="selectedAgent !== null" @close="selectedAgent = null">
                     <article v-if="selectedAgent" class="agent-detail-dialog">
                         <header>
+                            <button v-if="!agentPassphraseConfirming && !agentNewPassphrase" class="passphrase-reset-btn" @click="agentPassphraseConfirming = true" title="Reset Passphrase"><i class="icon-key"></i></button>
                             <button aria-label="Close" rel="prev" @click="selectedAgent = null"></button>
                         </header>
                         <div class="dialog-body">
+                            <div v-if="agentPassphraseConfirming" class="passphrase-bar">
+                                Reset passphrase? All sessions will be invalidated.
+                                <button class="inline-button" @click="resetAgentPassphrase">Yes, reset</button>
+                                <button class="inline-button secondary" @click="agentPassphraseConfirming = false">Cancel</button>
+                            </div>
+                            <div v-if="agentNewPassphrase" class="passphrase-bar passphrase-result">
+                                New passphrase: <code>{{ agentNewPassphrase }}</code>
+                                <button class="inline-button secondary" @click="agentNewPassphrase = null">Dismiss</button>
+                            </div>
+
                             <h3>{{ selectedAgent.agent }}</h3>
                             <p>
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
@@ -783,9 +794,6 @@
                                 </div>
                             </div>
                             <pre v-else class="instructions-pre">{{ agentInstructions || '(none)' }}</pre>
-
-                            <hr>
-                            <button class="secondary outline" @click="resetAgentPassphrase"><i class="icon-key"></i> Reset Passphrase</button>
                         </div>
                     </article>
                 </dialog>

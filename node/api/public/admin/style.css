@@ -190,6 +190,44 @@ tr.unread {
     line-height: 1.5;
 }
 
+.passphrase-reset-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 3rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    opacity: 0.4;
+    padding: 0.25rem;
+    font-size: 0.9em;
+}
+
+.passphrase-reset-btn:hover {
+    opacity: 0.8;
+}
+
+.passphrase-bar {
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+    background: rgba(200, 50, 50, 0.1);
+    border: 1px solid rgba(200, 50, 50, 0.2);
+    font-size: 0.85em;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.passphrase-result {
+    background: rgba(50, 150, 50, 0.1);
+    border-color: rgba(50, 150, 50, 0.2);
+}
+
+.passphrase-bar code {
+    font-weight: bold;
+    user-select: all;
+}
+
 .agent-section {
     margin-bottom: 1.5rem;
 }

@@ -24,6 +24,8 @@ createApp({
         const agentExpertiseEditing = ref(false);
         const agentExpertiseEditText = ref('');
         const agentExpertiseSaving = ref(false);
+        const agentPassphraseConfirming = ref(false);
+        const agentNewPassphrase = ref(null);
         const discussions = ref([]);
         const discussionFilter = ref('');
         const selectedDiscussion = ref(null);
@@ -327,6 +329,8 @@ createApp({
             selectedAgent.value = agent;
             agentInstructionsEditing.value = false;
             agentExpertiseEditing.value = false;
+            agentPassphraseConfirming.value = false;
+            agentNewPassphrase.value = null;
             // Parse expertise from the agent row (comes from agent_status view as JSON string)
             try {
                 agentExpertise.value = typeof agent.expertise === 'string' ? JSON.parse(agent.expertise) : (agent.expertise || []);
@@ -400,20 +404,15 @@ createApp({
 
         async function resetAgentPassphrase() {
             const agent = selectedAgent.value.agent;
-            if (!confirm('Reset passphrase for "' + agent + '"? All sessions will be invalidated.')) {
-                return;
-            }
+            agentPassphraseConfirming.value = false;
             try {
                 const data = await api('/admin/agents/reset-passphrase', { agent });
-                alert('New passphrase for ' + agent + ':\n\n' + data.passphrase + '\n\nSave this — it will not be shown again.');
-                // Refresh agent list to update passphrase_rotated_at
+                agentNewPassphrase.value = data.passphrase;
                 await loadAgents();
-                // Re-select the same agent to refresh the detail panel
                 const updated = agents.value.find(a => a.agent === agent);
                 if (updated) selectedAgent.value = updated;
             } catch (err) {
                 console.error('Failed to reset passphrase:', err);
-                alert('Failed to reset passphrase: ' + err.message);
             }
         }
 
@@ -907,6 +906,8 @@ createApp({
             agentExpertiseEditing,
             agentExpertiseEditText,
             agentExpertiseSaving,
+            agentPassphraseConfirming,
+            agentNewPassphrase,
             viewAgent,
             startEditInstructions,
             cancelEditInstructions,
