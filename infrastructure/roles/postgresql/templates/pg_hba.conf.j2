@@ -11,11 +11,11 @@ local   {{ database_name }}  {{ database_user }}                scram-sha-256
 host    {{ database_name }}  {{ database_user }}  127.0.0.1/32  scram-sha-256
 host    {{ database_name }}  {{ database_user }}  ::1/128       scram-sha-256
 
-# Interchange (subcultural.com, sunfunguide.com) — md5 until passwords are rotated to scram
-local   ichange_subcultural  subcult                            md5
-host    ichange_subcultural  subcult         127.0.0.1/32       md5
-local   ichange_sunfunguide  sunfun                             md5
-host    ichange_sunfunguide  sunfun          127.0.0.1/32       md5
+# Interchange (subcultural.com, sunfunguide.com)
+local   ichange_subcultural  subcult                            scram-sha-256
+host    ichange_subcultural  subcult         127.0.0.1/32       scram-sha-256
+local   ichange_sunfunguide  sunfun                             scram-sha-256
+host    ichange_sunfunguide  sunfun          127.0.0.1/32       scram-sha-256
 
 # ZBBS
 local   zbbs             zbbs                                   scram-sha-256
