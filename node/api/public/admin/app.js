@@ -36,11 +36,19 @@ createApp({
         // Real-time event stream via WebSocket
         const eventsModule = createEventsModule();
 
-        // Update agent activity spinner in real time
+        // Update agent activity spinner in real time.
+        // Agents appear in two places: the Agents list and the Dashboard summary.
         eventsModule.onEvent('agent_activity', (data) => {
-            const agent = agentsModule.agents.value.find(a => a.agent === data.agent);
-            if (agent) {
-                agent.active_since = data.active ? new Date().toISOString() : null;
+            const activeValue = data.active ? new Date().toISOString() : null;
+            const agentInList = agentsModule.agents.value.find(a => a.agent === data.agent);
+            if (agentInList) {
+                agentInList.active_since = activeValue;
+            }
+            if (dashboardModule.dashboard.value && dashboardModule.dashboard.value.agents) {
+                const agentInDash = dashboardModule.dashboard.value.agents.find(a => a.agent === data.agent);
+                if (agentInDash) {
+                    agentInDash.active_since = activeValue;
+                }
             }
         });
 
