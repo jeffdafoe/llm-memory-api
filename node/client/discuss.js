@@ -214,12 +214,18 @@ const cfg = {
     proxyPort: 0,
 };
 
-// Validate required fields
+// Validate required fields — give specific guidance when using --config
 for (const field of ['apiUrl', 'passphrase', 'agent']) {
     if (!cfg[field]) {
-        console.error(`Missing required config: ${field} (check .mcp.json)`);
+        const configLabel = configFilePath ? `.discuss.json` : `.mcp.json`;
+        const fieldNames = { apiUrl: 'api_url', passphrase: 'passphrase', agent: 'agent' };
+        console.error(`Invalid ${configLabel}: missing '${fieldNames[field]}' field`);
         process.exit(1);
     }
+}
+if (!/^https?:\/\//i.test(cfg.apiUrl)) {
+    console.error(`Invalid api_url: '${cfg.apiUrl}' — must start with http:// or https://`);
+    process.exit(1);
 }
 
 // Session token obtained at login, used for all authenticated API calls
@@ -410,6 +416,27 @@ async function saveResult() {
 // ---------------------------------------------------------------------------
 
 // Single HTTP request (no retry)
+// Simple GET request — used for health check before login
+function httpGet(url) {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(url);
+        const mod = urlObj.protocol === 'https:' ? https : http;
+        const req = mod.get(urlObj, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    resolve(body);
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${body}`));
+                }
+            });
+        });
+        req.on('error', (e) => reject(e));
+        req.setTimeout(10000, () => { req.destroy(); reject(new Error('Request timed out')); });
+    });
+}
+
 function httpPostOnce(url, headers, body) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
@@ -1475,6 +1502,27 @@ function ensureDirectories() {
     fs.mkdirSync(OUTBOX_DIR, { recursive: true });
 }
 
+// Remove stale files from a previous run so the subagent starts clean.
+// Intentionally does NOT touch state.json, .lock, or transcript.md —
+// those are managed by their own lifecycle (crash recovery, lock acquisition).
+function cleanWorkDir() {
+    // Clear inbox and outbox
+    for (const dir of [INBOX_DIR, OUTBOX_DIR]) {
+        try {
+            const files = fs.readdirSync(dir);
+            for (const f of files) {
+                try { fs.unlinkSync(path.join(dir, f)); } catch (e) { /* ignore */ }
+            }
+        } catch (e) { /* dir may not exist yet */ }
+    }
+    // Remove stale control/log files
+    const staleFiles = ['done', 'idle-timeout', 'subagent.log', 'conversation.log'];
+    for (const name of staleFiles) {
+        try { fs.unlinkSync(path.join(cfg.workDir, name)); } catch (e) { /* ignore */ }
+    }
+    log('Cleaned stale files from work directory');
+}
+
 // Kill a previous transport process if it's still alive but should have exited.
 // Reads state.json for the previous PID and checks if it's still running.
 function killStalePid() {
@@ -1592,6 +1640,16 @@ function initTranscript() {
 
 async function main() {
     try {
+        // Verify API is reachable before attempting login
+        try {
+            const healthUrl = cfg.apiUrl.replace(/\/v1\/?$/, '') + '/health';
+            await httpGet(healthUrl);
+        } catch (err) {
+            console.error(`API at ${cfg.apiUrl} is unreachable: ${err.message}`);
+            console.error('Check your api_url and network connectivity.');
+            process.exit(1);
+        }
+
         // Login to get session token before any API calls
         await transportLogin();
 
@@ -1653,6 +1711,7 @@ async function main() {
         }
         initPaths();
         ensureDirectories();
+        cleanWorkDir();
         killStalePid();
         acquireLock();
         writePollScript();
@@ -1660,6 +1719,14 @@ async function main() {
 
         // Wait for all participants to join before proceeding
         await waitForReady();
+
+        // Signal that we're actively in a discussion (admin dashboard spinner)
+        try {
+            await apiCall('agent/activity/start', { agent: cfg.agent });
+            log('Activity spinner started');
+        } catch (err) {
+            log(`activity_start failed (non-fatal): ${err.message}`);
+        }
 
         initTranscript();
 
@@ -1691,6 +1758,7 @@ async function main() {
         // Handle clean shutdown
         const shutdown = async () => {
             log('Shutting down...');
+            try { await apiCall('agent/activity/stop', { agent: cfg.agent }); } catch (e) { /* best-effort */ }
             releaseLock();
             await transportLogout();
             server.close();
@@ -1709,6 +1777,9 @@ async function main() {
         // Save result.md as a remote note for cross-agent access
         await saveResult();
 
+        // Stop activity spinner before logout
+        try { await apiCall('agent/activity/stop', { agent: cfg.agent }); } catch (e) { /* best-effort */ }
+
         // Clean exit — code 2 if terminated by convergence detection
         await transportLogout();
         server.close();
@@ -1721,6 +1792,7 @@ async function main() {
     } catch (err) {
         console.error(`Fatal error: ${err.message}`);
         log(`FATAL: ${err.message}`);
+        try { await apiCall('agent/activity/stop', { agent: cfg.agent }); } catch (e) { /* best-effort */ }
         setStatus('ERROR');
         process.exit(1);
     }
