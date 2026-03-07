@@ -33,13 +33,14 @@ async function saveNote(namespace, title, content, slug, createdBy) {
 
     let result;
     if (existing.rows.length > 0) {
-        // Update existing row — also clears deleted_at if it was soft-deleted
+        // Update existing row — also clears deleted_at if it was soft-deleted.
+        // Don't overwrite created_by on updates — preserve original author.
         result = await pool.query(`
             UPDATE documents
-            SET title = $1, content = $2, created_by = $3, deleted_at = NULL, updated_at = NOW()
-            WHERE namespace = $4 AND slug = $5
+            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW()
+            WHERE namespace = $3 AND slug = $4
             RETURNING id, namespace, slug, title, created_by, created_at, updated_at
-        `, [title, content, createdBy || null, namespace, resolvedSlug]);
+        `, [title, content, namespace, resolvedSlug]);
     } else {
         result = await pool.query(`
             INSERT INTO documents (namespace, slug, title, content, created_by)
