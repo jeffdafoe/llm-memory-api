@@ -916,6 +916,10 @@
                                         <input type="text" v-model="agentProfileModel" placeholder="e.g. claude-sonnet-4-6">
                                     </label>
                                 </div>
+                                <label v-if="selectedAgent.virtual">
+                                    API Key
+                                    <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
+                                </label>
                                 <div class="button-row">
                                     <button @click="saveProfile" :disabled="agentProfileSaving">Save</button>
                                     <button class="secondary" @click="agentProfileEditing = false">Cancel</button>

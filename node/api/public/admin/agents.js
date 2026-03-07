@@ -19,6 +19,7 @@ function useAgents({ api, showToast, showConfirm }) {
     const agentProfileEditing = ref(false);
     const agentProfileProvider = ref('');
     const agentProfileModel = ref('');
+    const agentProfileApiKey = ref('');
     const agentProfileSaving = ref(false);
 
     // Agent creation
@@ -61,16 +62,21 @@ function useAgents({ api, showToast, showConfirm }) {
         agentProfileEditing.value = true;
         agentProfileProvider.value = selectedAgent.value.provider || '';
         agentProfileModel.value = selectedAgent.value.model || '';
+        agentProfileApiKey.value = '';
     }
 
     async function saveProfile() {
         agentProfileSaving.value = true;
         try {
-            await api('/admin/agents/update', {
+            const body = {
                 agent: selectedAgent.value.agent,
                 provider: agentProfileProvider.value || null,
                 model: agentProfileModel.value || null
-            });
+            };
+            if (agentProfileApiKey.value) {
+                body.api_key = agentProfileApiKey.value;
+            }
+            await api('/admin/agents/update', body);
             selectedAgent.value.provider = agentProfileProvider.value || null;
             selectedAgent.value.model = agentProfileModel.value || null;
             agentProfileEditing.value = false;
@@ -307,7 +313,7 @@ function useAgents({ api, showToast, showConfirm }) {
         agentInstructions, agentInstructionsEditing, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
-        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileSaving,
+        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfileSaving,
         loadAgents, viewAgent,
         startEditProfile, saveProfile,
         startEditInstructions, cancelEditInstructions, saveInstructions,
