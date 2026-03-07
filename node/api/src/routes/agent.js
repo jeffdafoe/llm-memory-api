@@ -274,6 +274,7 @@ router.post('/agent/status', async (req, res) => {
                 a.provider,
                 a.model,
                 a.virtual,
+                a.active_since,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
@@ -318,6 +319,7 @@ router.post('/agent/status', async (req, res) => {
             expertise: JSON.parse(row.expertise || '[]'),
             provider: row.provider || null,
             model: row.model || null,
+            active_since: row.active_since || null,
             subsystems: subsystemsByAgent[row.agent] || [],
             unread_chat: row.unread_chat,
             unread_mail: row.unread_mail
@@ -426,6 +428,58 @@ router.post('/agent/profile', async (req, res) => {
         });
     } catch (err) {
         console.error('Agent profile update error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/activity/start — mark the authenticated agent as actively working.
+// Auth: session token (via middleware).
+router.post('/agent/activity/start', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        if (!agent) {
+            return res.status(401).json({
+                error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+            });
+        }
+
+        await pool.query(
+            'UPDATE agents SET active_since = NOW() WHERE agent = $1',
+            [agent]
+        );
+
+        logAgent('activity_start', { agent });
+        res.json({ agent, active: true, message: 'Activity started' });
+    } catch (err) {
+        console.error('Agent activity start error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// POST /agent/activity/stop — mark the authenticated agent as idle.
+// Auth: session token (via middleware).
+router.post('/agent/activity/stop', async (req, res) => {
+    try {
+        const agent = req.authenticatedAgent;
+        if (!agent) {
+            return res.status(401).json({
+                error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+            });
+        }
+
+        await pool.query(
+            'UPDATE agents SET active_since = NULL WHERE agent = $1',
+            [agent]
+        );
+
+        logAgent('activity_stop', { agent });
+        res.json({ agent, active: false, message: 'Activity stopped' });
+    } catch (err) {
+        console.error('Agent activity stop error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

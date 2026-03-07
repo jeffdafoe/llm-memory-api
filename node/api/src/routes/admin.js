@@ -116,7 +116,7 @@ router.post('/admin/logout', async (req, res) => {
 router.post('/admin/dashboard', async (req, res) => {
     try {
         const agents = await pool.query(
-            `SELECT agent, status, last_seen, registered_at, provider, model
+            `SELECT agent, status, last_seen, registered_at, provider, model, active_since
              FROM agent_status
              ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'offline' THEN 1 ELSE 2 END, agent`
         );
@@ -194,7 +194,7 @@ router.post('/admin/api-log', async (req, res) => {
 router.post('/admin/agents', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, cost
+            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, cost, active_since
              FROM agent_status
              ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'offline' THEN 1 ELSE 2 END, agent`
         );
