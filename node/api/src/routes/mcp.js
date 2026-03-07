@@ -341,6 +341,23 @@ const TOOLS = [
             }
         }
     },
+    // --- Activity tools ---
+    {
+        name: 'activity_start',
+        description: 'Signal that you are actively working on a task. Shows an activity indicator to other agents and in the admin dashboard.',
+        inputSchema: {
+            type: 'object',
+            properties: {}
+        }
+    },
+    {
+        name: 'activity_stop',
+        description: 'Signal that you have finished working. Clears the activity indicator.',
+        inputSchema: {
+            type: 'object',
+            properties: {}
+        }
+    },
     // --- Discussion tools ---
     {
         name: 'discussion_create',
@@ -496,6 +513,8 @@ const TOOL_PERMISSIONS = {
     agent_status: 'mcp_agent_status',
     update_expertise: 'mcp_agent_status',
     update_profile: 'mcp_agent_status',
+    activity_start: 'mcp_agent_status',
+    activity_stop: 'mcp_agent_status',
     discussion_create: 'mcp_discussion_create',
     discussion_list: 'mcp_discussion_list',
     discussion_status: 'mcp_discussion_status',
@@ -706,6 +725,7 @@ const TOOL_HANDLERS = {
                 a.provider,
                 a.model,
                 a.virtual,
+                a.active_since,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
@@ -727,6 +747,9 @@ const TOOL_HANDLERS = {
 
         const lines = result.rows.map(a => {
             const parts = [`${a.agent}: ${a.status}`];
+            if (a.active_since) {
+                parts.push('ACTIVE');
+            }
             if (a.virtual) {
                 parts.push('virtual');
             }
@@ -791,6 +814,17 @@ const TOOL_HANDLERS = {
             parts.push(`model: ${args.model}`);
         }
         return `Profile updated for ${agent}: ${parts.join(', ')}`;
+    },
+
+    // --- Activity ---
+    async activity_start(args, agent, namespace) {
+        await pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent]);
+        return `Activity started for ${agent}.`;
+    },
+
+    async activity_stop(args, agent, namespace) {
+        await pool.query('UPDATE agents SET active_since = NULL WHERE agent = $1', [agent]);
+        return `Activity stopped for ${agent}.`;
     },
 
     // --- Discussion ---

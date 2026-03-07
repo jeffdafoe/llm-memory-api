@@ -97,6 +97,7 @@
                                 <table>
                                     <thead>
                                         <tr>
+                                            <th class="col-activity"></th>
                                             <th>Agent</th>
                                             <th>Status</th>
                                             <th class="time-cell nowrap">Last Seen</th>
@@ -104,6 +105,7 @@
                                     </thead>
                                     <tbody>
                                         <tr v-for="agent in dashboard.agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                                            <td class="icon-cell"><i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i></td>
                                             <td class="nowrap">{{ agent.agent }}</td>
                                             <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
                                             <td class="time-cell nowrap">{{ formatDate(agent.last_seen) }}</td>
@@ -347,6 +349,7 @@
                         <div class="table-wrap">
                             <table class="fixed-table">
                                 <colgroup>
+                                    <col class="col-activity">
                                     <col class="col-agent">
                                     <col style="width: 5.5em;">
                                     <col style="width: 14em;">
@@ -355,6 +358,7 @@
                                 </colgroup>
                                 <thead>
                                     <tr>
+                                        <th class="col-activity"></th>
                                         <th>Agent</th>
                                         <th>Status</th>
                                         <th>Provider / Model</th>
@@ -364,6 +368,7 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                                        <td class="icon-cell"><i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i></td>
                                         <td>{{ agent.agent }} <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i></td>
                                         <td>
                                             <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
