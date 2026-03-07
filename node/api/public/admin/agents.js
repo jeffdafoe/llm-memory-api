@@ -25,6 +25,10 @@ function useAgents({ api, showToast, showConfirm }) {
     const newAgentTemplateId = ref(null);
     const newAgentCreating = ref(false);
     const newAgentPassphrase = ref(null);
+    const newAgentVirtual = ref(false);
+    const newAgentPersonality = ref('');
+    const newAgentApiKey = ref('');
+    const newAgentCost = ref('');
 
     // Welcome templates
     const welcomeTemplates = ref([]);
@@ -148,6 +152,10 @@ function useAgents({ api, showToast, showConfirm }) {
         newAgentTemplateId.value = null;
         newAgentCreating.value = false;
         newAgentPassphrase.value = null;
+        newAgentVirtual.value = false;
+        newAgentPersonality.value = '';
+        newAgentApiKey.value = '';
+        newAgentCost.value = '';
         loadTemplates();
     }
 
@@ -158,10 +166,27 @@ function useAgents({ api, showToast, showConfirm }) {
             const body = { agent: newAgentName.value };
             if (newAgentProvider.value) body.provider = newAgentProvider.value;
             if (newAgentModel.value) body.model = newAgentModel.value;
-            if (newAgentTemplateId.value) body.welcome_template_id = newAgentTemplateId.value;
+            if (newAgentVirtual.value) {
+                body.virtual = true;
+                if (newAgentPersonality.value) body.personality = newAgentPersonality.value;
+                if (newAgentCost.value) body.cost = newAgentCost.value;
+            }
+            if (newAgentTemplateId.value && !newAgentVirtual.value) body.welcome_template_id = newAgentTemplateId.value;
             const data = await api('/admin/agents/create', body);
             newAgentPassphrase.value = data.passphrase;
-            showToast('Agent "' + data.agent + '" created' + (data.welcome_mail_sent ? ' with welcome mail' : ''), 'success');
+
+            // If virtual and API key provided, update it separately (encrypted)
+            if (newAgentVirtual.value && newAgentApiKey.value) {
+                await api('/admin/agents/update', {
+                    agent: newAgentName.value,
+                    api_key: newAgentApiKey.value
+                });
+            }
+
+            const msg = data.virtual
+                ? 'Virtual agent "' + data.agent + '" created'
+                : 'Agent "' + data.agent + '" created' + (data.welcome_mail_sent ? ' with welcome mail' : '');
+            showToast(msg, 'success');
             loadAgents();
         } catch (err) {
             console.error('Failed to create agent:', err);
@@ -257,6 +282,7 @@ function useAgents({ api, showToast, showConfirm }) {
         resetAgentPassphrase,
         agentCreating, newAgentName, newAgentProvider, newAgentModel,
         newAgentTemplateId, newAgentCreating, newAgentPassphrase,
+        newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentCost,
         startCreateAgent, createAgent,
         welcomeTemplates, templateEditing, templateEditId,
         templateEditName, templateEditDescription, templateEditSubject, templateEditBody, templateSaving,

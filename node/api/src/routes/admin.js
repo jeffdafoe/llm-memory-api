@@ -194,7 +194,7 @@ router.post('/admin/api-log', async (req, res) => {
 router.post('/admin/agents', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model
+            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, cost
              FROM agent_status
              ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'offline' THEN 1 ELSE 2 END, agent`
         );
@@ -823,7 +823,7 @@ router.post('/admin/templates/delete', async (req, res) => {
 
 // POST /admin/agents/create — create an agent (active immediately) with optional welcome mail
 router.post('/admin/agents/create', async (req, res) => {
-    const { agent, provider, model, welcome_template_id } = req.body;
+    const { agent, provider, model, welcome_template_id, virtual: isVirtual, personality, cost } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -851,13 +851,15 @@ router.post('/admin/agents/create', async (req, res) => {
 
         // Create agent as active (skip pending/ack dance — admin is creating it)
         await pool.query(
-            'INSERT INTO agents (agent, token_hash, token_salt, status, provider, model) VALUES ($1, $2, $3, $4, $5, $6)',
-            [agent, hash, salt, 'active', provider || null, model || null]
+            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [agent, hash, salt, 'active', provider || null, model || null,
+             isVirtual === true, personality || null, cost || null]
         );
 
-        // Send welcome mail if template selected
+        // Send welcome mail if template selected (not for virtual agents)
         let welcomeMailSent = false;
-        if (welcome_template_id) {
+        if (welcome_template_id && !isVirtual) {
             const tplResult = await pool.query(
                 'SELECT subject, body FROM welcome_templates WHERE id = $1',
                 [welcome_template_id]
@@ -872,19 +874,96 @@ router.post('/admin/agents/create', async (req, res) => {
             }
         }
 
-        logAdmin('agent_create', { agent, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
+        logAdmin('agent_create', { agent, virtual: isVirtual === true, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
 
         res.json({
             agent,
             passphrase,
+            virtual: isVirtual === true,
             status: 'active',
             welcome_mail_sent: welcomeMailSent,
-            message: 'Agent created. Save the passphrase — it will not be shown again.'
+            message: isVirtual ? 'Virtual agent created.' : 'Agent created. Save the passphrase — it will not be shown again.'
         });
     } catch (err) {
         console.error('Admin agent create error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to create agent' }
+        });
+    }
+});
+
+// POST /admin/agents/update — update virtual agent config (personality, api_key, configuration, cost, provider, model)
+router.post('/admin/agents/update', async (req, res) => {
+    const { agent, personality, api_key, configuration, cost, provider, model } = req.body;
+
+    if (!agent) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
+        });
+    }
+
+    try {
+        const existing = await pool.query('SELECT agent, virtual FROM agents WHERE agent = $1', [agent]);
+        if (existing.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+
+        const updates = [];
+        const params = [];
+        let idx = 1;
+
+        if (personality !== undefined) {
+            params.push(personality || null);
+            updates.push(`personality = $${idx++}`);
+        }
+        if (api_key !== undefined) {
+            // Encrypt the API key before storing
+            if (api_key) {
+                const { encryptApiKey } = require('../services/provider');
+                params.push(encryptApiKey(api_key));
+            } else {
+                params.push(null);
+            }
+            updates.push(`api_key = $${idx++}`);
+        }
+        if (configuration !== undefined) {
+            params.push(configuration ? JSON.stringify(configuration) : null);
+            updates.push(`configuration = $${idx++}`);
+        }
+        if (cost !== undefined) {
+            params.push(cost || null);
+            updates.push(`cost = $${idx++}`);
+        }
+        if (provider !== undefined) {
+            params.push(provider || null);
+            updates.push(`provider = $${idx++}`);
+        }
+        if (model !== undefined) {
+            params.push(model || null);
+            updates.push(`model = $${idx++}`);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'No fields to update' }
+            });
+        }
+
+        params.push(agent);
+        await pool.query(
+            `UPDATE agents SET ${updates.join(', ')} WHERE agent = $${idx}`,
+            params
+        );
+
+        logAdmin('agent_update', { agent, fields: updates.map(u => u.split(' ')[0]), user_id: req.authenticatedUser.id });
+
+        res.json({ agent, updated: true });
+    } catch (err) {
+        console.error('Admin agent update error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to update agent' }
         });
     }
 });

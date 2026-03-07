@@ -273,6 +273,7 @@ router.post('/agent/status', async (req, res) => {
                 a.expertise,
                 a.provider,
                 a.model,
+                a.virtual,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
