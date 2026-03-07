@@ -124,6 +124,7 @@ nav a.active {
 .col-time { width: 11em; }
 
 .activity-spinner {
+    display: inline-block;
     font-size: 0.9em;
     color: #5b9bd5;
     animation: spin 1.5s linear infinite;
