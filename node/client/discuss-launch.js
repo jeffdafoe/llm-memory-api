@@ -94,7 +94,9 @@ fs.closeSync(logFd);
 console.error(`Transport PID: ${child.pid}`);
 
 // Poll for "Prompt written to <path>" in the transport log
-const TIMEOUT_SEC = 180;
+// Default 600s matches the discussion timeout (10 min). The transport's own
+// join-timeout is shorter (300s), so this outlasts it comfortably.
+const TIMEOUT_SEC = 600;
 let elapsed = 0;
 
 const poll = setInterval(() => {
