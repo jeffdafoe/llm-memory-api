@@ -21,8 +21,11 @@ createApp({
         // Core: auth, api, formatting, confirm/toast
         const core = useCore();
 
+        // Real-time event stream via WebSocket
+        const eventsModule = createEventsModule();
+
         // Feature composables — each gets the shared deps it needs
-        const deps = { api: core.api, showToast: core.showToast, showConfirm: core.showConfirm, authenticated: core.authenticated };
+        const deps = { api: core.api, showToast: core.showToast, showConfirm: core.showConfirm, authenticated: core.authenticated, onEvent: eventsModule.onEvent };
 
         const agentsModule = useAgents(deps);
         const discussionsModule = useDiscussions(deps);
@@ -32,25 +35,6 @@ createApp({
         const apiLogModule = useApiLog(deps);
         const configModule = useConfig(deps);
         const dashboardModule = useDashboard(deps);
-
-        // Real-time event stream via WebSocket
-        const eventsModule = createEventsModule();
-
-        // Update agent activity spinner in real time.
-        // Agents appear in two places: the Agents list and the Dashboard summary.
-        eventsModule.onEvent('agent_activity', (data) => {
-            const activeValue = data.active ? new Date().toISOString() : null;
-            const agentInList = agentsModule.agents.value.find(a => a.agent === data.agent);
-            if (agentInList) {
-                agentInList.active_since = activeValue;
-            }
-            if (dashboardModule.dashboard.value && dashboardModule.dashboard.value.agents) {
-                const agentInDash = dashboardModule.dashboard.value.agents.find(a => a.agent === data.agent);
-                if (agentInDash) {
-                    agentInDash.active_since = activeValue;
-                }
-            }
-        });
 
         // View loading — route data fetches to the right module
         function loadCurrentView() {

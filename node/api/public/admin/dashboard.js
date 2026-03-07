@@ -1,6 +1,6 @@
 // dashboard.js — Dashboard view with live discussion polling
 
-function useDashboard({ api, authenticated }) {
+function useDashboard({ api, authenticated, onEvent }) {
     const dashboard = ref(null);
     const liveDiscussions = ref([]);
 
@@ -85,6 +85,18 @@ function useDashboard({ api, authenticated }) {
             clearInterval(liveTimer);
             liveTimer = null;
         }
+    }
+
+    // Real-time activity updates from WebSocket
+    if (onEvent) {
+        onEvent('agent_activity', (data) => {
+            if (dashboard.value && dashboard.value.agents) {
+                const agent = dashboard.value.agents.find(a => a.agent === data.agent);
+                if (agent) {
+                    agent.active_since = data.active ? new Date().toISOString() : null;
+                }
+            }
+        });
     }
 
     return {
