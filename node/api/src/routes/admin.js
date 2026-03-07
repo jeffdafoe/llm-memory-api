@@ -116,7 +116,7 @@ router.post('/admin/logout', async (req, res) => {
 router.post('/admin/dashboard', async (req, res) => {
     try {
         const agents = await pool.query(
-            `SELECT agent, status, last_seen, registered_at, provider, model, active_since
+            `SELECT agent, status, last_seen, registered_at, provider, model, virtual, active_since
              FROM agent_status
              ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'offline' THEN 1 ELSE 2 END, agent`
         );
