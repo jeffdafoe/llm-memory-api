@@ -32,6 +32,7 @@ let workDirBase = null;
 let maxMessages = 200;
 let timeoutMinutes = 120;
 let joinTimeout = 300;
+let maxRounds = 20;
 let cliAgent = null;
 let cliPassphrase = null;
 let cliApiUrl = null;
@@ -67,6 +68,9 @@ for (let i = 1; i < args.length; i++) {
         i++;
     } else if (args[i] === '--work-dir' && args[i + 1]) {
         workDirBase = args[i + 1];
+        i++;
+    } else if (args[i] === '--max-rounds' && args[i + 1]) {
+        maxRounds = parseInt(args[i + 1], 10);
         i++;
     } else if (args[i] === '--join-timeout' && args[i + 1]) {
         joinTimeout = parseInt(args[i + 1], 10);
@@ -258,6 +262,22 @@ let lastInboxDeliveryTime = 0;
 let subagentDeathReported = false;
 const SUBAGENT_DEAD_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
 
+// Convergence detection — escalating ladder:
+//   normal → warned → forced-vote → countdown → terminated
+// Round-trip = every participant has sent at least one message since the last
+// round-trip was counted. For 2 agents: A speaks, B speaks = 1 round-trip.
+// For N agents: all N agents speak = 1 round-trip.
+let convergenceState = 'normal';
+let roundTripCount = 0;
+let roundTripSpeakers = new Set();     // agents who've spoken in current round-trip
+let exchangesSinceLastVote = 0;        // messages (not round-trips) since last vote
+let rejectedConcludeCount = 0;         // consecutive rejected conclude votes
+let exchangesSinceWarning = 0;         // messages since convergence warning
+let exchangesSinceForcedVote = 0;      // messages since forced conclude vote
+let forcedVoteId = null;               // vote ID of the transport-proposed conclude
+const VOTE_SILENCE_THRESHOLD = 10;     // exchanges without any vote triggers secondary signal
+const REJECTED_CONCLUDE_THRESHOLD = 2; // rejected concludes triggers escalation
+
 // Stall detection
 let stallWarningLogged = false;
 const STALL_WARNING_MS = 90000;
@@ -291,6 +311,13 @@ function writeState(overrides) {
         seenIds: [...seenIds],
         ready: readySignaled,
         startedAt: new Date(startTime).toISOString(),
+        convergence: {
+            state: convergenceState,
+            roundTrips: roundTripCount,
+            maxRounds: maxRounds,
+            exchangesSinceLastVote: exchangesSinceLastVote,
+            rejectedConcludes: rejectedConcludeCount,
+        },
     };
     if (overrides) {
         Object.assign(state, overrides);
@@ -535,6 +562,7 @@ async function sendMessage(message) {
         });
         log(`SENT: ${message.slice(0, 100)}...`);
         appendTranscript(cfg.agent, message);
+        trackConvergenceMessage(cfg.agent, 'sent');
         turnCount++;
     } catch (err) {
         log(`ERROR sending: ${err.message}`);
@@ -559,6 +587,7 @@ function processReceivedMessages(messages) {
         const inboxContent = `From: ${msg.from_agent}\nSent: ${msg.sent_at}\n\n${msg.message}`;
         fs.writeFileSync(path.join(INBOX_DIR, `${msg.id}.txt`), inboxContent);
         appendTranscript(msg.from_agent, msg.message);
+        trackConvergenceMessage(msg.from_agent, 'received');
         log(`RECEIVED: id=${msg.id} from=${msg.from_agent}`);
     }
 
@@ -646,6 +675,160 @@ async function checkPendingVotes() {
 }
 
 // ---------------------------------------------------------------------------
+// Convergence detection
+// ---------------------------------------------------------------------------
+
+// Get all participant agent names (self + others). Available after setup.
+function getAllParticipants() {
+    return [cfg.agent, ...cfg.otherAgents];
+}
+
+// Called when a message is received from any agent (including self via send).
+// speaker is the agent name. source is 'received' or 'sent'.
+function trackConvergenceMessage(speaker, source) {
+    // Count exchanges (every message from anyone)
+    exchangesSinceLastVote++;
+    if (convergenceState === 'warned') exchangesSinceWarning++;
+    if (convergenceState === 'countdown') exchangesSinceForcedVote++;
+
+    // Track round-trip: a round-trip completes when all participants have spoken
+    roundTripSpeakers.add(speaker);
+    const allParticipants = getAllParticipants();
+    if (roundTripSpeakers.size >= allParticipants.length) {
+        roundTripCount++;
+        roundTripSpeakers.clear();
+        log(`Round-trip #${roundTripCount} completed (max: ${maxRounds})`);
+    }
+}
+
+// Called when any vote is proposed or cast (resets the vote-silence counter)
+function trackConvergenceVoteActivity() {
+    exchangesSinceLastVote = 0;
+}
+
+// Called when a conclude vote is rejected
+function trackConcludeRejected() {
+    rejectedConcludeCount++;
+    log(`Conclude vote rejected (${rejectedConcludeCount}/${REJECTED_CONCLUDE_THRESHOLD})`);
+}
+
+// Inject a [SYSTEM] message into the subagent's inbox
+function injectSystemMessage(message) {
+    const filename = `system-${Date.now()}.txt`;
+    const content = `From: system\nSent: ${new Date().toISOString()}\n\n${message}`;
+    fs.writeFileSync(path.join(INBOX_DIR, filename), content);
+    appendTranscript('system', message);
+    log(`SYSTEM MESSAGE INJECTED: ${message.slice(0, 100)}...`);
+}
+
+// Check convergence signals and escalate if needed.
+// Returns 'continue' or 'terminate'.
+async function checkConvergence() {
+    // Don't check during setup or if already done
+    if (convergenceState === 'terminated') return 'terminate';
+    if (checkDone()) return 'continue';
+
+    const shouldEscalate =
+        // Primary: round-trip threshold
+        (convergenceState === 'normal' && roundTripCount >= maxRounds) ||
+        // Primary: rejected conclude votes
+        (convergenceState === 'normal' && rejectedConcludeCount >= REJECTED_CONCLUDE_THRESHOLD) ||
+        // Secondary: long stretch without any vote activity
+        (convergenceState === 'normal' && exchangesSinceLastVote >= VOTE_SILENCE_THRESHOLD && roundTripCount >= Math.floor(maxRounds / 2));
+
+    if (shouldEscalate && convergenceState === 'normal') {
+        // Step 1: Warning
+        convergenceState = 'warned';
+        exchangesSinceWarning = 0;
+        const reason = roundTripCount >= maxRounds
+            ? `${roundTripCount} round-trips without resolution`
+            : rejectedConcludeCount >= REJECTED_CONCLUDE_THRESHOLD
+                ? `${rejectedConcludeCount} conclude votes rejected`
+                : `${exchangesSinceLastVote} exchanges without a vote`;
+        const warning = `[SYSTEM] Convergence warning: This discussion has reached ${reason}. ` +
+            `Please propose a vote, concede a point, or identify the exact disagreement. ` +
+            `Continuing to restate positions will trigger escalation.`;
+        injectSystemMessage(warning);
+        log(`CONVERGENCE: escalated to 'warned' (${reason})`);
+        return 'continue';
+    }
+
+    if (convergenceState === 'warned' && exchangesSinceWarning >= 3) {
+        // Step 2: Grace period expired — force a conclude vote
+        convergenceState = 'forced-vote';
+        exchangesSinceForcedVote = 0;
+        log('CONVERGENCE: grace period expired, proposing forced conclude vote');
+        try {
+            const result = await apiCall('discussion/vote/propose', {
+                discussion_id: discussionId,
+                proposed_by: cfg.agent,
+                question: '[SYSTEM] Forced conclude: discussion has not converged after warning. 1=conclude 2=continue',
+                type: 'conclude',
+                threshold: 'majority',
+            });
+            forcedVoteId = result.vote ? result.vote.id : null;
+            injectSystemMessage(`[SYSTEM] A forced conclude vote has been proposed (vote #${forcedVoteId}). ` +
+                `Vote to conclude or continue. If this vote fails, the discussion will be terminated shortly.`);
+        } catch (err) {
+            log(`Failed to propose forced conclude: ${err.message}`);
+            // Fall through to countdown anyway
+            convergenceState = 'countdown';
+            exchangesSinceForcedVote = 0;
+        }
+        return 'continue';
+    }
+
+    if (convergenceState === 'forced-vote' && forcedVoteId) {
+        // Check if the forced vote resolved
+        try {
+            const voteResult = await apiCall('discussion/vote/status', { vote_id: forcedVoteId });
+            if (voteResult.vote && voteResult.vote.status === 'passed') {
+                log('CONVERGENCE: forced conclude vote passed');
+                return 'continue'; // Normal conclude flow will handle it
+            }
+            if (voteResult.vote && voteResult.vote.status === 'failed') {
+                log('CONVERGENCE: forced conclude vote rejected — entering countdown');
+                convergenceState = 'countdown';
+                exchangesSinceForcedVote = 0;
+                injectSystemMessage(`[SYSTEM] Final warning: The forced conclude vote was rejected. ` +
+                    `You have 2 more exchanges to reach agreement before this discussion is terminated.`);
+                return 'continue';
+            }
+        } catch (err) {
+            log(`Forced vote status check failed: ${err.message}`);
+        }
+        // Vote still open — give it time
+        if (exchangesSinceForcedVote >= 4) {
+            // Too long waiting for votes, move to countdown
+            convergenceState = 'countdown';
+            exchangesSinceForcedVote = 0;
+            injectSystemMessage(`[SYSTEM] Final warning: forced conclude vote timed out. ` +
+                `You have 2 more exchanges to reach agreement before this discussion is terminated.`);
+        }
+        return 'continue';
+    }
+
+    if (convergenceState === 'countdown' && exchangesSinceForcedVote >= 2) {
+        // Step 3: Termination
+        convergenceState = 'terminated';
+        log('CONVERGENCE: terminated — discussion did not converge');
+        injectSystemMessage(`[SYSTEM] This discussion has been terminated due to failure to converge. ` +
+            `Please write your result.md summarizing what was agreed and what remains unresolved.`);
+        // Give subagent time to write result.md
+        await sleep(30000);
+        const outMsg = checkOutbox();
+        if (outMsg) {
+            await sendMessage(outMsg);
+        }
+        fs.writeFileSync(DONE_FILE, 'terminated');
+        setStatus('TERMINATED');
+        return 'terminate';
+    }
+
+    return 'continue';
+}
+
+// ---------------------------------------------------------------------------
 // Transport: timeout checks
 // ---------------------------------------------------------------------------
 
@@ -694,6 +877,7 @@ function startProxyServer() {
                     const urlPath = req.url;
 
                     if (urlPath === '/vote/propose') {
+                        trackConvergenceVoteActivity();
                         // If proposing a conclude vote, check for an existing one first
                         if ((parsed.type || 'general') === 'conclude') {
                             const pending = await apiCall('discussion/pending', { agent: cfg.agent, discussion_id: discussionId });
@@ -721,6 +905,7 @@ function startProxyServer() {
                             threshold: parsed.threshold || 'unanimous',
                         });
                     } else if (urlPath === '/vote/cast') {
+                        trackConvergenceVoteActivity();
                         result = await apiCall('discussion/vote/cast', {
                             vote_id: parsed.vote_id,
                             agent: cfg.agent,
@@ -737,6 +922,10 @@ function startProxyServer() {
                         result = await apiCall('discussion/vote/status', {
                             vote_id: parsed.vote_id,
                         });
+                        // Track rejected conclude votes for convergence detection
+                        if (result.vote && result.vote.type === 'conclude' && result.vote.status === 'failed') {
+                            trackConcludeRejected();
+                        }
                     } else if (urlPath === '/pending') {
                         result = await apiCall('discussion/pending', {
                             agent: cfg.agent,
@@ -1125,7 +1314,14 @@ async function runTransport() {
         // 8. Poll pending votes
         await checkPendingVotes();
 
-        // 9. Periodic server-side status check
+        // 9. Convergence detection
+        const convergenceResult = await checkConvergence();
+        if (convergenceResult === 'terminate') {
+            log('Convergence termination — exiting transport loop');
+            return;
+        }
+
+        // 10. Periodic server-side status check
         statusCheckCounter++;
         if (statusCheckCounter >= STATUS_CHECK_INTERVAL) {
             statusCheckCounter = 0;
@@ -1448,9 +1644,12 @@ async function main() {
         // Save result.md as a remote note for cross-agent access
         await saveResult();
 
-        // Clean exit
+        // Clean exit — code 2 if terminated by convergence detection
         await transportLogout();
         server.close();
+        if (convergenceState === 'terminated') {
+            process.exit(2);
+        }
     } catch (err) {
         console.error(`Fatal error: ${err.message}`);
         log(`FATAL: ${err.message}`);
