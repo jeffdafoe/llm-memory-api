@@ -945,7 +945,12 @@
                             <div class="form-row-inline">
                                 <label>
                                     Provider
-                                    <input type="text" v-model="newAgentProvider" placeholder="e.g. anthropic">
+                                    <select v-model="newAgentProvider">
+                                        <option value="">None</option>
+                                        <option value="anthropic">Anthropic</option>
+                                        <option value="google">Google</option>
+                                        <option value="openai">OpenAI</option>
+                                    </select>
                                 </label>
                                 <label>
                                     Model
