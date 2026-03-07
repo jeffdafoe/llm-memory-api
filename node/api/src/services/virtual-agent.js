@@ -7,6 +7,7 @@ const pool = require('../db');
 const { log } = require('./logger');
 const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey } = require('./provider');
+const { broadcast } = require('./events');
 
 function logVA(action, details) {
     log('virtual-agent', action, details);
@@ -252,9 +253,17 @@ async function handleVirtualAgent(payload) {
             const systemPrompt = buildSystemPrompt(agent, discussion, ragContext);
             const userMessage = buildUserMessage(chatHistory, triggerType, voteQuestion);
 
-            // Call provider
+            // Call provider — show activity spinner while the AI call is in flight
+            await pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent.agent]);
+            broadcast('agent_activity', { agent: agent.agent, active: true });
             const provider = createProvider(agent.provider, agent.model, apiKey, conf);
-            const response = await provider(systemPrompt, userMessage);
+            let response;
+            try {
+                response = await provider(systemPrompt, userMessage);
+            } finally {
+                await pool.query('UPDATE agents SET active_since = NULL WHERE agent = $1', [agent.agent]);
+                broadcast('agent_activity', { agent: agent.agent, active: false });
+            }
 
             // Handle vote-proposed: parse response and cast ballot
             if (triggerType === 'vote-proposed' && voteId) {
