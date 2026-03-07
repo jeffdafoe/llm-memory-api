@@ -1,6 +1,6 @@
 // agents.js — Agents list, detail, creation, welcome templates
 
-function useAgents({ api, showToast, showConfirm }) {
+function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
     const selectedAgent = ref(null);
     const agentSubTab = ref('list');
@@ -299,6 +299,16 @@ function useAgents({ api, showToast, showConfirm }) {
             } catch (err) {
                 console.error('Failed to delete template:', err);
                 showToast('Failed: ' + err.message, 'error');
+            }
+        });
+    }
+
+    // Real-time activity updates from WebSocket
+    if (onEvent) {
+        onEvent('agent_activity', (data) => {
+            const agent = agents.value.find(a => a.agent === data.agent);
+            if (agent) {
+                agent.active_since = data.active ? new Date().toISOString() : null;
             }
         });
     }
