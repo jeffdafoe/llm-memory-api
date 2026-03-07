@@ -11,7 +11,7 @@ function useNotes({ api, showToast, showConfirm }) {
     const notesEditContent = ref('');
     const notesSaving = ref(false);
     const notesSearchQuery = ref('');
-    const notesSearchResults = ref([]);
+    const notesSearchResults = ref(null);
     const notesReindexing = ref(false);
     const reindexStatus = ref(null);
     let reindexPollTimer = null;
