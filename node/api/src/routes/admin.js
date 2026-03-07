@@ -122,7 +122,7 @@ router.post('/admin/dashboard', async (req, res) => {
         );
 
         const discussions = await pool.query(
-            `SELECT d.id, d.topic, d.status, d.created_by, d.created_at,
+            `SELECT d.id, d.topic, d.status, d.outcome, d.created_by, d.created_at,
                     COUNT(dp.agent) AS participant_count
              FROM discussions d
              LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id

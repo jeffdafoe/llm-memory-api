@@ -168,7 +168,7 @@
                             </thead>
                             <tbody>
                                 <tr v-for="d in dashboard.discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
-                                    <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i></td>
+                                    <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
                                     <td>{{ d.id }}</td>
                                     <td class="message-cell">{{ d.topic }}</td>
                                     <td class="time-cell">{{ formatDate(d.created_at) }}</td>
@@ -479,18 +479,16 @@
                                     <th>Topic</th>
                                     <th>Created By</th>
                                     <th>#</th>
-                                    <th>Outcome</th>
                                     <th class="time-cell">Created</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-for="d in discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
-                                    <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i></td>
+                                    <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
                                     <td>{{ d.id }}</td>
                                     <td class="message-cell">{{ d.topic }}</td>
                                     <td>{{ d.created_by }}</td>
                                     <td>{{ d.participant_count }}</td>
-                                    <td>{{ d.outcome || '' }}</td>
                                     <td class="time-cell">{{ formatDate(d.created_at) }}</td>
                                 </tr>
                             </tbody>
@@ -745,7 +743,7 @@
                             <div class="grid">
                                 <div>
                                     <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
-                                    <strong>Outcome:</strong> {{ selectedDiscussion.discussion.outcome || '—' }}<br>
+                                    <strong>Outcome:</strong> <i v-if="selectedDiscussion.discussion.outcome" :class="'outcome-' + selectedDiscussion.discussion.outcome + ' ' + outcomeIcon(selectedDiscussion.discussion.outcome)" :title="selectedDiscussion.discussion.outcome"></i> {{ selectedDiscussion.discussion.outcome || '—' }}<br>
                                     <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
                                     <strong>Created by:</strong> {{ selectedDiscussion.discussion.created_by }}<br>
                                     <strong>Created:</strong> {{ formatDate(selectedDiscussion.discussion.created_at) }}

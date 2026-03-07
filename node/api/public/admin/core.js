@@ -172,6 +172,17 @@ function useCore() {
         return statusIcons[status] || 'icon-help-circle';
     }
 
+    const outcomeIcons = {
+        consensus: 'icon-check-check',
+        deadlock: 'icon-lock',
+        partial: 'icon-circle-dot',
+        abandoned: 'icon-log-out'
+    };
+
+    function outcomeIcon(outcome) {
+        return outcomeIcons[outcome] || '';
+    }
+
     const agentColors = {
         home: '#5b9bd5',
         work: '#e07b53',
@@ -203,7 +214,7 @@ function useCore() {
         api, showConfirm, executeConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatTime,
-        statusIcon, agentColor, voteQuestion
+        statusIcon, outcomeIcon, agentColor, voteQuestion
     };
 }
 

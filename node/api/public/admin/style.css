@@ -67,6 +67,26 @@ nav a.active {
     font-size: 0.9em;
 }
 
+.outcome-consensus {
+    color: #2d6a2d;
+    font-size: 0.85em;
+}
+
+.outcome-deadlock {
+    color: #b22222;
+    font-size: 0.85em;
+}
+
+.outcome-partial {
+    color: #b8860b;
+    font-size: 0.85em;
+}
+
+.outcome-abandoned {
+    color: #888;
+    font-size: 0.85em;
+}
+
 .fixed-table {
     table-layout: fixed;
     width: 100%;
