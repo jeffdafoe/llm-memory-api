@@ -54,6 +54,14 @@ function createProvider(provider, model, apiKey, configuration) {
         return createAnthropicProvider(model, apiKey, configuration);
     }
 
+    if (providerLower === 'google' || providerLower === 'gemini') {
+        return createGeminiProvider(model, apiKey, configuration);
+    }
+
+    if (providerLower === 'openai') {
+        return createOpenAIProvider(model, apiKey, configuration);
+    }
+
     throw new Error(`Unsupported provider: ${provider}`);
 }
 
@@ -106,6 +114,120 @@ function createAnthropicProvider(model, apiKey, configuration) {
         });
 
         return text;
+    };
+}
+
+function createGeminiProvider(model, apiKey, configuration) {
+    const conf = configuration || {};
+
+    return async function call(systemPrompt, userMessage) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+        const body = {
+            system_instruction: {
+                parts: { text: systemPrompt }
+            },
+            contents: [{
+                role: 'user',
+                parts: [{ text: userMessage }]
+            }],
+            generationConfig: {}
+        };
+
+        if (conf.max_tokens) {
+            body.generationConfig.maxOutputTokens = conf.max_tokens;
+        }
+        if (conf.temperature !== undefined) {
+            body.generationConfig.temperature = conf.temperature;
+        }
+
+        logProvider('api-call', { provider: 'google', model });
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            logProvider('api-error', { provider: 'google', model, status: response.status, error: errorText });
+            throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const candidate = data.candidates && data.candidates[0];
+        if (!candidate || !candidate.content || !candidate.content.parts) {
+            throw new Error('Gemini API returned no content');
+        }
+
+        const text = candidate.content.parts
+            .filter(p => p.text)
+            .map(p => p.text)
+            .join('\n');
+
+        logProvider('api-response', {
+            provider: 'google', model,
+            input_tokens: data.usageMetadata?.promptTokenCount,
+            output_tokens: data.usageMetadata?.candidatesTokenCount
+        });
+
+        return text;
+    };
+}
+
+function createOpenAIProvider(model, apiKey, configuration) {
+    const conf = configuration || {};
+
+    return async function call(systemPrompt, userMessage) {
+        const body = {
+            model: model,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage }
+            ]
+        };
+
+        if (conf.max_tokens) {
+            body.max_tokens = conf.max_tokens;
+        }
+        if (conf.temperature !== undefined) {
+            body.temperature = conf.temperature;
+        }
+
+        logProvider('api-call', { provider: 'openai', model });
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            logProvider('api-error', { provider: 'openai', model, status: response.status, error: errorText });
+            throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const choice = data.choices && data.choices[0];
+        if (!choice || !choice.message) {
+            throw new Error('OpenAI API returned no content');
+        }
+
+        logProvider('api-response', {
+            provider: 'openai', model,
+            input_tokens: data.usage?.prompt_tokens,
+            output_tokens: data.usage?.completion_tokens
+        });
+
+        return choice.message.content;
     };
 }
 
