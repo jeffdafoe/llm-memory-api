@@ -364,7 +364,7 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
-                                        <td>{{ agent.agent }} <span v-if="agent.virtual" class="badge badge-virtual">virtual</span></td>
+                                        <td>{{ agent.agent }} <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i></td>
                                         <td>
                                             <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                         </td>
@@ -882,7 +882,7 @@
                                 <button class="inline-button secondary" @click="agentNewPassphrase = null">Dismiss</button>
                             </div>
 
-                            <h3>{{ selectedAgent.agent }} <span v-if="selectedAgent.virtual" class="badge badge-virtual">virtual</span></h3>
+                            <h3>{{ selectedAgent.agent }} <i v-if="selectedAgent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i></h3>
                             <p>
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
                                 <span v-if="selectedAgent.provider || selectedAgent.model" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
