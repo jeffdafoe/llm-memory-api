@@ -4,6 +4,7 @@ const config = require('./services/config');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
 const { requestLog } = require('./middleware/request-log');
+const { handleUpgrade } = require('./services/events');
 const oauthRoutes = require('./routes/oauth');
 const mcpRoutes = require('./routes/mcp');
 const agentRoutes = require('./routes/agent');
@@ -57,8 +58,17 @@ config.init().then(() => {
     // Register virtual agent handler (depends on config being loaded)
     require('./services/virtual-agent');
 
-    app.listen(port, () => {
+    const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
+    });
+
+    // WebSocket upgrade handler for admin real-time events
+    server.on('upgrade', (req, socket, head) => {
+        if (req.url === '/admin/ws') {
+            handleUpgrade(req, socket, head);
+        } else {
+            socket.destroy();
+        }
     });
 }).catch(err => {
     console.error('Failed to load config:', err.message);

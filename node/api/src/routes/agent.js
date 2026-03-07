@@ -5,6 +5,7 @@ const pool = require('../db');
 const { log } = require('../services/logger');
 const auth = require('../middleware/auth');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
+const { broadcast } = require('../services/events');
 
 const router = Router();
 
@@ -451,6 +452,7 @@ router.post('/agent/activity/start', async (req, res) => {
         );
 
         logAgent('activity_start', { agent });
+        broadcast('agent_activity', { agent, active: true });
         res.json({ agent, active: true, message: 'Activity started' });
     } catch (err) {
         console.error('Agent activity start error:', err.message);
@@ -477,6 +479,7 @@ router.post('/agent/activity/stop', async (req, res) => {
         );
 
         logAgent('activity_stop', { agent });
+        broadcast('agent_activity', { agent, active: false });
         res.json({ agent, active: false, message: 'Activity stopped' });
     } catch (err) {
         console.error('Agent activity stop error:', err.message);

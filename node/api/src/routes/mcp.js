@@ -20,6 +20,7 @@ const {
     discussionConclude, discussionJoin, discussionLeave,
     votePropose, voteCast, voteStatus
 } = require('../services/discussion');
+const { broadcast } = require('../services/events');
 
 const router = Router();
 
@@ -819,11 +820,13 @@ const TOOL_HANDLERS = {
     // --- Activity ---
     async activity_start(args, agent, namespace) {
         await pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent]);
+        broadcast('agent_activity', { agent, active: true });
         return `Activity started for ${agent}.`;
     },
 
     async activity_stop(args, agent, namespace) {
         await pool.query('UPDATE agents SET active_since = NULL WHERE agent = $1', [agent]);
+        broadcast('agent_activity', { agent, active: false });
         return `Activity stopped for ${agent}.`;
     },
 

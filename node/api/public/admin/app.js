@@ -33,6 +33,17 @@ createApp({
         const configModule = useConfig(deps);
         const dashboardModule = useDashboard(deps);
 
+        // Real-time event stream via WebSocket
+        const eventsModule = createEventsModule();
+
+        // Update agent activity spinner in real time
+        eventsModule.onEvent('agent_activity', (data) => {
+            const agent = agentsModule.agents.value.find(a => a.agent === data.agent);
+            if (agent) {
+                agent.active_since = data.active ? new Date().toISOString() : null;
+            }
+        });
+
         // View loading — route data fetches to the right module
         function loadCurrentView() {
             if (currentView.value !== 'dashboard') {
@@ -121,6 +132,7 @@ createApp({
                 loadCurrentView();
                 startPolling();
                 notesModule.pollReindexStatus();
+                eventsModule.connect(core.sessionToken.value);
             }
         });
 
@@ -128,6 +140,7 @@ createApp({
             stopPolling();
             dashboardModule.stopLivePolling();
             apiLogModule.stopApiLogPolling();
+            eventsModule.disconnect();
             document.removeEventListener('visibilitychange', handleVisibility);
         });
 
@@ -137,6 +150,7 @@ createApp({
                 loadCurrentView();
                 startPolling();
                 notesModule.pollReindexStatus();
+                eventsModule.connect(core.sessionToken.value);
             });
         }
 
@@ -145,6 +159,7 @@ createApp({
                 stopPolling();
                 dashboardModule.stopLivePolling();
                 apiLogModule.stopApiLogPolling();
+                eventsModule.disconnect();
             });
         }
 
