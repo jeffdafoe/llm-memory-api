@@ -432,6 +432,7 @@ details .table-wrap {
     width: 1.5em;
     text-align: center;
     padding-right: 0;
+    white-space: nowrap;
 }
 
 .acked-icon {
