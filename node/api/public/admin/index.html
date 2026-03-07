@@ -592,7 +592,37 @@
                 <!-- Configuration view (with sub-tabs) -->
                 <div v-if="currentView === 'config'">
                     <div class="sub-tabs">
+                        <a href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
                         <a href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
+                    </div>
+
+                    <!-- System sub-tab -->
+                    <div v-if="configSubTab === 'system'">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Key</th>
+                                    <th>Value</th>
+                                    <th style="width: 6em;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="entry in configEntries" :key="entry.key">
+                                    <td class="log-mono">{{ entry.key }}</td>
+                                    <td v-if="configEditKey === entry.key">
+                                        <input type="text" v-model="configEditValue" class="config-edit-input" @keyup.enter="saveConfig" @keyup.escape="cancelEditConfig">
+                                    </td>
+                                    <td v-else class="log-mono config-value-cell">{{ entry.value || '(empty)' }}</td>
+                                    <td>
+                                        <template v-if="configEditKey === entry.key">
+                                            <button class="inline-button compact" @click="saveConfig" :disabled="configSaving">Save</button>
+                                            <button class="inline-button compact secondary" @click="cancelEditConfig">Cancel</button>
+                                        </template>
+                                        <button v-else class="inline-button compact secondary" @click="startEditConfig(entry)">Edit</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
 
                     <!-- API Log sub-tab -->
@@ -992,6 +1022,7 @@
     <script src="mail.js"></script>
     <script src="notes.js"></script>
     <script src="apilog.js"></script>
+    <script src="config.js"></script>
     <script src="dashboard.js"></script>
     <script src="app.js"></script>
 </body>

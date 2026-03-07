@@ -915,6 +915,23 @@ h4 i {
     color: white;
 }
 
+.inline-button.compact {
+    padding: 0.15em 0.6em;
+    font-size: 0.8em;
+    margin-left: 0.3em;
+}
+
+.config-edit-input {
+    margin: 0;
+    padding: 0.3em 0.5em;
+    font-family: monospace;
+    font-size: 0.85em;
+}
+
+.config-value-cell {
+    word-break: break-all;
+}
+
 .notes-body {
     overflow: auto;
 }
