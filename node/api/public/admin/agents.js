@@ -16,6 +16,10 @@ function useAgents({ api, showToast, showConfirm }) {
     const agentExpertiseSaving = ref(false);
     const agentPassphraseConfirming = ref(false);
     const agentNewPassphrase = ref(null);
+    const agentProfileEditing = ref(false);
+    const agentProfileProvider = ref('');
+    const agentProfileModel = ref('');
+    const agentProfileSaving = ref(false);
 
     // Agent creation
     const agentCreating = ref(false);
@@ -53,10 +57,37 @@ function useAgents({ api, showToast, showConfirm }) {
         }
     }
 
+    function startEditProfile() {
+        agentProfileEditing.value = true;
+        agentProfileProvider.value = selectedAgent.value.provider || '';
+        agentProfileModel.value = selectedAgent.value.model || '';
+    }
+
+    async function saveProfile() {
+        agentProfileSaving.value = true;
+        try {
+            await api('/admin/agents/update', {
+                agent: selectedAgent.value.agent,
+                provider: agentProfileProvider.value || null,
+                model: agentProfileModel.value || null
+            });
+            selectedAgent.value.provider = agentProfileProvider.value || null;
+            selectedAgent.value.model = agentProfileModel.value || null;
+            agentProfileEditing.value = false;
+            showToast('Profile updated', 'success');
+        } catch (err) {
+            console.error('Failed to save profile:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            agentProfileSaving.value = false;
+        }
+    }
+
     async function viewAgent(agent) {
         selectedAgent.value = agent;
         agentInstructionsEditing.value = false;
         agentExpertiseEditing.value = false;
+        agentProfileEditing.value = false;
         agentPassphraseConfirming.value = false;
         agentNewPassphrase.value = null;
         try {
@@ -276,7 +307,9 @@ function useAgents({ api, showToast, showConfirm }) {
         agentInstructions, agentInstructionsEditing, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
+        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileSaving,
         loadAgents, viewAgent,
+        startEditProfile, saveProfile,
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,
         resetAgentPassphrase,

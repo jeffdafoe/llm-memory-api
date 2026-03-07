@@ -896,9 +896,31 @@
                             <h3>{{ selectedAgent.agent }} <i v-if="selectedAgent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i></h3>
                             <p>
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
-                                <span v-if="selectedAgent.provider || selectedAgent.model" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
+                                <span v-if="!agentProfileEditing && (selectedAgent.provider || selectedAgent.model)" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
                                 <span v-if="selectedAgent.cost" class="muted" style="margin-left: 0.5em;">({{ selectedAgent.cost }})</span>
+                                <button v-if="!agentProfileEditing" class="inline-button compact" @click="startEditProfile" title="Edit provider/model"><i class="icon-edit"></i></button>
                             </p>
+                            <div v-if="agentProfileEditing" style="margin-bottom: 1rem;">
+                                <div class="form-row-inline" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                    <label>
+                                        Provider
+                                        <select v-model="agentProfileProvider">
+                                            <option value="">None</option>
+                                            <option value="anthropic">Anthropic</option>
+                                            <option value="google">Google</option>
+                                            <option value="openai">OpenAI</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        Model
+                                        <input type="text" v-model="agentProfileModel" placeholder="e.g. claude-sonnet-4-6">
+                                    </label>
+                                </div>
+                                <div class="button-row">
+                                    <button @click="saveProfile" :disabled="agentProfileSaving">Save</button>
+                                    <button class="secondary" @click="agentProfileEditing = false">Cancel</button>
+                                </div>
+                            </div>
                             <p v-if="selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
                             <p class="muted">
                                 Last seen: {{ formatDate(selectedAgent.last_seen) }}<br>
