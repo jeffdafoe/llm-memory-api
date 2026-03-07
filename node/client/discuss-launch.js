@@ -60,6 +60,16 @@ const logFile = path.join(workDir, 'discuss-transport.log');
 // Ensure work dir exists
 fs.mkdirSync(workDir, { recursive: true });
 
+// Clean up stale context temp files from previous launches
+try {
+    const files = fs.readdirSync(workDir);
+    for (const f of files) {
+        if (/^discuss-context-\d+\.md$/.test(f)) {
+            try { fs.unlinkSync(path.join(workDir, f)); } catch (e) { /* ignore */ }
+        }
+    }
+} catch (e) { /* ignore */ }
+
 // If --context-file is provided, copy it to a unique temp file so multiple
 // concurrent launches don't clobber each other's context.
 const childArgs = [...args];
