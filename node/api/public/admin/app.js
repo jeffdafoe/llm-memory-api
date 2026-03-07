@@ -5,7 +5,7 @@ createApp({
     setup() {
         const currentView = ref('dashboard');
 
-        const configSubTab = ref('apilog');
+        const configSubTab = ref('system');
 
         const viewTitles = {
             dashboard: 'Dashboard',
@@ -30,6 +30,7 @@ createApp({
         const mailModule = useMail(deps);
         const notesModule = useNotes(deps);
         const apiLogModule = useApiLog(deps);
+        const configModule = useConfig(deps);
         const dashboardModule = useDashboard(deps);
 
         // View loading — route data fetches to the right module
@@ -44,6 +45,7 @@ createApp({
                 dashboardModule.loadDashboard();
                 apiLogModule.startApiLogPolling();
             } else if (currentView.value === 'config') {
+                configModule.loadConfig();
                 apiLogModule.startApiLogPolling();
             } else if (currentView.value === 'agents') {
                 agentsModule.loadAgents();
@@ -167,6 +169,8 @@ createApp({
             ...notesModule,
             // API Log
             ...apiLogModule,
+            // Config
+            ...configModule,
             // Dashboard
             ...dashboardModule,
         };

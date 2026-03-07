@@ -499,6 +499,47 @@ router.post('/admin/mail/send', async (req, res) => {
     }
 });
 
+// POST /admin/config/list — list all config key/value pairs
+router.post('/admin/config/list', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT key, value FROM config ORDER BY key');
+        res.json({ config: result.rows });
+    } catch (err) {
+        console.error('Admin config list error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to fetch config' }
+        });
+    }
+});
+
+// POST /admin/config/update — update a config value by key
+router.post('/admin/config/update', async (req, res) => {
+    const { key, value } = req.body;
+    if (!key) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: key' }
+        });
+    }
+    try {
+        const result = await pool.query(
+            'UPDATE config SET value = $1 WHERE key = $2',
+            [value || '', key]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Config key not found' }
+            });
+        }
+        logAdmin('config_update', { key });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Admin config update error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to update config' }
+        });
+    }
+});
+
 // POST /admin/notes/list — list notes in a namespace
 router.post('/admin/notes/list', async (req, res) => {
     const { namespace, limit, offset, prefix } = req.body;
