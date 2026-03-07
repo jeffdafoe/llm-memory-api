@@ -1475,6 +1475,30 @@ function ensureDirectories() {
     fs.mkdirSync(OUTBOX_DIR, { recursive: true });
 }
 
+// Kill a previous transport process if it's still alive but should have exited.
+// Reads state.json for the previous PID and checks if it's still running.
+function killStalePid() {
+    if (!STATE_FILE) return;
+    try {
+        const prev = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+        if (!prev.pid || prev.pid === process.pid) return;
+        // Check if the process is still alive
+        try {
+            process.kill(prev.pid, 0);
+        } catch (e) {
+            return; // Process not running — nothing to do
+        }
+        log(`Previous transport (PID ${prev.pid}, status: ${prev.status}) still alive — killing`);
+        try {
+            process.kill(prev.pid);
+        } catch (e) {
+            log(`Failed to kill PID ${prev.pid}: ${e.message}`);
+        }
+    } catch (e) {
+        // No state file or unreadable — nothing to clean up
+    }
+}
+
 // Prevent two transport instances from running for the same discussion.
 // Uses a PID lockfile — if an existing lock points to a live process, refuse to start.
 let LOCK_FILE = null;
@@ -1629,6 +1653,7 @@ async function main() {
         }
         initPaths();
         ensureDirectories();
+        killStalePid();
         acquireLock();
         writePollScript();
         setStatus('STARTING');
@@ -1690,6 +1715,9 @@ async function main() {
         if (convergenceState === 'terminated') {
             process.exit(2);
         }
+        // Normal conclusion — exit explicitly so Node doesn't hang on
+        // keep-alive HTTP handles from the proxy server.
+        process.exit(0);
     } catch (err) {
         console.error(`Fatal error: ${err.message}`);
         log(`FATAL: ${err.message}`);
