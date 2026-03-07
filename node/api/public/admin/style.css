@@ -295,6 +295,19 @@ tr.unread {
     max-width: 600px;
 }
 
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.5em;
+    padding-left: 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
 .create-agent-dialog .form-row-inline {
     display: grid;
     grid-template-columns: 1fr 1fr;
