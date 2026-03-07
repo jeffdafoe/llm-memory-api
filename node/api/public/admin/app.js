@@ -5,6 +5,19 @@ createApp({
     setup() {
         const currentView = ref('dashboard');
 
+        const configSubTab = ref('apilog');
+
+        const viewTitles = {
+            dashboard: 'Dashboard',
+            agents: 'Agents',
+            discussions: 'Discussions',
+            chat: 'Chat',
+            mail: 'Mail',
+            notes: 'Notes',
+            config: 'Configuration',
+        };
+        const viewTitle = computed(() => viewTitles[currentView.value] || currentView.value);
+
         // Core: auth, api, formatting, confirm/toast
         const core = useCore();
 
@@ -24,13 +37,13 @@ createApp({
             if (currentView.value !== 'dashboard') {
                 dashboardModule.stopLivePolling();
             }
-            if (currentView.value !== 'dashboard' && currentView.value !== 'apilog') {
+            if (currentView.value !== 'dashboard' && currentView.value !== 'config') {
                 apiLogModule.stopApiLogPolling();
             }
             if (currentView.value === 'dashboard') {
                 dashboardModule.loadDashboard();
                 apiLogModule.startApiLogPolling();
-            } else if (currentView.value === 'apilog') {
+            } else if (currentView.value === 'config') {
                 apiLogModule.startApiLogPolling();
             } else if (currentView.value === 'agents') {
                 agentsModule.loadAgents();
@@ -136,6 +149,8 @@ createApp({
         // Flatten everything into the template namespace
         return {
             currentView,
+            viewTitle,
+            configSubTab,
             // Core
             ...core,
             login,
