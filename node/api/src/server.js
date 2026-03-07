@@ -4,7 +4,8 @@ const config = require('./services/config');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
 const { requestLog } = require('./middleware/request-log');
-const { handleUpgrade } = require('./services/events');
+const { handleUpgrade, broadcast } = require('./services/events');
+const pool = require('./db');
 const oauthRoutes = require('./routes/oauth');
 const mcpRoutes = require('./routes/mcp');
 const agentRoutes = require('./routes/agent');
@@ -61,6 +62,28 @@ config.init().then(() => {
     const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
     });
+
+    // Clear stale activity spinners — if an agent hasn't made any API request
+    // in 5 minutes, they've disconnected (closed session, crashed, etc.)
+    const STALE_ACTIVITY_INTERVAL_MS = 60000;
+    const STALE_ACTIVITY_THRESHOLD = '5 minutes';
+    const staleActivityTimer = setInterval(async () => {
+        try {
+            const { rows } = await pool.query(
+                `UPDATE agents SET active_since = NULL
+                 WHERE active_since IS NOT NULL
+                   AND last_seen < NOW() - INTERVAL '${STALE_ACTIVITY_THRESHOLD}'
+                 RETURNING agent`
+            );
+            for (const row of rows) {
+                broadcast('agent_activity', { agent: row.agent, active: false });
+            }
+        } catch (err) {
+            // Don't crash the server if this housekeeping query fails
+            console.error('Stale activity cleanup error:', err.message);
+        }
+    }, STALE_ACTIVITY_INTERVAL_MS);
+    staleActivityTimer.unref();
 
     // WebSocket upgrade handler for admin real-time events
     server.on('upgrade', (req, socket, head) => {
