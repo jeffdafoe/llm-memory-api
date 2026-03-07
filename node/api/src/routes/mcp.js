@@ -705,6 +705,7 @@ const TOOL_HANDLERS = {
                 a.expertise,
                 a.provider,
                 a.model,
+                a.virtual,
                 COALESCE(c.unread_count, 0)::int AS unread_chat,
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
@@ -726,6 +727,9 @@ const TOOL_HANDLERS = {
 
         const lines = result.rows.map(a => {
             const parts = [`${a.agent}: ${a.status}`];
+            if (a.virtual) {
+                parts.push('virtual');
+            }
             if (a.provider || a.model) {
                 const identity = [a.provider, a.model].filter(Boolean).join('/');
                 parts.push(identity);

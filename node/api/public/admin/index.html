@@ -364,7 +364,7 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
-                                        <td>{{ agent.agent }}</td>
+                                        <td>{{ agent.agent }} <span v-if="agent.virtual" class="badge badge-virtual">virtual</span></td>
                                         <td>
                                             <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                         </td>
@@ -845,11 +845,13 @@
                                 <button class="inline-button secondary" @click="agentNewPassphrase = null">Dismiss</button>
                             </div>
 
-                            <h3>{{ selectedAgent.agent }}</h3>
+                            <h3>{{ selectedAgent.agent }} <span v-if="selectedAgent.virtual" class="badge badge-virtual">virtual</span></h3>
                             <p>
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
                                 <span v-if="selectedAgent.provider || selectedAgent.model" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
+                                <span v-if="selectedAgent.cost" class="muted" style="margin-left: 0.5em;">({{ selectedAgent.cost }})</span>
                             </p>
+                            <p v-if="selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
                             <p class="muted">
                                 Last seen: {{ formatDate(selectedAgent.last_seen) }}<br>
                                 Registered: {{ formatDate(selectedAgent.registered_at) }}
@@ -899,6 +901,10 @@
                                 Agent name
                                 <input type="text" v-model="newAgentName" placeholder="e.g. research" autofocus>
                             </label>
+                            <label style="display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.5em;">
+                                <input type="checkbox" v-model="newAgentVirtual" style="width: auto;">
+                                Virtual agent (API-backed, auto-responds)
+                            </label>
                             <div class="form-row-inline">
                                 <label>
                                     Provider
@@ -909,16 +915,33 @@
                                     <input type="text" v-model="newAgentModel" placeholder="e.g. claude-opus-4-6">
                                 </label>
                             </div>
-                            <label>
+                            <div v-if="newAgentVirtual">
+                                <label>
+                                    Personality (human-facing description)
+                                    <input type="text" v-model="newAgentPersonality" placeholder="e.g. Contrarian. Challenges everything.">
+                                </label>
+                                <label>
+                                    API Key
+                                    <input type="password" v-model="newAgentApiKey" placeholder="Provider API key (encrypted at rest)">
+                                </label>
+                                <label>
+                                    Cost info
+                                    <input type="text" v-model="newAgentCost" placeholder="e.g. $3/MTok in, $15/MTok out">
+                                </label>
+                            </div>
+                            <label v-if="!newAgentVirtual">
                                 Welcome template
                                 <select v-model="newAgentTemplateId">
                                     <option :value="null">None</option>
                                     <option v-for="t in welcomeTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
                                 </select>
                             </label>
-                            <div v-if="newAgentPassphrase" class="passphrase-bar passphrase-result">
+                            <div v-if="newAgentPassphrase && !newAgentVirtual" class="passphrase-bar passphrase-result">
                                 Passphrase: <code>{{ newAgentPassphrase }}</code>
                                 <span class="muted">(save this — it won't be shown again)</span>
+                            </div>
+                            <div v-if="newAgentPassphrase && newAgentVirtual" class="passphrase-bar passphrase-result">
+                                Virtual agent created.
                             </div>
                             <div class="dialog-actions">
                                 <button @click="createAgent" :disabled="newAgentCreating || !newAgentName || newAgentPassphrase">

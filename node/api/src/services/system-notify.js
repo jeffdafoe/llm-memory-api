@@ -1,4 +1,5 @@
 const pool = require('../db');
+const systemHandler = require('./system-handler');
 
 const SYSTEM_AGENT = 'system';
 
@@ -35,9 +36,23 @@ async function notifyDiscussionInvite(discussionId, topic, createdBy, invitedAge
     return sendSystemMessageToMany(invitedAgents, message, null);
 }
 
+// Send a JSON message TO system (reverse direction — triggers system handler).
+// Used by discussion service to trigger virtual agent processing.
+async function notifySystem(payload, channel) {
+    const message = JSON.stringify(payload);
+    const result = await pool.query(
+        'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+        [SYSTEM_AGENT, SYSTEM_AGENT, message, channel || null]
+    );
+    // Dispatch to system handler fire-and-forget
+    systemHandler.handleMessage(result.rows[0].id, SYSTEM_AGENT, message, channel || null).catch(() => {});
+    return result.rows[0];
+}
+
 module.exports = {
     sendSystemMessage,
     sendSystemMessageToMany,
     sendDiscussionEvent,
     notifyDiscussionInvite,
+    notifySystem,
 };

@@ -42,6 +42,12 @@ nav a.active {
     color: white;
 }
 
+.badge-virtual {
+    background: #4a6fa5;
+    color: white;
+    font-size: 0.75em;
+}
+
 .status-active {
     color: #2d6a2d;
     font-size: 0.5em;

@@ -3,6 +3,7 @@
 
 const pool = require('../db');
 const { log } = require('./logger');
+const systemHandler = require('./system-handler');
 
 const CHANNEL_PATTERN = /^[a-zA-Z0-9_-]{1,50}$/;
 
@@ -85,6 +86,20 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
     }
 
     logChat('send', { from_agent: fromAgent, to_agents: recipients, message_ids: results.map(r => r.id), channel: ch, discussion_id: discussionId || null });
+
+    // Fire-and-forget: if any recipient is 'system', dispatch to system handler
+    for (const r of results) {
+        if (r.agent === 'system') {
+            systemHandler.handleMessage(r.id, fromAgent, message, ch).catch(() => {});
+            break;
+        }
+    }
+
+    // Fire-and-forget: if this is a discussion message, trigger virtual agent processing
+    if (discussionId && fromAgent !== 'system') {
+        const { notifySystem } = require('./system-notify');
+        notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'message' }).catch(() => {});
+    }
 
     return { from_agent: fromAgent, to_agents: results, sent_at: results[0] ? results[0].sent_at : null };
 }

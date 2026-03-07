@@ -3,7 +3,7 @@
 
 const pool = require('../db');
 const { log } = require('./logger');
-const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent } = require('./system-notify');
+const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent, notifySystem } = require('./system-notify');
 
 function logDiscussion(action, details) {
     log('discussion', action, details);
@@ -46,6 +46,7 @@ async function evaluateReadiness(discussionId) {
     if (allRequiredJoined && allOptionalJoined) {
         await pool.query('UPDATE discussions SET status = $1 WHERE id = $2', ['active', discussionId]);
         logDiscussion('ready', { discussion_id: discussionId, reason: 'all_joined' });
+        notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'discussion-active' }).catch(() => {});
         return;
     }
 
@@ -62,6 +63,7 @@ async function evaluateReadiness(discussionId) {
             }
             await pool.query('UPDATE discussions SET status = $1 WHERE id = $2', ['active', discussionId]);
             logDiscussion('ready', { discussion_id: discussionId, reason: 'timeout_required_present' });
+            notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'discussion-active' }).catch(() => {});
         } else {
             const timeoutOutcome = await computeOutcome(discussionId, 'timed_out');
             await pool.query('UPDATE discussions SET status = $1, outcome = $2 WHERE id = $3', ['timed_out', timeoutOutcome, discussionId]);
@@ -280,18 +282,28 @@ async function discussionCreate(topic, createdBy, participants, optionalParticip
         );
         const discussionId = result.rows[0].id;
 
+        // Look up which agents are virtual (auto-join them)
+        const virtualCheck = await client.query(
+            'SELECT agent FROM agents WHERE agent = ANY($1) AND virtual = TRUE',
+            [allParticipants]
+        );
+        const virtualAgents = new Set(virtualCheck.rows.map(r => r.agent));
+
         for (const agent of participants) {
             const isCreator = agent === createdBy;
+            const isVirtual = virtualAgents.has(agent);
+            const shouldJoin = isCreator || isVirtual;
             await client.query(
                 'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
-                [discussionId, agent, isCreator ? 'joined' : 'invited', 'required', isCreator ? new Date() : null]
+                [discussionId, agent, shouldJoin ? 'joined' : 'invited', 'required', shouldJoin ? new Date() : null]
             );
         }
 
         for (const agent of optionalList) {
+            const isVirtual = virtualAgents.has(agent);
             await client.query(
                 'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
-                [discussionId, agent, 'invited', 'optional', null]
+                [discussionId, agent, isVirtual ? 'joined' : 'invited', 'optional', isVirtual ? new Date() : null]
             );
         }
 
@@ -330,11 +342,11 @@ async function discussionCreate(topic, createdBy, participants, optionalParticip
         const participantList = participants.map(a => ({
             agent: a,
             role: 'required',
-            status: a === createdBy ? 'joined' : 'invited'
+            status: (a === createdBy || virtualAgents.has(a)) ? 'joined' : 'invited'
         })).concat(optionalList.map(a => ({
             agent: a,
             role: 'optional',
-            status: 'invited'
+            status: virtualAgents.has(a) ? 'joined' : 'invited'
         })));
 
         return { discussion, participants: participantList };
@@ -646,6 +658,12 @@ async function votePropose(discussionId, proposedBy, question, type, threshold, 
             console.error('Failed to send vote propose event:', err.message);
         });
     });
+
+    // Trigger virtual agents to cast their vote
+    notifySystem({
+        type: 'virtual-agent', discussionId,
+        triggerType: 'vote-proposed', voteId: result.rows[0].id
+    }).catch(() => {});
 
     return {
         vote: {
