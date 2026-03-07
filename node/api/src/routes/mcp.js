@@ -811,6 +811,9 @@ const TOOL_HANDLERS = {
         }
         const lines = data.discussions.map(d => {
             let line = `#${d.id} [${d.status}] [${d.mode || 'realtime'}] "${d.topic}" (created ${d.created_at})`;
+            if (d.outcome) {
+                line += ` outcome: ${d.outcome}`;
+            }
             if (d.channel) {
                 line += ` channel: ${d.channel}`;
             }
@@ -824,6 +827,9 @@ const TOOL_HANDLERS = {
         const d = data.discussion;
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
         let text = `Discussion #${d.id}: "${d.topic}" [${d.status}] [${d.mode || 'realtime'}]\nParticipants: ${parts}`;
+        if (d.outcome) {
+            text += `\nOutcome: ${d.outcome}`;
+        }
         if (d.channel) {
             text += `\nChannel: ${d.channel}`;
         }
@@ -858,7 +864,7 @@ const TOOL_HANDLERS = {
 
     async discussion_conclude(args, agent, namespace) {
         const data = await discussionConclude(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
-        return `Discussion #${data.discussion_id} ${data.status}.`;
+        return `Discussion #${data.discussion_id} ${data.status}. Outcome: ${data.outcome}.`;
     },
 
     async discussion_join(args, agent, namespace) {

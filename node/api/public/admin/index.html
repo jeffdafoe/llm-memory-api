@@ -479,6 +479,7 @@
                                     <th>Topic</th>
                                     <th>Created By</th>
                                     <th>#</th>
+                                    <th>Outcome</th>
                                     <th class="time-cell">Created</th>
                                 </tr>
                             </thead>
@@ -489,6 +490,7 @@
                                     <td class="message-cell">{{ d.topic }}</td>
                                     <td>{{ d.created_by }}</td>
                                     <td>{{ d.participant_count }}</td>
+                                    <td>{{ d.outcome || '' }}</td>
                                     <td class="time-cell">{{ formatDate(d.created_at) }}</td>
                                 </tr>
                             </tbody>
@@ -742,7 +744,8 @@
                             <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
                             <div class="grid">
                                 <div>
-                                    <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
+                                    <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}
+                                    <span v-if="selectedDiscussion.discussion.outcome"> · <strong>Outcome:</strong> {{ selectedDiscussion.discussion.outcome }}</span><br>
                                     <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
                                     <strong>Created by:</strong> {{ selectedDiscussion.discussion.created_by }}<br>
                                     <strong>Created:</strong> {{ formatDate(selectedDiscussion.discussion.created_at) }}
