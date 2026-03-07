@@ -304,7 +304,9 @@ tr.unread {
 }
 
 .checkbox-label input[type="checkbox"] {
-    width: auto;
+    width: 1.2em !important;
+    min-width: 1.2em;
+    height: 1.2em;
     margin: 0;
 }
 
