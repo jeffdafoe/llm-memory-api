@@ -63,7 +63,8 @@ async function evaluateReadiness(discussionId) {
             await pool.query('UPDATE discussions SET status = $1 WHERE id = $2', ['active', discussionId]);
             logDiscussion('ready', { discussion_id: discussionId, reason: 'timeout_required_present' });
         } else {
-            await pool.query('UPDATE discussions SET status = $1 WHERE id = $2', ['timed_out', discussionId]);
+            const timeoutOutcome = await computeOutcome(discussionId, 'timed_out');
+            await pool.query('UPDATE discussions SET status = $1, outcome = $2 WHERE id = $3', ['timed_out', timeoutOutcome, discussionId]);
             // Mark remaining participants as 'left' so they aren't blocked
             // from creating new discussions by the conflict check
             await pool.query(
@@ -71,7 +72,7 @@ async function evaluateReadiness(discussionId) {
                  WHERE discussion_id = $1 AND status IN ('invited', 'joined')`,
                 [discussionId]
             );
-            logDiscussion('timed_out', { discussion_id: discussionId, reason: 'missing_required' });
+            logDiscussion('timed_out', { discussion_id: discussionId, reason: 'missing_required', outcome: timeoutOutcome });
         }
     }
 }
@@ -141,9 +142,10 @@ async function evaluateVote(voteId) {
     if (v.type === 'conclude') {
         const passed = evaluateThreshold(ballots.rows, participantCount, v.threshold);
         if (passed) {
+            const voteOutcome = await computeOutcome(v.discussion_id, 'concluded');
             await pool.query(
-                'UPDATE discussions SET status = $1, concluded_at = NOW() WHERE id = $2',
-                ['concluded', v.discussion_id]
+                'UPDATE discussions SET status = $1, concluded_at = NOW(), outcome = $2 WHERE id = $3',
+                ['concluded', voteOutcome, v.discussion_id]
             );
             // Mark all joined/invited participants as 'left' so they aren't
             // blocked from creating new discussions by the conflict check
@@ -152,9 +154,54 @@ async function evaluateVote(voteId) {
                  WHERE discussion_id = $1 AND status IN ('invited', 'joined')`,
                 [v.discussion_id]
             );
-            logDiscussion('auto_conclude', { discussion_id: v.discussion_id, vote_id: voteId });
+            logDiscussion('auto_conclude', { discussion_id: v.discussion_id, vote_id: voteId, outcome: voteOutcome });
         }
     }
+}
+
+// Derive the outcome of a finished discussion from its general vote history.
+// Called when a discussion transitions to concluded, cancelled, or timed_out.
+async function computeOutcome(discussionId, newStatus) {
+    // Cancelled and timed_out discussions never reached a result
+    if (newStatus === 'cancelled' || newStatus === 'timed_out') {
+        return 'abandoned';
+    }
+
+    // For concluded discussions, examine general vote results
+    const votes = await pool.query(
+        "SELECT v.id, v.threshold FROM discussion_votes v WHERE v.discussion_id = $1 AND v.type = 'general' AND v.status = 'closed'",
+        [discussionId]
+    );
+
+    // No general votes — agents discussed and concluded without formal decisions
+    if (votes.rows.length === 0) {
+        return 'consensus';
+    }
+
+    let passedCount = 0;
+    let failedCount = 0;
+
+    for (const vote of votes.rows) {
+        const ballots = await pool.query(
+            'SELECT choice, COUNT(*) as count FROM discussion_ballots WHERE vote_id = $1 GROUP BY choice',
+            [vote.id]
+        );
+        const totalVoters = ballots.rows.reduce((sum, r) => sum + parseInt(r.count), 0);
+
+        if (evaluateThreshold(ballots.rows, totalVoters, vote.threshold)) {
+            passedCount++;
+        } else {
+            failedCount++;
+        }
+    }
+
+    if (failedCount === 0) {
+        return 'consensus';
+    }
+    if (passedCount === 0) {
+        return 'deadlock';
+    }
+    return 'partial';
 }
 
 // --- Public service functions ---
@@ -441,7 +488,8 @@ async function discussionConclude(discussionId, agent) {
     }
 
     const newStatus = dStatus === 'waiting' ? 'cancelled' : 'concluded';
-    await pool.query('UPDATE discussions SET status = $1, concluded_at = NOW() WHERE id = $2', [newStatus, discussionId]);
+    const outcome = await computeOutcome(discussionId, newStatus);
+    await pool.query('UPDATE discussions SET status = $1, concluded_at = NOW(), outcome = $2 WHERE id = $3', [newStatus, outcome, discussionId]);
     // Mark all joined/invited participants as 'left' so they aren't
     // blocked from creating new discussions by the conflict check
     await pool.query(
@@ -472,7 +520,7 @@ async function discussionConclude(discussionId, agent) {
         });
     });
 
-    return { discussion_id: discussionId, status: newStatus };
+    return { discussion_id: discussionId, status: newStatus, outcome };
 }
 
 async function discussionJoin(discussionId, agent) {

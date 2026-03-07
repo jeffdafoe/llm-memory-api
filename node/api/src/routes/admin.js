@@ -350,7 +350,7 @@ router.post('/admin/discussions', async (req, res) => {
     const { status } = req.body;
     try {
         let sql = `
-            SELECT d.id, d.topic, d.status, d.mode, d.created_by, d.created_at, d.concluded_at,
+            SELECT d.id, d.topic, d.status, d.mode, d.outcome, d.created_by, d.created_at, d.concluded_at,
                    COUNT(dp.agent) AS participant_count
             FROM discussions d
             LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
