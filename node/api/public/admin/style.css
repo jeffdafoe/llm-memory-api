@@ -42,10 +42,12 @@ nav a.active {
     color: white;
 }
 
-.badge-virtual {
-    background: #4a6fa5;
-    color: white;
-    font-size: 0.75em;
+.virtual-icon {
+    color: #5b9bd5;
+    font-size: 0.85em;
+    vertical-align: middle;
+    margin-left: 0.3em;
+    opacity: 0.8;
 }
 
 .status-active {
