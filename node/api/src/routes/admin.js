@@ -592,7 +592,7 @@ router.post('/admin/notes/save', async (req, res) => {
         });
     }
     try {
-        const doc = await saveNote(namespace, title, content, slug, 'admin');
+        const doc = await saveNote(namespace, title, content, slug, null);
         logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ note: doc });
     } catch (err) {
