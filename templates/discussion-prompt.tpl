@@ -29,6 +29,19 @@ When you receive a convergence warning, you must respond with exactly one of:
 Do not restate your existing position after a convergence warning. If you believe the warning is
 premature, say so briefly and take one of the three actions above anyway.
 
+## Impasse Handling
+
+When a vote splits (no unanimous agreement), the transport injects an impasse notification.
+When you receive this notification, write a **balanced decision brief** for the user:
+
+1. **Each position's pros and cons** — fair representation, not advocacy
+2. **What was agreed** — common ground between participants
+3. **The specific disagreement** — the exact decision point where you differ
+4. **Your recommendation** (optional) — if you have one, state it with reasoning
+
+The user will see this summary and make the final call. After writing the brief, propose
+a conclude vote to end the discussion.
+
 ## Communication Standards
 
 **IMPORTANT: Be comprehensive in your messages.** Include exact file paths, line numbers, code snippets. Every message should be self-contained — the other agent can't see your screen.

@@ -277,6 +277,7 @@ let exchangesSinceForcedVote = 0;      // messages since forced conclude vote
 let forcedVoteId = null;               // vote ID of the transport-proposed conclude
 const VOTE_SILENCE_THRESHOLD = 10;     // exchanges without any vote triggers secondary signal
 const REJECTED_CONCLUDE_THRESHOLD = 2; // rejected concludes triggers escalation
+const processedImpasseVotes = new Set(); // vote IDs already surfaced as impasses
 
 // Stall detection
 let stallWarningLogged = false;
@@ -712,6 +713,39 @@ function trackConcludeRejected() {
     log(`Conclude vote rejected (${rejectedConcludeCount}/${REJECTED_CONCLUDE_THRESHOLD})`);
 }
 
+// Called when a vote closes. Detects split general votes and injects an impasse
+// message telling agents to write a structured summary for the user.
+function checkForImpasse(voteResult) {
+    if (!voteResult || !voteResult.vote || !voteResult.ballots) return;
+    const vote = voteResult.vote;
+    const ballots = voteResult.ballots;
+
+    // Only care about closed general votes (not conclude votes)
+    if (vote.status !== 'closed' || vote.type === 'conclude') return;
+
+    // Already processed this vote
+    if (processedImpasseVotes.has(vote.id)) return;
+    processedImpasseVotes.add(vote.id);
+
+    // Check if the vote split (not all ballots chose the same thing)
+    const choices = new Set(ballots.map(b => b.choice));
+    if (choices.size <= 1) return; // unanimous — no impasse
+
+    log(`IMPASSE DETECTED: vote #${vote.id} split (${choices.size} different choices across ${ballots.length} ballots)`);
+
+    const ballotSummary = ballots.map(b => `  - ${b.agent} voted ${b.choice}${b.reason ? ': ' + b.reason : ''}`).join('\n');
+    const message = `[SYSTEM] Impasse detected: Vote #${vote.id} split — no unanimous agreement.\n` +
+        `${ballotSummary}\n\n` +
+        `This disagreement will be surfaced to the user for their decision. ` +
+        `Before concluding, write a structured summary with:\n` +
+        `1. Each position's pros and cons (balanced, not advocating)\n` +
+        `2. What you agreed on\n` +
+        `3. The specific point of disagreement\n` +
+        `4. Your recommendation (if any) with reasoning\n\n` +
+        `Then propose a conclude vote.`;
+    injectSystemMessage(message);
+}
+
 // Inject a [SYSTEM] message into the subagent's inbox
 function injectSystemMessage(message) {
     const filename = `system-${Date.now()}.txt`;
@@ -923,9 +957,15 @@ function startProxyServer() {
                             vote_id: parsed.vote_id,
                         });
                         // Track rejected conclude votes for convergence detection
-                        if (result.vote && result.vote.type === 'conclude' && result.vote.status === 'failed') {
-                            trackConcludeRejected();
+                        if (result.vote && result.vote.type === 'conclude' && result.vote.status === 'closed') {
+                            // Check if conclude vote failed (not all chose the same thing)
+                            const concludeChoices = new Set((result.ballots || []).map(b => b.choice));
+                            if (concludeChoices.size > 1) {
+                                trackConcludeRejected();
+                            }
                         }
+                        // Detect split general votes and surface impasse to agents
+                        checkForImpasse(result);
                     } else if (urlPath === '/pending') {
                         result = await apiCall('discussion/pending', {
                             agent: cfg.agent,
