@@ -292,7 +292,7 @@ tr.unread {
 }
 
 .create-agent-dialog {
-    max-width: 480px;
+    max-width: 600px;
 }
 
 .create-agent-dialog .form-row-inline {
