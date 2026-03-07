@@ -610,7 +610,7 @@ router.post('/admin/notes/search', async (req, res) => {
 router.post('/admin/notes/namespaces', async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT namespace, COUNT(*) AS count FROM documents GROUP BY namespace ORDER BY namespace'
+            'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
         );
         res.json({ namespaces: result.rows });
     } catch (err) {
