@@ -26,8 +26,9 @@ async function saveNote(namespace, title, content, slug, createdBy) {
     }
 
     // Check if the slug already exists (including soft-deleted rows)
+    // Case-insensitive lookup — slugs are preserved as-is, only matching is lowered
     const existing = await pool.query(
-        'SELECT id FROM documents WHERE namespace = $1 AND slug = $2',
+        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2)',
         [namespace, resolvedSlug]
     );
 
@@ -38,7 +39,7 @@ async function saveNote(namespace, title, content, slug, createdBy) {
         result = await pool.query(`
             UPDATE documents
             SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW()
-            WHERE namespace = $3 AND slug = $4
+            WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
             RETURNING id, namespace, slug, title, created_by, created_at, updated_at
         `, [title, content, namespace, resolvedSlug]);
     } else {
@@ -71,7 +72,7 @@ async function listNotes(namespace, limit, offset, prefix) {
                    LEFT(content, 200) AS snippet,
                    created_by, created_at, updated_at
             FROM documents
-            WHERE namespace = $1 AND slug LIKE $4 AND deleted_at IS NULL
+            WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($4) AND deleted_at IS NULL
             ORDER BY slug ASC
             LIMIT $2 OFFSET $3
         `;
@@ -97,7 +98,7 @@ async function readNote(namespace, slug) {
     const result = await pool.query(`
         SELECT id, namespace, slug, title, content, created_by, created_at, updated_at
         FROM documents
-        WHERE namespace = $1 AND slug = $2 AND deleted_at IS NULL
+        WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL
     `, [namespace, slug]);
 
     if (result.rows.length === 0) {
@@ -114,7 +115,7 @@ async function deleteNote(namespace, slug) {
     const result = await pool.query(`
         UPDATE documents
         SET deleted_at = NOW()
-        WHERE namespace = $1 AND slug = $2 AND deleted_at IS NULL
+        WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL
         RETURNING id
     `, [namespace, slug]);
 
@@ -130,7 +131,7 @@ async function restoreNote(namespace, slug) {
     const result = await pool.query(`
         UPDATE documents
         SET deleted_at = NULL
-        WHERE namespace = $1 AND slug = $2 AND deleted_at IS NOT NULL
+        WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NOT NULL
         RETURNING id, namespace, slug, title
     `, [namespace, slug]);
 
@@ -188,7 +189,7 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
     const result = await pool.query(`
         UPDATE documents
         SET content = $1, updated_at = NOW()
-        WHERE namespace = $2 AND slug = $3
+        WHERE namespace = $2 AND LOWER(slug) = LOWER($3)
         RETURNING id, namespace, slug, title, created_by, created_at, updated_at
     `, [updatedContent, namespace, slug]);
 
@@ -285,7 +286,7 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
 
     // Verify source exists and isn't deleted
     const source = await pool.query(
-        'SELECT id, title FROM documents WHERE namespace = $1 AND slug = $2 AND deleted_at IS NULL',
+        'SELECT id, title FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [namespace, slug]
     );
     if (source.rows.length === 0) {
@@ -294,7 +295,7 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
 
     // Check target slug isn't already taken (including soft-deleted — unique constraint covers both)
     const conflict = await pool.query(
-        'SELECT id FROM documents WHERE namespace = $1 AND slug = $2',
+        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2)',
         [targetNamespace, newSlug]
     );
     if (conflict.rows.length > 0) {
@@ -308,13 +309,13 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
     const result = await pool.query(`
         UPDATE documents
         SET slug = $1, namespace = $2, updated_at = NOW()
-        WHERE namespace = $3 AND slug = $4
+        WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
         RETURNING id, namespace, slug, title, created_by, created_at, updated_at
     `, [newSlug, targetNamespace, namespace, slug]);
 
     // Update vector chunks to match the new slug/namespace
     await pool.query(
-        'UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND source_file = $4',
+        'UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND LOWER(source_file) = LOWER($4)',
         [newSlug, targetNamespace, namespace, slug]
     );
 

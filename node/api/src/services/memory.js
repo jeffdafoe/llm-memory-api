@@ -21,7 +21,7 @@ async function ingestContent(namespace, sourceFile, content) {
         await client.query('BEGIN');
 
         await client.query(
-            'DELETE FROM memory_chunks WHERE namespace = $1 AND source_file = $2',
+            'DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)',
             [namespace, sourceFile]
         );
 
@@ -62,7 +62,7 @@ async function searchMemory(query, namespace, limit) {
         AND NOT EXISTS (
             SELECT 1 FROM documents d
             WHERE d.namespace = mc.namespace
-            AND d.slug = mc.source_file
+            AND LOWER(d.slug) = LOWER(mc.source_file)
             AND d.deleted_at IS NOT NULL
         )`;
 
