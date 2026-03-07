@@ -744,8 +744,8 @@
                             <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
                             <div class="grid">
                                 <div>
-                                    <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}
-                                    <span v-if="selectedDiscussion.discussion.outcome"> · <strong>Outcome:</strong> {{ selectedDiscussion.discussion.outcome }}</span><br>
+                                    <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
+                                    <strong>Outcome:</strong> {{ selectedDiscussion.discussion.outcome || '—' }}<br>
                                     <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
                                     <strong>Created by:</strong> {{ selectedDiscussion.discussion.created_by }}<br>
                                     <strong>Created:</strong> {{ formatDate(selectedDiscussion.discussion.created_at) }}
