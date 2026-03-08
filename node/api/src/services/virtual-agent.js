@@ -8,6 +8,7 @@ const { log } = require('./logger');
 const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey } = require('./provider');
 const { broadcast } = require('./events');
+const { chatSend } = require('./chat');
 
 function logVA(action, details) {
     log('virtual-agent', action, details);
@@ -112,12 +113,9 @@ function buildUserMessage(chatHistory, triggerType, voteQuestion) {
 }
 
 // Post an error message to the discussion channel from the virtual agent.
-async function postError(agentName, channel, error) {
+async function postError(agentName, discussionId, channel, error) {
     try {
-        await pool.query(
-            'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4)',
-            [agentName, '*', `[Error: ${error}]`, channel]
-        );
+        await chatSend(agentName, null, discussionId, `[Error: ${error}]`, channel);
     } catch (err) {
         logVA('post-error-failed', { agent: agentName, error: err.message });
     }
@@ -229,11 +227,11 @@ async function handleVirtualAgent(payload) {
     for (const agent of joinedVirtual) {
         try {
             if (!agent.api_key) {
-                await postError(agent.agent, channel, 'No API key configured');
+                await postError(agent.agent, discussionId, channel, 'No API key configured');
                 continue;
             }
             if (!agent.provider || !agent.model) {
-                await postError(agent.agent, channel, 'No provider/model configured');
+                await postError(agent.agent, discussionId, channel, 'No provider/model configured');
                 continue;
             }
 
@@ -272,32 +270,23 @@ async function handleVirtualAgent(payload) {
                     await castVote(voteId, agent.agent, voteResponse.choice, voteResponse.reason);
                     // Also post the reasoning as a chat message
                     if (voteResponse.reason) {
-                        await pool.query(
-                            'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4)',
-                            [agent.agent, '*', voteResponse.reason, channel]
-                        );
+                        await chatSend(agent.agent, null, discussionId, voteResponse.reason, channel);
                     }
                 } else {
                     // Couldn't parse vote, post response as chat and log
                     logVA('vote-parse-failed', { discussionId, agent: agent.agent });
-                    await pool.query(
-                        'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4)',
-                        [agent.agent, '*', response, channel]
-                    );
+                    await chatSend(agent.agent, null, discussionId, response, channel);
                 }
             } else {
                 // Regular message response
-                await pool.query(
-                    'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4)',
-                    [agent.agent, '*', response, channel]
-                );
+                await chatSend(agent.agent, null, discussionId, response, channel);
             }
 
             logVA('responded', { discussionId, agent: agent.agent, triggerType, responseLength: response.length });
 
         } catch (err) {
             logVA('agent-error', { discussionId, agent: agent.agent, error: err.message });
-            await postError(agent.agent, channel, err.message);
+            await postError(agent.agent, discussionId, channel, err.message);
         }
     }
 }
