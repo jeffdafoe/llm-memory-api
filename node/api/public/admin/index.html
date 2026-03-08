@@ -375,7 +375,7 @@
                                             <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
                                             <i v-else-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
                                         </td>
-                                        <td>{{ agent.agent }}</td>
+                                        <td class="nowrap">{{ agent.agent }}</td>
                                         <td>
                                             <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                         </td>
