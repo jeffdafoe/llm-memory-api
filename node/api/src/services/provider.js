@@ -107,13 +107,14 @@ function createAnthropicProvider(model, apiKey, configuration) {
             .map(block => block.text)
             .join('\n');
 
-        logProvider('api-response', {
-            provider: 'anthropic', model,
-            input_tokens: data.usage?.input_tokens,
-            output_tokens: data.usage?.output_tokens
-        });
+        const usage = {
+            input_tokens: data.usage?.input_tokens || 0,
+            output_tokens: data.usage?.output_tokens || 0
+        };
 
-        return text;
+        logProvider('api-response', { provider: 'anthropic', model, ...usage });
+
+        return { text, usage };
     };
 }
 
@@ -169,13 +170,14 @@ function createGeminiProvider(model, apiKey, configuration) {
             .map(p => p.text)
             .join('\n');
 
-        logProvider('api-response', {
-            provider: 'google', model,
-            input_tokens: data.usageMetadata?.promptTokenCount,
-            output_tokens: data.usageMetadata?.candidatesTokenCount
-        });
+        const usage = {
+            input_tokens: data.usageMetadata?.promptTokenCount || 0,
+            output_tokens: data.usageMetadata?.candidatesTokenCount || 0
+        };
 
-        return text;
+        logProvider('api-response', { provider: 'google', model, ...usage });
+
+        return { text, usage };
     };
 }
 
@@ -221,13 +223,14 @@ function createOpenAIProvider(model, apiKey, configuration) {
             throw new Error('OpenAI API returned no content');
         }
 
-        logProvider('api-response', {
-            provider: 'openai', model,
-            input_tokens: data.usage?.prompt_tokens,
-            output_tokens: data.usage?.completion_tokens
-        });
+        const usage = {
+            input_tokens: data.usage?.prompt_tokens || 0,
+            output_tokens: data.usage?.completion_tokens || 0
+        };
 
-        return choice.message.content;
+        logProvider('api-response', { provider: 'openai', model, ...usage });
+
+        return { text: choice.message.content, usage };
     };
 }
 

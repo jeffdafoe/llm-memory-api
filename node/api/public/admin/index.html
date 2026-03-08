@@ -926,6 +926,13 @@
                                 </div>
                             </div>
                             <p v-if="selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
+                            <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
+                                <small class="muted">Token Usage</small><br>
+                                <strong>{{ (selectedAgent.tokens_used || 0).toLocaleString() }}</strong>
+                                <span class="muted"> / {{ selectedAgent.token_budget ? selectedAgent.token_budget.toLocaleString() : 'default' }}</span>
+                                <meter :value="selectedAgent.tokens_used || 0" :max="selectedAgent.token_budget || 1000000" style="width: 100%; margin-top: 0.3em;"></meter>
+                                <small class="muted" v-if="selectedAgent.tokens_reset_at"><br>Resets: {{ formatDate(selectedAgent.tokens_reset_at) }}</small>
+                            </div>
                             <p class="muted">
                                 Last seen: {{ formatDate(selectedAgent.last_seen) }}<br>
                                 Registered: {{ formatDate(selectedAgent.registered_at) }}
