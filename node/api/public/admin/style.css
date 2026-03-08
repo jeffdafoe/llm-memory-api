@@ -642,6 +642,7 @@ h4 i {
 
 .dashboard-agents {
     flex-shrink: 0;
+    min-width: 420px;
 }
 
 .dashboard-agents table {
