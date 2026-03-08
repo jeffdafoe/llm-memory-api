@@ -10,6 +10,7 @@ const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey } = require('./provider');
 const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
+const { saveNote } = require('./documents');
 const config = require('./config');
 
 const MIN_ACTIVITY_MS = 3000;
@@ -107,6 +108,83 @@ async function recordUsage(agentName, usage) {
 
 function logVA(action, details) {
     log('virtual-agent', action, details);
+}
+
+// Check if learning extraction is enabled for an agent.
+// Global toggle must be on, and per-agent override (in configuration JSON) can disable.
+function isLearningEnabled(agent) {
+    const globalEnabled = config.get('virtual_agent_learning_enabled') === 'true';
+    if (!globalEnabled) return false;
+
+    if (agent.configuration) {
+        try {
+            const conf = typeof agent.configuration === 'string' ? JSON.parse(agent.configuration) : agent.configuration;
+            if (conf.learning_enabled === false) return false;
+        } catch (e) { /* use global default */ }
+    }
+
+    return true;
+}
+
+// Build the extraction prompt based on interaction type.
+function buildExtractionPrompt(interactionType, contextHint) {
+    const base = 'Review the interaction above. Extract 1-3 factual observations worth remembering for future interactions. '
+        + 'Focus only on factual information, preferences, or decisions — not tone or style. '
+        + 'Include names, identifiers, and concrete details rather than vague generalizations. '
+        + 'If nothing new was learned, return exactly NONE.\n\n'
+        + 'Format each observation as a bullet point starting with "- ".';
+
+    if (interactionType === 'discussion') {
+        return `What factual information, decisions, or preferences did you learn from this discussion about "${contextHint}"?\n\n` + base;
+    } else if (interactionType === 'chat') {
+        return `What factual information or preferences did you learn about ${contextHint} from this conversation?\n\n` + base;
+    } else {
+        return `What factual information or action items did you learn from this mail exchange?\n\n` + base;
+    }
+}
+
+// Extract learnings from an interaction and save as a note in the agent's namespace.
+// Fire-and-forget — call with .catch() from the handler.
+async function extractLearnings(agent, systemPrompt, userMessage, response, interactionType, contextHint, provider) {
+    if (!isLearningEnabled(agent)) return;
+
+    // Check minimum token threshold
+    const minTokens = parseInt(config.get('virtual_agent_learning_min_tokens')) || 500;
+    // We don't have exact token counts here, but we can estimate from the usage
+    // that was already recorded. Instead, use a character-based heuristic:
+    // average ~4 chars per token, so check total chars of input+output.
+    const totalChars = (systemPrompt + userMessage + response).length;
+    const estimatedTokens = Math.ceil(totalChars / 4);
+    if (estimatedTokens < minTokens) {
+        logVA('learning-skip-short', { agent: agent.agent, estimatedTokens, minTokens });
+        return;
+    }
+
+    const extractionPrompt = buildExtractionPrompt(interactionType, contextHint);
+
+    // Build the extraction user message: the full interaction context + extraction prompt
+    const extractionUserMessage = `System prompt:\n${systemPrompt}\n\nUser message:\n${userMessage}\n\nYour response:\n${response}\n\n---\n\n${extractionPrompt}`;
+    const extractionSystemPrompt = 'You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.';
+
+    const { text: extractionResult, usage } = await provider(extractionSystemPrompt, extractionUserMessage);
+    await recordUsage(agent.agent, usage);
+
+    // Check for NONE response
+    if (extractionResult.trim().toUpperCase() === 'NONE' || extractionResult.trim() === '') {
+        logVA('learning-none', { agent: agent.agent, interactionType });
+        return;
+    }
+
+    // Generate timestamp-based slug
+    const now = new Date();
+    const datePart = now.toISOString().replace(/[-:T]/g, '').slice(0, 8);
+    const timePart = now.toISOString().replace(/[-:T]/g, '').slice(8, 14);
+    const slug = `learnings/${datePart}-${timePart}`;
+    const title = `Learning ${datePart}-${timePart} (${interactionType})`;
+
+    await saveNote(agent.agent, title, extractionResult, slug, agent.agent);
+
+    logVA('learning-saved', { agent: agent.agent, slug, interactionType, length: extractionResult.length });
 }
 
 // Run an async function with the activity spinner on. Ensures the spinner
@@ -498,6 +576,13 @@ async function handleVirtualAgent(payload) {
 
             logVA('responded', { discussionId, agent: agent.agent, triggerType, responseLength: response.length });
 
+            // Fire-and-forget learning extraction (skip for vote responses)
+            if (triggerType !== 'vote-proposed') {
+                extractLearnings(agent, systemPrompt, userMessage, response, 'discussion', discussion.topic, provider).catch(err => {
+                    logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
+                });
+            }
+
         } catch (err) {
             logVA('agent-error', { discussionId, agent: agent.agent, error: err.message });
             await postError(agent.agent, discussionId, channel, err.message);
@@ -563,6 +648,11 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
         await chatSend(agent.agent, [fromAgent], null, response, null);
 
         logVA('direct-chat-responded', { agent: agent.agent, to: fromAgent, responseLength: response.length });
+
+        // Fire-and-forget learning extraction
+        extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent, provider).catch(err => {
+            logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
+        });
     } catch (err) {
         logVA('direct-chat-error', { agent: virtualAgentName, from: fromAgent, error: err.message });
     }
@@ -630,6 +720,11 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         await mailSend(fromAgent, agent.agent, replySubject, response);
 
         logVA('direct-mail-responded', { agent: agent.agent, to: fromAgent, mailId, responseLength: response.length });
+
+        // Fire-and-forget learning extraction
+        extractLearnings(agent, systemPrompt, userMessage, response, 'mail', null, provider).catch(err => {
+            logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
+        });
     } catch (err) {
         logVA('direct-mail-error', { agent: virtualAgentName, from: fromAgent, mailId, error: err.message });
     }
