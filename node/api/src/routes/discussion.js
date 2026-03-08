@@ -2,6 +2,7 @@ const { Router } = require('express');
 const pool = require('../db');
 const { log } = require('../services/logger');
 const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent } = require('../services/system-notify');
+const discussionService = require('../services/discussion');
 
 const router = Router();
 
@@ -624,6 +625,35 @@ router.post('/discussion/conclude', async (req, res) => {
         console.error('Discussion conclude error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+// Cancel an active or waiting discussion — sets status to 'cancelled', outcome to 'abandoned'
+router.post('/discussion/cancel', async (req, res) => {
+    try {
+        let { discussion_id, agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
+
+        if (!discussion_id || !agent) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required fields: discussion_id, agent' }
+            });
+        }
+
+        const result = await discussionService.discussionConclude(discussion_id, agent, { cancel: true });
+        res.json(result);
+    } catch (err) {
+        const status = err.statusCode || 500;
+        res.status(status).json({
+            error: { code: err.code || 'INTERNAL_ERROR', message: err.message }
         });
     }
 });

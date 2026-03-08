@@ -421,6 +421,18 @@ const TOOLS = [
         }
     },
     {
+        name: 'discussion_cancel',
+        description: 'Cancel an active or waiting discussion. Sets status to cancelled and outcome to abandoned.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                discussion_id: { type: 'number', description: 'Discussion ID' },
+                agent: { type: 'string', description: 'Agent cancelling (default: configured agent)' }
+            },
+            required: ['discussion_id']
+        }
+    },
+    {
         name: 'discussion_join',
         description: 'Join a discussion you have been invited to.',
         inputSchema: {
@@ -533,6 +545,7 @@ const TOOL_PERMISSIONS = {
     discussion_status: 'mcp_discussion_status',
     discussion_pending: 'mcp_discussion_pending',
     discussion_conclude: 'mcp_discussion_conclude',
+    discussion_cancel: 'mcp_discussion_conclude',
     discussion_join: 'mcp_discussion_join',
     discussion_leave: 'mcp_discussion_leave',
     discussion_defer: 'mcp_discussion_join',
@@ -922,6 +935,11 @@ const TOOL_HANDLERS = {
 
     async discussion_conclude(args, agent, namespace) {
         const data = await discussionConclude(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
+        return `Discussion #${data.discussion_id} ${data.status}. Outcome: ${data.outcome}.`;
+    },
+
+    async discussion_cancel(args, agent, namespace) {
+        const data = await discussionConclude(args.discussion_id, validateIdentity(args.agent, agent, 'agent'), { cancel: true });
         return `Discussion #${data.discussion_id} ${data.status}. Outcome: ${data.outcome}.`;
     },
 
