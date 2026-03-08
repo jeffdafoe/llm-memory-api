@@ -1,7 +1,8 @@
-// Virtual agent service — handles discussion participation for API-backed agents.
-// Triggered by the system message handler when a message of type 'virtual-agent' arrives.
-// Looks up discussion context, identifies virtual participants, builds prompts,
-// calls provider APIs, and posts responses as chat messages.
+// Virtual agent service — handles AI responses for API-backed agents.
+// Three trigger paths:
+//   1. Discussion messages/votes — via system handler ('virtual-agent' type)
+//   2. Direct chat — when a real agent chats a virtual agent outside a discussion
+//   3. Direct mail — when a real agent mails a virtual agent, auto-replies
 
 const pool = require('../db');
 const { log } = require('./logger');
@@ -44,6 +45,18 @@ async function loadChatHistory(channel, limit) {
          WHERE channel = $1 AND NOT (from_agent = 'system' AND to_agent = 'system')
          ORDER BY id DESC LIMIT $2`,
         [channel, limit || 50]
+    );
+    return result.rows.reverse();
+}
+
+// Get recent direct chat history between two agents (no channel/discussion).
+async function loadDirectChatHistory(agent1, agent2, limit) {
+    const result = await pool.query(
+        `SELECT from_agent, to_agent, message, sent_at FROM chat_messages
+         WHERE channel IS NULL
+         AND ((from_agent = $1 AND to_agent = $2) OR (from_agent = $2 AND to_agent = $1))
+         ORDER BY id DESC LIMIT $3`,
+        [agent1, agent2, limit || 20]
     );
     return result.rows.reverse();
 }
@@ -110,6 +123,58 @@ function buildUserMessage(chatHistory, triggerType, voteQuestion) {
     }
 
     return msg;
+}
+
+// Build system prompt for direct chat (no discussion context).
+function buildDirectChatSystemPrompt(agent, ragContext) {
+    let prompt = '';
+    if (agent.startup_instructions) {
+        prompt += agent.startup_instructions + '\n\n';
+    }
+    prompt += `You are "${agent.agent}". You are chatting directly with another agent.\n`;
+    if (agent.personality) {
+        prompt += `Your personality: ${agent.personality}\n`;
+    }
+    if (ragContext) {
+        prompt += '\nRelevant knowledge from your notes:\n' + ragContext + '\n\n';
+    }
+    prompt += 'Respond concisely and naturally.';
+    return prompt;
+}
+
+// Build user message for direct chat from conversation history.
+function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
+    if (history.length <= 1) {
+        return `${fromAgent}: ${latestMessage}`;
+    }
+    let msg = 'Recent conversation:\n\n';
+    for (const m of history) {
+        msg += `${m.from_agent}: ${m.message}\n`;
+    }
+    msg += '\nRespond to the latest message.';
+    return msg;
+}
+
+// Build system prompt for mail replies.
+function buildMailSystemPrompt(agent, ragContext) {
+    let prompt = '';
+    if (agent.startup_instructions) {
+        prompt += agent.startup_instructions + '\n\n';
+    }
+    prompt += `You are "${agent.agent}". You have received a mail message and should compose a reply.\n`;
+    if (agent.personality) {
+        prompt += `Your personality: ${agent.personality}\n`;
+    }
+    if (ragContext) {
+        prompt += '\nRelevant knowledge from your notes:\n' + ragContext + '\n\n';
+    }
+    prompt += 'Compose a thoughtful reply. Write only the reply body — no subject line or headers.';
+    return prompt;
+}
+
+// Build user message from an incoming mail.
+function buildMailUserMessage(mail) {
+    return `From: ${mail.from_agent}\nSubject: ${mail.subject}\n\n${mail.body}`;
 }
 
 // Post an error message to the discussion channel from the virtual agent.
@@ -291,8 +356,120 @@ async function handleVirtualAgent(payload) {
     }
 }
 
+// Handle a direct chat message sent to a virtual agent (no discussion).
+// Called fire-and-forget from chatSend when a non-virtual agent messages a virtual one.
+async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
+    const agent = await loadAgent(virtualAgentName);
+    if (!agent || !agent.virtual) return;
+
+    if (!agent.api_key || !agent.provider || !agent.model) {
+        logVA('direct-chat-skip', { agent: virtualAgentName, reason: 'missing config' });
+        return;
+    }
+
+    logVA('direct-chat-processing', { agent: virtualAgentName, from: fromAgent });
+
+    try {
+        const apiKey = decryptApiKey(agent.api_key);
+        let conf = {};
+        if (agent.configuration) {
+            try { conf = JSON.parse(agent.configuration); } catch (e) { /* use defaults */ }
+        }
+
+        // Load recent direct chat history between the two agents
+        const history = await loadDirectChatHistory(virtualAgentName, fromAgent, 20);
+
+        // RAG context from the agent's namespace
+        const ragContext = await loadRAGContext(agent.agent, messageText);
+
+        // Build prompts
+        const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext);
+        const userMessage = buildDirectChatUserMessage(history, fromAgent, messageText);
+
+        // Call provider with activity indicator
+        await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agent.agent]);
+        broadcast('agent_activity', { agent: agent.agent, active: true });
+        const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+        let response;
+        try {
+            response = await provider(systemPrompt, userMessage);
+        } finally {
+            await pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agent.agent]);
+            broadcast('agent_activity', { agent: agent.agent, active: false });
+        }
+
+        // Send response as direct chat back to the sender
+        await chatSend(agent.agent, [fromAgent], null, response, null);
+
+        logVA('direct-chat-responded', { agent: agent.agent, to: fromAgent, responseLength: response.length });
+    } catch (err) {
+        logVA('direct-chat-error', { agent: virtualAgentName, from: fromAgent, error: err.message });
+    }
+}
+
+// Handle a mail sent to a virtual agent.
+// Called fire-and-forget from mailSend when a non-virtual agent mails a virtual one.
+async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
+    const agent = await loadAgent(virtualAgentName);
+    if (!agent || !agent.virtual) return;
+
+    if (!agent.api_key || !agent.provider || !agent.model) {
+        logVA('direct-mail-skip', { agent: virtualAgentName, reason: 'missing config' });
+        return;
+    }
+
+    // Load the incoming mail
+    const mailResult = await pool.query('SELECT * FROM mail WHERE id = $1', [mailId]);
+    if (mailResult.rows.length === 0) return;
+    const mail = mailResult.rows[0];
+
+    logVA('direct-mail-processing', { agent: virtualAgentName, from: fromAgent, mailId, subject: mail.subject });
+
+    try {
+        const apiKey = decryptApiKey(agent.api_key);
+        let conf = {};
+        if (agent.configuration) {
+            try { conf = JSON.parse(agent.configuration); } catch (e) { /* use defaults */ }
+        }
+
+        // RAG context from the agent's namespace
+        const ragContext = await loadRAGContext(agent.agent, `${mail.subject} ${mail.body}`);
+
+        // Build prompts
+        const systemPrompt = buildMailSystemPrompt(agent, ragContext);
+        const userMessage = buildMailUserMessage(mail);
+
+        // Call provider with activity indicator
+        await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agent.agent]);
+        broadcast('agent_activity', { agent: agent.agent, active: true });
+        const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+        let response;
+        try {
+            response = await provider(systemPrompt, userMessage);
+        } finally {
+            await pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agent.agent]);
+            broadcast('agent_activity', { agent: agent.agent, active: false });
+        }
+
+        // Ack the incoming mail (virtual agent "read" it)
+        await pool.query(
+            'UPDATE mail SET acked_at = NOW() WHERE id = $1 AND to_agent = $2 AND acked_at IS NULL',
+            [mailId, agent.agent]
+        );
+
+        // Send reply mail
+        const replySubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
+        const { mailSend } = require('./mail');
+        await mailSend(fromAgent, agent.agent, replySubject, response);
+
+        logVA('direct-mail-responded', { agent: agent.agent, to: fromAgent, mailId, responseLength: response.length });
+    } catch (err) {
+        logVA('direct-mail-error', { agent: virtualAgentName, from: fromAgent, mailId, error: err.message });
+    }
+}
+
 // Register with system handler on load.
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail };

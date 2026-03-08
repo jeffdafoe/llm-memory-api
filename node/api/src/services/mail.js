@@ -25,6 +25,20 @@ async function mailSend(toAgent, fromAgent, subject, body) {
 
     logMail('send', { from_agent: fromAgent, to_agent: toAgent, mail_id: result.rows[0].id, subject });
 
+    // Fire-and-forget: trigger virtual agent response for direct mail
+    if (fromAgent !== 'system') {
+        (async () => {
+            try {
+                const recipientRow = await pool.query('SELECT virtual FROM agents WHERE agent = $1', [toAgent]);
+                if (!recipientRow.rows[0] || !recipientRow.rows[0].virtual) return;
+                const senderRow = await pool.query('SELECT virtual FROM agents WHERE agent = $1', [fromAgent]);
+                if (senderRow.rows[0] && senderRow.rows[0].virtual) return;
+                const { handleDirectMail } = require('./virtual-agent');
+                handleDirectMail(toAgent, fromAgent, result.rows[0].id).catch(() => {});
+            } catch (e) { /* ignore */ }
+        })();
+    }
+
     return {
         id: result.rows[0].id,
         to_agent: toAgent,
