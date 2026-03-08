@@ -222,6 +222,54 @@ tr.unread {
     max-width: 700px;
 }
 
+.agent-detail-dialog h3 {
+    font-size: 1.15em;
+    margin-bottom: 0.2rem;
+}
+
+.agent-detail-dialog h4 {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--pico-muted-color);
+    margin-bottom: 0.4rem;
+    margin-top: 1.25rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    padding-bottom: 0.3rem;
+}
+
+.agent-detail-dialog p {
+    margin-bottom: 0.4rem;
+}
+
+.agent-detail-dialog .inline-button {
+    background: none;
+    border: none;
+    color: var(--pico-muted-color);
+    padding: 0.1em 0.4em;
+    opacity: 0.5;
+    margin-left: 0.3em;
+}
+
+.agent-detail-dialog .inline-button:hover {
+    opacity: 1;
+    background: none;
+    color: var(--pico-primary);
+}
+
+.agent-detail-dialog .inline-button i {
+    font-size: 0.8em;
+}
+
+.agent-detail-dialog .button-row {
+    margin-top: 0.5rem;
+}
+
+.agent-detail-dialog .button-row button {
+    padding: 0.3rem 0.8rem;
+    font-size: 0.85em;
+}
+
 .agent-detail-dialog .instructions-pre {
     white-space: pre-wrap;
     word-wrap: break-word;
