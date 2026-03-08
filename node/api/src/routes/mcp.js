@@ -17,7 +17,7 @@ const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat
 const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend } = require('../services/mail');
 const {
     discussionCreate, discussionList, discussionStatus, discussionPending,
-    discussionConclude, discussionJoin, discussionLeave,
+    discussionConclude, discussionJoin, discussionDefer, discussionLeave,
     votePropose, voteCast, voteStatus
 } = require('../services/discussion');
 const { broadcast } = require('../services/events');
@@ -445,6 +445,18 @@ const TOOLS = [
         }
     },
     {
+        name: 'discussion_defer',
+        description: 'Defer a discussion invitation for later. Acknowledges the invitation without joining, pauses the timeout clock. Can re-defer up to a configurable maximum (default: 3). Resume later by calling discussion_join.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                discussion_id: { type: 'number', description: 'Discussion ID' },
+                agent: { type: 'string', description: 'Agent deferring (default: configured agent)' }
+            },
+            required: ['discussion_id']
+        }
+    },
+    {
         name: 'discussion_vote_propose',
         description: 'Propose a vote in a discussion. Use type "conclude" for ending the discussion, "general" for other decisions. Choices are integers; describe options in the question text.',
         inputSchema: {
@@ -523,6 +535,7 @@ const TOOL_PERMISSIONS = {
     discussion_conclude: 'mcp_discussion_conclude',
     discussion_join: 'mcp_discussion_join',
     discussion_leave: 'mcp_discussion_leave',
+    discussion_defer: 'mcp_discussion_join',
     discussion_vote_propose: 'mcp_discussion_vote_propose',
     discussion_vote_cast: 'mcp_discussion_vote_cast',
     discussion_vote_status: 'mcp_discussion_vote_status'
@@ -893,6 +906,10 @@ const TOOL_HANDLERS = {
             const lines = data.invited_discussions.map(d => `  #${d.id} [${d.mode || 'realtime'}] "${d.topic}"`);
             sections.push('Pending invitations:\n' + lines.join('\n'));
         }
+        if (data.deferred_discussions.length > 0) {
+            const lines = data.deferred_discussions.map(d => `  #${d.id} [${d.mode || 'realtime'}] "${d.topic}"`);
+            sections.push('Deferred discussions (join when ready):\n' + lines.join('\n'));
+        }
         if (data.open_votes.length > 0) {
             const lines = data.open_votes.map(v => `  Vote #${v.id} [${v.discussion_mode || 'realtime'}] in "${v.discussion_topic}": ${v.question}`);
             sections.push('Open votes awaiting your ballot:\n' + lines.join('\n'));
@@ -916,6 +933,11 @@ const TOOL_HANDLERS = {
     async discussion_leave(args, agent, namespace) {
         const data = await discussionLeave(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
         return `${data.agent} left discussion #${data.discussion_id}.`;
+    },
+
+    async discussion_defer(args, agent, namespace) {
+        const data = await discussionDefer(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
+        return `${data.agent} deferred discussion #${data.discussion_id}. Defer count: ${data.defer_count}. Timeout extended to ${data.timeout_at}.`;
     },
 
     async discussion_vote_propose(args, agent, namespace) {

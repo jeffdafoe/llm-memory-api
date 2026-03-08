@@ -85,6 +85,12 @@ async function evaluateReadiness(discussionId) {
                 'UPDATE discussions SET status = $1 WHERE id = $2',
                 ['timed_out', discussionId]
             );
+            // Mark remaining participants as 'left' so they aren't blocked
+            await pool.query(
+                `UPDATE discussion_participants SET status = 'left'
+                 WHERE discussion_id = $1 AND status IN ('invited', 'joined', 'deferred')`,
+                [discussionId]
+            );
             logDiscussion('timed_out', { discussion_id: discussionId, reason: 'missing_required' });
         }
     }
@@ -219,7 +225,7 @@ router.post('/discussion/create', async (req, res) => {
         const existing = await pool.query(
             `SELECT d.id, d.topic, d.status FROM discussions d
              JOIN discussion_participants dp ON dp.discussion_id = d.id
-             WHERE dp.agent = $1 AND dp.status IN ('invited', 'joined')
+             WHERE dp.agent = $1 AND dp.status IN ('invited', 'joined', 'deferred')
              AND d.status IN ('waiting', 'active')
              ORDER BY d.id DESC LIMIT 1`,
             [created_by]
@@ -425,7 +431,7 @@ router.post('/discussion/status', async (req, res) => {
         }
 
         const participants = await pool.query(
-            'SELECT agent, status, role, invited_at, joined_at FROM discussion_participants WHERE discussion_id = $1',
+            'SELECT agent, status, role, invited_at, joined_at, deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1',
             [discussion_id]
         );
 
@@ -490,6 +496,12 @@ router.post('/discussion/pending', async (req, res) => {
             [agent, 'invited', 'waiting', 'active']
         );
 
+        // Discussions this agent has deferred (still waiting or active)
+        const deferred = await pool.query(
+            'SELECT d.* FROM discussions d JOIN discussion_participants dp ON d.id = dp.discussion_id WHERE dp.agent = $1 AND dp.status = $2 AND d.status IN ($3, $4)',
+            [agent, 'deferred', 'waiting', 'active']
+        );
+
         // Open votes where agent hasn't voted yet — async discussions only.
         // Realtime discussion votes are discovered in-band through chat messages,
         // not through pending. Hiding them here prevents agents from voting
@@ -520,10 +532,11 @@ router.post('/discussion/pending', async (req, res) => {
             voteParams
         );
 
-        logDiscussion('pending', { agent, invited: invited.rows.length, open_votes: openVotes.rows.length });
+        logDiscussion('pending', { agent, invited: invited.rows.length, deferred: deferred.rows.length, open_votes: openVotes.rows.length });
 
         res.json({
             invited_discussions: invited.rows,
+            deferred_discussions: deferred.rows,
             open_votes: openVotes.rows
         });
     } catch (err) {
@@ -694,6 +707,106 @@ router.post('/discussion/join', async (req, res) => {
         res.json({ discussion_id, agent, status: 'joined', discussion_status: current.rows[0].status });
     } catch (err) {
         console.error('Discussion join error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL_ERROR', message: err.message }
+        });
+    }
+});
+
+router.post('/discussion/defer', async (req, res) => {
+    try {
+        let { discussion_id, agent } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
+
+        if (!discussion_id || !agent) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required fields: discussion_id, agent' }
+            });
+        }
+
+        const discussion = await pool.query(
+            'SELECT status FROM discussions WHERE id = $1',
+            [discussion_id]
+        );
+        if (discussion.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Discussion not found' }
+            });
+        }
+
+        // Can only defer discussions that are still waiting or active
+        const dStatus = discussion.rows[0].status;
+        if (dStatus !== 'waiting' && dStatus !== 'active') {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Discussion is ' + dStatus + ' and not accepting deferrals' }
+            });
+        }
+
+        // Check participant exists and is in a deferrable state
+        const existing = await pool.query(
+            'SELECT status, defer_count FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
+            [discussion_id, agent]
+        );
+        if (existing.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent is not a participant in this discussion' }
+            });
+        }
+
+        const pStatus = existing.rows[0].status;
+        if (pStatus !== 'invited' && pStatus !== 'deferred') {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Can only defer from invited or deferred status, current status: ' + pStatus }
+            });
+        }
+
+        // Check defer count against max
+        const maxDefers = parseInt(await getConfig('max_defer_count', '3'));
+        const currentCount = existing.rows[0].defer_count || 0;
+        if (currentCount >= maxDefers) {
+            return res.status(400).json({
+                error: { code: 'MAX_DEFERRALS_REACHED', message: 'Maximum deferrals reached (' + maxDefers + '). Must join or let timeout expire.' }
+            });
+        }
+
+        // Update participant status to deferred
+        await pool.query(
+            'UPDATE discussion_participants SET status = $1, deferred_at = NOW(), defer_count = defer_count + 1 WHERE discussion_id = $2 AND agent = $3',
+            ['deferred', discussion_id, agent]
+        );
+
+        // Extend the discussion timeout
+        const deferTimeout = parseInt(await getConfig('discussion_defer_timeout', '1440'));
+        const newTimeoutAt = new Date(Date.now() + deferTimeout * 60 * 1000);
+        await pool.query(
+            'UPDATE discussions SET timeout_at = $1 WHERE id = $2',
+            [newTimeoutAt, discussion_id]
+        );
+
+        // Fetch updated participant row for response
+        const updated = await pool.query(
+            'SELECT deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
+            [discussion_id, agent]
+        );
+
+        logDiscussion('defer', { discussion_id, agent, defer_count: updated.rows[0].defer_count, timeout_at: newTimeoutAt });
+
+        res.json({
+            discussion_id,
+            agent,
+            deferred_at: updated.rows[0].deferred_at,
+            defer_count: updated.rows[0].defer_count,
+            timeout_at: newTimeoutAt
+        });
+    } catch (err) {
+        console.error('Discussion defer error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
