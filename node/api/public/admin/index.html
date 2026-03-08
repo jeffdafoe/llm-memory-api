@@ -928,18 +928,18 @@
                             <p v-if="selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
                             <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
                                 <small class="muted">Token Usage</small>
-                                <button class="inline-button compact" @click="resetTokenUsage" title="Reset counter" style="float: right;"><i class="icon-refresh-cw" style="font-size: 0.7em;"></i></button>
+                                <button class="inline-button compact" @click="resetTokenUsage" title="Reset counter" style="float: right;"><i class="icon-refresh-cw"></i></button>
                                 <br>
                                 <strong>{{ (selectedAgent.tokens_used || 0).toLocaleString() }}</strong>
                                 <span class="muted"> / </span>
                                 <span v-if="!tokenBudgetEditing" @dblclick="startEditTokenBudget" style="cursor: pointer;" title="Double-click to edit">{{ selectedAgent.token_budget ? selectedAgent.token_budget.toLocaleString() : 'default' }}</span>
                                 <span v-if="!tokenBudgetEditing">
-                                    <button class="inline-button compact" @click="startEditTokenBudget" title="Edit budget"><i class="icon-edit" style="font-size: 0.7em;"></i></button>
+                                    <button class="inline-button compact" @click="startEditTokenBudget" title="Edit budget"><i class="icon-edit"></i></button>
                                 </span>
                                 <span v-if="tokenBudgetEditing">
                                     <input type="number" v-model="tokenBudgetEditValue" placeholder="blank = default" style="width: 8em; display: inline; padding: 0.1em 0.3em; font-size: 0.9em;">
-                                    <button class="inline-button compact" @click="saveTokenBudget"><i class="icon-check" style="font-size: 0.7em;"></i></button>
-                                    <button class="inline-button compact" @click="tokenBudgetEditing = false"><i class="icon-x" style="font-size: 0.7em;"></i></button>
+                                    <button class="inline-button compact" @click="saveTokenBudget"><i class="icon-check"></i></button>
+                                    <button class="inline-button compact" @click="tokenBudgetEditing = false"><i class="icon-x"></i></button>
                                 </span>
                                 <meter :value="selectedAgent.tokens_used || 0" :max="selectedAgent.token_budget || 1000000" style="width: 100%; margin-top: 0.3em;"></meter>
                                 <small class="muted" v-if="selectedAgent.tokens_reset_at"><br>Resets: {{ formatDate(selectedAgent.tokens_reset_at) }}</small>
@@ -951,7 +951,7 @@
 
                             <h4>
                                 Expertise
-                                <button v-if="!agentExpertiseEditing" class="inline-button" @click="startEditExpertise"><i class="icon-edit"></i></button>
+                                <button v-if="!agentExpertiseEditing" class="inline-button compact" @click="startEditExpertise"><i class="icon-edit"></i></button>
                             </h4>
                             <div v-if="agentExpertiseEditing">
                                 <input type="text" v-model="agentExpertiseEditText" placeholder="comma-separated areas">
@@ -967,7 +967,7 @@
 
                             <h4>
                                 Startup Instructions
-                                <button v-if="!agentInstructionsEditing" class="inline-button" @click="startEditInstructions"><i class="icon-edit"></i></button>
+                                <button v-if="!agentInstructionsEditing" class="inline-button compact" @click="startEditInstructions"><i class="icon-edit"></i></button>
                             </h4>
                             <div v-if="agentInstructionsEditing">
                                 <textarea v-model="agentInstructionsEditContent" rows="10"></textarea>
