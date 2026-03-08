@@ -11,8 +11,27 @@ const { createProvider, decryptApiKey } = require('./provider');
 const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
 
+const MIN_ACTIVITY_MS = 3000;
+
 function logVA(action, details) {
     log('virtual-agent', action, details);
+}
+
+// Run an async function with the activity spinner on. Ensures the spinner
+// stays visible for at least MIN_ACTIVITY_MS even if the call is fast.
+async function withActivityIndicator(agentName, fn) {
+    const start = Date.now();
+    await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agentName]);
+    broadcast('agent_activity', { agent: agentName, active: true });
+    try {
+        return await fn();
+    } finally {
+        const remaining = Math.max(0, MIN_ACTIVITY_MS - (Date.now() - start));
+        setTimeout(() => {
+            pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agentName]).catch(() => {});
+            broadcast('agent_activity', { agent: agentName, active: false });
+        }, remaining);
+    }
 }
 
 // Load an agent row with virtual-agent fields.
@@ -316,17 +335,9 @@ async function handleVirtualAgent(payload) {
             const systemPrompt = buildSystemPrompt(agent, discussion, ragContext);
             const userMessage = buildUserMessage(chatHistory, triggerType, voteQuestion);
 
-            // Call provider — show activity spinner while the AI call is in flight
-            await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agent.agent]);
-            broadcast('agent_activity', { agent: agent.agent, active: true });
+            // Call provider with activity spinner (minimum 3s visibility)
             const provider = createProvider(agent.provider, agent.model, apiKey, conf);
-            let response;
-            try {
-                response = await provider(systemPrompt, userMessage);
-            } finally {
-                await pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agent.agent]);
-                broadcast('agent_activity', { agent: agent.agent, active: false });
-            }
+            const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
 
             // Handle vote-proposed: parse response and cast ballot
             if (triggerType === 'vote-proposed' && voteId) {
@@ -386,17 +397,9 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
         const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext);
         const userMessage = buildDirectChatUserMessage(history, fromAgent, messageText);
 
-        // Call provider with activity indicator
-        await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agent.agent]);
-        broadcast('agent_activity', { agent: agent.agent, active: true });
+        // Call provider with activity spinner (minimum 3s visibility)
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
-        let response;
-        try {
-            response = await provider(systemPrompt, userMessage);
-        } finally {
-            await pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agent.agent]);
-            broadcast('agent_activity', { agent: agent.agent, active: false });
-        }
+        const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
 
         // Send response as direct chat back to the sender
         await chatSend(agent.agent, [fromAgent], null, response, null);
@@ -439,17 +442,9 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         const systemPrompt = buildMailSystemPrompt(agent, ragContext);
         const userMessage = buildMailUserMessage(mail);
 
-        // Call provider with activity indicator
-        await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agent.agent]);
-        broadcast('agent_activity', { agent: agent.agent, active: true });
+        // Call provider with activity spinner (minimum 3s visibility)
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
-        let response;
-        try {
-            response = await provider(systemPrompt, userMessage);
-        } finally {
-            await pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agent.agent]);
-            broadcast('agent_activity', { agent: agent.agent, active: false });
-        }
+        const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
 
         // Ack the incoming mail (virtual agent "read" it)
         await pool.query(
