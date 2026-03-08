@@ -10,9 +10,16 @@ const pool = require('../db');
 const config = require('../services/config');
 const { hash } = require('../services/hashing');
 
-// Opportunistic heartbeat — update last_seen on every authenticated MCP request
+// Opportunistic heartbeat — update last_seen on every authenticated MCP request.
+// Also refreshes active_since if already set, so the activity spinner stays alive
+// as long as the agent is making tool calls (without requiring explicit re-calls).
 function heartbeat(agent) {
-    pool.query('UPDATE agents SET last_seen = NOW() WHERE agent = $1', [agent]).catch(() => {});
+    pool.query(
+        `UPDATE agents SET last_seen = NOW(),
+         active_since = CASE WHEN active_since IS NOT NULL THEN NOW() ELSE active_since END
+         WHERE agent = $1`,
+        [agent]
+    ).catch(() => {});
 }
 
 function getResourceMetadataUrl(req) {

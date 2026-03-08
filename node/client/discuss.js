@@ -1758,7 +1758,6 @@ async function main() {
         // Handle clean shutdown
         const shutdown = async () => {
             log('Shutting down...');
-            try { await apiCall('agent/activity/stop', { agent: cfg.agent }); } catch (e) { /* best-effort */ }
             releaseLock();
             await transportLogout();
             server.close();
@@ -1777,9 +1776,6 @@ async function main() {
         // Save result.md as a remote note for cross-agent access
         await saveResult();
 
-        // Stop activity spinner before logout
-        try { await apiCall('agent/activity/stop', { agent: cfg.agent }); } catch (e) { /* best-effort */ }
-
         // Clean exit — code 2 if terminated by convergence detection
         await transportLogout();
         server.close();
@@ -1792,7 +1788,6 @@ async function main() {
     } catch (err) {
         console.error(`Fatal error: ${err.message}`);
         log(`FATAL: ${err.message}`);
-        try { await apiCall('agent/activity/stop', { agent: cfg.agent }); } catch (e) { /* best-effort */ }
         setStatus('ERROR');
         process.exit(1);
     }
