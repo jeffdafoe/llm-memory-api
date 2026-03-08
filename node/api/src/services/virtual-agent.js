@@ -19,9 +19,9 @@ const callHistory = {};
 
 // Check if an agent is rate-limited. Returns true if the call should be blocked.
 function isRateLimited(agentName) {
-    const limit = parseInt(config.getOptional('virtual_agent_rate_limit', '10'));
-    const windowMs = parseInt(config.getOptional('virtual_agent_rate_window_seconds', '60')) * 1000;
-    const cooldownMs = parseInt(config.getOptional('virtual_agent_cooldown_seconds', '300')) * 1000;
+    const limit = parseInt(config.get('virtual_agent_rate_limit'));
+    const windowMs = parseInt(config.get('virtual_agent_rate_window_seconds')) * 1000;
+    const cooldownMs = parseInt(config.get('virtual_agent_cooldown_seconds')) * 1000;
 
     const now = Date.now();
     if (!callHistory[agentName]) callHistory[agentName] = [];
