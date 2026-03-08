@@ -49,13 +49,28 @@ function useDashboard({ api, authenticated, onEvent }) {
     }
 
     async function refreshLiveChats() {
+        const stillActive = [];
         for (const live of liveDiscussions.value) {
             try {
+                // Re-check discussion status — remove concluded/timed-out discussions
+                const detail = await api('/admin/discussions/detail', { discussion_id: live.discussion.id });
+                if (detail.discussion.status !== 'active') {
+                    continue;
+                }
+                live.discussion = detail.discussion;
+                live.participants = detail.participants;
+                live.votes = detail.votes;
                 const chat = await api('/admin/chat', { channel: 'discuss-' + live.discussion.id, limit: 500 });
                 live.chat = chat.messages.reverse();
+                stillActive.push(live);
             } catch (err) {
                 console.error('Failed to refresh live chat:', err);
+                stillActive.push(live);
             }
+        }
+        liveDiscussions.value = stillActive;
+        if (stillActive.length === 0) {
+            stopLivePolling();
         }
         scrollLiveChats();
     }

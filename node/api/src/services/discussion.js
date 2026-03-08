@@ -479,7 +479,7 @@ async function discussionPending(agent, discussionId) {
     };
 }
 
-async function discussionConclude(discussionId, agent) {
+async function discussionConclude(discussionId, agent, { cancel = false } = {}) {
     if (!discussionId || !agent) {
         throw Object.assign(new Error('Required fields: discussion_id, agent'), { statusCode: 400 });
     }
@@ -506,7 +506,8 @@ async function discussionConclude(discussionId, agent) {
         throw Object.assign(new Error('Discussion is not active'), { statusCode: 400 });
     }
 
-    const newStatus = dStatus === 'waiting' ? 'cancelled' : 'concluded';
+    // waiting discussions are always cancelled; active ones can be concluded or cancelled
+    const newStatus = (dStatus === 'waiting' || cancel) ? 'cancelled' : 'concluded';
     const outcome = await computeOutcome(discussionId, newStatus);
     await pool.query('UPDATE discussions SET status = $1, concluded_at = NOW(), outcome = $2 WHERE id = $3', [newStatus, outcome, discussionId]);
     // Mark all joined/invited/deferred participants as 'left' so they aren't
