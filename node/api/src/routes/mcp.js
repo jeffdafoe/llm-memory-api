@@ -1165,6 +1165,13 @@ router.post('/mcp', mcpAuth, async (req, res) => {
             'INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)',
             [newSessionId, req.mcpAgent, TOOLS_HASH]
         ).catch(err => console.error('MCP session persist error:', err.message));
+
+        // Activate the activity spinner on new MCP session.
+        // Agents that don't explicitly call activity_start (e.g. ChatGPT, third-party clients)
+        // still show as active when they connect.
+        pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [req.mcpAgent])
+            .then(() => broadcast('agent_activity', { agent: req.mcpAgent, active: true }))
+            .catch(() => {});
     }
 });
 
