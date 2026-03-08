@@ -236,6 +236,21 @@ function buildUserMessage(chatHistory, triggerType, voteQuestion) {
     return msg;
 }
 
+// Format a timestamp as a compact relative time string.
+function formatRelativeTime(sentAt) {
+    const now = Date.now();
+    const then = new Date(sentAt).getTime();
+    const diffMs = now - then;
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return '[now]';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `[${diffMin}m]`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `[${diffHr}h]`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `[${diffDay}d]`;
+}
+
 // Build system prompt for direct chat (no discussion context).
 function buildDirectChatSystemPrompt(agent, ragContext) {
     let prompt = '';
@@ -249,19 +264,36 @@ function buildDirectChatSystemPrompt(agent, ragContext) {
     if (ragContext) {
         prompt += '\nRelevant knowledge from your notes:\n' + ragContext + '\n\n';
     }
-    prompt += 'Respond concisely and naturally.';
+    prompt += 'Messages include relative timestamps and conversation breaks for context. Respond concisely and naturally.';
     return prompt;
 }
 
 // Build user message for direct chat from conversation history.
+// Includes relative timestamps and conversation gap separators.
 function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
     if (history.length <= 1) {
         return `${fromAgent}: ${latestMessage}`;
     }
+
+    const GAP_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
     let msg = 'Recent conversation:\n\n';
-    for (const m of history) {
-        msg += `${m.from_agent}: ${m.message}\n`;
+
+    for (let i = 0; i < history.length; i++) {
+        const m = history[i];
+
+        // Insert gap separator if there's a 2+ hour gap between consecutive messages
+        if (i > 0 && m.sent_at && history[i - 1].sent_at) {
+            const gap = new Date(m.sent_at).getTime() - new Date(history[i - 1].sent_at).getTime();
+            if (gap >= GAP_THRESHOLD_MS) {
+                const gapHours = Math.round(gap / (60 * 60 * 1000));
+                msg += `--- gap: ${gapHours}h ---\n`;
+            }
+        }
+
+        const timestamp = m.sent_at ? formatRelativeTime(m.sent_at) : '';
+        msg += `${timestamp} ${m.from_agent}: ${m.message}\n`;
     }
+
     msg += '\nRespond to the latest message.';
     return msg;
 }
@@ -496,8 +528,14 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
         // Load recent direct chat history between the two agents
         const history = await loadDirectChatHistory(virtualAgentName, fromAgent, 20);
 
-        // RAG context from the agent's namespace
-        const ragContext = await loadRAGContext(agent.agent, messageText);
+        // RAG context from the agent's namespace.
+        // If the latest message is very short, combine with previous message for better RAG.
+        let ragQuery = messageText;
+        if (messageText.trim().split(/\s+/).length < 5 && history.length >= 2) {
+            const prev = history[history.length - 2];
+            ragQuery = prev.message + ' ' + messageText;
+        }
+        const ragContext = await loadRAGContext(agent.agent, ragQuery);
 
         // Build prompts
         const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext);
