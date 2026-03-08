@@ -649,6 +649,7 @@ h4 i {
 .agents-scroll {
     max-height: 350px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .agents-scroll thead {
