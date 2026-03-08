@@ -102,6 +102,22 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
         notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'message' }).catch(() => {});
     }
 
+    // Fire-and-forget: trigger virtual agent responses for direct chat (no discussion)
+    if (!discussionId && fromAgent !== 'system') {
+        (async () => {
+            try {
+                const senderRow = await pool.query('SELECT virtual FROM agents WHERE agent = $1', [fromAgent]);
+                if (senderRow.rows[0] && senderRow.rows[0].virtual) return;
+                const vr = await pool.query('SELECT agent FROM agents WHERE agent = ANY($1) AND virtual = true', [recipients]);
+                if (vr.rows.length === 0) return;
+                const { handleDirectChat } = require('./virtual-agent');
+                for (const row of vr.rows) {
+                    handleDirectChat(row.agent, fromAgent, message).catch(() => {});
+                }
+            } catch (e) { /* ignore */ }
+        })();
+    }
+
     return { from_agent: fromAgent, to_agents: results, sent_at: results[0] ? results[0].sent_at : null };
 }
 
