@@ -10,8 +10,54 @@ const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey } = require('./provider');
 const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
+const config = require('./config');
 
 const MIN_ACTIVITY_MS = 3000;
+
+// In-memory rate limiter: agent -> array of call timestamps
+const callHistory = {};
+
+// Check if an agent is rate-limited. Returns true if the call should be blocked.
+function isRateLimited(agentName) {
+    const limit = parseInt(config.getOptional('virtual_agent_rate_limit', '10'));
+    const windowMs = parseInt(config.getOptional('virtual_agent_rate_window_seconds', '60')) * 1000;
+    const cooldownMs = parseInt(config.getOptional('virtual_agent_cooldown_seconds', '300')) * 1000;
+
+    const now = Date.now();
+    if (!callHistory[agentName]) callHistory[agentName] = [];
+
+    const history = callHistory[agentName];
+
+    // Check cooldown: if the most recent call triggered a rate limit, check if cooldown has passed
+    if (history._cooldownUntil && now < history._cooldownUntil) {
+        logVA('rate-limited', { agent: agentName, reason: 'cooldown', resumesIn: Math.ceil((history._cooldownUntil - now) / 1000) + 's' });
+        return true;
+    }
+    // Clear expired cooldown
+    if (history._cooldownUntil && now >= history._cooldownUntil) {
+        delete history._cooldownUntil;
+    }
+
+    // Prune old entries outside the window
+    while (history.length > 0 && history[0] < now - windowMs) {
+        history.shift();
+    }
+
+    // Check if at limit
+    if (history.length >= limit) {
+        history._cooldownUntil = now + cooldownMs;
+        logVA('rate-limit-triggered', { agent: agentName, calls: history.length, windowSeconds: windowMs / 1000, cooldownSeconds: cooldownMs / 1000 });
+        return true;
+    }
+
+    return false;
+}
+
+// Record a provider call for rate limiting.
+function recordCall(agentName) {
+    if (!callHistory[agentName]) callHistory[agentName] = [];
+    callHistory[agentName].push(Date.now());
+}
 
 function logVA(action, details) {
     log('virtual-agent', action, details);
@@ -335,8 +381,15 @@ async function handleVirtualAgent(payload) {
             const systemPrompt = buildSystemPrompt(agent, discussion, ragContext);
             const userMessage = buildUserMessage(chatHistory, triggerType, voteQuestion);
 
+            // Rate limit check
+            if (isRateLimited(agent.agent)) {
+                await postError(agent.agent, discussionId, channel, 'Rate limited — too many API calls. Cooling down.');
+                continue;
+            }
+
             // Call provider with activity spinner (minimum 3s visibility)
             const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+            recordCall(agent.agent);
             const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
 
             // Handle vote-proposed: parse response and cast ballot
@@ -397,8 +450,15 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
         const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext);
         const userMessage = buildDirectChatUserMessage(history, fromAgent, messageText);
 
+        // Rate limit check
+        if (isRateLimited(agent.agent)) {
+            logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
+            return;
+        }
+
         // Call provider with activity spinner (minimum 3s visibility)
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+        recordCall(agent.agent);
         const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
 
         // Send response as direct chat back to the sender
@@ -442,8 +502,15 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         const systemPrompt = buildMailSystemPrompt(agent, ragContext);
         const userMessage = buildMailUserMessage(mail);
 
+        // Rate limit check
+        if (isRateLimited(agent.agent)) {
+            logVA('direct-mail-rate-limited', { agent: virtualAgentName, from: fromAgent, mailId });
+            return;
+        }
+
         // Call provider with activity spinner (minimum 3s visibility)
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+        recordCall(agent.agent);
         const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
 
         // Ack the incoming mail (virtual agent "read" it)
