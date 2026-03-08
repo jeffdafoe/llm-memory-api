@@ -89,11 +89,44 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // Token budget
+    const tokenBudgetEditing = ref(false);
+    const tokenBudgetEditValue = ref('');
+
+    function startEditTokenBudget() {
+        tokenBudgetEditing.value = true;
+        tokenBudgetEditValue.value = selectedAgent.value.token_budget || '';
+    }
+
+    async function saveTokenBudget() {
+        try {
+            const val = tokenBudgetEditValue.value === '' ? null : parseInt(tokenBudgetEditValue.value);
+            await api('/admin/agents/update', { agent: selectedAgent.value.agent, token_budget: val });
+            selectedAgent.value.token_budget = val;
+            tokenBudgetEditing.value = false;
+            showToast('Token budget updated', 'success');
+        } catch (err) {
+            showToast('Failed: ' + err.message, 'error');
+        }
+    }
+
+    async function resetTokenUsage() {
+        try {
+            await api('/admin/agents/update', { agent: selectedAgent.value.agent, reset_tokens: true });
+            selectedAgent.value.tokens_used = 0;
+            selectedAgent.value.tokens_reset_at = new Date().toISOString();
+            showToast('Token usage reset', 'success');
+        } catch (err) {
+            showToast('Failed: ' + err.message, 'error');
+        }
+    }
+
     async function viewAgent(agent) {
         selectedAgent.value = agent;
         agentInstructionsEditing.value = false;
         agentExpertiseEditing.value = false;
         agentProfileEditing.value = false;
+        tokenBudgetEditing.value = false;
         agentPassphraseConfirming.value = false;
         agentNewPassphrase.value = null;
         try {
@@ -326,6 +359,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfileSaving,
         loadAgents, viewAgent,
         startEditProfile, saveProfile,
+        tokenBudgetEditing, tokenBudgetEditValue, startEditTokenBudget, saveTokenBudget, resetTokenUsage,
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,
         resetAgentPassphrase,

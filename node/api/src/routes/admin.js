@@ -933,9 +933,9 @@ router.post('/admin/agents/create', async (req, res) => {
     }
 });
 
-// POST /admin/agents/update — update virtual agent config (personality, api_key, configuration, cost, provider, model)
+// POST /admin/agents/update — update virtual agent config (personality, api_key, configuration, cost, provider, model, token_budget, reset_tokens)
 router.post('/admin/agents/update', async (req, res) => {
-    const { agent, personality, api_key, configuration, cost, provider, model } = req.body;
+    const { agent, personality, api_key, configuration, cost, provider, model, token_budget, reset_tokens } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -984,6 +984,14 @@ router.post('/admin/agents/update', async (req, res) => {
         if (model !== undefined) {
             params.push(model || null);
             updates.push(`model = $${idx++}`);
+        }
+        if (token_budget !== undefined) {
+            params.push(token_budget === null || token_budget === '' ? null : parseInt(token_budget));
+            updates.push(`token_budget = $${idx++}`);
+        }
+        if (reset_tokens) {
+            updates.push(`tokens_used = 0`);
+            updates.push(`tokens_reset_at = NOW()`);
         }
 
         if (updates.length === 0) {
