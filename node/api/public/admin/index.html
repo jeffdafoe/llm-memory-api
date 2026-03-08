@@ -927,7 +927,7 @@
                             </div>
                             <p v-if="selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
                             <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
-                                <small class="muted">Token Usage</small>
+                                <small class="muted">Total Token Usage (in + out)</small>
                                 <button class="inline-button compact" @click="resetTokenUsage" title="Reset counter" style="float: right;"><i class="icon-refresh-cw"></i></button>
                                 <br>
                                 <strong>{{ (selectedAgent.tokens_used || 0).toLocaleString() }}</strong>
