@@ -22,10 +22,4 @@ function get(key) {
     return cache[key];
 }
 
-// Get a config value with a fallback default. Returns defaultValue if key not found.
-function getOptional(key, defaultValue) {
-    if (key in cache) return cache[key];
-    return defaultValue;
-}
-
-module.exports = { init, get, getOptional };
+module.exports = { init, get };

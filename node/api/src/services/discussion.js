@@ -3,6 +3,7 @@
 
 const pool = require('../db');
 const { log } = require('./logger');
+const config = require('./config');
 const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent, notifySystem } = require('./system-notify');
 
 function logDiscussion(action, details) {
@@ -15,14 +16,6 @@ async function getDiscussionChannel(discussionId) {
         return `discuss-${discussionId}`;
     }
     return result.rows[0].channel || `discuss-${discussionId}`;
-}
-
-async function getConfig(key, defaultValue) {
-    const result = await pool.query('SELECT value FROM config WHERE key = $1', [key]);
-    if (result.rows.length === 0) {
-        return defaultValue;
-    }
-    return result.rows[0].value;
 }
 
 async function evaluateReadiness(discussionId) {
@@ -272,8 +265,7 @@ async function discussionCreate(topic, createdBy, participants, optionalParticip
         const timeoutKey = discussionMode === 'async'
             ? 'discussion_wait_timeout_async'
             : 'discussion_wait_timeout_realtime';
-        const timeoutDefault = discussionMode === 'async' ? '1440' : '5';
-        const timeoutMinutes = parseInt(await getConfig(timeoutKey, timeoutDefault));
+        const timeoutMinutes = parseInt(config.get(timeoutKey));
         const timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
 
         const result = await client.query(
@@ -629,7 +621,7 @@ async function discussionDefer(discussionId, agent) {
     }
 
     // Check defer count against max
-    const maxDefers = parseInt(await getConfig('max_defer_count', '3'));
+    const maxDefers = parseInt(config.get('max_defer_count'));
     const currentCount = existing.rows[0].defer_count || 0;
     if (currentCount >= maxDefers) {
         throw Object.assign(
@@ -645,7 +637,7 @@ async function discussionDefer(discussionId, agent) {
     );
 
     // Extend the discussion timeout
-    const deferTimeout = parseInt(await getConfig('discussion_defer_timeout', '1440'));
+    const deferTimeout = parseInt(config.get('discussion_defer_timeout'));
     const newTimeoutAt = new Date(Date.now() + deferTimeout * 60 * 1000);
     await pool.query(
         'UPDATE discussions SET timeout_at = $1 WHERE id = $2',
