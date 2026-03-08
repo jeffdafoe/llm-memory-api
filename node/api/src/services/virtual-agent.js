@@ -59,6 +59,52 @@ function recordCall(agentName) {
     callHistory[agentName].push(Date.now());
 }
 
+// Check if an agent has exceeded its token budget. Auto-resets if the period has elapsed.
+// Returns true if the call should be blocked.
+async function isOverBudget(agent) {
+    const resetDays = parseInt(config.get('virtual_agent_budget_reset_days'));
+    const defaultBudget = parseInt(config.get('virtual_agent_default_token_budget'));
+    const budget = agent.token_budget !== null ? agent.token_budget : defaultBudget;
+    const used = agent.tokens_used || 0;
+
+    // Check if reset is due
+    if (agent.tokens_reset_at) {
+        const resetAt = new Date(agent.tokens_reset_at);
+        const now = new Date();
+        const daysSinceReset = (now - resetAt) / (1000 * 60 * 60 * 24);
+        if (daysSinceReset >= resetDays) {
+            await pool.query(
+                'UPDATE agents SET tokens_used = 0, tokens_reset_at = NOW() WHERE agent = $1',
+                [agent.agent]
+            );
+            agent.tokens_used = 0;
+            agent.tokens_reset_at = now;
+            logVA('budget-reset', { agent: agent.agent, previousUsed: used });
+            return false;
+        }
+    }
+
+    if (used >= budget) {
+        logVA('over-budget', { agent: agent.agent, used, budget });
+        return true;
+    }
+
+    return false;
+}
+
+// Record token usage after a provider call.
+async function recordUsage(agentName, usage) {
+    const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+    if (totalTokens === 0) return;
+
+    await pool.query(
+        'UPDATE agents SET tokens_used = tokens_used + $1 WHERE agent = $2',
+        [totalTokens, agentName]
+    );
+
+    logVA('token-usage', { agent: agentName, input: usage.input_tokens, output: usage.output_tokens, total: totalTokens });
+}
+
 function logVA(action, details) {
     log('virtual-agent', action, details);
 }
@@ -83,7 +129,7 @@ async function withActivityIndicator(agentName, fn) {
 // Load an agent row with virtual-agent fields.
 async function loadAgent(agentName) {
     const result = await pool.query(
-        'SELECT agent, virtual, provider, model, api_key, configuration, startup_instructions, personality, expertise FROM agents WHERE agent = $1',
+        'SELECT agent, virtual, provider, model, api_key, configuration, startup_instructions, personality, expertise, tokens_used, token_budget, tokens_reset_at FROM agents WHERE agent = $1',
         [agentName]
     );
     if (result.rows.length === 0) return null;
@@ -387,10 +433,17 @@ async function handleVirtualAgent(payload) {
                 continue;
             }
 
+            // Budget check
+            if (await isOverBudget(agent)) {
+                await postError(agent.agent, discussionId, channel, 'Token budget exceeded.');
+                continue;
+            }
+
             // Call provider with activity spinner (minimum 3s visibility)
             const provider = createProvider(agent.provider, agent.model, apiKey, conf);
             recordCall(agent.agent);
-            const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+            const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+            await recordUsage(agent.agent, usage);
 
             // Handle vote-proposed: parse response and cast ballot
             if (triggerType === 'vote-proposed' && voteId) {
@@ -456,10 +509,17 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
             return;
         }
 
+        // Budget check
+        if (await isOverBudget(agent)) {
+            logVA('direct-chat-over-budget', { agent: virtualAgentName, from: fromAgent });
+            return;
+        }
+
         // Call provider with activity spinner (minimum 3s visibility)
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
-        const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+        const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+        await recordUsage(agent.agent, usage);
 
         // Send response as direct chat back to the sender
         await chatSend(agent.agent, [fromAgent], null, response, null);
@@ -508,10 +568,17 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             return;
         }
 
+        // Budget check
+        if (await isOverBudget(agent)) {
+            logVA('direct-mail-over-budget', { agent: virtualAgentName, from: fromAgent, mailId });
+            return;
+        }
+
         // Call provider with activity spinner (minimum 3s visibility)
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
-        const response = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+        const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+        await recordUsage(agent.agent, usage);
 
         // Ack the incoming mail (virtual agent "read" it)
         await pool.query(
