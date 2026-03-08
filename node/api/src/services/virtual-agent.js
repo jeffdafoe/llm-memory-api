@@ -252,14 +252,14 @@ async function handleVirtualAgent(payload) {
             const userMessage = buildUserMessage(chatHistory, triggerType, voteQuestion);
 
             // Call provider — show activity spinner while the AI call is in flight
-            await pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent.agent]);
+            await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agent.agent]);
             broadcast('agent_activity', { agent: agent.agent, active: true });
             const provider = createProvider(agent.provider, agent.model, apiKey, conf);
             let response;
             try {
                 response = await provider(systemPrompt, userMessage);
             } finally {
-                await pool.query('UPDATE agents SET active_since = NULL WHERE agent = $1', [agent.agent]);
+                await pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agent.agent]);
                 broadcast('agent_activity', { agent: agent.agent, active: false });
             }
 
