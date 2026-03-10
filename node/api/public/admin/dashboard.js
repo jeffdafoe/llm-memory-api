@@ -60,7 +60,7 @@ function useDashboard({ api, authenticated, onEvent }) {
                 live.discussion = detail.discussion;
                 live.participants = detail.participants;
                 live.votes = detail.votes;
-                const chat = await api('/admin/chat', { channel: 'discuss-' + live.discussion.id, limit: 500 });
+                const chat = await api('/admin/chat', { channel: 'discussion-' + live.discussion.id, limit: 500 });
                 live.chat = chat.messages.reverse();
                 stillActive.push(live);
             } catch (err) {
