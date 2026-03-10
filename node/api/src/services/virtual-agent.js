@@ -256,13 +256,19 @@ async function loadChatHistory(channel, limit) {
 }
 
 // Get recent direct chat history between two agents (no channel/discussion).
-async function loadDirectChatHistory(agent1, agent2, limit) {
+// Uses a time window from config (virtual_agent_chat_history_hours) with a count cap
+// to keep context relevant without including stale messages from days ago.
+async function loadDirectChatHistory(agent1, agent2) {
+    const hours = parseInt(config.get('virtual_agent_chat_history_hours')) || 4;
+    const maxMessages = 50;
+
     const result = await pool.query(
         `SELECT from_agent, to_agent, message, sent_at FROM chat_messages
          WHERE channel IS NULL
          AND ((from_agent = $1 AND to_agent = $2) OR (from_agent = $2 AND to_agent = $1))
-         ORDER BY id DESC LIMIT $3`,
-        [agent1, agent2, limit || 20]
+         AND sent_at >= NOW() - INTERVAL '1 hour' * $3
+         ORDER BY id DESC LIMIT $4`,
+        [agent1, agent2, hours, maxMessages]
     );
     return result.rows.reverse();
 }
@@ -618,7 +624,8 @@ async function handleVirtualAgent(payload) {
 
 // Handle a direct chat message sent to a virtual agent (no discussion).
 // Called fire-and-forget from chatSend when a non-virtual agent messages a virtual one.
-async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
+// messageId is the chat_messages.id of the incoming message (for acking after response).
+async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId) {
     const agent = await loadAgent(virtualAgentName);
     if (!agent || !agent.virtual) return;
 
@@ -633,8 +640,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
         const apiKey = decryptApiKey(agent.api_key);
         const conf = buildProviderConf(agent);
 
-        // Load recent direct chat history between the two agents
-        const history = await loadDirectChatHistory(virtualAgentName, fromAgent, 20);
+        // Load recent direct chat history between the two agents (time-windowed)
+        const history = await loadDirectChatHistory(virtualAgentName, fromAgent);
 
         // RAG context from the agent's namespace.
         // If the latest message is very short, combine with previous message for better RAG.
@@ -670,6 +677,14 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
 
         // Send response as direct chat back to the sender
         await chatSend(agent.agent, [fromAgent], null, response, null);
+
+        // Ack the incoming message (virtual agent "read" it)
+        if (messageId) {
+            await pool.query(
+                'UPDATE chat_messages SET acked_at = NOW() WHERE id = $1 AND to_agent = $2 AND acked_at IS NULL',
+                [messageId, agent.agent]
+            );
+        }
 
         logVA('direct-chat-responded', { agent: agent.agent, to: fromAgent, responseLength: response.length });
 
