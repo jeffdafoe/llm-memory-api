@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const pool = require('../db');
 const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
-const { listNotes, readNote, saveNote, deleteNote } = require('../services/documents');
+const { listNotes, readNote, saveNote, deleteNote, moveNote } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
 const generatePassphrase = require('eff-diceware-passphrase');
@@ -625,6 +625,36 @@ router.post('/admin/notes/delete', async (req, res) => {
         console.error('Admin notes delete error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to delete note' }
+        });
+    }
+});
+
+// POST /admin/notes/move — rename a note's slug (and optionally namespace)
+router.post('/admin/notes/move', async (req, res) => {
+    const { namespace, slug, new_slug, new_namespace } = req.body;
+    if (!namespace || !slug || !new_slug) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug, new_slug' }
+        });
+    }
+    try {
+        const doc = await moveNote(namespace, slug, new_slug, new_namespace);
+        logAdmin('note_move', { namespace, slug, new_slug, new_namespace: new_namespace || namespace, user_id: req.authenticatedUser.id });
+        res.json({ note: doc });
+    } catch (err) {
+        if (err.statusCode === 404) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: err.message }
+            });
+        }
+        if (err.statusCode === 409) {
+            return res.status(409).json({
+                error: { code: 'ALREADY_EXISTS', message: err.message }
+            });
+        }
+        console.error('Admin notes move error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to move note' }
         });
     }
 });

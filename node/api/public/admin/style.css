@@ -1046,6 +1046,25 @@ h4 i {
     margin-bottom: 0;
 }
 
+.notes-edit-slug {
+    display: inline;
+    width: auto;
+    font-size: 1em;
+    font-family: monospace;
+    padding: 0.1em 0.3em;
+    margin: 0;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 3px;
+    color: var(--pico-muted-color);
+    background: transparent;
+}
+
+.notes-slug-edit {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
 .notes-edit-textarea {
     width: 100%;
     min-height: calc(100vh - 16rem);

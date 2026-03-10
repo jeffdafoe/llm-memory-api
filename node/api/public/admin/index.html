@@ -756,8 +756,10 @@
                         <div v-else>
                             <div class="notes-toolbar">
                                 <div class="notes-title-bar">
-                                    <h4>{{ selectedNote.title }}</h4>
-                                    <div class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</div>
+                                    <h4 v-if="!notesEditing">{{ selectedNote.title }}</h4>
+                                    <input v-else type="text" v-model="notesEditTitle" class="notes-edit-title" placeholder="Title">
+                                    <div v-if="!notesEditing" class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</div>
+                                    <div v-else class="notes-meta notes-slug-edit">[{{ selectedNote.namespace }}] <input type="text" v-model="notesEditSlug" class="notes-edit-slug" placeholder="slug" spellcheck="false"></div>
                                     <div class="notes-meta" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
                                 </div>
                                 <div class="notes-actions">
@@ -768,7 +770,6 @@
                                 </div>
                             </div>
                             <div v-if="notesEditing" class="notes-editor">
-                                <input type="text" v-model="notesEditTitle" class="notes-edit-title" placeholder="Title">
                                 <textarea v-model="notesEditContent" class="notes-edit-textarea"></textarea>
                             </div>
                             <div v-else class="notes-body">
