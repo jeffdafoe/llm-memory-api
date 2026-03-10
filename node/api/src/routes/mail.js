@@ -194,7 +194,10 @@ router.post('/mail/unsend', async (req, res) => {
 
 router.post('/mail/ack', async (req, res) => {
     try {
-        let { agent, message_ids } = req.body;
+        let { agent, ids, message_ids } = req.body;
+
+        // Accept both 'ids' (canonical) and 'message_ids' (legacy) — remove message_ids after 2026-04-15
+        ids = ids || message_ids;
 
         // Enforce agent identity (skip for admin user sessions)
         if (req.authenticatedAgent) {
@@ -204,18 +207,18 @@ router.post('/mail/ack', async (req, res) => {
             agent = req.authenticatedAgent;
         }
 
-        if (!agent || !message_ids || !Array.isArray(message_ids) || message_ids.length === 0) {
+        if (!agent || !ids || !Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required fields: agent, message_ids (array of UUIDs)' }
+                error: { code: 'BAD_REQUEST', message: 'Required fields: ids (non-empty array of UUIDs)' }
             });
         }
 
         const result = await pool.query(
             'UPDATE mail SET acked_at = NOW() WHERE id = ANY($1) AND to_agent = $2 AND acked_at IS NULL RETURNING id',
-            [message_ids, agent]
+            [ids, agent]
         );
 
-        logMail('ack', { agent, requested_ids: message_ids, acked_ids: result.rows.map(r => r.id) });
+        logMail('ack', { agent, requested_ids: ids, acked_ids: result.rows.map(r => r.id) });
 
         res.json({
             agent,

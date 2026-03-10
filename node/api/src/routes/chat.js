@@ -213,7 +213,10 @@ router.post('/chat/receive', async (req, res) => {
 
 router.post('/chat/ack', async (req, res) => {
     try {
-        let { agent, message_ids } = req.body;
+        let { agent, ids, message_ids } = req.body;
+
+        // Accept both 'ids' (canonical) and 'message_ids' (legacy) — remove message_ids after 2026-04-15
+        ids = ids || message_ids;
 
         // Enforce agent identity (skip for admin user sessions)
         if (req.authenticatedAgent) {
@@ -223,18 +226,18 @@ router.post('/chat/ack', async (req, res) => {
             agent = req.authenticatedAgent;
         }
 
-        if (!agent || !message_ids || !Array.isArray(message_ids) || message_ids.length === 0) {
+        if (!agent || !ids || !Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required fields: agent, message_ids (non-empty array of message IDs)' }
+                error: { code: 'BAD_REQUEST', message: 'Required fields: ids (non-empty array of message IDs)' }
             });
         }
 
         const result = await pool.query(
             'UPDATE chat_messages SET acked_at = NOW() WHERE id = ANY($1) AND to_agent = $2 AND acked_at IS NULL RETURNING id',
-            [message_ids, agent]
+            [ids, agent]
         );
 
-        logChat('ack', { agent, requested_ids: message_ids, acked_ids: result.rows.map(r => r.id) });
+        logChat('ack', { agent, requested_ids: ids, acked_ids: result.rows.map(r => r.id) });
 
         res.json({
             agent,
