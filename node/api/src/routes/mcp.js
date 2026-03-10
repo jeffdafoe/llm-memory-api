@@ -596,6 +596,10 @@ const TOOL_HANDLERS = {
     // --- Documents ---
     async save_note(args, agent, namespace) {
         const doc = await saveNote(args.namespace || namespace, args.title, args.content, args.slug, agent);
+        // Refresh activity indicator
+        pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent])
+            .then(() => broadcast('agent_activity', { agent, active: true }))
+            .catch(() => {});
         return `Saved: ${doc.namespace}/${doc.slug}`;
     },
 
@@ -720,6 +724,10 @@ const TOOL_HANDLERS = {
     // --- Mail ---
     async mail_send(args, agent, namespace) {
         const data = await mailSend(args.to, validateIdentity(args.from, agent, 'from'), args.subject, args.body);
+        // Refresh activity indicator
+        pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent])
+            .then(() => broadcast('agent_activity', { agent, active: true }))
+            .catch(() => {});
         return `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")`;
     },
 
