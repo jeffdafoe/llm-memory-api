@@ -9,6 +9,7 @@ function useNotes({ api, showToast, showConfirm }) {
     const notesEditing = ref(false);
     const notesEditTitle = ref('');
     const notesEditContent = ref('');
+    const notesEditSlug = ref('');
     const notesSaving = ref(false);
     const notesSearchQuery = ref('');
     const notesSearchResults = ref(null);
@@ -125,6 +126,7 @@ function useNotes({ api, showToast, showConfirm }) {
         notesEditing.value = true;
         notesEditTitle.value = selectedNote.value.title;
         notesEditContent.value = selectedNote.value.content;
+        notesEditSlug.value = selectedNote.value.slug;
     }
 
     function cancelEditNote() {
@@ -134,6 +136,19 @@ function useNotes({ api, showToast, showConfirm }) {
     async function saveEditedNote() {
         notesSaving.value = true;
         try {
+            const slugChanged = notesEditSlug.value !== selectedNote.value.slug;
+
+            // If slug changed, move first
+            if (slugChanged) {
+                await api('/admin/notes/move', {
+                    namespace: selectedNote.value.namespace,
+                    slug: selectedNote.value.slug,
+                    new_slug: notesEditSlug.value
+                });
+                selectedNote.value.slug = notesEditSlug.value;
+            }
+
+            // Save content (uses the new slug if moved)
             await api('/admin/notes/save', {
                 namespace: selectedNote.value.namespace,
                 slug: selectedNote.value.slug,
@@ -143,6 +158,11 @@ function useNotes({ api, showToast, showConfirm }) {
             selectedNote.value.title = notesEditTitle.value;
             selectedNote.value.content = notesEditContent.value;
             notesEditing.value = false;
+
+            // Refresh tree if slug changed
+            if (slugChanged) {
+                await loadNotes();
+            }
         } catch (err) {
             console.error('Failed to save note:', err);
             showToast('Failed to save: ' + err.message, 'error');
@@ -234,7 +254,7 @@ function useNotes({ api, showToast, showConfirm }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, notesEditing, notesEditTitle, notesEditContent, notesSaving,
+        selectedNote, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
         loadNotes, toggleNamespace, toggleFolder,
