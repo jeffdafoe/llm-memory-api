@@ -112,7 +112,9 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
                 if (vr.rows.length === 0) return;
                 const { handleDirectChat } = require('./virtual-agent');
                 for (const row of vr.rows) {
-                    handleDirectChat(row.agent, fromAgent, message).catch(() => {});
+                    // Find the message ID for this virtual agent recipient
+                    const msgRow = results.find(r => r.agent === row.agent);
+                    handleDirectChat(row.agent, fromAgent, message, msgRow ? msgRow.id : null).catch(() => {});
                 }
             } catch (e) { /* ignore */ }
         })();
