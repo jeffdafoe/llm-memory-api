@@ -10,8 +10,9 @@ function logProvider(action, details) {
 // ── Model registry ──────────────────────────────────────────────────────────
 
 const models = {
-    'claude-opus-4-20250514': {
-        label: 'Claude Opus 4',
+    'claude-opus-4-6': {
+        label: 'Opus 4.6',
+        apiId: 'claude-opus-4-20250514',
         capabilities: {
             temperature: {
                 type: 'number',
@@ -53,8 +54,9 @@ const models = {
             }
         }
     },
-    'claude-sonnet-4-20250514': {
-        label: 'Claude Sonnet 4',
+    'claude-sonnet-4-6': {
+        label: 'Sonnet 4.6',
+        apiId: 'claude-sonnet-4-20250514',
         capabilities: {
             temperature: {
                 type: 'number',
@@ -96,8 +98,9 @@ const models = {
             }
         }
     },
-    'claude-haiku-35-20241022': {
-        label: 'Claude 3.5 Haiku',
+    'claude-haiku-4-5': {
+        label: 'Haiku 4.5',
+        apiId: 'claude-haiku-4-5-20251001',
         capabilities: {
             temperature: {
                 type: 'number',
