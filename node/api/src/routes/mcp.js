@@ -216,7 +216,7 @@ const TOOLS = [
     },
     {
         name: 'chat_receive',
-        description: 'Check for unread chat messages. Returns unacked messages. Call chat_ack with the message IDs after processing.',
+        description: 'Check for unread chat messages. Returns unacked messages. Call chat_ack with the IDs after processing.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -231,10 +231,9 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                agent: { type: 'string', description: 'Agent acking messages (default: configured agent)' },
-                message_ids: { type: 'array', items: { type: 'number' }, description: 'Array of message IDs to ack (from receive results)' }
+                ids: { type: 'array', items: { type: 'number' }, description: 'Array of message IDs to ack (from receive results)' }
             },
-            required: ['message_ids']
+            required: ['ids']
         }
     },
     {
@@ -265,7 +264,7 @@ const TOOLS = [
     },
     {
         name: 'mail_receive',
-        description: 'Check for new mail addressed to this agent. Returns unacked messages. Call mail_ack with the message IDs after processing.',
+        description: 'Check for new mail addressed to this agent. Returns unacked messages. Call mail_ack with the IDs after processing.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -279,7 +278,6 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                agent: { type: 'string', description: 'Agent acking messages (default: configured agent)' },
                 ids: { type: 'array', items: { type: 'string' }, description: 'Array of mail UUIDs to ack' }
             },
             required: ['ids']
@@ -694,11 +692,13 @@ const TOOL_HANDLERS = {
         const formatted = data.messages.map(m => {
             return `[${m.from_agent}] (id:${m.id}, ${m.sent_at}): ${m.message}`;
         }).join('\n');
-        return `${formatted}\n\n(message_ids: [${ids.join(', ')}] — call chat_ack to mark as read)`;
+        return `${formatted}\n\n(ids: [${ids.join(', ')}] — call chat_ack to mark as read)`;
     },
 
     async chat_ack(args, agent, namespace) {
-        const data = await chatAck(validateIdentity(args.agent, agent, 'agent'), args.message_ids);
+        // Accept both 'ids' (canonical) and 'message_ids' (legacy) — remove message_ids after 2026-04-15
+        const ids = args.ids || args.message_ids;
+        const data = await chatAck(agent, ids);
         return `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]`;
     },
 
@@ -722,11 +722,11 @@ const TOOL_HANDLERS = {
         const formatted = data.messages.map(msg =>
             `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`
         ).join('\n\n---\n\n');
-        return `${formatted}\n\n(mail_ids: [${ids.join(', ')}] — call mail_ack to mark as read)`;
+        return `${formatted}\n\n(ids: [${ids.join(', ')}] — call mail_ack to mark as read)`;
     },
 
     async mail_ack(args, agent, namespace) {
-        const data = await mailAck(validateIdentity(args.agent, agent, 'agent'), args.ids);
+        const data = await mailAck(agent, args.ids);
         return `Acked ${data.acked} message(s) for ${data.agent}: [${data.acked_ids.join(', ')}]`;
     },
 
