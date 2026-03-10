@@ -619,7 +619,7 @@
                             </thead>
                             <tbody>
                                 <tr v-for="entry in configEntries" :key="entry.key">
-                                    <td class="log-mono">{{ entry.key }}</td>
+                                    <td><span class="log-mono">{{ entry.key }}</span><br v-if="entry.description"><small v-if="entry.description" class="muted">{{ entry.description }}</small></td>
                                     <td v-if="configEditKey === entry.key">
                                         <input type="text" v-model="configEditValue" class="config-edit-input" @keyup.enter="saveConfig" @keyup.escape="cancelEditConfig">
                                     </td>
@@ -943,6 +943,38 @@
                                 </span>
                                 <meter :value="selectedAgent.tokens_used || 0" :max="selectedAgent.token_budget || 1000000" style="width: 100%; margin-top: 0.3em;"></meter>
                                 <small class="muted" v-if="selectedAgent.tokens_reset_at"><br>Resets: {{ formatDate(selectedAgent.tokens_reset_at) }}</small>
+                            </div>
+                            <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
+                                <small class="muted"><strong>Settings</strong></small>
+                                <button v-if="!agentSettingsEditing" class="inline-button compact" @click="startEditSettings" title="Edit settings" style="float: right;"><i class="icon-edit"></i></button>
+                                <div v-if="!agentSettingsEditing" style="margin-top: 0.3em; font-size: 0.9em;">
+                                    <span>Cache prompts: <strong>{{ selectedAgent.cache_prompts ? 'on' : 'off' }}</strong></span><br>
+                                    <span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span><br>
+                                    <span>Max tokens: <strong>{{ selectedAgent.max_tokens || 'default' }}</strong></span><br>
+                                    <span>Temperature: <strong>{{ selectedAgent.temperature != null ? selectedAgent.temperature : 'default' }}</strong></span>
+                                </div>
+                                <div v-if="agentSettingsEditing" style="margin-top: 0.3em;">
+                                    <label class="checkbox-label" style="margin-bottom: 0.3em;">
+                                        <input type="checkbox" v-model="agentSettingsCachePrompts"> Cache prompts (Anthropic only)
+                                    </label>
+                                    <label class="checkbox-label" style="margin-bottom: 0.3em;">
+                                        <input type="checkbox" v-model="agentSettingsLearningEnabled"> Learning enabled
+                                    </label>
+                                    <div class="form-row-inline" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.3em;">
+                                        <label>
+                                            <small>Max tokens</small>
+                                            <input type="number" v-model="agentSettingsMaxTokens" placeholder="default (4096)" style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                        </label>
+                                        <label>
+                                            <small>Temperature</small>
+                                            <input type="number" v-model="agentSettingsTemperature" step="0.1" min="0" max="2" placeholder="default" style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                        </label>
+                                    </div>
+                                    <div class="button-row" style="margin-top: 0.5em;">
+                                        <button @click="saveSettings" :disabled="agentSettingsSaving">Save</button>
+                                        <button class="secondary" @click="agentSettingsEditing = false">Cancel</button>
+                                    </div>
+                                </div>
                             </div>
                             <p class="muted">
                                 Last seen: {{ formatDate(selectedAgent.last_seen) }}<br>

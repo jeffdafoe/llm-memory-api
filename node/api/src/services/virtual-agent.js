@@ -111,19 +111,31 @@ function logVA(action, details) {
 }
 
 // Check if learning extraction is enabled for an agent.
-// Global toggle must be on, and per-agent override (in configuration JSON) can disable.
+// Global toggle must be on, and per-agent column can disable.
 function isLearningEnabled(agent) {
     const globalEnabled = config.get('virtual_agent_learning_enabled') === 'true';
     if (!globalEnabled) return false;
-
-    if (agent.configuration) {
-        try {
-            const conf = typeof agent.configuration === 'string' ? JSON.parse(agent.configuration) : agent.configuration;
-            if (conf.learning_enabled === false) return false;
-        } catch (e) { /* use global default */ }
-    }
-
+    if (agent.learning_enabled === false) return false;
     return true;
+}
+
+// Build provider configuration from agent columns + remaining JSON overrides.
+// Promoted columns: cache_prompts, max_tokens, temperature (learning_enabled handled separately).
+// Anything still in the configuration JSON column (e.g. headers) is merged in.
+function buildProviderConf(agent) {
+    let conf = {};
+    if (agent.configuration) {
+        try { conf = JSON.parse(agent.configuration); } catch (e) { /* ignore */ }
+    }
+    // Column values take precedence over any leftover JSON keys
+    conf.cache_prompts = agent.cache_prompts || false;
+    if (agent.max_tokens != null) {
+        conf.max_tokens = agent.max_tokens;
+    }
+    if (agent.temperature != null) {
+        conf.temperature = agent.temperature;
+    }
+    return conf;
 }
 
 // Build the extraction prompt based on interaction type.
@@ -148,12 +160,17 @@ function buildExtractionPrompt(interactionType, contextHint) {
 async function extractLearnings(agent, systemPrompt, userMessage, response, interactionType, contextHint, provider) {
     if (!isLearningEnabled(agent)) return;
 
+    // Flatten structured prompt for token estimation and extraction context.
+    // Extraction is a one-shot call — no caching benefit.
+    const { flattenPrompt } = require('./provider');
+    const flatPrompt = flattenPrompt(systemPrompt);
+
     // Check minimum token threshold
     const minTokens = parseInt(config.get('virtual_agent_learning_min_tokens')) || 500;
     // We don't have exact token counts here, but we can estimate from the usage
     // that was already recorded. Instead, use a character-based heuristic:
     // average ~4 chars per token, so check total chars of input+output.
-    const totalChars = (systemPrompt + userMessage + response).length;
+    const totalChars = (flatPrompt + userMessage + response).length;
     const estimatedTokens = Math.ceil(totalChars / 4);
     if (estimatedTokens < minTokens) {
         logVA('learning-skip-short', { agent: agent.agent, estimatedTokens, minTokens });
@@ -163,7 +180,7 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
     const extractionPrompt = buildExtractionPrompt(interactionType, contextHint);
 
     // Build the extraction user message: the full interaction context + extraction prompt
-    const extractionUserMessage = `System prompt:\n${systemPrompt}\n\nUser message:\n${userMessage}\n\nYour response:\n${response}\n\n---\n\n${extractionPrompt}`;
+    const extractionUserMessage = `System prompt:\n${flatPrompt}\n\nUser message:\n${userMessage}\n\nYour response:\n${response}\n\n---\n\n${extractionPrompt}`;
     const extractionSystemPrompt = 'You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.';
 
     const { text: extractionResult, usage } = await provider(extractionSystemPrompt, extractionUserMessage);
@@ -207,7 +224,7 @@ async function withActivityIndicator(agentName, fn) {
 // Load an agent row with virtual-agent fields.
 async function loadAgent(agentName) {
     const result = await pool.query(
-        'SELECT agent, virtual, provider, model, api_key, configuration, startup_instructions, personality, expertise, tokens_used, token_budget, tokens_reset_at FROM agents WHERE agent = $1',
+        'SELECT agent, virtual, provider, model, api_key, configuration, startup_instructions, personality, expertise, tokens_used, token_budget, tokens_reset_at, cache_prompts, learning_enabled, max_tokens, temperature FROM agents WHERE agent = $1',
         [agentName]
     );
     if (result.rows.length === 0) return null;
@@ -267,30 +284,34 @@ async function loadRAGContext(agentName, query) {
 }
 
 // Build the system prompt for a virtual agent.
+// Returns { static, dynamic } — static content is cacheable across calls,
+// dynamic content (RAG, closing) changes per message.
 function buildSystemPrompt(agent, discussion, ragContext) {
-    let prompt = '';
+    let staticPart = '';
 
     // Agent's own instructions (set via save_instructions)
     if (agent.startup_instructions) {
-        prompt += agent.startup_instructions + '\n\n';
+        staticPart += agent.startup_instructions + '\n\n';
     }
 
-    // Discussion context
-    prompt += `You are "${agent.agent}", a participant in discussion #${discussion.id}.\n`;
-    prompt += `Topic: ${discussion.topic}\n`;
+    // Discussion context — stable for the life of the discussion
+    staticPart += `You are "${agent.agent}", a participant in discussion #${discussion.id}.\n`;
+    staticPart += `Topic: ${discussion.topic}\n`;
     if (discussion.context) {
-        prompt += `Context: ${discussion.context}\n`;
+        staticPart += `Context: ${discussion.context}\n`;
     }
-    prompt += `Mode: ${discussion.mode}\n\n`;
+    staticPart += `Mode: ${discussion.mode}`;
 
-    // RAG context
+    let dynamicPart = '';
+
+    // RAG context — changes per message
     if (ragContext) {
-        prompt += 'Relevant knowledge from your notes:\n' + ragContext + '\n\n';
+        dynamicPart += 'Relevant knowledge from your notes:\n' + ragContext + '\n\n';
     }
 
-    prompt += 'Respond concisely and stay on topic. You are participating in a multi-agent discussion.';
+    dynamicPart += 'Respond concisely and stay on topic. You are participating in a multi-agent discussion.';
 
-    return prompt;
+    return { static: staticPart, dynamic: dynamicPart };
 }
 
 // Build the user message from chat history.
@@ -330,20 +351,24 @@ function formatRelativeTime(sentAt) {
 }
 
 // Build system prompt for direct chat (no discussion context).
+// Returns { static, dynamic } — static content is cacheable across calls.
 function buildDirectChatSystemPrompt(agent, ragContext) {
-    let prompt = '';
+    let staticPart = '';
     if (agent.startup_instructions) {
-        prompt += agent.startup_instructions + '\n\n';
+        staticPart += agent.startup_instructions + '\n\n';
     }
-    prompt += `You are "${agent.agent}". You are chatting directly with another agent.\n`;
+    staticPart += `You are "${agent.agent}". You are chatting directly with another agent.`;
     if (agent.personality) {
-        prompt += `Your personality: ${agent.personality}\n`;
+        staticPart += `\nYour personality: ${agent.personality}`;
     }
+
+    let dynamicPart = '';
     if (ragContext) {
-        prompt += '\nRelevant knowledge from your notes:\n' + ragContext + '\n\n';
+        dynamicPart += 'Relevant knowledge from your notes:\n' + ragContext + '\n\n';
     }
-    prompt += 'Messages include relative timestamps and conversation breaks for context. Respond concisely and naturally.';
-    return prompt;
+    dynamicPart += 'Messages include relative timestamps and conversation breaks for context. Respond concisely and naturally.';
+
+    return { static: staticPart, dynamic: dynamicPart };
 }
 
 // Build user message for direct chat from conversation history.
@@ -377,20 +402,24 @@ function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
 }
 
 // Build system prompt for mail replies.
+// Returns { static, dynamic } for consistency, though mail is one-shot (no caching benefit).
 function buildMailSystemPrompt(agent, ragContext) {
-    let prompt = '';
+    let staticPart = '';
     if (agent.startup_instructions) {
-        prompt += agent.startup_instructions + '\n\n';
+        staticPart += agent.startup_instructions + '\n\n';
     }
-    prompt += `You are "${agent.agent}". You have received a mail message and should compose a reply.\n`;
+    staticPart += `You are "${agent.agent}". You have received a mail message and should compose a reply.`;
     if (agent.personality) {
-        prompt += `Your personality: ${agent.personality}\n`;
+        staticPart += `\nYour personality: ${agent.personality}`;
     }
+
+    let dynamicPart = '';
     if (ragContext) {
-        prompt += '\nRelevant knowledge from your notes:\n' + ragContext + '\n\n';
+        dynamicPart += 'Relevant knowledge from your notes:\n' + ragContext + '\n\n';
     }
-    prompt += 'Compose a thoughtful reply. Write only the reply body — no subject line or headers.';
-    return prompt;
+    dynamicPart += 'Compose a thoughtful reply. Write only the reply body — no subject line or headers.';
+
+    return { static: staticPart, dynamic: dynamicPart };
 }
 
 // Build user message from an incoming mail.
@@ -524,11 +553,7 @@ async function handleVirtualAgent(payload) {
             // Decrypt API key
             const apiKey = decryptApiKey(agent.api_key);
 
-            // Parse configuration
-            let conf = {};
-            if (agent.configuration) {
-                try { conf = JSON.parse(agent.configuration); } catch (e) { /* use defaults */ }
-            }
+            const conf = buildProviderConf(agent);
 
             // RAG context
             const ragContext = await loadRAGContext(agent.agent, discussion.topic);
@@ -549,10 +574,11 @@ async function handleVirtualAgent(payload) {
                 continue;
             }
 
-            // Call provider with activity spinner (minimum 3s visibility)
+            // Call provider with activity spinner (minimum 3s visibility).
+            // Pass cache flag for chat-based interactions (discussions have repeated calls).
             const provider = createProvider(agent.provider, agent.model, apiKey, conf);
             recordCall(agent.agent);
-            const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+            const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage, { cache: true }));
             await recordUsage(agent.agent, usage);
 
             // Handle vote-proposed: parse response and cast ballot
@@ -605,10 +631,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
 
     try {
         const apiKey = decryptApiKey(agent.api_key);
-        let conf = {};
-        if (agent.configuration) {
-            try { conf = JSON.parse(agent.configuration); } catch (e) { /* use defaults */ }
-        }
+        const conf = buildProviderConf(agent);
 
         // Load recent direct chat history between the two agents
         const history = await loadDirectChatHistory(virtualAgentName, fromAgent, 20);
@@ -638,10 +661,11 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText) {
             return;
         }
 
-        // Call provider with activity spinner (minimum 3s visibility)
+        // Call provider with activity spinner (minimum 3s visibility).
+        // Pass cache flag — direct chat implies back-and-forth.
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
-        const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+        const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage, { cache: true }));
         await recordUsage(agent.agent, usage);
 
         // Send response as direct chat back to the sender
@@ -678,10 +702,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 
     try {
         const apiKey = decryptApiKey(agent.api_key);
-        let conf = {};
-        if (agent.configuration) {
-            try { conf = JSON.parse(agent.configuration); } catch (e) { /* use defaults */ }
-        }
+        const conf = buildProviderConf(agent);
 
         // RAG context from the agent's namespace
         const ragContext = await loadRAGContext(agent.agent, `${mail.subject} ${mail.body}`);

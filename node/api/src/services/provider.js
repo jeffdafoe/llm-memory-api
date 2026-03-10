@@ -1,9 +1,17 @@
-// Provider abstraction — factory that returns a call(systemPrompt, userMessage) function.
+// Provider abstraction — factory that returns a call(systemPrompt, userMessage, opts) function.
 // Each provider translates to its native API format.
+// systemPrompt can be a string or { static, dynamic } for cache-aware providers.
 
 const { log } = require('./logger');
 const config = require('./config');
 const crypto = require('crypto');
+
+// Flatten a structured system prompt { static, dynamic } into a single string.
+// Accepts plain strings too (pass-through).
+function flattenPrompt(systemPrompt) {
+    if (typeof systemPrompt === 'string') return systemPrompt;
+    return [systemPrompt.static, systemPrompt.dynamic].filter(Boolean).join('\n\n');
+}
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -68,7 +76,28 @@ function createProvider(provider, model, apiKey, configuration) {
 function createAnthropicProvider(model, apiKey, configuration) {
     const conf = configuration || {};
 
-    return async function call(systemPrompt, userMessage) {
+    // opts.cache: when true and systemPrompt is structured, add cache_control markers.
+    // Requires conf.cache_prompts to also be true (per-agent opt-in).
+    return async function call(systemPrompt, userMessage, opts) {
+        const useCache = conf.cache_prompts && opts && opts.cache && typeof systemPrompt !== 'string';
+
+        let system;
+        if (useCache) {
+            // Structured system prompt with cache_control on the static prefix.
+            // Anthropic caches the longest prefix marked with cache_control.
+            // 5-minute TTL, 25% write premium, 90% read discount.
+            const parts = [];
+            if (systemPrompt.static) {
+                parts.push({ type: 'text', text: systemPrompt.static, cache_control: { type: 'ephemeral' } });
+            }
+            if (systemPrompt.dynamic) {
+                parts.push({ type: 'text', text: systemPrompt.dynamic });
+            }
+            system = parts;
+        } else {
+            system = flattenPrompt(systemPrompt);
+        }
+
         const headers = {
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
@@ -79,7 +108,7 @@ function createAnthropicProvider(model, apiKey, configuration) {
         const body = {
             model: model,
             max_tokens: conf.max_tokens || 4096,
-            system: systemPrompt,
+            system: system,
             messages: [{ role: 'user', content: userMessage }]
         };
 
@@ -87,7 +116,7 @@ function createAnthropicProvider(model, apiKey, configuration) {
             body.temperature = conf.temperature;
         }
 
-        logProvider('api-call', { provider: 'anthropic', model });
+        logProvider('api-call', { provider: 'anthropic', model, cached: useCache });
 
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
@@ -109,7 +138,9 @@ function createAnthropicProvider(model, apiKey, configuration) {
 
         const usage = {
             input_tokens: data.usage?.input_tokens || 0,
-            output_tokens: data.usage?.output_tokens || 0
+            output_tokens: data.usage?.output_tokens || 0,
+            cache_creation_input_tokens: data.usage?.cache_creation_input_tokens || 0,
+            cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0
         };
 
         logProvider('api-response', { provider: 'anthropic', model, ...usage });
@@ -122,11 +153,12 @@ function createGeminiProvider(model, apiKey, configuration) {
     const conf = configuration || {};
 
     return async function call(systemPrompt, userMessage) {
+        const prompt = flattenPrompt(systemPrompt);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
         const body = {
             system_instruction: {
-                parts: { text: systemPrompt }
+                parts: { text: prompt }
             },
             contents: [{
                 role: 'user',
@@ -185,10 +217,11 @@ function createOpenAIProvider(model, apiKey, configuration) {
     const conf = configuration || {};
 
     return async function call(systemPrompt, userMessage) {
+        const prompt = flattenPrompt(systemPrompt);
         const body = {
             model: model,
             messages: [
-                { role: 'system', content: systemPrompt },
+                { role: 'system', content: prompt },
                 { role: 'user', content: userMessage }
             ]
         };
@@ -234,4 +267,4 @@ function createOpenAIProvider(model, apiKey, configuration) {
     };
 }
 
-module.exports = { createProvider, encryptApiKey, decryptApiKey };
+module.exports = { createProvider, encryptApiKey, decryptApiKey, flattenPrompt };
