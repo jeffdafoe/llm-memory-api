@@ -121,12 +121,54 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // Agent settings (cache_prompts, learning_enabled, max_tokens, temperature)
+    const agentSettingsEditing = ref(false);
+    const agentSettingsCachePrompts = ref(false);
+    const agentSettingsLearningEnabled = ref(true);
+    const agentSettingsMaxTokens = ref('');
+    const agentSettingsTemperature = ref('');
+    const agentSettingsSaving = ref(false);
+
+    function startEditSettings() {
+        agentSettingsEditing.value = true;
+        agentSettingsCachePrompts.value = selectedAgent.value.cache_prompts || false;
+        agentSettingsLearningEnabled.value = selectedAgent.value.learning_enabled !== false;
+        agentSettingsMaxTokens.value = selectedAgent.value.max_tokens || '';
+        agentSettingsTemperature.value = selectedAgent.value.temperature != null ? selectedAgent.value.temperature : '';
+    }
+
+    async function saveSettings() {
+        agentSettingsSaving.value = true;
+        try {
+            const body = {
+                agent: selectedAgent.value.agent,
+                cache_prompts: agentSettingsCachePrompts.value,
+                learning_enabled: agentSettingsLearningEnabled.value,
+                max_tokens: agentSettingsMaxTokens.value === '' ? null : parseInt(agentSettingsMaxTokens.value),
+                temperature: agentSettingsTemperature.value === '' ? null : parseFloat(agentSettingsTemperature.value)
+            };
+            await api('/admin/agents/update', body);
+            selectedAgent.value.cache_prompts = body.cache_prompts;
+            selectedAgent.value.learning_enabled = body.learning_enabled;
+            selectedAgent.value.max_tokens = body.max_tokens;
+            selectedAgent.value.temperature = body.temperature;
+            agentSettingsEditing.value = false;
+            showToast('Settings updated', 'success');
+        } catch (err) {
+            console.error('Failed to save settings:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            agentSettingsSaving.value = false;
+        }
+    }
+
     async function viewAgent(agent) {
         selectedAgent.value = agent;
         agentInstructionsEditing.value = false;
         agentExpertiseEditing.value = false;
         agentProfileEditing.value = false;
         tokenBudgetEditing.value = false;
+        agentSettingsEditing.value = false;
         agentPassphraseConfirming.value = false;
         agentNewPassphrase.value = null;
         try {
@@ -360,6 +402,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         loadAgents, viewAgent,
         startEditProfile, saveProfile,
         tokenBudgetEditing, tokenBudgetEditValue, startEditTokenBudget, saveTokenBudget, resetTokenUsage,
+        agentSettingsEditing, agentSettingsCachePrompts, agentSettingsLearningEnabled, agentSettingsMaxTokens, agentSettingsTemperature, agentSettingsSaving,
+        startEditSettings, saveSettings,
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,
         resetAgentPassphrase,

@@ -194,7 +194,8 @@ router.post('/admin/api-log', async (req, res) => {
 router.post('/admin/agents', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, cost, active_since
+            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, cost, active_since,
+                    tokens_used, token_budget, tokens_reset_at, cache_prompts, learning_enabled, max_tokens, temperature
              FROM agent_status
              ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`
         );
@@ -502,7 +503,7 @@ router.post('/admin/mail/send', async (req, res) => {
 // POST /admin/config/list — list all config key/value pairs
 router.post('/admin/config/list', async (req, res) => {
     try {
-        const result = await pool.query('SELECT key, value FROM config ORDER BY key');
+        const result = await pool.query('SELECT key, value, description FROM config ORDER BY key');
         res.json({ config: result.rows });
     } catch (err) {
         console.error('Admin config list error:', err.message);
@@ -864,7 +865,8 @@ router.post('/admin/templates/delete', async (req, res) => {
 
 // POST /admin/agents/create — create an agent (active immediately) with optional welcome mail
 router.post('/admin/agents/create', async (req, res) => {
-    const { agent, provider, model, welcome_template_id, virtual: isVirtual, personality, cost } = req.body;
+    const { agent, provider, model, welcome_template_id, virtual: isVirtual, personality, cost,
+            cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -892,10 +894,13 @@ router.post('/admin/agents/create', async (req, res) => {
 
         // Create agent as active (skip pending/ack dance — admin is creating it)
         await pool.query(
-            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost, cache_prompts, learning_enabled, max_tokens, temperature)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [agent, hash, salt, 'active', provider || null, model || null,
-             isVirtual === true, personality || null, cost || null]
+             isVirtual === true, personality || null, cost || null,
+             cache_prompts === true, learning_enabled !== false,
+             max_tokens != null ? parseInt(max_tokens) : null,
+             temperature != null ? parseFloat(temperature) : null]
         );
 
         // Send welcome mail if template selected (not for virtual agents)
@@ -933,9 +938,10 @@ router.post('/admin/agents/create', async (req, res) => {
     }
 });
 
-// POST /admin/agents/update — update virtual agent config (personality, api_key, configuration, cost, provider, model, token_budget, reset_tokens)
+// POST /admin/agents/update — update virtual agent config
 router.post('/admin/agents/update', async (req, res) => {
-    const { agent, personality, api_key, configuration, cost, provider, model, token_budget, reset_tokens } = req.body;
+    const { agent, personality, api_key, configuration, cost, provider, model, token_budget, reset_tokens,
+            cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -992,6 +998,22 @@ router.post('/admin/agents/update', async (req, res) => {
         if (reset_tokens) {
             updates.push(`tokens_used = 0`);
             updates.push(`tokens_reset_at = NOW()`);
+        }
+        if (cache_prompts !== undefined) {
+            params.push(cache_prompts === true);
+            updates.push(`cache_prompts = $${idx++}`);
+        }
+        if (learning_enabled !== undefined) {
+            params.push(learning_enabled !== false);
+            updates.push(`learning_enabled = $${idx++}`);
+        }
+        if (max_tokens !== undefined) {
+            params.push(max_tokens === null || max_tokens === '' ? null : parseInt(max_tokens));
+            updates.push(`max_tokens = $${idx++}`);
+        }
+        if (temperature !== undefined) {
+            params.push(temperature === null || temperature === '' ? null : parseFloat(temperature));
+            updates.push(`temperature = $${idx++}`);
         }
 
         if (updates.length === 0) {
