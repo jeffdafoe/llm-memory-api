@@ -903,18 +903,25 @@ router.post('/admin/agents/create', async (req, res) => {
              temperature != null ? parseFloat(temperature) : null]
         );
 
-        // Send welcome mail if template selected (not for virtual agents)
+        // Apply welcome template if selected
         let welcomeMailSent = false;
-        if (welcome_template_id && !isVirtual) {
+        if (welcome_template_id) {
             const tplResult = await pool.query(
                 'SELECT subject, body FROM welcome_templates WHERE id = $1',
                 [welcome_template_id]
             );
             if (tplResult.rows.length > 0) {
                 const tpl = tplResult.rows[0];
-                // Replace {agent} placeholder in subject and body
-                const mailSubject = tpl.subject.replace(/\{agent\}/g, agent);
                 const mailBody = tpl.body.replace(/\{agent\}/g, agent);
+
+                // Copy template body to startup_instructions (persistent)
+                await pool.query(
+                    'UPDATE agents SET startup_instructions = $1 WHERE agent = $2',
+                    [mailBody, agent]
+                );
+
+                // Also send as welcome mail (fallback / immediate context)
+                const mailSubject = tpl.subject.replace(/\{agent\}/g, agent);
                 await mailSend(agent, 'system', mailSubject, mailBody);
                 welcomeMailSent = true;
             }
