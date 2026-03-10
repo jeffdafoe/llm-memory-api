@@ -14,9 +14,9 @@ function logDiscussion(action, details) {
 async function getDiscussionChannel(discussionId) {
     const result = await pool.query('SELECT channel FROM discussions WHERE id = $1', [discussionId]);
     if (result.rows.length === 0) {
-        return `discuss-${discussionId}`;
+        return `discussion-${discussionId}`;
     }
-    return result.rows[0].channel || `discuss-${discussionId}`;
+    return result.rows[0].channel || `discussion-${discussionId}`;
 }
 
 // Check if a waiting discussion should transition to active or timed_out.

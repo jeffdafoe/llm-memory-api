@@ -30,7 +30,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
     }
 
     // Auto-derive channel from discussion_id when not explicitly provided
-    const ch = validateChannel(channel || (discussionId ? `discuss-${discussionId}` : undefined));
+    const ch = validateChannel(channel || (discussionId ? `discussion-${discussionId}` : undefined));
 
     const discussionParticipants = new Set();
     const recipientSet = new Set();

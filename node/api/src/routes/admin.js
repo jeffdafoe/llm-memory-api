@@ -137,7 +137,7 @@ router.post('/admin/dashboard', async (req, res) => {
             `SELECT id, from_agent, to_agent, channel, message, sent_at, acked_at
              FROM chat_messages
              WHERE from_agent != 'system'
-               AND (channel IS NULL OR NOT channel LIKE 'discuss-%')
+               AND (channel IS NULL OR NOT channel LIKE 'discussion-%')
              ORDER BY
                  CASE WHEN acked_at IS NULL THEN 0 ELSE 1 END,
                  sent_at DESC

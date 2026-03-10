@@ -31,7 +31,7 @@ function useDashboard({ api, authenticated, onEvent }) {
         for (const d of active) {
             try {
                 const detail = await api('/admin/discussions/detail', { discussion_id: d.id });
-                const chat = await api('/admin/chat', { channel: 'discuss-' + d.id, limit: 500 });
+                const chat = await api('/admin/chat', { channel: 'discussion-' + d.id, limit: 500 });
                 results.push({
                     discussion: detail.discussion,
                     participants: detail.participants,

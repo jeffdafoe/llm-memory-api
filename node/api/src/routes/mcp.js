@@ -209,7 +209,7 @@ const TOOLS = [
                 message: { type: 'string', description: 'Message to send' },
                 from: { type: 'string', description: 'Sender agent (default: configured agent)' },
                 channel: { type: 'string', description: 'Optional channel for message isolation (e.g., "discussion"). Omit for regular chat.' },
-                discussion_id: { type: 'number', description: 'Send to all joined participants in a discussion (alternative to "to")' }
+                discussion_id: { type: 'number', description: 'Send to all joined participants in a discussion (alternative to "to"). Auto-derives channel to discussion-{id} and resolves recipients from joined participants.' }
             },
             required: ['message']
         }
@@ -221,7 +221,8 @@ const TOOLS = [
             type: 'object',
             properties: {
                 agent: { type: 'string', description: 'Agent to check messages for (default: configured agent)' },
-                channel: { type: 'string', description: 'Optional channel to filter by (e.g., "discussion"). Omit for regular chat only.' }
+                channel: { type: 'string', description: 'Optional channel to filter by (e.g., "discussion"). Omit for regular chat only.' },
+                discussion_id: { type: 'number', description: 'Filter to messages from a specific discussion. Auto-derives channel to discussion-{id}.' }
             }
         }
     },
@@ -678,13 +679,22 @@ const TOOL_HANDLERS = {
         if (args.to) {
             toAgents = [args.to];
         }
-        const data = await chatSend(fromAgent, toAgents, args.discussion_id, args.message, args.channel);
+        // Auto-detect discussion_id from channel name pattern
+        let discussionId = args.discussion_id;
+        if (!discussionId && args.channel) {
+            const match = args.channel.match(/^discussion-(\d+)$/);
+            if (match) {
+                discussionId = parseInt(match[1], 10);
+            }
+        }
+        const data = await chatSend(fromAgent, toAgents, discussionId, args.message, args.channel);
         const targets = data.to_agents.map(r => r.agent).join(', ');
         return `Message sent to ${targets}`;
     },
 
     async chat_receive(args, agent, namespace) {
-        const data = await chatReceive(validateIdentity(args.agent, agent, 'agent'), args.channel);
+        const channel = args.channel || (args.discussion_id ? `discussion-${args.discussion_id}` : undefined);
+        const data = await chatReceive(validateIdentity(args.agent, agent, 'agent'), channel);
         if (data.messages.length === 0) {
             return 'No new messages.';
         }
@@ -864,10 +874,8 @@ const TOOL_HANDLERS = {
             null, args.channel, args.mode, args.context
         );
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
-        let text = `Discussion #${data.discussion.id} created [${data.discussion.mode}]: "${data.discussion.topic}"\nParticipants: ${parts}`;
-        if (args.channel) {
-            text += `\nChannel: ${args.channel}`;
-        }
+        const channel = args.channel || `discussion-${data.discussion.id}`;
+        let text = `Discussion #${data.discussion.id} created [${data.discussion.mode}]: "${data.discussion.topic}"\nParticipants: ${parts}\nChannel: ${channel}\nUse discussion_id: ${data.discussion.id} with chat_send to message participants.`;
         return text;
     },
 
