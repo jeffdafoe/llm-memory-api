@@ -31,7 +31,7 @@ function useDiscussions({ api }) {
 
     async function loadDiscussionChat(id) {
         try {
-            const data = await api('/admin/chat', { channel: 'discuss-' + id, limit: 500 });
+            const data = await api('/admin/chat', { channel: 'discussion-' + id, limit: 500 });
             discussionChat.value = data.messages.reverse();
         } catch (err) {
             console.error('Failed to load discussion chat:', err);
