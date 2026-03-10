@@ -119,20 +119,23 @@ function isLearningEnabled(agent) {
     return true;
 }
 
-// Build provider configuration from agent columns + remaining JSON overrides.
-// Promoted columns: cache_prompts, max_tokens, temperature (learning_enabled handled separately).
-// Anything still in the configuration JSON column (e.g. headers) is merged in.
+// Build provider configuration from agent data.
+// Configuration JSON is the primary source (written by the admin UI).
+// Legacy promoted columns (cache_prompts, max_tokens, temperature) are used as
+// fallbacks for agents that haven't been edited with the new dynamic config UI.
 function buildProviderConf(agent) {
     let conf = {};
     if (agent.configuration) {
         try { conf = JSON.parse(agent.configuration); } catch (e) { /* ignore */ }
     }
-    // Column values take precedence over any leftover JSON keys
-    conf.cache_prompts = agent.cache_prompts || false;
-    if (agent.max_tokens != null) {
+    // Legacy column fallbacks — only used if not already set in config JSON
+    if (conf.cache_prompts === undefined) {
+        conf.cache_prompts = agent.cache_prompts || false;
+    }
+    if (conf.max_tokens === undefined && agent.max_tokens != null) {
         conf.max_tokens = agent.max_tokens;
     }
-    if (agent.temperature != null) {
+    if (conf.temperature === undefined && agent.temperature != null) {
         conf.temperature = agent.temperature;
     }
     return conf;

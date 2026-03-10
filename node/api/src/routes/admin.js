@@ -500,6 +500,39 @@ router.post('/admin/mail/send', async (req, res) => {
     }
 });
 
+// POST /admin/providers/registry — get provider/model registry for admin UI
+router.post('/admin/providers/registry', async (req, res) => {
+    try {
+        const { getRegistry } = require('../services/provider');
+        res.json(getRegistry());
+    } catch (err) {
+        console.error('Admin providers registry error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to fetch provider registry' }
+        });
+    }
+});
+
+// POST /admin/providers/defaults — get default configuration for a provider+model
+router.post('/admin/providers/defaults', async (req, res) => {
+    try {
+        const { provider, model } = req.body;
+        if (!provider || !model) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'provider and model are required' }
+            });
+        }
+        const { getDefaultConfiguration } = require('../services/provider');
+        const defaults = getDefaultConfiguration(provider, model);
+        res.json({ defaults });
+    } catch (err) {
+        console.error('Admin providers defaults error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to fetch model defaults' }
+        });
+    }
+});
+
 // POST /admin/config/list — list all config key/value pairs
 router.post('/admin/config/list', async (req, res) => {
     try {
@@ -972,6 +1005,30 @@ router.post('/admin/agents/create', async (req, res) => {
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to create agent' }
         });
+    }
+});
+
+// POST /admin/agents/read — get full agent detail (includes configuration JSON)
+router.post('/admin/agents/read', async (req, res) => {
+    const { agent } = req.body;
+    if (!agent) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
+    }
+    try {
+        const result = await pool.query(
+            `SELECT agent, provider, model, virtual, personality, cost, configuration,
+                    cache_prompts, learning_enabled, max_tokens, temperature,
+                    tokens_used, token_budget, tokens_reset_at, api_key IS NOT NULL AS has_api_key
+             FROM agents WHERE agent = $1`,
+            [agent]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
+        }
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Admin agent read error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to read agent' } });
     }
 });
 
