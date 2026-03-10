@@ -42,7 +42,10 @@ function createProvider(provider, model, apiKey, configuration) {
     if (!mod) {
         throw new Error(`Unsupported provider: ${provider}`);
     }
-    return mod.createCall(model, apiKey, configuration);
+    // Resolve apiId if the model entry defines one (e.g. Anthropic short names → dated API IDs)
+    const modelEntry = mod.models[model];
+    const apiModel = (modelEntry && modelEntry.apiId) || model;
+    return mod.createCall(apiModel, apiKey, configuration);
 }
 
 // Flatten a structured system prompt into a string.

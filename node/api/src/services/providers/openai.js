@@ -122,6 +122,64 @@ const models = {
             }
         }
     },
+    'gpt-5.4': {
+        label: 'GPT-5.4',
+        capabilities: {
+            temperature: {
+                type: 'number',
+                label: 'Temperature',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                default: 1.0,
+                min: 0,
+                max: 2.0,
+                step: 0.1
+            },
+            reasoning_effort: {
+                type: 'select',
+                label: 'Reasoning Effort',
+                description: 'Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.',
+                default: 'none',
+                options: ['none', 'low', 'medium', 'high', 'xhigh']
+            },
+            max_tokens: {
+                type: 'number',
+                label: 'Max Output Tokens',
+                description: 'Maximum number of tokens the model will generate in its response.',
+                default: 8192,
+                min: 1,
+                max: 32768
+            }
+        }
+    },
+    'gpt-5.4-pro': {
+        label: 'GPT-5.4 Pro',
+        capabilities: {
+            temperature: {
+                type: 'number',
+                label: 'Temperature',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                default: 1.0,
+                min: 0,
+                max: 2.0,
+                step: 0.1
+            },
+            reasoning_effort: {
+                type: 'select',
+                label: 'Reasoning Effort',
+                description: 'Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.',
+                default: 'none',
+                options: ['none', 'low', 'medium', 'high', 'xhigh']
+            },
+            max_tokens: {
+                type: 'number',
+                label: 'Max Output Tokens',
+                description: 'Maximum number of tokens the model will generate in its response.',
+                default: 8192,
+                min: 1,
+                max: 32768
+            }
+        }
+    },
     'o3': {
         label: 'o3',
         capabilities: {
@@ -217,8 +275,9 @@ function createCall(model, apiKey, configuration) {
             ]
         };
 
-        // Reasoning models: use max_completion_tokens, reasoning_effort.
+        // O-series reasoning models: use max_completion_tokens, reasoning_effort, no temperature.
         // Standard models: use max_tokens, temperature.
+        // GPT-5.4+: supports both temperature and reasoning_effort with max_tokens.
         if (reasoning) {
             if (conf.max_completion_tokens) {
                 body.max_completion_tokens = conf.max_completion_tokens;
@@ -232,6 +291,9 @@ function createCall(model, apiKey, configuration) {
             }
             if (conf.temperature !== undefined) {
                 body.temperature = conf.temperature;
+            }
+            if (conf.reasoning_effort && conf.reasoning_effort !== 'none') {
+                body.reasoning_effort = conf.reasoning_effort;
             }
         }
 
