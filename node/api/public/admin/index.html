@@ -1067,7 +1067,7 @@
                                 </label>
                                 <label>
                                     Model
-                                    <select v-model="newAgentModel">
+                                    <select v-model="newAgentModel" @change="onNewModelChange">
                                         <option value="">None</option>
                                         <option v-for="m in modelsForProvider(newAgentProvider)" :key="m.id" :value="m.id">
                                             {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
@@ -1091,6 +1091,35 @@
                                     Cost info
                                     <input type="text" v-model="newAgentCost" placeholder="e.g. $3/MTok in, $15/MTok out">
                                 </label>
+                                <!-- Dynamic capability settings from provider registry -->
+                                <div v-if="newAgentProvider && newAgentModel && Object.keys(capabilitiesFor(newAgentProvider, newAgentModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
+                                    <small class="muted"><strong>Configuration</strong></small>
+                                    <div style="margin-top: 0.3em;">
+                                        <template v-for="(cap, key) in capabilitiesFor(newAgentProvider, newAgentModel)" :key="key">
+                                            <div v-if="capabilityVisible(cap, newAgentConfig)" style="margin-bottom: 0.4em;">
+                                                <label v-if="cap.type === 'boolean'" class="checkbox-label">
+                                                    <input type="checkbox" v-model="newAgentConfig[key]"> {{ cap.label }}
+                                                    <br><small class="muted">{{ cap.description }}</small>
+                                                </label>
+                                                <label v-else-if="cap.type === 'select'">
+                                                    <small>{{ cap.label }}</small>
+                                                    <select v-model="newAgentConfig[key]" style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                                        <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
+                                                    </select>
+                                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                                </label>
+                                                <label v-else>
+                                                    <small>{{ cap.label }}</small>
+                                                    <input type="number" v-model.number="newAgentConfig[key]"
+                                                        :min="cap.min" :max="cap.max" :step="cap.step || 1"
+                                                        :placeholder="'default (' + cap.default + ')'"
+                                                        style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                                </label>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
                             </div>
                             <label v-if="!newAgentVirtual">
                                 Welcome template

@@ -929,7 +929,7 @@ router.post('/admin/templates/delete', async (req, res) => {
 // POST /admin/agents/create — create an agent (active immediately) with optional welcome mail
 router.post('/admin/agents/create', async (req, res) => {
     const { agent, provider, model, welcome_template_id, virtual: isVirtual, personality, cost,
-            cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
+            cache_prompts, learning_enabled, max_tokens, temperature, configuration } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -957,13 +957,14 @@ router.post('/admin/agents/create', async (req, res) => {
 
         // Create agent as active (skip pending/ack dance — admin is creating it)
         await pool.query(
-            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost, cache_prompts, learning_enabled, max_tokens, temperature)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [agent, hash, salt, 'active', provider || null, model || null,
              isVirtual === true, personality || null, cost || null,
              cache_prompts === true, learning_enabled !== false,
              max_tokens != null ? parseInt(max_tokens) : null,
-             temperature != null ? parseFloat(temperature) : null]
+             temperature != null ? parseFloat(temperature) : null,
+             configuration ? JSON.stringify(configuration) : null]
         );
 
         // Apply welcome template if selected

@@ -38,6 +38,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const newAgentPersonality = ref('');
     const newAgentApiKey = ref('');
     const newAgentCost = ref('');
+    const newAgentConfig = ref({});
 
     // Agent settings (dynamic configuration)
     const agentSettingsEditing = ref(false);
@@ -401,12 +402,29 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         newAgentPersonality.value = '';
         newAgentApiKey.value = '';
         newAgentCost.value = '';
+        newAgentConfig.value = {};
         loadTemplates();
     }
 
     function onNewProviderChange() {
         const models = modelsForProvider(newAgentProvider.value);
         newAgentModel.value = models.length > 0 ? models[0].id : '';
+        seedNewAgentConfig();
+    }
+
+    function onNewModelChange() {
+        seedNewAgentConfig();
+    }
+
+    function seedNewAgentConfig() {
+        const caps = capabilitiesFor(newAgentProvider.value, newAgentModel.value);
+        const conf = {};
+        for (const [key, cap] of Object.entries(caps)) {
+            if (cap.default !== undefined) {
+                conf[key] = cap.default;
+            }
+        }
+        newAgentConfig.value = conf;
     }
 
     async function createAgent() {
@@ -420,6 +438,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
                 body.virtual = true;
                 if (newAgentPersonality.value) body.personality = newAgentPersonality.value;
                 if (newAgentCost.value) body.cost = newAgentCost.value;
+                if (Object.keys(newAgentConfig.value).length > 0) {
+                    body.configuration = newAgentConfig.value;
+                }
             }
             if (newAgentTemplateId.value && !newAgentVirtual.value) body.welcome_template_id = newAgentTemplateId.value;
             const data = await api('/admin/agents/create', body);
@@ -554,8 +575,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         // Agent creation
         agentCreating, newAgentName, newAgentProvider, newAgentModel,
         newAgentTemplateId, newAgentCreating, newAgentPassphrase,
-        newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentCost,
-        startCreateAgent, onNewProviderChange, createAgent,
+        newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentCost, newAgentConfig,
+        startCreateAgent, onNewProviderChange, onNewModelChange, createAgent,
         // Templates
         welcomeTemplates, templateEditing, templateEditId,
         templateEditName, templateEditDescription, templateEditSubject, templateEditBody, templateSaving,
