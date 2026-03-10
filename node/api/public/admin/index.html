@@ -905,18 +905,24 @@
                                 <div class="form-row-inline" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
                                     <label>
                                         Provider
-                                        <select v-model="agentProfileProvider">
+                                        <select v-model="agentProfileProvider" @change="onProfileProviderChange">
                                             <option value="">None</option>
-                                            <option value="anthropic">Anthropic</option>
-                                            <option value="google">Google</option>
-                                            <option value="openai">OpenAI</option>
+                                            <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
                                         </select>
                                     </label>
                                     <label>
                                         Model
-                                        <input type="text" v-model="agentProfileModel" placeholder="e.g. claude-sonnet-4-6">
+                                        <select v-model="agentProfileModel">
+                                            <option value="">None</option>
+                                            <option v-for="m in modelsForProvider(agentProfileProvider)" :key="m.id" :value="m.id">
+                                                {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
+                                            </option>
+                                        </select>
                                     </label>
                                 </div>
+                                <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--del-color, #c62828); display: block; margin: 0.25em 0;">
+                                    &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
+                                </small>
                                 <label v-if="selectedAgent.virtual">
                                     API Key
                                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
@@ -946,30 +952,51 @@
                                 <small class="muted" v-if="selectedAgent.tokens_reset_at"><br>Resets: {{ formatDate(selectedAgent.tokens_reset_at) }}</small>
                             </div>
                             <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
-                                <small class="muted"><strong>Settings</strong></small>
-                                <button v-if="!agentSettingsEditing" class="inline-button compact" @click="startEditSettings" title="Edit settings" style="float: right;"><i class="icon-edit"></i></button>
+                                <small class="muted"><strong>Configuration</strong></small>
+                                <button v-if="!agentSettingsEditing" class="inline-button compact" @click="startEditSettings" title="Edit configuration" style="float: right;"><i class="icon-edit"></i></button>
+                                <!-- Display mode -->
                                 <div v-if="!agentSettingsEditing" style="margin-top: 0.3em; font-size: 0.9em;">
-                                    <span>Cache prompts: <strong>{{ selectedAgent.cache_prompts ? 'on' : 'off' }}</strong></span><br>
-                                    <span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span><br>
-                                    <span>Max tokens: <strong>{{ selectedAgent.max_tokens || 'default' }}</strong></span><br>
-                                    <span>Temperature: <strong>{{ selectedAgent.temperature != null ? selectedAgent.temperature : 'default' }}</strong></span>
+                                    <span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span>
+                                    <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
+                                        <br><span>{{ cap.label }}: <strong>{{ formatConfigValue(key, parseAgentConfig(selectedAgent)[key], cap) }}</strong></span>
+                                    </template>
+                                    <template v-if="!selectedAgent.provider || !selectedAgent.model">
+                                        <br><span class="muted">Set a provider and model to see configuration options.</span>
+                                    </template>
                                 </div>
+                                <!-- Edit mode -->
                                 <div v-if="agentSettingsEditing" style="margin-top: 0.3em;">
-                                    <label class="checkbox-label" style="margin-bottom: 0.3em;">
-                                        <input type="checkbox" v-model="agentSettingsCachePrompts"> Cache prompts (Anthropic only)
-                                    </label>
                                     <label class="checkbox-label" style="margin-bottom: 0.3em;">
                                         <input type="checkbox" v-model="agentSettingsLearningEnabled"> Learning enabled
                                     </label>
-                                    <div class="form-row-inline" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.3em;">
-                                        <label>
-                                            <small>Max tokens</small>
-                                            <input type="number" v-model="agentSettingsMaxTokens" placeholder="default (4096)" style="padding: 0.2em 0.4em; font-size: 0.9em;">
-                                        </label>
-                                        <label>
-                                            <small>Temperature</small>
-                                            <input type="number" v-model="agentSettingsTemperature" step="0.1" min="0" max="2" placeholder="default" style="padding: 0.2em 0.4em; font-size: 0.9em;">
-                                        </label>
+                                    <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
+                                        <div v-if="capabilityVisible(cap, agentSettingsConfig)" style="margin-bottom: 0.4em;">
+                                            <!-- Boolean -->
+                                            <label v-if="cap.type === 'boolean'" class="checkbox-label">
+                                                <input type="checkbox" v-model="agentSettingsConfig[key]"> {{ cap.label }}
+                                                <br><small class="muted">{{ cap.description }}</small>
+                                            </label>
+                                            <!-- Select -->
+                                            <label v-else-if="cap.type === 'select'">
+                                                <small>{{ cap.label }}</small>
+                                                <select v-model="agentSettingsConfig[key]" style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                                    <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
+                                                </select>
+                                                <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                            </label>
+                                            <!-- Number -->
+                                            <label v-else>
+                                                <small>{{ cap.label }}</small>
+                                                <input type="number" v-model.number="agentSettingsConfig[key]"
+                                                    :min="cap.min" :max="cap.max" :step="cap.step || 1"
+                                                    :placeholder="'default (' + cap.default + ')'"
+                                                    style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                                <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                            </label>
+                                        </div>
+                                    </template>
+                                    <div v-if="!selectedAgent.provider || !selectedAgent.model" class="muted" style="margin: 0.5em 0; font-size: 0.9em;">
+                                        Set a provider and model to see configuration options.
                                     </div>
                                     <div class="button-row" style="margin-top: 0.5em;">
                                         <button @click="saveSettings" :disabled="agentSettingsSaving">Save</button>
@@ -1033,18 +1060,24 @@
                             <div class="form-row-inline">
                                 <label>
                                     Provider
-                                    <select v-model="newAgentProvider">
+                                    <select v-model="newAgentProvider" @change="onNewProviderChange">
                                         <option value="">None</option>
-                                        <option value="anthropic">Anthropic</option>
-                                        <option value="google">Google</option>
-                                        <option value="openai">OpenAI</option>
+                                        <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
                                     </select>
                                 </label>
                                 <label>
                                     Model
-                                    <input type="text" v-model="newAgentModel" placeholder="e.g. claude-opus-4-6">
+                                    <select v-model="newAgentModel">
+                                        <option value="">None</option>
+                                        <option v-for="m in modelsForProvider(newAgentProvider)" :key="m.id" :value="m.id">
+                                            {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
+                                        </option>
+                                    </select>
                                 </label>
                             </div>
+                            <small v-if="modelDeprecation(newAgentProvider, newAgentModel)" style="color: var(--del-color, #c62828); display: block; margin: -0.5em 0 0.5em;">
+                                &#9888; {{ modelDeprecation(newAgentProvider, newAgentModel) }}
+                            </small>
                             <div v-if="newAgentVirtual">
                                 <label>
                                     Personality (human-facing description)

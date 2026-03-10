@@ -1,9 +1,13 @@
-// agents.js — Agents list, detail, creation, welcome templates
+// agents.js — Agents list, detail, creation, welcome templates, provider registry
 
 function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
     const selectedAgent = ref(null);
     const agentSubTab = ref('list');
+
+    // Provider registry (loaded once from backend)
+    const providerRegistry = ref([]);
+    const providerRegistryLoaded = ref(false);
 
     // Agent detail
     const agentInstructions = ref('');
@@ -35,6 +39,12 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const newAgentApiKey = ref('');
     const newAgentCost = ref('');
 
+    // Agent settings (dynamic configuration)
+    const agentSettingsEditing = ref(false);
+    const agentSettingsLearningEnabled = ref(true);
+    const agentSettingsConfig = ref({});
+    const agentSettingsSaving = ref(false);
+
     // Welcome templates
     const welcomeTemplates = ref([]);
     const templateEditing = ref(false);
@@ -44,6 +54,90 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const templateEditSubject = ref('');
     const templateEditBody = ref('');
     const templateSaving = ref(false);
+
+    // ── Provider registry ────────────────────────────────────────────────────
+
+    async function loadProviderRegistry() {
+        if (providerRegistryLoaded.value) return;
+        try {
+            const data = await api('/admin/providers/registry');
+            providerRegistry.value = data.providers;
+            providerRegistryLoaded.value = true;
+        } catch (err) {
+            console.error('Failed to load provider registry:', err);
+        }
+    }
+
+    // Return models array for a given provider name: [{ id, label, deprecated }]
+    function modelsForProvider(providerName) {
+        if (!providerName) return [];
+        const provider = providerRegistry.value.find(p => p.name === providerName);
+        if (!provider) return [];
+        return Object.entries(provider.models).map(([id, info]) => ({
+            id,
+            label: info.label,
+            deprecated: info.deprecated || null
+        }));
+    }
+
+    // Return capabilities object for a given provider + model
+    function capabilitiesFor(providerName, modelId) {
+        if (!providerName || !modelId) return {};
+        const provider = providerRegistry.value.find(p => p.name === providerName);
+        if (!provider) return {};
+        const model = provider.models[modelId];
+        if (!model) return {};
+        return model.capabilities || {};
+    }
+
+    // Get deprecation warning for a model, or null
+    function modelDeprecation(providerName, modelId) {
+        if (!providerName || !modelId) return null;
+        const provider = providerRegistry.value.find(p => p.name === providerName);
+        if (!provider) return null;
+        const model = provider.models[modelId];
+        if (!model) return null;
+        return model.deprecated || null;
+    }
+
+    // Build the current effective config from agent data.
+    // Merges: configuration JSON (primary) + legacy columns (fallback).
+    function parseAgentConfig(agent) {
+        let conf = {};
+        if (agent.configuration) {
+            try {
+                conf = typeof agent.configuration === 'string'
+                    ? JSON.parse(agent.configuration)
+                    : agent.configuration;
+            } catch (e) { /* ignore */ }
+        }
+        // Legacy column fallbacks — only if not already in config JSON
+        if (conf.cache_prompts === undefined && agent.cache_prompts !== undefined) {
+            conf.cache_prompts = agent.cache_prompts;
+        }
+        if (conf.max_tokens === undefined && agent.max_tokens != null) {
+            conf.max_tokens = agent.max_tokens;
+        }
+        if (conf.temperature === undefined && agent.temperature != null) {
+            conf.temperature = agent.temperature;
+        }
+        return conf;
+    }
+
+    // Check if a capability's depends_on condition is satisfied
+    function capabilityVisible(cap, config) {
+        if (!cap.depends_on) return true;
+        return !!config[cap.depends_on];
+    }
+
+    // Format a config value for display
+    function formatConfigValue(key, value, cap) {
+        if (value === undefined || value === null) return 'default';
+        if (cap.type === 'boolean') return value ? 'on' : 'off';
+        return String(value);
+    }
+
+    // ── Agent loading ────────────────────────────────────────────────────────
 
     async function loadAgents() {
         try {
@@ -58,11 +152,23 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // ── Profile editing ──────────────────────────────────────────────────────
+
     function startEditProfile() {
+        loadProviderRegistry();
         agentProfileEditing.value = true;
         agentProfileProvider.value = selectedAgent.value.provider || '';
         agentProfileModel.value = selectedAgent.value.model || '';
         agentProfileApiKey.value = '';
+    }
+
+    function onProfileProviderChange() {
+        // When provider changes, reset model if it doesn't exist in new provider
+        const models = modelsForProvider(agentProfileProvider.value);
+        const exists = models.find(m => m.id === agentProfileModel.value);
+        if (!exists) {
+            agentProfileModel.value = models.length > 0 ? models[0].id : '';
+        }
     }
 
     async function saveProfile() {
@@ -89,7 +195,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
-    // Token budget
+    // ── Token budget ─────────────────────────────────────────────────────────
+
     const tokenBudgetEditing = ref(false);
     const tokenBudgetEditValue = ref('');
 
@@ -121,20 +228,22 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
-    // Agent settings (cache_prompts, learning_enabled, max_tokens, temperature)
-    const agentSettingsEditing = ref(false);
-    const agentSettingsCachePrompts = ref(false);
-    const agentSettingsLearningEnabled = ref(true);
-    const agentSettingsMaxTokens = ref('');
-    const agentSettingsTemperature = ref('');
-    const agentSettingsSaving = ref(false);
+    // ── Settings (dynamic configuration) ─────────────────────────────────────
 
     function startEditSettings() {
+        loadProviderRegistry();
         agentSettingsEditing.value = true;
-        agentSettingsCachePrompts.value = selectedAgent.value.cache_prompts || false;
         agentSettingsLearningEnabled.value = selectedAgent.value.learning_enabled !== false;
-        agentSettingsMaxTokens.value = selectedAgent.value.max_tokens || '';
-        agentSettingsTemperature.value = selectedAgent.value.temperature != null ? selectedAgent.value.temperature : '';
+
+        // Load config, filling in defaults from capabilities where not set
+        const conf = parseAgentConfig(selectedAgent.value);
+        const caps = capabilitiesFor(selectedAgent.value.provider, selectedAgent.value.model);
+        for (const [key, cap] of Object.entries(caps)) {
+            if (conf[key] === undefined && cap.default !== undefined) {
+                conf[key] = cap.default;
+            }
+        }
+        agentSettingsConfig.value = conf;
     }
 
     async function saveSettings() {
@@ -142,16 +251,22 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         try {
             const body = {
                 agent: selectedAgent.value.agent,
-                cache_prompts: agentSettingsCachePrompts.value,
                 learning_enabled: agentSettingsLearningEnabled.value,
-                max_tokens: agentSettingsMaxTokens.value === '' ? null : parseInt(agentSettingsMaxTokens.value),
-                temperature: agentSettingsTemperature.value === '' ? null : parseFloat(agentSettingsTemperature.value)
+                configuration: agentSettingsConfig.value
             };
             await api('/admin/agents/update', body);
-            selectedAgent.value.cache_prompts = body.cache_prompts;
             selectedAgent.value.learning_enabled = body.learning_enabled;
-            selectedAgent.value.max_tokens = body.max_tokens;
-            selectedAgent.value.temperature = body.temperature;
+            selectedAgent.value.configuration = JSON.stringify(agentSettingsConfig.value);
+            // Sync legacy columns for display consistency
+            if (agentSettingsConfig.value.cache_prompts !== undefined) {
+                selectedAgent.value.cache_prompts = agentSettingsConfig.value.cache_prompts;
+            }
+            if (agentSettingsConfig.value.max_tokens !== undefined) {
+                selectedAgent.value.max_tokens = agentSettingsConfig.value.max_tokens;
+            }
+            if (agentSettingsConfig.value.temperature !== undefined) {
+                selectedAgent.value.temperature = agentSettingsConfig.value.temperature;
+            }
             agentSettingsEditing.value = false;
             showToast('Settings updated', 'success');
         } catch (err) {
@@ -162,6 +277,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // ── Agent detail view ────────────────────────────────────────────────────
+
     async function viewAgent(agent) {
         selectedAgent.value = agent;
         agentInstructionsEditing.value = false;
@@ -171,19 +288,29 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentSettingsEditing.value = false;
         agentPassphraseConfirming.value = false;
         agentNewPassphrase.value = null;
+        loadProviderRegistry();
         try {
             agentExpertise.value = typeof agent.expertise === 'string' ? JSON.parse(agent.expertise) : (agent.expertise || []);
         } catch (e) {
             agentExpertise.value = [];
         }
+        // Fetch full agent detail (includes configuration) and instructions in parallel
         try {
-            const data = await api('/admin/agents/instructions/read', { agent: agent.agent });
-            agentInstructions.value = data.instructions;
+            const [detail, instData] = await Promise.all([
+                api('/admin/agents/read', { agent: agent.agent }),
+                api('/admin/agents/instructions/read', { agent: agent.agent })
+            ]);
+            // Merge configuration from the detail endpoint onto the selectedAgent
+            selectedAgent.value.configuration = detail.configuration || null;
+            selectedAgent.value.has_api_key = detail.has_api_key || false;
+            agentInstructions.value = instData.instructions;
         } catch (err) {
-            console.error('Failed to load agent instructions:', err);
+            console.error('Failed to load agent detail:', err);
             agentInstructions.value = '';
         }
     }
+
+    // ── Instructions ─────────────────────────────────────────────────────────
 
     function startEditInstructions() {
         agentInstructionsEditing.value = true;
@@ -210,6 +337,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             agentInstructionsSaving.value = false;
         }
     }
+
+    // ── Expertise ────────────────────────────────────────────────────────────
 
     function startEditExpertise() {
         agentExpertiseEditing.value = true;
@@ -241,6 +370,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // ── Passphrase ───────────────────────────────────────────────────────────
+
     async function resetAgentPassphrase() {
         const agent = selectedAgent.value.agent;
         agentPassphraseConfirming.value = false;
@@ -255,8 +386,10 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
-    // Agent creation
+    // ── Agent creation ───────────────────────────────────────────────────────
+
     function startCreateAgent() {
+        loadProviderRegistry();
         agentCreating.value = true;
         newAgentName.value = '';
         newAgentProvider.value = '';
@@ -269,6 +402,11 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         newAgentApiKey.value = '';
         newAgentCost.value = '';
         loadTemplates();
+    }
+
+    function onNewProviderChange() {
+        const models = modelsForProvider(newAgentProvider.value);
+        newAgentModel.value = models.length > 0 ? models[0].id : '';
     }
 
     async function createAgent() {
@@ -308,7 +446,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
-    // Welcome templates
+    // ── Welcome templates ────────────────────────────────────────────────────
+
     async function loadTemplates() {
         try {
             const data = await api('/admin/templates/list');
@@ -378,7 +517,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         });
     }
 
-    // Real-time activity updates from WebSocket
+    // ── Real-time events ─────────────────────────────────────────────────────
+
     if (onEvent) {
         onEvent('agent_activity', (data) => {
             const agent = agents.value.find(a => a.agent === data.agent);
@@ -395,22 +535,28 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
 
     return {
         agents, selectedAgent, agentSubTab,
+        // Provider registry
+        providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, modelDeprecation,
+        parseAgentConfig, capabilityVisible, formatConfigValue,
+        // Agent detail
         agentInstructions, agentInstructionsEditing, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
         agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfileSaving,
         loadAgents, viewAgent,
-        startEditProfile, saveProfile,
+        startEditProfile, onProfileProviderChange, saveProfile,
         tokenBudgetEditing, tokenBudgetEditValue, startEditTokenBudget, saveTokenBudget, resetTokenUsage,
-        agentSettingsEditing, agentSettingsCachePrompts, agentSettingsLearningEnabled, agentSettingsMaxTokens, agentSettingsTemperature, agentSettingsSaving,
+        agentSettingsEditing, agentSettingsLearningEnabled, agentSettingsConfig, agentSettingsSaving,
         startEditSettings, saveSettings,
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,
         resetAgentPassphrase,
+        // Agent creation
         agentCreating, newAgentName, newAgentProvider, newAgentModel,
         newAgentTemplateId, newAgentCreating, newAgentPassphrase,
         newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentCost,
-        startCreateAgent, createAgent,
+        startCreateAgent, onNewProviderChange, createAgent,
+        // Templates
         welcomeTemplates, templateEditing, templateEditId,
         templateEditName, templateEditDescription, templateEditSubject, templateEditBody, templateSaving,
         loadTemplates, startNewTemplate, editTemplate, saveTemplate, confirmDeleteTemplate,

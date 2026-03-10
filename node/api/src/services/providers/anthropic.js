@@ -1,0 +1,219 @@
+// Anthropic provider — Claude model family.
+// Handles structured system prompts with optional cache_control markers.
+
+const { log } = require('../logger');
+
+function logProvider(action, details) {
+    log('provider', action, details);
+}
+
+// ── Model registry ──────────────────────────────────────────────────────────
+
+const models = {
+    'claude-opus-4-20250514': {
+        label: 'Claude Opus 4',
+        capabilities: {
+            temperature: {
+                type: 'number',
+                label: 'Temperature',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                default: 1.0,
+                min: 0,
+                max: 1.0,
+                step: 0.1
+            },
+            max_tokens: {
+                type: 'number',
+                label: 'Max Output Tokens',
+                description: 'Maximum number of tokens the model will generate in its response.',
+                default: 8192,
+                min: 1,
+                max: 32768
+            },
+            extended_thinking: {
+                type: 'boolean',
+                label: 'Extended Thinking',
+                description: 'Enables the model to think step-by-step before responding. Increases quality on complex tasks but uses more tokens.',
+                default: false
+            },
+            thinking_budget_tokens: {
+                type: 'number',
+                label: 'Thinking Budget (tokens)',
+                description: 'Maximum tokens the model can use for internal reasoning when extended thinking is enabled.',
+                default: 10000,
+                min: 1024,
+                max: 128000,
+                depends_on: 'extended_thinking'
+            },
+            cache_prompts: {
+                type: 'boolean',
+                label: 'Prompt Caching',
+                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                default: false
+            }
+        }
+    },
+    'claude-sonnet-4-20250514': {
+        label: 'Claude Sonnet 4',
+        capabilities: {
+            temperature: {
+                type: 'number',
+                label: 'Temperature',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                default: 1.0,
+                min: 0,
+                max: 1.0,
+                step: 0.1
+            },
+            max_tokens: {
+                type: 'number',
+                label: 'Max Output Tokens',
+                description: 'Maximum number of tokens the model will generate in its response.',
+                default: 8192,
+                min: 1,
+                max: 32768
+            },
+            extended_thinking: {
+                type: 'boolean',
+                label: 'Extended Thinking',
+                description: 'Enables the model to think step-by-step before responding. Increases quality on complex tasks but uses more tokens.',
+                default: false
+            },
+            thinking_budget_tokens: {
+                type: 'number',
+                label: 'Thinking Budget (tokens)',
+                description: 'Maximum tokens the model can use for internal reasoning when extended thinking is enabled.',
+                default: 10000,
+                min: 1024,
+                max: 128000,
+                depends_on: 'extended_thinking'
+            },
+            cache_prompts: {
+                type: 'boolean',
+                label: 'Prompt Caching',
+                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                default: false
+            }
+        }
+    },
+    'claude-haiku-35-20241022': {
+        label: 'Claude 3.5 Haiku',
+        capabilities: {
+            temperature: {
+                type: 'number',
+                label: 'Temperature',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                default: 1.0,
+                min: 0,
+                max: 1.0,
+                step: 0.1
+            },
+            max_tokens: {
+                type: 'number',
+                label: 'Max Output Tokens',
+                description: 'Maximum number of tokens the model will generate in its response.',
+                default: 4096,
+                min: 1,
+                max: 8192
+            },
+            cache_prompts: {
+                type: 'boolean',
+                label: 'Prompt Caching',
+                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                default: false
+            }
+        }
+    }
+};
+
+// ── Flatten structured system prompts ───────────────────────────────────────
+
+function flattenPrompt(systemPrompt) {
+    if (typeof systemPrompt === 'string') return systemPrompt;
+    return [systemPrompt.static, systemPrompt.dynamic].filter(Boolean).join('\n\n');
+}
+
+// ── API call factory ────────────────────────────────────────────────────────
+
+function createCall(model, apiKey, configuration) {
+    const conf = configuration || {};
+
+    return async function call(systemPrompt, userMessage, opts) {
+        const useCache = conf.cache_prompts && opts && opts.cache && typeof systemPrompt !== 'string';
+        const useThinking = conf.extended_thinking;
+
+        let system;
+        if (useCache) {
+            // Structured system prompt with cache_control on the static prefix.
+            // Anthropic caches the longest prefix marked with cache_control.
+            const parts = [];
+            if (systemPrompt.static) {
+                parts.push({ type: 'text', text: systemPrompt.static, cache_control: { type: 'ephemeral' } });
+            }
+            if (systemPrompt.dynamic) {
+                parts.push({ type: 'text', text: systemPrompt.dynamic });
+            }
+            system = parts;
+        } else {
+            system = flattenPrompt(systemPrompt);
+        }
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            ...(conf.headers || {})
+        };
+
+        const body = {
+            model: model,
+            max_tokens: conf.max_tokens || 4096,
+            system: system,
+            messages: [{ role: 'user', content: userMessage }]
+        };
+
+        // Extended thinking requires temperature = 1 and uses a budget_tokens param.
+        if (useThinking) {
+            body.temperature = 1;
+            body.thinking = {
+                type: 'enabled',
+                budget_tokens: conf.thinking_budget_tokens || 10000
+            };
+        } else if (conf.temperature !== undefined) {
+            body.temperature = conf.temperature;
+        }
+
+        logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!useThinking });
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            logProvider('api-error', { provider: 'anthropic', model, status: response.status, error: errorText });
+            throw new Error(`Anthropic API error ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const text = data.content
+            .filter(block => block.type === 'text')
+            .map(block => block.text)
+            .join('\n');
+
+        const usage = {
+            input_tokens: data.usage?.input_tokens || 0,
+            output_tokens: data.usage?.output_tokens || 0,
+            cache_creation_input_tokens: data.usage?.cache_creation_input_tokens || 0,
+            cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0
+        };
+
+        logProvider('api-response', { provider: 'anthropic', model, ...usage });
+
+        return { text, usage };
+    };
+}
+
+module.exports = { name: 'anthropic', label: 'Anthropic', models, createCall, flattenPrompt };
