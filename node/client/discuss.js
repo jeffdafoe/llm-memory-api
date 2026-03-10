@@ -1134,7 +1134,7 @@ async function setupCreate() {
     }
 
     discussionId = result.discussion.id;
-    cfg.channel = `discuss-${discussionId}`;
+    cfg.channel = `discussion-${discussionId}`;
     cfg.otherAgents = [...cfg.others, ...cfg.optionalParticipants];
 
     log(`Created discussion #${discussionId}: ${cfg.topic} (status: ${result.discussion.status})`);
@@ -1155,7 +1155,7 @@ async function setupJoin() {
 
     const discussion = result.discussion;
     cfg.topic = discussion.topic;
-    cfg.channel = discussion.channel || `discuss-${discussionId}`;
+    cfg.channel = discussion.channel || `discussion-${discussionId}`;
     cfg.context = discussion.context || '';
     if (cfg.contextFile) {
         cfg.context = fs.readFileSync(cfg.contextFile, 'utf-8');

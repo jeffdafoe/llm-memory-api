@@ -497,7 +497,7 @@ async function handleVirtualAgent(payload) {
         return;
     }
 
-    const channel = discussion.channel || `discuss-${discussionId}`;
+    const channel = discussion.channel || `discussion-${discussionId}`;
 
     // Find virtual participants who are joined
     const joinedVirtual = [];
