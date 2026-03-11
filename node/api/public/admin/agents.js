@@ -25,7 +25,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentProfileModel = ref('');
     const agentProfileApiKey = ref('');
     const agentProfilePersonality = ref('');
-    const agentProfileCost = ref('');
     const agentProfileSaving = ref(false);
 
     // Agent creation
@@ -39,8 +38,16 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const newAgentVirtual = ref(false);
     const newAgentPersonality = ref('');
     const newAgentApiKey = ref('');
-    const newAgentCost = ref('');
     const newAgentConfig = ref({});
+
+    // Cost budgets
+    const costBudgetEditing = ref(false);
+    const costBudgetDailyValue = ref('');
+    const costBudgetMonthlyValue = ref('');
+
+    // Usage history
+    const agentUsageHistory = ref([]);
+    const agentUsageLoading = ref(false);
 
     // Agent settings (dynamic configuration)
     const agentSettingsEditing = ref(false);
@@ -174,7 +181,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentProfileProvider.value = selectedAgent.value.provider || '';
         agentProfileModel.value = selectedAgent.value.model || '';
         agentProfilePersonality.value = selectedAgent.value.personality || '';
-        agentProfileCost.value = selectedAgent.value.cost ?? '';
         agentProfileApiKey.value = '';
     }
 
@@ -194,8 +200,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
                 agent: selectedAgent.value.agent,
                 provider: agentProfileProvider.value || null,
                 model: agentProfileModel.value || null,
-                personality: agentProfilePersonality.value || null,
-                cost: agentProfileCost.value === '' ? null : agentProfileCost.value
+                personality: agentProfilePersonality.value || null
             };
             if (agentProfileApiKey.value) {
                 body.api_key = agentProfileApiKey.value;
@@ -204,7 +209,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             selectedAgent.value.provider = agentProfileProvider.value || null;
             selectedAgent.value.model = agentProfileModel.value || null;
             selectedAgent.value.personality = agentProfilePersonality.value || null;
-            selectedAgent.value.cost = agentProfileCost.value === '' ? null : agentProfileCost.value;
             agentProfileEditing.value = false;
             showToast('Profile updated', 'success');
         } catch (err) {
@@ -215,36 +219,42 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
-    // ── Token budget ─────────────────────────────────────────────────────────
+    // ── Cost budgets ─────────────────────────────────────────────────────────
 
-    const tokenBudgetEditing = ref(false);
-    const tokenBudgetEditValue = ref('');
-
-    function startEditTokenBudget() {
-        tokenBudgetEditing.value = true;
-        tokenBudgetEditValue.value = selectedAgent.value.token_budget || '';
+    function startEditCostBudget() {
+        costBudgetEditing.value = true;
+        costBudgetDailyValue.value = selectedAgent.value.cost_budget_daily ?? '';
+        costBudgetMonthlyValue.value = selectedAgent.value.cost_budget_monthly ?? '';
     }
 
-    async function saveTokenBudget() {
+    async function saveCostBudget() {
         try {
-            const val = tokenBudgetEditValue.value === '' ? null : parseInt(tokenBudgetEditValue.value);
-            await api('/admin/agents/update', { agent: selectedAgent.value.agent, token_budget: val });
-            selectedAgent.value.token_budget = val;
-            tokenBudgetEditing.value = false;
-            showToast('Token budget updated', 'success');
+            const daily = costBudgetDailyValue.value === '' ? null : parseFloat(costBudgetDailyValue.value);
+            const monthly = costBudgetMonthlyValue.value === '' ? null : parseFloat(costBudgetMonthlyValue.value);
+            await api('/admin/agents/update', {
+                agent: selectedAgent.value.agent,
+                cost_budget_daily: daily,
+                cost_budget_monthly: monthly
+            });
+            selectedAgent.value.cost_budget_daily = daily;
+            selectedAgent.value.cost_budget_monthly = monthly;
+            costBudgetEditing.value = false;
+            showToast('Cost budgets updated', 'success');
         } catch (err) {
             showToast('Failed: ' + err.message, 'error');
         }
     }
 
-    async function resetTokenUsage() {
+    async function loadUsageHistory() {
+        if (!selectedAgent.value) return;
+        agentUsageLoading.value = true;
         try {
-            await api('/admin/agents/update', { agent: selectedAgent.value.agent, reset_tokens: true });
-            selectedAgent.value.tokens_used = 0;
-            selectedAgent.value.tokens_reset_at = new Date().toISOString();
-            showToast('Token usage reset', 'success');
+            const data = await api('/admin/agents/usage', { agent: selectedAgent.value.agent, limit: 50 });
+            agentUsageHistory.value = data.usage;
         } catch (err) {
-            showToast('Failed: ' + err.message, 'error');
+            console.error('Failed to load usage:', err);
+        } finally {
+            agentUsageLoading.value = false;
         }
     }
 
@@ -305,8 +315,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentInstructionsEditing.value = false;
         agentExpertiseEditing.value = false;
         agentProfileEditing.value = false;
-        tokenBudgetEditing.value = false;
+        costBudgetEditing.value = false;
         agentSettingsEditing.value = false;
+        agentUsageHistory.value = [];
         agentPassphraseConfirming.value = false;
         agentNewPassphrase.value = null;
         loadProviderRegistry();
@@ -425,7 +436,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         newAgentVirtual.value = false;
         newAgentPersonality.value = '';
         newAgentApiKey.value = '';
-        newAgentCost.value = '';
         newAgentConfig.value = {};
         loadTemplates();
     }
@@ -447,7 +457,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             if (newAgentVirtual.value) {
                 body.virtual = true;
                 if (newAgentPersonality.value) body.personality = newAgentPersonality.value;
-                if (newAgentCost.value) body.cost = newAgentCost.value;
                 if (Object.keys(newAgentConfig.value).length > 0) {
                     body.configuration = newAgentConfig.value;
                 }
@@ -573,10 +582,11 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentInstructions, agentInstructionsEditing, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
-        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileCost, agentProfileSaving,
+        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileSaving,
         loadAgents, viewAgent,
         startEditProfile, onProfileProviderChange, saveProfile,
-        tokenBudgetEditing, tokenBudgetEditValue, startEditTokenBudget, saveTokenBudget, resetTokenUsage,
+        costBudgetEditing, costBudgetDailyValue, costBudgetMonthlyValue, startEditCostBudget, saveCostBudget,
+        agentUsageHistory, agentUsageLoading, loadUsageHistory,
         agentSettingsEditing, agentSettingsLearningEnabled, agentSettingsConfig, agentSettingsSaving,
         startEditSettings, saveSettings,
         startEditInstructions, cancelEditInstructions, saveInstructions,
@@ -585,7 +595,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         // Agent creation
         agentCreating, newAgentName, newAgentProvider, newAgentModel,
         newAgentTemplateId, newAgentCreating, newAgentPassphrase,
-        newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentCost, newAgentConfig,
+        newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentConfig,
         startCreateAgent, onNewProviderChange, createAgent,
         // Templates
         welcomeTemplates, templateEditing, templateEditId,

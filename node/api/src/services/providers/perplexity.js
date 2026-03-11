@@ -13,6 +13,8 @@ function logProvider(action, details) {
 const models = {
     'sonar': {
         label: 'Sonar',
+        // Per-request fee: $5/1K requests (added per call on top of token costs)
+        pricing: { input: 1, output: 1, request: 5 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -48,6 +50,7 @@ const models = {
     },
     'sonar-pro': {
         label: 'Sonar Pro',
+        pricing: { input: 3, output: 15, request: 6 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -83,6 +86,7 @@ const models = {
     },
     'sonar-deep-research': {
         label: 'Sonar Deep Research',
+        pricing: { input: 2, output: 8, request: 5 },
         capabilities: {
             temperature: {
                 type: 'number',

@@ -12,6 +12,7 @@ function logProvider(action, details) {
 const models = {
     'gemini-2.5-pro': {
         label: 'Gemini 2.5 Pro',
+        pricing: { input: 1.25, output: 10 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -59,6 +60,7 @@ const models = {
     },
     'gemini-2.5-flash': {
         label: 'Gemini 2.5 Flash',
+        pricing: { input: 0.15, output: 0.60 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -106,6 +108,7 @@ const models = {
     },
     'gemini-2.5-flash-lite': {
         label: 'Gemini 2.5 Flash-Lite',
+        pricing: { input: 0.075, output: 0.30 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -146,6 +149,7 @@ const models = {
     'gemini-2.0-flash': {
         label: 'Gemini 2.0 Flash',
         deprecated: 'Retiring June 1, 2026. Migrate to Gemini 2.5 Flash.',
+        pricing: { input: 0.10, output: 0.40 },
         capabilities: {
             temperature: {
                 type: 'number',

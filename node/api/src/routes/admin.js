@@ -10,6 +10,7 @@ const { getEntries: getRequestLogEntries } = require('../middleware/request-log'
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
+const { formatPricing } = require('../services/provider');
 
 const router = Router();
 
@@ -195,8 +196,8 @@ router.post('/admin/api-log', async (req, res) => {
 router.post('/admin/agents', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, cost, active_since,
-                    tokens_used, token_budget, tokens_reset_at, cache_prompts, learning_enabled, max_tokens, temperature
+            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, active_since,
+                    cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature
              FROM agent_status
              ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`
         );
@@ -925,11 +926,24 @@ router.post('/admin/templates/delete', async (req, res) => {
     }
 });
 
+// Validate a cost budget value. Returns the parsed number, null (for unlimited), or throws on invalid input.
+function parseCostBudget(value, fieldName) {
+    if (value == null || value === '') return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 99999999.99) {
+        const err = new Error(`Invalid ${fieldName}: must be a non-negative number up to 99999999.99`);
+        err.statusCode = 400;
+        throw err;
+    }
+    return parsed;
+}
+
 // ---- Agent Creation ----
 
 // POST /admin/agents/create — create an agent (active immediately) with optional welcome mail
 router.post('/admin/agents/create', async (req, res) => {
-    const { agent, provider, model, welcome_template_id, virtual: isVirtual, personality, cost,
+    const { agent, provider, model, welcome_template_id, virtual: isVirtual, personality,
+            cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration } = req.body;
 
     if (!agent) {
@@ -958,10 +972,12 @@ router.post('/admin/agents/create', async (req, res) => {
 
         // Create agent as active (skip pending/ack dance — admin is creating it)
         await pool.query(
-            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
             [agent, hash, salt, 'active', provider || null, model || null,
-             isVirtual === true, personality || null, cost || null,
+             isVirtual === true, personality || null,
+             parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
+             parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
              cache_prompts === true, learning_enabled !== false,
              max_tokens != null ? parseInt(max_tokens) : null,
              temperature != null ? parseFloat(temperature) : null,
@@ -1003,6 +1019,9 @@ router.post('/admin/agents/create', async (req, res) => {
             message: isVirtual ? 'Virtual agent created.' : 'Agent created. Save the passphrase — it will not be shown again.'
         });
     } catch (err) {
+        if (err.statusCode === 400) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
+        }
         console.error('Admin agent create error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to create agent' }
@@ -1018,9 +1037,9 @@ router.post('/admin/agents/read', async (req, res) => {
     }
     try {
         const result = await pool.query(
-            `SELECT agent, provider, model, virtual, personality, cost, configuration, expertise,
+            `SELECT agent, provider, model, virtual, personality, configuration, expertise,
                     cache_prompts, learning_enabled, max_tokens, temperature,
-                    tokens_used, token_budget, tokens_reset_at, api_key IS NOT NULL AS has_api_key
+                    cost_budget_daily, cost_budget_monthly, api_key IS NOT NULL AS has_api_key
              FROM agents WHERE agent = $1`,
             [agent]
         );
@@ -1028,15 +1047,24 @@ router.post('/admin/agents/read', async (req, res) => {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
         }
         const row = result.rows[0];
-        // Compute next budget reset date from last reset + configured interval
-        if (row.tokens_reset_at) {
-            const resetDays = parseInt(config.get('virtual_agent_budget_reset_days'), 10);
-            if (Number.isFinite(resetDays)) {
-                const nextReset = new Date(row.tokens_reset_at);
-                nextReset.setDate(nextReset.getDate() + resetDays);
-                row.tokens_next_reset = nextReset.toISOString();
-            }
+
+        // Compute current cost totals from usage log
+        const costResult = await pool.query(
+            `SELECT
+                COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost ELSE 0 END), 0) AS cost_today,
+                COALESCE(SUM(cost), 0) AS cost_monthly
+             FROM virtual_agent_usage
+             WHERE agent = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
+            [agent]
+        );
+        row.cost_today = parseFloat(costResult.rows[0].cost_today);
+        row.cost_monthly = parseFloat(costResult.rows[0].cost_monthly);
+
+        // Add pricing info string for display
+        if (row.provider && row.model) {
+            row.pricing_info = formatPricing(row.provider, row.model);
         }
+
         res.json(row);
     } catch (err) {
         console.error('Admin agent read error:', err.message);
@@ -1046,7 +1074,8 @@ router.post('/admin/agents/read', async (req, res) => {
 
 // POST /admin/agents/update — update virtual agent config
 router.post('/admin/agents/update', async (req, res) => {
-    const { agent, personality, api_key, configuration, cost, provider, model, token_budget, reset_tokens,
+    const { agent, personality, api_key, configuration, provider, model,
+            cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
 
     if (!agent) {
@@ -1085,10 +1114,6 @@ router.post('/admin/agents/update', async (req, res) => {
             params.push(configuration ? JSON.stringify(configuration) : null);
             updates.push(`configuration = $${idx++}`);
         }
-        if (cost !== undefined) {
-            params.push(cost || null);
-            updates.push(`cost = $${idx++}`);
-        }
         if (provider !== undefined) {
             params.push(provider || null);
             updates.push(`provider = $${idx++}`);
@@ -1097,13 +1122,13 @@ router.post('/admin/agents/update', async (req, res) => {
             params.push(model || null);
             updates.push(`model = $${idx++}`);
         }
-        if (token_budget !== undefined) {
-            params.push(token_budget === null || token_budget === '' ? null : parseInt(token_budget));
-            updates.push(`token_budget = $${idx++}`);
+        if (cost_budget_daily !== undefined) {
+            params.push(parseCostBudget(cost_budget_daily, 'cost_budget_daily'));
+            updates.push(`cost_budget_daily = $${idx++}`);
         }
-        if (reset_tokens) {
-            updates.push(`tokens_used = 0`);
-            updates.push(`tokens_reset_at = NOW()`);
+        if (cost_budget_monthly !== undefined) {
+            params.push(parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'));
+            updates.push(`cost_budget_monthly = $${idx++}`);
         }
         if (cache_prompts !== undefined) {
             params.push(cache_prompts === true);
@@ -1138,10 +1163,35 @@ router.post('/admin/agents/update', async (req, res) => {
 
         res.json({ agent, updated: true });
     } catch (err) {
+        if (err.statusCode === 400) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
+        }
         console.error('Admin agent update error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to update agent' }
         });
+    }
+});
+
+// POST /admin/agents/usage — get usage history for an agent
+router.post('/admin/agents/usage', async (req, res) => {
+    const { agent, limit } = req.body;
+    if (!agent) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
+    }
+    try {
+        const result = await pool.query(
+            `SELECT id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context, created_at
+             FROM virtual_agent_usage
+             WHERE agent = $1
+             ORDER BY created_at DESC
+             LIMIT $2`,
+            [agent, Math.min(parseInt(limit) || 50, 200)]
+        );
+        res.json({ usage: result.rows });
+    } catch (err) {
+        console.error('Admin agent usage error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch usage data' } });
     }
 });
 

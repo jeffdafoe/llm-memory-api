@@ -929,10 +929,6 @@
                                     Personality
                                     <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
                                 </label>
-                                <label>
-                                    Cost info
-                                    <input type="text" v-model="agentProfileCost" placeholder="e.g. $3/MTok in, $15/MTok out">
-                                </label>
                                 <label v-if="selectedAgent.virtual">
                                     API Key
                                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
@@ -944,22 +940,56 @@
                             </div>
                             <p v-if="!agentProfileEditing && selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
                             <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
-                                <small class="muted">Total Token Usage (in + out)</small>
-                                <button class="inline-button compact" @click="resetTokenUsage" title="Reset counter" style="float: right;"><i class="icon-refresh-cw"></i></button>
-                                <br>
-                                <strong>{{ (selectedAgent.tokens_used || 0).toLocaleString() }}</strong>
-                                <span class="muted"> / </span>
-                                <span v-if="!tokenBudgetEditing" @dblclick="startEditTokenBudget" style="cursor: pointer;" title="Double-click to edit">{{ selectedAgent.token_budget ? selectedAgent.token_budget.toLocaleString() : 'default' }}</span>
-                                <span v-if="!tokenBudgetEditing">
-                                    <button class="inline-button compact" @click="startEditTokenBudget" title="Edit budget"><i class="icon-edit"></i></button>
-                                </span>
-                                <span v-if="tokenBudgetEditing">
-                                    <input type="number" v-model="tokenBudgetEditValue" placeholder="blank = default" style="width: 8em; display: inline; padding: 0.1em 0.3em; font-size: 0.9em;">
-                                    <button class="inline-button compact" @click="saveTokenBudget"><i class="icon-check"></i></button>
-                                    <button class="inline-button compact" @click="tokenBudgetEditing = false"><i class="icon-x"></i></button>
-                                </span>
-                                <meter :value="selectedAgent.tokens_used || 0" :max="selectedAgent.token_budget || 1000000" style="width: 100%; margin-top: 0.3em;"></meter>
-                                <small class="muted" v-if="selectedAgent.tokens_next_reset"><br>Resets: {{ formatDate(selectedAgent.tokens_next_reset) }}</small>
+                                <small class="muted"><strong>Cost Budget</strong></small>
+                                <button v-if="!costBudgetEditing" class="inline-button compact" @click="startEditCostBudget" title="Edit budgets" style="float: right;"><i class="icon-edit"></i></button>
+                                <button v-if="!costBudgetEditing" class="inline-button compact" @click="loadUsageHistory" title="View usage history" style="float: right; margin-right: 0.3em;"><i class="icon-list"></i></button>
+                                <!-- Display mode -->
+                                <div v-if="!costBudgetEditing" style="margin-top: 0.3em; font-size: 0.9em;">
+                                    <div style="margin-bottom: 0.3em;">
+                                        <span>Today: <strong>${{ (selectedAgent.cost_today || 0).toFixed(4) }}</strong></span>
+                                        <span class="muted"> / ${{ selectedAgent.cost_budget_daily != null ? Number(selectedAgent.cost_budget_daily).toFixed(2) : 'default' }}</span>
+                                        <meter :value="selectedAgent.cost_today || 0" :max="selectedAgent.cost_budget_daily || 1" style="width: 100%; margin-top: 0.2em;"></meter>
+                                    </div>
+                                    <div>
+                                        <span>30-day: <strong>${{ (selectedAgent.cost_monthly || 0).toFixed(4) }}</strong></span>
+                                        <span class="muted"> / ${{ selectedAgent.cost_budget_monthly != null ? Number(selectedAgent.cost_budget_monthly).toFixed(2) : 'default' }}</span>
+                                        <meter :value="selectedAgent.cost_monthly || 0" :max="selectedAgent.cost_budget_monthly || 10" style="width: 100%; margin-top: 0.2em;"></meter>
+                                    </div>
+                                    <small v-if="selectedAgent.pricing_info" class="muted" style="display: block; margin-top: 0.3em;">{{ selectedAgent.pricing_info }}</small>
+                                </div>
+                                <!-- Edit mode -->
+                                <div v-if="costBudgetEditing" style="margin-top: 0.3em;">
+                                    <div class="form-row-inline" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                        <label>
+                                            Daily limit ($)
+                                            <input type="number" v-model="costBudgetDailyValue" placeholder="blank = default" step="0.01" style="font-size: 0.9em;">
+                                        </label>
+                                        <label>
+                                            Monthly limit ($)
+                                            <input type="number" v-model="costBudgetMonthlyValue" placeholder="blank = default" step="0.01" style="font-size: 0.9em;">
+                                        </label>
+                                    </div>
+                                    <div class="button-row" style="margin-top: 0.3em;">
+                                        <button @click="saveCostBudget">Save</button>
+                                        <button class="secondary" @click="costBudgetEditing = false">Cancel</button>
+                                    </div>
+                                </div>
+                                <!-- Usage history -->
+                                <div v-if="agentUsageHistory.length > 0" style="margin-top: 0.5em; max-height: 200px; overflow-y: auto;">
+                                    <table style="width: 100%; font-size: 0.8em;">
+                                        <thead><tr><th>Time</th><th>Model</th><th>Context</th><th>Tokens</th><th>Cost</th></tr></thead>
+                                        <tbody>
+                                            <tr v-for="u in agentUsageHistory" :key="u.id">
+                                                <td>{{ formatDate(u.created_at) }}</td>
+                                                <td>{{ u.model }}</td>
+                                                <td>{{ u.context || '-' }}</td>
+                                                <td>{{ (u.input_tokens + u.output_tokens).toLocaleString() }}</td>
+                                                <td>${{ Number(u.cost).toFixed(4) }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <small v-if="agentUsageLoading" class="muted">Loading usage...</small>
                             </div>
                             <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
                                 <small class="muted"><strong>Configuration</strong></small>
@@ -1096,10 +1126,6 @@
                                 <label>
                                     API Key
                                     <input type="password" v-model="newAgentApiKey" placeholder="Provider API key (encrypted at rest)">
-                                </label>
-                                <label>
-                                    Cost info
-                                    <input type="text" v-model="newAgentCost" placeholder="e.g. $3/MTok in, $15/MTok out">
                                 </label>
                                 <!-- Dynamic capability settings from provider registry (starts empty, only non-default overrides are sent) -->
                                 <div v-if="newAgentProvider && newAgentModel && Object.keys(capabilitiesFor(newAgentProvider, newAgentModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
