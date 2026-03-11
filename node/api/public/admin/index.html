@@ -353,9 +353,9 @@
                             <table class="fixed-table">
                                 <colgroup>
                                     <col class="col-activity">
-                                    <col style="width: 12em;">
-                                    <col style="width: 6.5em;">
                                     <col>
+                                    <col style="width: 6.5em;">
+                                    <col style="width: 10em;">
                                     <col>
                                     <col class="col-time">
                                     <col class="col-time">
@@ -381,7 +381,7 @@
                                         <td>
                                             <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                         </td>
-                                        <td class="muted" style="font-style: italic;">{{ agent.personality || '' }}</td>
+                                        <td class="muted truncate" style="font-style: italic;">{{ agent.personality || '' }}</td>
                                         <td class="muted">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}</td>
                                         <td class="time-cell">{{ formatDate(agent.last_seen) }}</td>
                                         <td class="time-cell">{{ formatDate(agent.registered_at) }}</td>
