@@ -7,7 +7,7 @@
 const pool = require('../db');
 const { log } = require('./logger');
 const { searchMemory } = require('./memory');
-const { createProvider, decryptApiKey } = require('./provider');
+const { createProvider, decryptApiKey, calculateCost } = require('./provider');
 const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
 const { saveNote } = require('./documents');
@@ -60,50 +60,74 @@ function recordCall(agentName) {
     callHistory[agentName].push(Date.now());
 }
 
-// Check if an agent has exceeded its token budget. Auto-resets if the period has elapsed.
-// Returns true if the call should be blocked.
-async function isOverBudget(agent) {
-    const resetDays = parseInt(config.get('virtual_agent_budget_reset_days'));
-    const defaultBudget = parseInt(config.get('virtual_agent_default_token_budget'));
-    const budget = agent.token_budget !== null ? agent.token_budget : defaultBudget;
-    const used = agent.tokens_used || 0;
+// Check if an agent has exceeded its daily or monthly cost limit.
+// Uses rolling windows — no reset logic needed.
+// Returns { limited: true, reason: '...' } or { limited: false }.
+async function isOverCostLimit(agent) {
+    const defaultDailyRaw = config.get('virtual_agent_default_daily_budget');
+    const defaultMonthlyRaw = config.get('virtual_agent_default_monthly_budget');
 
-    // Check if reset is due
-    if (agent.tokens_reset_at) {
-        const resetAt = new Date(agent.tokens_reset_at);
-        const now = new Date();
-        const daysSinceReset = (now - resetAt) / (1000 * 60 * 60 * 24);
-        if (daysSinceReset >= resetDays) {
-            await pool.query(
-                'UPDATE agents SET tokens_used = 0, tokens_reset_at = NOW() WHERE agent = $1',
-                [agent.agent]
-            );
-            agent.tokens_used = 0;
-            agent.tokens_reset_at = now;
-            logVA('budget-reset', { agent: agent.agent, previousUsed: used });
-            return false;
-        }
+    // Resolve limits: agent column overrides config default. null = unlimited (no enforcement).
+    let dailyLimit = null;
+    if (agent.cost_budget_daily != null) {
+        dailyLimit = parseFloat(agent.cost_budget_daily);
+    } else if (defaultDailyRaw != null) {
+        dailyLimit = parseFloat(defaultDailyRaw);
     }
 
-    if (used >= budget) {
-        logVA('over-budget', { agent: agent.agent, used, budget });
-        return true;
+    let monthlyLimit = null;
+    if (agent.cost_budget_monthly != null) {
+        monthlyLimit = parseFloat(agent.cost_budget_monthly);
+    } else if (defaultMonthlyRaw != null) {
+        monthlyLimit = parseFloat(defaultMonthlyRaw);
     }
 
-    return false;
-}
+    // If both limits are null/unset, no enforcement needed
+    if (dailyLimit == null && monthlyLimit == null) {
+        return { limited: false };
+    }
 
-// Record token usage after a provider call.
-async function recordUsage(agentName, usage) {
-    const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
-    if (totalTokens === 0) return;
-
-    await pool.query(
-        'UPDATE agents SET tokens_used = tokens_used + $1 WHERE agent = $2',
-        [totalTokens, agentName]
+    // Query daily and 30-day rolling cost in a single round-trip
+    const result = await pool.query(
+        `SELECT
+            COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost ELSE 0 END), 0) AS cost_today,
+            COALESCE(SUM(cost), 0) AS cost_monthly
+         FROM virtual_agent_usage
+         WHERE agent = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
+        [agent.agent]
     );
 
-    logVA('token-usage', { agent: agentName, input: usage.input_tokens, output: usage.output_tokens, total: totalTokens });
+    const costToday = parseFloat(result.rows[0].cost_today);
+    const costMonthly = parseFloat(result.rows[0].cost_monthly);
+
+    if (dailyLimit != null && costToday >= dailyLimit) {
+        logVA('over-cost-limit', { agent: agent.agent, costToday, dailyLimit, type: 'daily' });
+        return { limited: true, reason: 'Daily cost limit exceeded ($' + costToday.toFixed(4) + ' / $' + dailyLimit.toFixed(2) + ')' };
+    }
+
+    if (monthlyLimit != null && costMonthly >= monthlyLimit) {
+        logVA('over-cost-limit', { agent: agent.agent, costMonthly, monthlyLimit, type: 'monthly' });
+        return { limited: true, reason: 'Monthly cost limit exceeded ($' + costMonthly.toFixed(4) + ' / $' + monthlyLimit.toFixed(2) + ')' };
+    }
+
+    return { limited: false };
+}
+
+// Record usage and cost after a provider call.
+// Inserts a row into virtual_agent_usage with calculated cost.
+async function recordUsage(agentName, provider, model, usage, context) {
+    const cost = calculateCost(provider, model, usage);
+
+    await pool.query(
+        `INSERT INTO virtual_agent_usage (agent, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [agentName, provider, model, usage.input_tokens || 0, usage.output_tokens || 0,
+         usage.cache_creation_input_tokens || 0, usage.cache_read_input_tokens || 0,
+         cost, context || null]
+    );
+
+    logVA('usage-recorded', { agent: agentName, provider, model, cost: cost.toFixed(6), context,
+        input: usage.input_tokens || 0, output: usage.output_tokens || 0 });
 }
 
 function logVA(action, details) {
@@ -187,7 +211,7 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
     const extractionSystemPrompt = 'You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.';
 
     const { text: extractionResult, usage } = await provider(extractionSystemPrompt, extractionUserMessage);
-    await recordUsage(agent.agent, usage);
+    await recordUsage(agent.agent, agent.provider, agent.model, usage, 'learning');
 
     // Check for NONE response
     if (extractionResult.trim().toUpperCase() === 'NONE' || extractionResult.trim() === '') {
@@ -227,7 +251,7 @@ async function withActivityIndicator(agentName, fn) {
 // Load an agent row with virtual-agent fields.
 async function loadAgent(agentName) {
     const result = await pool.query(
-        'SELECT agent, virtual, provider, model, api_key, configuration, startup_instructions, personality, expertise, tokens_used, token_budget, tokens_reset_at, cache_prompts, learning_enabled, max_tokens, temperature FROM agents WHERE agent = $1',
+        'SELECT agent, virtual, provider, model, api_key, configuration, startup_instructions, personality, expertise, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature FROM agents WHERE agent = $1',
         [agentName]
     );
     if (result.rows.length === 0) return null;
@@ -578,8 +602,9 @@ async function handleVirtualAgent(payload) {
             }
 
             // Budget check
-            if (await isOverBudget(agent)) {
-                await postError(agent.agent, discussionId, channel, 'Token budget exceeded.');
+            const costCheck = await isOverCostLimit(agent);
+            if (costCheck.limited) {
+                await postError(agent.agent, discussionId, channel, costCheck.reason);
                 continue;
             }
 
@@ -588,7 +613,7 @@ async function handleVirtualAgent(payload) {
             const provider = createProvider(agent.provider, agent.model, apiKey, conf);
             recordCall(agent.agent);
             const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage, { cache: true }));
-            await recordUsage(agent.agent, usage);
+            await recordUsage(agent.agent, agent.provider, agent.model, usage, 'discussion');
 
             // Handle vote-proposed: parse response and cast ballot
             if (triggerType === 'vote-proposed' && voteId) {
@@ -666,8 +691,9 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         }
 
         // Budget check
-        if (await isOverBudget(agent)) {
-            logVA('direct-chat-over-budget', { agent: virtualAgentName, from: fromAgent });
+        const costCheck = await isOverCostLimit(agent);
+        if (costCheck.limited) {
+            logVA('direct-chat-over-cost-limit', { agent: virtualAgentName, from: fromAgent, reason: costCheck.reason });
             return;
         }
 
@@ -676,7 +702,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
         const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage, { cache: true }));
-        await recordUsage(agent.agent, usage);
+        await recordUsage(agent.agent, agent.provider, agent.model, usage, 'chat');
 
         // Send response as direct chat back to the sender
         await chatSend(agent.agent, [fromAgent], null, response, null);
@@ -736,8 +762,9 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         }
 
         // Budget check
-        if (await isOverBudget(agent)) {
-            logVA('direct-mail-over-budget', { agent: virtualAgentName, from: fromAgent, mailId });
+        const costCheck = await isOverCostLimit(agent);
+        if (costCheck.limited) {
+            logVA('direct-mail-over-cost-limit', { agent: virtualAgentName, from: fromAgent, mailId, reason: costCheck.reason });
             return;
         }
 
@@ -745,7 +772,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         const provider = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
         const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
-        await recordUsage(agent.agent, usage);
+        await recordUsage(agent.agent, agent.provider, agent.model, usage, 'mail');
 
         // Ack the incoming mail (virtual agent "read" it)
         await pool.query(

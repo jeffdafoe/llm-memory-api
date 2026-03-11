@@ -13,6 +13,8 @@ const models = {
     'claude-opus-4-6': {
         label: 'Opus 4.6',
         apiId: 'claude-opus-4-20250514',
+        // Pricing: dollars per million tokens
+        pricing: { input: 15, output: 75, cache_write: 18.75, cache_read: 1.50 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -57,6 +59,7 @@ const models = {
     'claude-sonnet-4-6': {
         label: 'Sonnet 4.6',
         apiId: 'claude-sonnet-4-20250514',
+        pricing: { input: 3, output: 15, cache_write: 3.75, cache_read: 0.30 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -101,6 +104,7 @@ const models = {
     'claude-haiku-4-5': {
         label: 'Haiku 4.5',
         apiId: 'claude-haiku-4-5-20251001',
+        pricing: { input: 0.80, output: 4, cache_write: 1.00, cache_read: 0.08 },
         capabilities: {
             temperature: {
                 type: 'number',
