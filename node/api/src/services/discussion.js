@@ -861,5 +861,7 @@ module.exports = {
     discussionLeave,
     votePropose,
     voteCast,
-    voteStatus
+    voteStatus,
+    evaluateVote,
+    evaluateReadiness
 };
