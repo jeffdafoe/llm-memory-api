@@ -24,6 +24,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentProfileProvider = ref('');
     const agentProfileModel = ref('');
     const agentProfileApiKey = ref('');
+    const agentProfilePersonality = ref('');
+    const agentProfileCost = ref('');
     const agentProfileSaving = ref(false);
 
     // Agent creation
@@ -133,7 +135,13 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
 
     // Format a config value for display
     function formatConfigValue(key, value, cap) {
-        if (value === undefined || value === null) return 'default';
+        if (value === undefined || value === null) {
+            if (cap.default !== undefined) {
+                const displayed = cap.type === 'boolean' ? (cap.default ? 'on' : 'off') : String(cap.default);
+                return 'default (' + displayed + ')';
+            }
+            return 'default';
+        }
         if (cap.type === 'boolean') return value ? 'on' : 'off';
         return String(value);
     }
@@ -146,7 +154,12 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             agents.value = data.agents;
             if (selectedAgent.value) {
                 const updated = data.agents.find(a => a.agent === selectedAgent.value.agent);
-                if (updated) selectedAgent.value = updated;
+                // Merge list data onto existing selectedAgent so detail-only fields (configuration, expertise, etc.) survive
+                if (updated) {
+                    Object.assign(selectedAgent.value, updated);
+                } else {
+                    selectedAgent.value = null;
+                }
             }
         } catch (err) {
             console.error('Failed to load agents:', err);
@@ -160,6 +173,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentProfileEditing.value = true;
         agentProfileProvider.value = selectedAgent.value.provider || '';
         agentProfileModel.value = selectedAgent.value.model || '';
+        agentProfilePersonality.value = selectedAgent.value.personality || '';
+        agentProfileCost.value = selectedAgent.value.cost ?? '';
         agentProfileApiKey.value = '';
     }
 
@@ -178,7 +193,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             const body = {
                 agent: selectedAgent.value.agent,
                 provider: agentProfileProvider.value || null,
-                model: agentProfileModel.value || null
+                model: agentProfileModel.value || null,
+                personality: agentProfilePersonality.value || null,
+                cost: agentProfileCost.value === '' ? null : agentProfileCost.value
             };
             if (agentProfileApiKey.value) {
                 body.api_key = agentProfileApiKey.value;
@@ -186,6 +203,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             await api('/admin/agents/update', body);
             selectedAgent.value.provider = agentProfileProvider.value || null;
             selectedAgent.value.model = agentProfileModel.value || null;
+            selectedAgent.value.personality = agentProfilePersonality.value || null;
+            selectedAgent.value.cost = agentProfileCost.value === '' ? null : agentProfileCost.value;
             agentProfileEditing.value = false;
             showToast('Profile updated', 'success');
         } catch (err) {
@@ -282,6 +301,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
 
     async function viewAgent(agent) {
         selectedAgent.value = agent;
+        const selectedName = agent.agent;
         agentInstructionsEditing.value = false;
         agentExpertiseEditing.value = false;
         agentProfileEditing.value = false;
@@ -290,20 +310,22 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentPassphraseConfirming.value = false;
         agentNewPassphrase.value = null;
         loadProviderRegistry();
-        try {
-            agentExpertise.value = typeof agent.expertise === 'string' ? JSON.parse(agent.expertise) : (agent.expertise || []);
-        } catch (e) {
-            agentExpertise.value = [];
-        }
+        agentExpertise.value = [];
         // Fetch full agent detail (includes configuration) and instructions in parallel
         try {
             const [detail, instData] = await Promise.all([
-                api('/admin/agents/read', { agent: agent.agent }),
-                api('/admin/agents/instructions/read', { agent: agent.agent })
+                api('/admin/agents/read', { agent: selectedName }),
+                api('/admin/agents/instructions/read', { agent: selectedName })
             ]);
-            // Merge configuration from the detail endpoint onto the selectedAgent
-            selectedAgent.value.configuration = detail.configuration || null;
-            selectedAgent.value.has_api_key = detail.has_api_key || false;
+            // Guard against selection changing while requests were in flight
+            if (!selectedAgent.value || selectedAgent.value.agent !== selectedName) return;
+            // Merge full detail onto the list item (list-only fields like status, last_seen survive; detail fields win on overlap)
+            Object.assign(selectedAgent.value, detail);
+            try {
+                agentExpertise.value = typeof detail.expertise === 'string' ? JSON.parse(detail.expertise) : (detail.expertise || []);
+            } catch (e) {
+                agentExpertise.value = [];
+            }
             agentInstructions.value = instData.instructions;
         } catch (err) {
             console.error('Failed to load agent detail:', err);
@@ -381,7 +403,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             agentNewPassphrase.value = data.passphrase;
             await loadAgents();
             const updated = agents.value.find(a => a.agent === agent);
-            if (updated) selectedAgent.value = updated;
+            if (updated && selectedAgent.value && selectedAgent.value.agent === agent) {
+                Object.assign(selectedAgent.value, updated);
+            }
         } catch (err) {
             console.error('Failed to reset passphrase:', err);
         }
@@ -409,23 +433,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     function onNewProviderChange() {
         const models = modelsForProvider(newAgentProvider.value);
         newAgentModel.value = models.length > 0 ? models[0].id : '';
-        seedNewAgentConfig();
     }
 
-    function onNewModelChange() {
-        seedNewAgentConfig();
-    }
 
-    function seedNewAgentConfig() {
-        const caps = capabilitiesFor(newAgentProvider.value, newAgentModel.value);
-        const conf = {};
-        for (const [key, cap] of Object.entries(caps)) {
-            if (cap.default !== undefined) {
-                conf[key] = cap.default;
-            }
-        }
-        newAgentConfig.value = conf;
-    }
 
     async function createAgent() {
         if (!newAgentName.value) return;
@@ -563,7 +573,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentInstructions, agentInstructionsEditing, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
-        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfileSaving,
+        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileCost, agentProfileSaving,
         loadAgents, viewAgent,
         startEditProfile, onProfileProviderChange, saveProfile,
         tokenBudgetEditing, tokenBudgetEditValue, startEditTokenBudget, saveTokenBudget, resetTokenUsage,
@@ -576,7 +586,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentCreating, newAgentName, newAgentProvider, newAgentModel,
         newAgentTemplateId, newAgentCreating, newAgentPassphrase,
         newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentCost, newAgentConfig,
-        startCreateAgent, onNewProviderChange, onNewModelChange, createAgent,
+        startCreateAgent, onNewProviderChange, createAgent,
         // Templates
         welcomeTemplates, templateEditing, templateEditId,
         templateEditName, templateEditDescription, templateEditSubject, templateEditBody, templateSaving,

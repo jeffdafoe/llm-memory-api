@@ -353,8 +353,9 @@
                             <table class="fixed-table">
                                 <colgroup>
                                     <col class="col-activity">
-                                    <col style="width: 15em;">
+                                    <col style="width: 12em;">
                                     <col style="width: 6.5em;">
+                                    <col>
                                     <col>
                                     <col class="col-time">
                                     <col class="col-time">
@@ -364,6 +365,7 @@
                                         <th class="col-activity"></th>
                                         <th>Agent</th>
                                         <th>Status</th>
+                                        <th>Personality</th>
                                         <th>Provider / Model</th>
                                         <th class="time-cell">Last Seen</th>
                                         <th class="time-cell">Registered</th>
@@ -379,6 +381,7 @@
                                         <td>
                                             <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                         </td>
+                                        <td class="muted" style="font-style: italic;">{{ agent.personality || '' }}</td>
                                         <td class="muted">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}</td>
                                         <td class="time-cell">{{ formatDate(agent.last_seen) }}</td>
                                         <td class="time-cell">{{ formatDate(agent.registered_at) }}</td>
@@ -898,7 +901,6 @@
                             <p>
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
                                 <span v-if="!agentProfileEditing && (selectedAgent.provider || selectedAgent.model)" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
-                                <span v-if="selectedAgent.cost" class="muted" style="margin-left: 0.5em;">({{ selectedAgent.cost }})</span>
                                 <button v-if="!agentProfileEditing" class="inline-button compact" @click="startEditProfile" title="Edit provider/model"><i class="icon-edit"></i></button>
                             </p>
                             <div v-if="agentProfileEditing" style="margin-bottom: 1rem;">
@@ -923,6 +925,14 @@
                                 <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--del-color, #c62828); display: block; margin: 0.25em 0;">
                                     &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
                                 </small>
+                                <label>
+                                    Personality
+                                    <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
+                                </label>
+                                <label>
+                                    Cost info
+                                    <input type="text" v-model="agentProfileCost" placeholder="e.g. $3/MTok in, $15/MTok out">
+                                </label>
                                 <label v-if="selectedAgent.virtual">
                                     API Key
                                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
@@ -932,7 +942,7 @@
                                     <button class="secondary" @click="agentProfileEditing = false">Cancel</button>
                                 </div>
                             </div>
-                            <p v-if="selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
+                            <p v-if="!agentProfileEditing && selectedAgent.personality" class="muted" style="font-style: italic;">{{ selectedAgent.personality }}</p>
                             <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
                                 <small class="muted">Total Token Usage (in + out)</small>
                                 <button class="inline-button compact" @click="resetTokenUsage" title="Reset counter" style="float: right;"><i class="icon-refresh-cw"></i></button>
@@ -949,7 +959,7 @@
                                     <button class="inline-button compact" @click="tokenBudgetEditing = false"><i class="icon-x"></i></button>
                                 </span>
                                 <meter :value="selectedAgent.tokens_used || 0" :max="selectedAgent.token_budget || 1000000" style="width: 100%; margin-top: 0.3em;"></meter>
-                                <small class="muted" v-if="selectedAgent.tokens_reset_at"><br>Resets: {{ formatDate(selectedAgent.tokens_reset_at) }}</small>
+                                <small class="muted" v-if="selectedAgent.tokens_next_reset"><br>Resets: {{ formatDate(selectedAgent.tokens_next_reset) }}</small>
                             </div>
                             <div v-if="selectedAgent.virtual" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
                                 <small class="muted"><strong>Configuration</strong></small>
@@ -1067,7 +1077,7 @@
                                 </label>
                                 <label>
                                     Model
-                                    <select v-model="newAgentModel" @change="onNewModelChange">
+                                    <select v-model="newAgentModel">
                                         <option value="">None</option>
                                         <option v-for="m in modelsForProvider(newAgentProvider)" :key="m.id" :value="m.id">
                                             {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
@@ -1091,28 +1101,28 @@
                                     Cost info
                                     <input type="text" v-model="newAgentCost" placeholder="e.g. $3/MTok in, $15/MTok out">
                                 </label>
-                                <!-- Dynamic capability settings from provider registry -->
+                                <!-- Dynamic capability settings from provider registry (starts empty, only non-default overrides are sent) -->
                                 <div v-if="newAgentProvider && newAgentModel && Object.keys(capabilitiesFor(newAgentProvider, newAgentModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
                                     <small class="muted"><strong>Configuration</strong></small>
                                     <div style="margin-top: 0.3em;">
                                         <template v-for="(cap, key) in capabilitiesFor(newAgentProvider, newAgentModel)" :key="key">
                                             <div v-if="capabilityVisible(cap, newAgentConfig)" style="margin-bottom: 0.4em;">
-                                                <label v-if="cap.type === 'boolean'" class="checkbox-label">
+                                                <label v-if="cap.type === 'boolean'" class="checkbox-label" :title="'Default: ' + (cap.default ? 'on' : 'off')">
                                                     <input type="checkbox" v-model="newAgentConfig[key]"> {{ cap.label }}
                                                     <br><small class="muted">{{ cap.description }}</small>
                                                 </label>
-                                                <label v-else-if="cap.type === 'select'">
+                                                <label v-else-if="cap.type === 'select'" :title="'Default: ' + (cap.default || 'none')">
                                                     <small>{{ cap.label }}</small>
                                                     <select v-model="newAgentConfig[key]" style="padding: 0.2em 0.4em; font-size: 0.9em;">
                                                         <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
                                                     </select>
                                                     <small class="muted" style="display: block;">{{ cap.description }}</small>
                                                 </label>
-                                                <label v-else>
+                                                <label v-else :title="'Default: ' + cap.default">
                                                     <small>{{ cap.label }}</small>
                                                     <input type="number" v-model.number="newAgentConfig[key]"
                                                         :min="cap.min" :max="cap.max" :step="cap.step || 1"
-                                                        :placeholder="'default (' + cap.default + ')'"
+                                                        :placeholder="String(cap.default)"
                                                         style="padding: 0.2em 0.4em; font-size: 0.9em;">
                                                     <small class="muted" style="display: block;">{{ cap.description }}</small>
                                                 </label>

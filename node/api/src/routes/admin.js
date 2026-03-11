@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
+const config = require('../services/config');
 const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote, moveNote } = require('../services/documents');
@@ -1017,7 +1018,7 @@ router.post('/admin/agents/read', async (req, res) => {
     }
     try {
         const result = await pool.query(
-            `SELECT agent, provider, model, virtual, personality, cost, configuration,
+            `SELECT agent, provider, model, virtual, personality, cost, configuration, expertise,
                     cache_prompts, learning_enabled, max_tokens, temperature,
                     tokens_used, token_budget, tokens_reset_at, api_key IS NOT NULL AS has_api_key
              FROM agents WHERE agent = $1`,
@@ -1026,7 +1027,17 @@ router.post('/admin/agents/read', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
         }
-        res.json(result.rows[0]);
+        const row = result.rows[0];
+        // Compute next budget reset date from last reset + configured interval
+        if (row.tokens_reset_at) {
+            const resetDays = parseInt(config.get('virtual_agent_budget_reset_days'), 10);
+            if (Number.isFinite(resetDays)) {
+                const nextReset = new Date(row.tokens_reset_at);
+                nextReset.setDate(nextReset.getDate() + resetDays);
+                row.tokens_next_reset = nextReset.toISOString();
+            }
+        }
+        res.json(row);
     } catch (err) {
         console.error('Admin agent read error:', err.message);
         res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to read agent' } });
