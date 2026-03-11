@@ -73,7 +73,7 @@ async function listNotes(namespace, limit, offset, prefix) {
                    created_by, created_at, updated_at
             FROM documents
             WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($4) AND deleted_at IS NULL
-            ORDER BY slug ASC
+            ORDER BY updated_at DESC, slug ASC
             LIMIT $2 OFFSET $3
         `;
         params = [namespace, maxResults, skip, prefix + '%'];
