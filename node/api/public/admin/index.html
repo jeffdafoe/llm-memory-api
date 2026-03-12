@@ -617,6 +617,7 @@
                     <div class="sub-tabs">
                         <a href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
                         <a href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
+                        <a href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
                     </div>
 
                     <!-- System sub-tab -->
@@ -705,6 +706,65 @@
                                     <td class="log-mono time-cell">{{ entry.duration !== null ? entry.duration : '' }}</td>
                                     <td class="log-mono time-cell nowrap">{{ formatTime(entry.timestamp) }}</td>
                                 </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+
+                    <!-- Error Log sub-tab -->
+                    <div v-if="configSubTab === 'errorlog'" class="apilog-page">
+                    <div class="apilog-toolbar">
+                        <div class="apilog-filters">
+                            <select v-model="errorLogFilterAgent" class="apilog-filter-select">
+                                <option value="">All agents</option>
+                                <option v-for="a in errorLogAgents" :key="a" :value="a">{{ a }}</option>
+                            </select>
+                            <select v-model="errorLogFilterSubsystem" class="apilog-filter-select">
+                                <option value="">All subsystems</option>
+                                <option v-for="s in errorLogSubsystems" :key="s" :value="s">{{ s }}</option>
+                            </select>
+                        </div>
+                        <div class="apilog-controls">
+                            <span class="apilog-count">{{ errorLogFiltered.length }} errors</span>
+                            <button class="inline-button" @click="errorLogPaused = !errorLogPaused">
+                                {{ errorLogPaused ? 'Resume' : 'Pause' }}
+                            </button>
+                            <button class="inline-button secondary" @click="errorLogEntries = []; errorLogLastId = 0; pollErrorLog()">Clear</button>
+                        </div>
+                    </div>
+                    <div class="apilog-scroll">
+                        <table class="fixed-table">
+                            <colgroup>
+                                <col style="width: 10em;">
+                                <col style="width: 9em;">
+                                <col style="width: 9em;">
+                                <col>
+                                <col style="width: 10em;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th class="nowrap">Subsystem</th>
+                                    <th class="nowrap">Action</th>
+                                    <th class="nowrap">Agent</th>
+                                    <th>Error</th>
+                                    <th class="time-cell nowrap">Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template v-for="entry in errorLogFiltered" :key="entry.id">
+                                    <tr class="status-row-server" style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
+                                        <td class="log-mono nowrap">{{ entry.subsystem }}</td>
+                                        <td class="log-mono nowrap">{{ entry.action }}</td>
+                                        <td class="nowrap">{{ entry.agent || '' }}</td>
+                                        <td class="message-cell">{{ entry.error_message }}</td>
+                                        <td class="log-mono time-cell nowrap">{{ formatTime(entry.created_at) }}</td>
+                                    </tr>
+                                    <tr v-if="errorLogExpandedId === entry.id && entry.error_detail">
+                                        <td colspan="5" class="error-detail-cell">
+                                            <pre class="error-detail-pre">{{ entry.error_detail }}</pre>
+                                        </td>
+                                    </tr>
+                                </template>
                             </tbody>
                         </table>
                     </div>
@@ -1223,6 +1283,7 @@
     <script src="mail.js"></script>
     <script src="notes.js"></script>
     <script src="apilog.js"></script>
+    <script src="errorlog.js"></script>
     <script src="config.js"></script>
     <script src="dashboard.js"></script>
     <script src="app.js"></script>
