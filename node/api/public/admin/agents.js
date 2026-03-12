@@ -55,14 +55,14 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentSettingsConfig = ref({});
     const agentSettingsSaving = ref(false);
 
-    // Welcome templates
+    // Templates
     const welcomeTemplates = ref([]);
     const templateEditing = ref(false);
     const templateEditId = ref(null);
     const templateEditName = ref('');
+    const templateEditKind = ref('welcome');
     const templateEditDescription = ref('');
-    const templateEditSubject = ref('');
-    const templateEditBody = ref('');
+    const templateEditContent = ref('');
     const templateSaving = ref(false);
 
     // ── Provider registry ────────────────────────────────────────────────────
@@ -487,7 +487,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
-    // ── Welcome templates ────────────────────────────────────────────────────
+    // ── Templates ────────────────────────────────────────────────────────────
 
     async function loadTemplates() {
         try {
@@ -502,9 +502,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         templateEditing.value = true;
         templateEditId.value = null;
         templateEditName.value = '';
+        templateEditKind.value = 'welcome';
         templateEditDescription.value = '';
-        templateEditSubject.value = '';
-        templateEditBody.value = '';
+        templateEditContent.value = '';
     }
 
     async function editTemplate(t) {
@@ -514,9 +514,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             templateEditing.value = true;
             templateEditId.value = tpl.id;
             templateEditName.value = tpl.name;
+            templateEditKind.value = tpl.kind;
             templateEditDescription.value = tpl.description || '';
-            templateEditSubject.value = tpl.subject;
-            templateEditBody.value = tpl.body;
+            templateEditContent.value = tpl.content;
         } catch (err) {
             console.error('Failed to read template:', err);
             showToast('Failed to load template: ' + err.message, 'error');
@@ -528,9 +528,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         try {
             const body = {
                 name: templateEditName.value,
+                kind: templateEditKind.value,
                 description: templateEditDescription.value || null,
-                subject: templateEditSubject.value,
-                body: templateEditBody.value
+                content: templateEditContent.value
             };
             if (templateEditId.value) body.id = templateEditId.value;
             await api('/admin/templates/save', body);
@@ -600,7 +600,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         startCreateAgent, onNewProviderChange, createAgent,
         // Templates
         welcomeTemplates, templateEditing, templateEditId,
-        templateEditName, templateEditDescription, templateEditSubject, templateEditBody, templateSaving,
+        templateEditName, templateEditKind, templateEditDescription, templateEditContent, templateSaving,
         loadTemplates, startNewTemplate, editTemplate, saveTemplate, confirmDeleteTemplate,
         closeDialogs
     };
