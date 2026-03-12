@@ -735,17 +735,17 @@
                     <div class="apilog-scroll">
                         <table class="fixed-table">
                             <colgroup>
-                                <col style="width: 10em;">
                                 <col style="width: 9em;">
-                                <col style="width: 9em;">
+                                <col style="width: 7em;">
+                                <col style="width: 8em;">
                                 <col>
                                 <col style="width: 10em;">
                             </colgroup>
                             <thead>
                                 <tr>
+                                    <th class="nowrap">Agent</th>
                                     <th class="nowrap">Subsystem</th>
                                     <th class="nowrap">Action</th>
-                                    <th class="nowrap">Agent</th>
                                     <th>Error</th>
                                     <th class="time-cell nowrap">Time</th>
                                 </tr>
@@ -753,10 +753,10 @@
                             <tbody>
                                 <template v-for="entry in errorLogFiltered" :key="entry.id">
                                     <tr class="status-row-server" style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
+                                        <td class="nowrap">{{ entry.agent || '' }}</td>
                                         <td class="log-mono nowrap">{{ entry.subsystem }}</td>
                                         <td class="log-mono nowrap">{{ entry.action }}</td>
-                                        <td class="nowrap">{{ entry.agent || '' }}</td>
-                                        <td class="message-cell">{{ entry.error_message }}</td>
+                                        <td class="message-cell log-mono">{{ entry.error_message }}</td>
                                         <td class="log-mono time-cell nowrap">{{ formatTime(entry.created_at) }}</td>
                                     </tr>
                                     <tr v-if="errorLogExpandedId === entry.id && entry.error_detail">
