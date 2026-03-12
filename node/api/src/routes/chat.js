@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const pool = require('../db');
-const { log } = require('../services/logger');
+const { log, logError } = require('../services/logger');
 
 const router = Router();
 
@@ -128,7 +128,7 @@ router.post('/chat/send', async (req, res) => {
             sent_at: results[0] ? results[0].sent_at : null
         });
     } catch (err) {
-        console.error('Chat send error:', err.message);
+        logError('chat', 'send', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -204,7 +204,7 @@ router.post('/chat/receive', async (req, res) => {
             pending_count: result.rows.length
         });
     } catch (err) {
-        console.error('Chat receive error:', err.message);
+        logError('chat', 'receive', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -245,7 +245,7 @@ router.post('/chat/ack', async (req, res) => {
             acked_ids: result.rows.map(r => r.id)
         });
     } catch (err) {
-        console.error('Chat ack error:', err.message);
+        logError('chat', 'ack', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -317,7 +317,7 @@ router.post('/chat/status', async (req, res) => {
             last_ack_at: lastAcked.rows[0].last_acked
         });
     } catch (err) {
-        console.error('Chat status error:', err.message);
+        logError('chat', 'status', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

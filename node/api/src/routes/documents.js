@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
+const { logError } = require('../services/logger');
 
 const router = Router();
 
@@ -17,7 +18,7 @@ router.post('/documents/save', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Document save error:', err.message);
+        if (status >= 500) logError('documents', 'save', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
         });
@@ -37,7 +38,7 @@ router.post('/documents/list', async (req, res) => {
         const result = await listNotes(namespace, limit, offset, prefix);
         res.json(result);
     } catch (err) {
-        console.error('Document list error:', err.message);
+        logError('documents', 'list', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -58,7 +59,7 @@ router.post('/documents/read', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Document read error:', err.message);
+        if (status >= 500) logError('documents', 'read', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: err.message }
         });
@@ -79,7 +80,7 @@ router.post('/documents/delete', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Document delete error:', err.message);
+        if (status >= 500) logError('documents', 'delete', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: err.message }
         });
@@ -100,7 +101,7 @@ router.post('/documents/restore', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Document restore error:', err.message);
+        if (status >= 500) logError('documents', 'restore', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'INTERNAL_ERROR', message: err.message }
         });
@@ -121,7 +122,7 @@ router.post('/documents/edit', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Document edit error:', err.message);
+        if (status >= 500) logError('documents', 'edit', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 400 ? 'BAD_REQUEST' : status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: err.message }
         });
@@ -142,7 +143,7 @@ router.post('/documents/move', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Document move error:', err.message);
+        if (status >= 500) logError('documents', 'move', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'INTERNAL_ERROR', message: err.message }
         });
@@ -163,7 +164,7 @@ router.post('/documents/grep', async (req, res) => {
         res.json({ results });
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Document grep error:', err.message);
+        if (status >= 500) logError('documents', 'grep', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
         });

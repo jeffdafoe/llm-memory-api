@@ -2,7 +2,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
-const { log } = require('../services/logger');
+const { log, logError } = require('../services/logger');
 const auth = require('../middleware/auth');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
 const { broadcast } = require('../services/events');
@@ -107,7 +107,7 @@ router.post('/agent/login', async (req, res) => {
             rotation_due: rotationDue
         });
     } catch (err) {
-        console.error('Agent login error:', err.message);
+        logError('agent', 'login', { agent: req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -147,7 +147,7 @@ router.post('/agent/logout', async (req, res) => {
             message: 'Logged out'
         });
     } catch (err) {
-        console.error('Agent logout error:', err.message);
+        logError('agent', 'logout', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -208,7 +208,7 @@ router.post('/agent/rotate', async (req, res) => {
             message: 'Passphrase rotated. Save this — it will not be shown again. All sessions have been invalidated.'
         });
     } catch (err) {
-        console.error('Agent rotate error:', err.message);
+        logError('agent', 'rotate', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -244,7 +244,7 @@ router.post('/agent/heartbeat', async (req, res) => {
             last_seen: result.rows[0].last_seen
         });
     } catch (err) {
-        console.error('Agent heartbeat error:', err.message);
+        logError('agent', 'heartbeat', { agent: req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -328,7 +328,7 @@ router.post('/agent/status', async (req, res) => {
 
         res.json({ agents });
     } catch (err) {
-        console.error('Agent status error:', err.message);
+        logError('agent', 'status', { agent: req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -374,7 +374,7 @@ router.post('/agent/expertise', async (req, res) => {
             message: 'Expertise updated'
         });
     } catch (err) {
-        console.error('Agent expertise update error:', err.message);
+        logError('agent', 'expertise', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -428,7 +428,7 @@ router.post('/agent/profile', async (req, res) => {
             message: 'Profile updated'
         });
     } catch (err) {
-        console.error('Agent profile update error:', err.message);
+        logError('agent', 'profile', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -455,7 +455,7 @@ router.post('/agent/activity/start', async (req, res) => {
         broadcast('agent_activity', { agent, active: true });
         res.json({ agent, active: true, message: 'Activity started' });
     } catch (err) {
-        console.error('Agent activity start error:', err.message);
+        logError('agent', 'activity-start', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -482,7 +482,7 @@ router.post('/agent/activity/stop', async (req, res) => {
         broadcast('agent_activity', { agent, active: false });
         res.json({ agent, active: false, message: 'Activity stopped' });
     } catch (err) {
-        console.error('Agent activity stop error:', err.message);
+        logError('agent', 'activity-stop', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -510,7 +510,7 @@ router.post('/agent/instructions/read', async (req, res) => {
             instructions: result.rows[0]?.startup_instructions || null
         });
     } catch (err) {
-        console.error('Instructions read error:', err.message);
+        logError('agent', 'instructions-read', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -546,7 +546,7 @@ router.post('/agent/instructions/save', async (req, res) => {
             length: content ? content.length : 0
         });
     } catch (err) {
-        console.error('Instructions save error:', err.message);
+        logError('agent', 'instructions-save', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
