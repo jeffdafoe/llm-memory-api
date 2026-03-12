@@ -809,9 +809,11 @@ router.post('/admin/notes/reindex-clear', (req, res) => {
 
 // ---- Templates CRUD ----
 
+const TEMPLATE_KINDS = new Set(['welcome']);
+
 // Parse YAML-style frontmatter from template content.
 // Returns { frontmatter: { key: value, ... }, body: "remaining content" }
-function parseTemplateFrontmatter(content) {
+function parseTemplateFrontmatter(content = '') {
     const match = content.match(/^---\n([\s\S]*?)\n---\n\n?([\s\S]*)$/);
     if (!match) return { frontmatter: {}, body: content };
     const frontmatter = {};
@@ -829,6 +831,11 @@ function parseTemplateFrontmatter(content) {
 // POST /admin/templates/list — list all templates, optionally filtered by kind
 router.post('/admin/templates/list', async (req, res) => {
     const { kind } = req.body;
+    if (kind && !TEMPLATE_KINDS.has(kind)) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Invalid kind: ' + kind }
+        });
+    }
     try {
         let query = 'SELECT id, name, kind, description, created_at, updated_at FROM templates';
         const params = [];
@@ -883,6 +890,20 @@ router.post('/admin/templates/save', async (req, res) => {
         });
     }
     const templateKind = kind || 'welcome';
+    if (!TEMPLATE_KINDS.has(templateKind)) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Invalid kind: ' + templateKind }
+        });
+    }
+    // Welcome templates must have a subject in frontmatter
+    if (templateKind === 'welcome') {
+        const { frontmatter } = parseTemplateFrontmatter(content);
+        if (!frontmatter.subject) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Welcome templates require a subject in frontmatter (e.g. ---\\nsubject: Welcome, {agent}\\n---)' }
+            });
+        }
+    }
     try {
         let result;
         if (id) {
