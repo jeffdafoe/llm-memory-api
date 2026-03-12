@@ -5,7 +5,7 @@
 //   3. Direct mail — when a real agent mails a virtual agent, auto-replies
 
 const pool = require('../db');
-const { log, logError, safeErrorMessage } = require('./logger');
+const { log, logError } = require('./logger');
 const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey, calculateCost, getModelConfigVersion } = require('./provider');
 const { broadcast } = require('./events');
@@ -760,7 +760,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Send error feedback to the caller so they know it failed
         try {
             await chatSend(virtualAgentName, [fromAgent], null,
-                `[Error] ${safeErrorMessage(err)}`, null);
+                `[Error] ${err.message}`, null);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
@@ -855,7 +855,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             const subject = mailResult.rows.length > 0 ? mailResult.rows[0].subject : 'Unknown';
             const errSubject = subject.startsWith('Re: ') ? subject : `Re: ${subject}`;
             await mailSendErr(fromAgent, virtualAgentName, errSubject,
-                `[Error] ${safeErrorMessage(err)}`);
+                `[Error] ${err.message}`);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
