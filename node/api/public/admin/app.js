@@ -6,13 +6,12 @@ createApp({
         const currentView = ref('dashboard');
 
         const configSubTab = ref('system');
+        const commSubTab = ref('mail');
 
         const viewTitles = {
             dashboard: 'Dashboard',
             agents: 'Agents',
-            discussions: 'Discussions',
-            chat: 'Chat',
-            mail: 'Mail',
+            comms: 'Communications',
             notes: 'Notes',
             config: 'Configuration',
         };
@@ -52,13 +51,13 @@ createApp({
                 apiLogModule.startApiLogPolling();
             } else if (currentView.value === 'agents') {
                 agentsModule.loadAgents();
-            } else if (currentView.value === 'discussions') {
-                discussionsModule.loadDiscussions();
-            } else if (currentView.value === 'chat') {
-                chatModule.loadChat();
-            } else if (currentView.value === 'mail') {
-                mailModule.loadMail();
-                if (agentsModule.agents.value.length === 0) agentsModule.loadAgents();
+            } else if (currentView.value === 'comms') {
+                if (commSubTab.value === 'discussions') discussionsModule.loadDiscussions();
+                else if (commSubTab.value === 'chat') chatModule.loadChat();
+                else if (commSubTab.value === 'mail') {
+                    mailModule.loadMail();
+                    if (agentsModule.agents.value.length === 0) agentsModule.loadAgents();
+                }
             } else if (currentView.value === 'notes') {
                 notesModule.loadNotes();
             }
@@ -108,6 +107,9 @@ createApp({
         // Watch view changes
         watch(currentView, () => {
             loadCurrentView();
+        });
+        watch(commSubTab, () => {
+            if (currentView.value === 'comms') loadCurrentView();
         });
 
         // Lifecycle
@@ -160,6 +162,7 @@ createApp({
             currentView,
             viewTitle,
             configSubTab,
+            commSubTab,
             // Core
             ...core,
             login,

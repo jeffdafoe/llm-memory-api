@@ -40,9 +40,7 @@
                 <ul>
                     <li><a href="#" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">Dashboard</a></li>
                     <li><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'discussions' }" @click.prevent="currentView = 'discussions'">Discussions</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'chat' }" @click.prevent="currentView = 'chat'">Chat</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'mail' }" @click.prevent="currentView = 'mail'">Mail</a></li>
+                    <li><a href="#" :class="{ active: currentView === 'comms' }" @click.prevent="currentView = 'comms'">Communications</a></li>
                     <li><a href="#" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">Notes</a></li>
                     <li><a href="#" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">Configuration</a></li>
                     <li><a href="#" @click.prevent="logout">Logout</a></li>
@@ -465,141 +463,150 @@
                     </div>
                 </div>
 
-                <!-- Discussions view -->
-                <div v-if="currentView === 'discussions'">
-                    <div class="filters">
-                        <select v-model="discussionFilter" @change="loadDiscussions">
-                            <option value="">All</option>
-                            <option value="active">Active</option>
-                            <option value="concluded">Concluded</option>
-                            <option value="timed_out">Timed Out</option>
-                            <option value="cancelled">Cancelled</option>
-                        </select>
+                <!-- Communications view (with sub-tabs) -->
+                <div v-if="currentView === 'comms'">
+                    <div class="sub-tabs">
+                        <a href="#" :class="{ active: commSubTab === 'mail' }" @click.prevent="commSubTab = 'mail'">Mail</a>
+                        <a href="#" :class="{ active: commSubTab === 'chat' }" @click.prevent="commSubTab = 'chat'">Chat</a>
+                        <a href="#" :class="{ active: commSubTab === 'discussions' }" @click.prevent="commSubTab = 'discussions'">Discussions</a>
                     </div>
-                    <div class="table-wrap">
-                        <table class="fixed-table">
-                            <colgroup>
-                                <col style="width: 3.5em;">
-                                <col style="width: 3.5em;">
-                                <col>
-                                <col class="col-agent">
-                                <col style="width: 3em;">
-                                <col class="col-time">
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th></th>
-                                    <th>ID</th>
-                                    <th>Topic</th>
-                                    <th>Created By</th>
-                                    <th>#</th>
-                                    <th class="time-cell">Created</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="d in discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
-                                    <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
-                                    <td>{{ d.id }}</td>
-                                    <td class="message-cell">{{ d.topic }}</td>
-                                    <td>{{ d.created_by }}</td>
-                                    <td>{{ d.participant_count }}</td>
-                                    <td class="time-cell">{{ formatDate(d.created_at) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
 
-                <!-- Chat view -->
-                <div v-if="currentView === 'chat'">
-                    <div class="table-wrap">
-                        <table class="fixed-table">
-                            <colgroup>
-                                <col class="col-icon">
-                                <col class="col-agent">
-                                <col class="col-agent">
-                                <col class="col-channel">
-                                <col>
-                                <col class="col-time">
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th></th>
-                                    <th>From</th>
-                                    <th>To</th>
-                                    <th>Channel</th>
-                                    <th>Message</th>
-                                    <th class="time-cell">Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="msg in chatMessages" :key="msg.id" @click="selectedMessage = msg" class="clickable">
-                                    <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
-                                    <td>{{ msg.from_agent }}</td>
-                                    <td>{{ msg.to_agent }}</td>
-                                    <td>{{ msg.channel || '—' }}</td>
-                                    <td class="message-cell">{{ msg.message }}</td>
-                                    <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- Mail sub-tab -->
+                    <div v-if="commSubTab === 'mail'">
+                        <div class="mail-toolbar">
+                            <button v-if="!mailComposing" class="inline-button" @click="startComposeMail"><i class="icon-edit"></i> Compose</button>
+                        </div>
+                        <div v-if="mailComposing" class="mail-compose">
+                            <div class="mail-compose-row">
+                                <label>To</label>
+                                <select v-model="mailTo">
+                                    <option value="" disabled>Select agent...</option>
+                                    <option v-for="a in agents" :key="a.agent" :value="a.agent">{{ a.agent }}</option>
+                                </select>
+                            </div>
+                            <div class="mail-compose-row">
+                                <label>Subject</label>
+                                <input type="text" v-model="mailSubject" placeholder="Subject">
+                            </div>
+                            <div class="mail-compose-row">
+                                <label>Body</label>
+                                <textarea v-model="mailBody" rows="4" placeholder="Message body (markdown)"></textarea>
+                            </div>
+                            <div class="mail-compose-actions">
+                                <button class="inline-button" @click="sendMail" :disabled="mailSending || !mailTo || !mailSubject || !mailBody">{{ mailSending ? 'Sending...' : 'Send' }}</button>
+                                <button class="inline-button secondary" @click="cancelComposeMail">Cancel</button>
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="fixed-table">
+                                <colgroup>
+                                    <col class="col-icon">
+                                    <col class="col-agent">
+                                    <col class="col-agent">
+                                    <col>
+                                    <col class="col-time">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Subject</th>
+                                        <th class="time-cell">Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="msg in mailMessages" :key="msg.id" @click="viewMail(msg)" class="clickable">
+                                        <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                                        <td>{{ msg.from_agent }}</td>
+                                        <td>{{ msg.to_agent }}</td>
+                                        <td class="message-cell">{{ msg.subject }}</td>
+                                        <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Mail view -->
-                <div v-if="currentView === 'mail'">
-                    <div class="mail-toolbar">
-                        <button v-if="!mailComposing" class="inline-button" @click="startComposeMail"><i class="icon-edit"></i> Compose</button>
+                    <!-- Chat sub-tab -->
+                    <div v-if="commSubTab === 'chat'">
+                        <div class="table-wrap">
+                            <table class="fixed-table">
+                                <colgroup>
+                                    <col class="col-icon">
+                                    <col class="col-agent">
+                                    <col class="col-agent">
+                                    <col class="col-channel">
+                                    <col>
+                                    <col class="col-time">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Channel</th>
+                                        <th>Message</th>
+                                        <th class="time-cell">Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="msg in chatMessages" :key="msg.id" @click="selectedMessage = msg" class="clickable">
+                                        <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                                        <td>{{ msg.from_agent }}</td>
+                                        <td>{{ msg.to_agent }}</td>
+                                        <td>{{ msg.channel || '—' }}</td>
+                                        <td class="message-cell">{{ msg.message }}</td>
+                                        <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div v-if="mailComposing" class="mail-compose">
-                        <div class="mail-compose-row">
-                            <label>To</label>
-                            <select v-model="mailTo">
-                                <option value="" disabled>Select agent...</option>
-                                <option v-for="a in agents" :key="a.agent" :value="a.agent">{{ a.agent }}</option>
+
+                    <!-- Discussions sub-tab -->
+                    <div v-if="commSubTab === 'discussions'">
+                        <div class="filters">
+                            <select v-model="discussionFilter" @change="loadDiscussions">
+                                <option value="">All</option>
+                                <option value="active">Active</option>
+                                <option value="concluded">Concluded</option>
+                                <option value="timed_out">Timed Out</option>
+                                <option value="cancelled">Cancelled</option>
                             </select>
                         </div>
-                        <div class="mail-compose-row">
-                            <label>Subject</label>
-                            <input type="text" v-model="mailSubject" placeholder="Subject">
+                        <div class="table-wrap">
+                            <table class="fixed-table">
+                                <colgroup>
+                                    <col style="width: 3.5em;">
+                                    <col style="width: 3.5em;">
+                                    <col>
+                                    <col class="col-agent">
+                                    <col style="width: 3em;">
+                                    <col class="col-time">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th>ID</th>
+                                        <th>Topic</th>
+                                        <th>Created By</th>
+                                        <th>#</th>
+                                        <th class="time-cell">Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="d in discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
+                                        <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
+                                        <td>{{ d.id }}</td>
+                                        <td class="message-cell">{{ d.topic }}</td>
+                                        <td>{{ d.created_by }}</td>
+                                        <td>{{ d.participant_count }}</td>
+                                        <td class="time-cell">{{ formatDate(d.created_at) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="mail-compose-row">
-                            <label>Body</label>
-                            <textarea v-model="mailBody" rows="4" placeholder="Message body (markdown)"></textarea>
-                        </div>
-                        <div class="mail-compose-actions">
-                            <button class="inline-button" @click="sendMail" :disabled="mailSending || !mailTo || !mailSubject || !mailBody">{{ mailSending ? 'Sending...' : 'Send' }}</button>
-                            <button class="inline-button secondary" @click="cancelComposeMail">Cancel</button>
-                        </div>
-                    </div>
-                    <div class="table-wrap">
-                        <table class="fixed-table">
-                            <colgroup>
-                                <col class="col-icon">
-                                <col class="col-agent">
-                                <col class="col-agent">
-                                <col>
-                                <col class="col-time">
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th></th>
-                                    <th>From</th>
-                                    <th>To</th>
-                                    <th>Subject</th>
-                                    <th class="time-cell">Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="msg in mailMessages" :key="msg.id" @click="viewMail(msg)" class="clickable">
-                                    <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
-                                    <td>{{ msg.from_agent }}</td>
-                                    <td>{{ msg.to_agent }}</td>
-                                    <td class="message-cell">{{ msg.subject }}</td>
-                                    <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
                     </div>
                 </div>
 
