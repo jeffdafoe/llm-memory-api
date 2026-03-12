@@ -7,7 +7,7 @@
 const pool = require('../db');
 const { log } = require('./logger');
 const { searchMemory } = require('./memory');
-const { createProvider, decryptApiKey, calculateCost } = require('./provider');
+const { createProvider, decryptApiKey, calculateCost, getModelConfigVersion } = require('./provider');
 const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
 const { saveNote } = require('./documents');
@@ -147,11 +147,29 @@ function isLearningEnabled(agent) {
 // Configuration JSON is the primary source (written by the admin UI).
 // Legacy promoted columns (cache_prompts, max_tokens, temperature) are used as
 // fallbacks for agents that haven't been edited with the new dynamic config UI.
+// Throws if the stored config version doesn't match the current model's version.
 function buildProviderConf(agent) {
     let conf = {};
     if (agent.configuration) {
         try { conf = JSON.parse(agent.configuration); } catch (e) { /* ignore */ }
     }
+
+    // Config version check — reject stale configurations
+    if (agent.provider && agent.model) {
+        const currentVersion = getModelConfigVersion(agent.provider, agent.model);
+        if (currentVersion != null) {
+            const storedVersion = conf._configVersion || null;
+            if (storedVersion == null || storedVersion !== currentVersion) {
+                const msg = 'Stale configuration for agent "' + agent.agent + '" — '
+                    + 'stored config version ' + (storedVersion || 'none')
+                    + ', current version ' + currentVersion
+                    + ' for ' + agent.provider + '/' + agent.model
+                    + '. Re-save the agent\'s settings in the admin dashboard to update.';
+                throw new Error(msg);
+            }
+        }
+    }
+
     // Legacy column fallbacks — only used if not already set in config JSON
     if (conf.cache_prompts === undefined) {
         conf.cache_prompts = agent.cache_prompts || false;

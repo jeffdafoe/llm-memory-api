@@ -100,6 +100,16 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         return model.capabilities || {};
     }
 
+    // Return configVersion for a given provider + model, or null
+    function configVersionFor(providerName, modelId) {
+        if (!providerName || !modelId) return null;
+        const provider = providerRegistry.value.find(p => p.name === providerName);
+        if (!provider) return null;
+        const model = provider.models[modelId];
+        if (!model) return null;
+        return model.configVersion || null;
+    }
+
     // Get deprecation warning for a model, or null
     function modelDeprecation(providerName, modelId) {
         if (!providerName || !modelId) return null;
@@ -280,14 +290,20 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     async function saveSettings() {
         agentSettingsSaving.value = true;
         try {
+            // Stamp config version from the model registry
+            const configCopy = Object.assign({}, agentSettingsConfig.value);
+            const version = configVersionFor(selectedAgent.value.provider, selectedAgent.value.model);
+            if (version != null) {
+                configCopy._configVersion = version;
+            }
             const body = {
                 agent: selectedAgent.value.agent,
                 learning_enabled: agentSettingsLearningEnabled.value,
-                configuration: agentSettingsConfig.value
+                configuration: configCopy
             };
             await api('/admin/agents/update', body);
             selectedAgent.value.learning_enabled = body.learning_enabled;
-            selectedAgent.value.configuration = JSON.stringify(agentSettingsConfig.value);
+            selectedAgent.value.configuration = JSON.stringify(configCopy);
             // Sync legacy columns for display consistency
             if (agentSettingsConfig.value.cache_prompts !== undefined) {
                 selectedAgent.value.cache_prompts = agentSettingsConfig.value.cache_prompts;
@@ -459,7 +475,12 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
                 body.virtual = true;
                 if (newAgentPersonality.value) body.personality = newAgentPersonality.value;
                 if (Object.keys(newAgentConfig.value).length > 0) {
-                    body.configuration = newAgentConfig.value;
+                    const configCopy = Object.assign({}, newAgentConfig.value);
+                    const version = configVersionFor(newAgentProvider.value, newAgentModel.value);
+                    if (version != null) {
+                        configCopy._configVersion = version;
+                    }
+                    body.configuration = configCopy;
                 }
             }
             if (newAgentTemplateId.value && !newAgentVirtual.value) body.welcome_template_id = newAgentTemplateId.value;
@@ -577,7 +598,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     return {
         agents, selectedAgent, agentSubTab,
         // Provider registry
-        providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, modelDeprecation,
+        providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, configVersionFor, modelDeprecation,
         parseAgentConfig, capabilityVisible, formatConfigValue,
         // Agent detail
         agentInstructions, agentInstructionsEditing, agentInstructionsEditContent, agentInstructionsSaving,

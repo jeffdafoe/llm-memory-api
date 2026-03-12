@@ -14,6 +14,7 @@ function logProvider(action, details) {
 const models = {
     'gpt-4o': {
         label: 'GPT-4o',
+        configVersion: 1,
         pricing: { input: 2.50, output: 10 },
         capabilities: {
             temperature: {
@@ -37,6 +38,7 @@ const models = {
     },
     'gpt-4o-mini': {
         label: 'GPT-4o Mini',
+        configVersion: 1,
         pricing: { input: 0.15, output: 0.60 },
         capabilities: {
             temperature: {
@@ -60,6 +62,7 @@ const models = {
     },
     'gpt-4.1': {
         label: 'GPT-4.1',
+        configVersion: 1,
         pricing: { input: 2, output: 8 },
         capabilities: {
             temperature: {
@@ -83,6 +86,7 @@ const models = {
     },
     'gpt-4.1-mini': {
         label: 'GPT-4.1 Mini',
+        configVersion: 1,
         pricing: { input: 0.40, output: 1.60 },
         capabilities: {
             temperature: {
@@ -106,6 +110,7 @@ const models = {
     },
     'gpt-4.1-nano': {
         label: 'GPT-4.1 Nano',
+        configVersion: 1,
         pricing: { input: 0.10, output: 0.40 },
         capabilities: {
             temperature: {
@@ -129,6 +134,7 @@ const models = {
     },
     'gpt-5.4': {
         label: 'GPT-5.4',
+        configVersion: 1,
         pricing: { input: 2.50, output: 15 },
         capabilities: {
             temperature: {
@@ -159,6 +165,7 @@ const models = {
     },
     'gpt-5.4-pro': {
         label: 'GPT-5.4 Pro',
+        configVersion: 1,
         pricing: { input: 30, output: 180 },
         capabilities: {
             temperature: {
@@ -189,6 +196,7 @@ const models = {
     },
     'o3': {
         label: 'o3',
+        configVersion: 1,
         pricing: { input: 10, output: 40 },
         capabilities: {
             reasoning_effort: {
@@ -210,6 +218,7 @@ const models = {
     },
     'o3-mini': {
         label: 'o3 Mini',
+        configVersion: 1,
         pricing: { input: 1.10, output: 4.40 },
         capabilities: {
             reasoning_effort: {
@@ -231,6 +240,7 @@ const models = {
     },
     'o4-mini': {
         label: 'o4 Mini',
+        configVersion: 1,
         pricing: { input: 1.10, output: 4.40 },
         capabilities: {
             reasoning_effort: {
