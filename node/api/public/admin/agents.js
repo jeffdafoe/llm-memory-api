@@ -145,6 +145,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         if (value === undefined || value === null) {
             if (cap.default !== undefined) {
                 const displayed = cap.type === 'boolean' ? (cap.default ? 'on' : 'off') : String(cap.default);
+                if (!displayed) return 'default';
                 return 'default (' + displayed + ')';
             }
             return 'default';
