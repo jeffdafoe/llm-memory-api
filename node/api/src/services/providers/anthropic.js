@@ -19,7 +19,7 @@ const models = {
             temperature: {
                 type: 'number',
                 label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative. Ignored when thinking is enabled.',
                 default: 1.0,
                 min: 0,
                 max: 1.0,
@@ -28,25 +28,17 @@ const models = {
             max_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 8192,
+                description: 'Maximum number of tokens the model will generate (thinking + response combined).',
+                default: 16384,
                 min: 1,
-                max: 32768
+                max: 128000
             },
-            extended_thinking: {
-                type: 'boolean',
-                label: 'Extended Thinking',
-                description: 'Enables the model to think step-by-step before responding. Increases quality on complex tasks but uses more tokens.',
-                default: false
-            },
-            thinking_budget_tokens: {
-                type: 'number',
-                label: 'Thinking Budget (tokens)',
-                description: 'Maximum tokens the model can use for internal reasoning when extended thinking is enabled.',
-                default: 10000,
-                min: 1024,
-                max: 128000,
-                depends_on: 'extended_thinking'
+            thinking_effort: {
+                type: 'select',
+                label: 'Thinking Effort',
+                description: 'Controls how much the model thinks before responding. Higher effort produces better results on complex tasks but costs more tokens. "off" disables thinking entirely.',
+                default: 'off',
+                options: ['off', 'low', 'medium', 'high', 'max']
             },
             cache_prompts: {
                 type: 'boolean',
@@ -64,7 +56,7 @@ const models = {
             temperature: {
                 type: 'number',
                 label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative. Ignored when thinking is enabled.',
                 default: 1.0,
                 min: 0,
                 max: 1.0,
@@ -73,25 +65,17 @@ const models = {
             max_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
+                description: 'Maximum number of tokens the model will generate (thinking + response combined).',
                 default: 8192,
                 min: 1,
-                max: 32768
+                max: 64000
             },
-            extended_thinking: {
-                type: 'boolean',
-                label: 'Extended Thinking',
-                description: 'Enables the model to think step-by-step before responding. Increases quality on complex tasks but uses more tokens.',
-                default: false
-            },
-            thinking_budget_tokens: {
-                type: 'number',
-                label: 'Thinking Budget (tokens)',
-                description: 'Maximum tokens the model can use for internal reasoning when extended thinking is enabled.',
-                default: 10000,
-                min: 1024,
-                max: 128000,
-                depends_on: 'extended_thinking'
+            thinking_effort: {
+                type: 'select',
+                label: 'Thinking Effort',
+                description: 'Controls how much the model thinks before responding. Higher effort produces better results on complex tasks but costs more tokens. "off" disables thinking entirely.',
+                default: 'off',
+                options: ['off', 'low', 'medium', 'high', 'max']
             },
             cache_prompts: {
                 type: 'boolean',
@@ -147,7 +131,7 @@ function createCall(model, apiKey, configuration) {
 
     return async function call(systemPrompt, userMessage, opts) {
         const useCache = conf.cache_prompts && opts && opts.cache && typeof systemPrompt !== 'string';
-        const useThinking = conf.extended_thinking;
+        const useThinking = conf.thinking_effort && conf.thinking_effort !== 'off';
 
         let system;
         if (useCache) {
@@ -179,12 +163,11 @@ function createCall(model, apiKey, configuration) {
             messages: [{ role: 'user', content: userMessage }]
         };
 
-        // Extended thinking requires temperature = 1 and uses a budget_tokens param.
+        // Adaptive thinking — omit temperature entirely when thinking is active.
         if (useThinking) {
-            body.temperature = 1;
             body.thinking = {
-                type: 'enabled',
-                budget_tokens: conf.thinking_budget_tokens || 10000
+                type: 'adaptive',
+                effort: conf.thinking_effort
             };
         } else if (conf.temperature !== undefined) {
             body.temperature = conf.temperature;
