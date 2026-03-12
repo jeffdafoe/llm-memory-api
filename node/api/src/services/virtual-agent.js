@@ -134,6 +134,21 @@ function logVA(action, details) {
     log('virtual-agent', action, details);
 }
 
+// Classify an error into a safe, user-facing description.
+// Full details go to error_log; callers get only the category.
+function safeErrorMessage(err) {
+    const msg = err.message || '';
+    if (msg.includes('API error 4')) return 'Provider API rejected the request (client error).';
+    if (msg.includes('API error 5')) return 'Provider API is temporarily unavailable (server error).';
+    if (msg.includes('API error')) return 'Provider API returned an error.';
+    if (msg.includes('Stale configuration')) return 'Agent configuration is outdated — re-save settings in the admin dashboard.';
+    if (msg.includes('No pricing data')) return 'Missing pricing data for this model — check provider configuration.';
+    if (msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT') || msg.includes('fetch failed')) return 'Could not reach the provider API (network error).';
+    if (msg.includes('API key')) return 'API key error — check the agent\'s API key configuration.';
+    if (msg.includes('Unsupported provider')) return 'Unsupported provider — check agent profile settings.';
+    return 'An internal error occurred while processing the request.';
+}
+
 // Check if learning extraction is enabled for an agent.
 // Global toggle must be on, and per-agent column can disable.
 function isLearningEnabled(agent) {
@@ -759,7 +774,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Send error feedback to the caller so they know it failed
         try {
             await chatSend(virtualAgentName, [fromAgent], null,
-                `[Error] Failed to generate response: ${err.message}`, null);
+                `[Error] ${safeErrorMessage(err)}`, null);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
@@ -854,7 +869,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             const subject = mailResult.rows.length > 0 ? mailResult.rows[0].subject : 'Unknown';
             const errSubject = subject.startsWith('Re: ') ? subject : `Re: ${subject}`;
             await mailSendErr(fromAgent, virtualAgentName, errSubject,
-                `[Error] Failed to generate response: ${err.message}`);
+                `[Error] ${safeErrorMessage(err)}`);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
