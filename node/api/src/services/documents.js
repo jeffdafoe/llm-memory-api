@@ -25,6 +25,14 @@ async function saveNote(namespace, title, content, slug, createdBy) {
         throw Object.assign(new Error('Could not generate slug from title'), { statusCode: 400 });
     }
 
+    // Detect redundant namespace prefix in slug (e.g. slug="shared/ideas/foo" in namespace="shared")
+    if (resolvedSlug.startsWith(namespace + '/')) {
+        throw Object.assign(new Error(
+            'Slug "' + resolvedSlug + '" starts with its own namespace "' + namespace + '/". ' +
+            'The namespace is already implicit — use "' + resolvedSlug.slice(namespace.length + 1) + '" instead.'
+        ), { statusCode: 400 });
+    }
+
     // Check if the slug already exists (including soft-deleted rows)
     // Case-insensitive lookup — slugs are preserved as-is, only matching is lowered
     const existing = await pool.query(
