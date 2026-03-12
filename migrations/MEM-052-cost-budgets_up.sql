@@ -17,24 +17,27 @@ CREATE TABLE virtual_agent_usage (
 );
 CREATE INDEX idx_va_usage_agent_date ON virtual_agent_usage (agent, created_at);
 
--- 2. Drop old token budget columns
+-- 2. Drop view that references columns we're about to remove
+DROP VIEW IF EXISTS agent_status;
+
+-- 3. Drop old token budget columns
 ALTER TABLE agents DROP COLUMN tokens_used;
 ALTER TABLE agents DROP COLUMN token_budget;
 ALTER TABLE agents DROP COLUMN tokens_reset_at;
 
--- 3. Drop old cost text column
+-- 4. Drop old cost text column
 ALTER TABLE agents DROP COLUMN cost;
 
--- 4. Add new cost budget columns (NULL = use default from config)
+-- 5. Add new cost budget columns (NULL = use default from config)
 ALTER TABLE agents ADD COLUMN cost_budget_daily NUMERIC(10, 2);
 ALTER TABLE agents ADD COLUMN cost_budget_monthly NUMERIC(10, 2);
 
--- 5. Remove old config keys, add new ones
+-- 6. Remove old config keys, add new ones
 DELETE FROM config WHERE key IN ('virtual_agent_default_token_budget', 'virtual_agent_budget_reset_days');
 INSERT INTO config (key, value, description) VALUES ('virtual_agent_default_daily_budget', '1.00', 'Default daily cost limit in dollars for virtual agents');
 INSERT INTO config (key, value, description) VALUES ('virtual_agent_default_monthly_budget', '10.00', 'Default 30-day rolling cost limit in dollars for virtual agents');
 
--- 6. Recreate agent_status view without removed columns, with new budget columns
+-- 7. Recreate agent_status view without removed columns, with new budget columns
 CREATE OR REPLACE VIEW agent_status AS
 SELECT agent,
        CASE
