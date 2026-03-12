@@ -807,14 +807,37 @@ router.post('/admin/notes/reindex-clear', (req, res) => {
     res.json({ ok: true });
 });
 
-// ---- Welcome Templates CRUD ----
+// ---- Templates CRUD ----
 
-// POST /admin/templates/list — list all welcome templates
+// Parse YAML-style frontmatter from template content.
+// Returns { frontmatter: { key: value, ... }, body: "remaining content" }
+function parseTemplateFrontmatter(content) {
+    const match = content.match(/^---\n([\s\S]*?)\n---\n\n?([\s\S]*)$/);
+    if (!match) return { frontmatter: {}, body: content };
+    const frontmatter = {};
+    for (const line of match[1].split('\n')) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+            const key = line.slice(0, colonIdx).trim();
+            const val = line.slice(colonIdx + 1).trim();
+            frontmatter[key] = val;
+        }
+    }
+    return { frontmatter, body: match[2] };
+}
+
+// POST /admin/templates/list — list all templates, optionally filtered by kind
 router.post('/admin/templates/list', async (req, res) => {
+    const { kind } = req.body;
     try {
-        const result = await pool.query(
-            'SELECT id, name, description, subject, created_at, updated_at FROM welcome_templates ORDER BY name'
-        );
+        let query = 'SELECT id, name, kind, description, created_at, updated_at FROM templates';
+        const params = [];
+        if (kind) {
+            query += ' WHERE kind = $1';
+            params.push(kind);
+        }
+        query += ' ORDER BY name';
+        const result = await pool.query(query, params);
         res.json({ templates: result.rows });
     } catch (err) {
         console.error('Admin templates list error:', err.message);
@@ -834,7 +857,7 @@ router.post('/admin/templates/read', async (req, res) => {
     }
     try {
         const result = await pool.query(
-            'SELECT * FROM welcome_templates WHERE id = $1',
+            'SELECT * FROM templates WHERE id = $1',
             [id]
         );
         if (result.rows.length === 0) {
@@ -853,19 +876,20 @@ router.post('/admin/templates/read', async (req, res) => {
 
 // POST /admin/templates/save — create or update a template
 router.post('/admin/templates/save', async (req, res) => {
-    const { id, name, description, subject, body } = req.body;
-    if (!name || !subject || !body) {
+    const { id, name, kind, description, content } = req.body;
+    if (!name || !content) {
         return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required fields: name, subject, body' }
+            error: { code: 'BAD_REQUEST', message: 'Required fields: name, content' }
         });
     }
+    const templateKind = kind || 'welcome';
     try {
         let result;
         if (id) {
             // Update existing
             result = await pool.query(
-                'UPDATE welcome_templates SET name = $1, description = $2, subject = $3, body = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
-                [name, description || null, subject, body, id]
+                'UPDATE templates SET name = $1, kind = $2, description = $3, content = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
+                [name, templateKind, description || null, content, id]
             );
             if (result.rows.length === 0) {
                 return res.status(404).json({
@@ -875,7 +899,7 @@ router.post('/admin/templates/save', async (req, res) => {
         } else {
             // Check for duplicate name
             const existing = await pool.query(
-                'SELECT id FROM welcome_templates WHERE name = $1',
+                'SELECT id FROM templates WHERE name = $1',
                 [name]
             );
             if (existing.rows.length > 0) {
@@ -884,11 +908,11 @@ router.post('/admin/templates/save', async (req, res) => {
                 });
             }
             result = await pool.query(
-                'INSERT INTO welcome_templates (name, description, subject, body) VALUES ($1, $2, $3, $4) RETURNING *',
-                [name, description || null, subject, body]
+                'INSERT INTO templates (name, kind, description, content) VALUES ($1, $2, $3, $4) RETURNING *',
+                [name, templateKind, description || null, content]
             );
         }
-        logAdmin('template_save', { template_id: result.rows[0].id, name, user_id: req.authenticatedUser.id });
+        logAdmin('template_save', { template_id: result.rows[0].id, name, kind: templateKind, user_id: req.authenticatedUser.id });
         res.json({ template: result.rows[0] });
     } catch (err) {
         console.error('Admin templates save error:', err.message);
@@ -908,7 +932,7 @@ router.post('/admin/templates/delete', async (req, res) => {
     }
     try {
         const result = await pool.query(
-            'DELETE FROM welcome_templates WHERE id = $1 RETURNING name',
+            'DELETE FROM templates WHERE id = $1 RETURNING name',
             [id]
         );
         if (result.rows.length === 0) {
@@ -988,12 +1012,13 @@ router.post('/admin/agents/create', async (req, res) => {
         let welcomeMailSent = false;
         if (welcome_template_id) {
             const tplResult = await pool.query(
-                'SELECT subject, body FROM welcome_templates WHERE id = $1',
-                [welcome_template_id]
+                'SELECT content FROM templates WHERE id = $1 AND kind = $2',
+                [welcome_template_id, 'welcome']
             );
             if (tplResult.rows.length > 0) {
-                const tpl = tplResult.rows[0];
-                const mailBody = tpl.body.replace(/\{agent\}/g, agent);
+                const rawContent = tplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const mailBody = tplBody.replace(/\{agent\}/g, agent);
 
                 // Copy template body to startup_instructions (persistent)
                 await pool.query(
@@ -1002,7 +1027,7 @@ router.post('/admin/agents/create', async (req, res) => {
                 );
 
                 // Also send as welcome mail (fallback / immediate context)
-                const mailSubject = tpl.subject.replace(/\{agent\}/g, agent);
+                const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, agent);
                 await mailSend(agent, 'system', mailSubject, mailBody);
                 welcomeMailSent = true;
             }
