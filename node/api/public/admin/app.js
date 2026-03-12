@@ -32,6 +32,7 @@ createApp({
         const mailModule = useMail(deps);
         const notesModule = useNotes(deps);
         const apiLogModule = useApiLog(deps);
+        const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
         const dashboardModule = useDashboard(deps);
 
@@ -42,13 +43,16 @@ createApp({
             }
             if (currentView.value !== 'dashboard' && currentView.value !== 'config') {
                 apiLogModule.stopApiLogPolling();
+                errorLogModule.stopErrorLogPolling();
             }
             if (currentView.value === 'dashboard') {
                 dashboardModule.loadDashboard();
                 apiLogModule.startApiLogPolling();
+                errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'config') {
                 configModule.loadConfig();
                 apiLogModule.startApiLogPolling();
+                errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'agents') {
                 agentsModule.loadAgents();
             } else if (currentView.value === 'comms') {
@@ -96,6 +100,7 @@ createApp({
                 stopPolling();
                 dashboardModule.stopLivePolling();
                 apiLogModule.stopApiLogPolling();
+                errorLogModule.stopErrorLogPolling();
             } else {
                 if (core.authenticated.value) {
                     loadCurrentView();
@@ -134,6 +139,7 @@ createApp({
             stopPolling();
             dashboardModule.stopLivePolling();
             apiLogModule.stopApiLogPolling();
+            errorLogModule.stopErrorLogPolling();
             eventsModule.disconnect();
             document.removeEventListener('visibilitychange', handleVisibility);
         });
@@ -153,6 +159,7 @@ createApp({
                 stopPolling();
                 dashboardModule.stopLivePolling();
                 apiLogModule.stopApiLogPolling();
+                errorLogModule.stopErrorLogPolling();
                 eventsModule.disconnect();
             });
         }
@@ -179,6 +186,8 @@ createApp({
             ...notesModule,
             // API Log
             ...apiLogModule,
+            // Error Log
+            ...errorLogModule,
             // Config
             ...configModule,
             // Dashboard

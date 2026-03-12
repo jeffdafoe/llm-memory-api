@@ -5,7 +5,7 @@
 //   3. Direct mail — when a real agent mails a virtual agent, auto-replies
 
 const pool = require('../db');
-const { log } = require('./logger');
+const { log, logError } = require('./logger');
 const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey, calculateCost, getModelConfigVersion } = require('./provider');
 const { broadcast } = require('./events');
@@ -662,7 +662,13 @@ async function handleVirtualAgent(payload) {
             }
 
         } catch (err) {
-            logVA('agent-error', { discussionId, agent: agent.agent, error: err.message });
+            logError('virtual-agent', 'discussion-agent-error', {
+                agent: agent.agent,
+                context: 'discussion',
+                contextId: String(discussionId),
+                message: err.message,
+                detail: err.stack
+            });
             await postError(agent.agent, discussionId, channel, err.message);
         }
     }
@@ -705,6 +711,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Rate limit check
         if (isRateLimited(agent.agent)) {
             logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
+            await chatSend(virtualAgentName, [fromAgent], null,
+                '[Error] Rate limited — too many API calls. Please wait before trying again.', null);
             return;
         }
 
@@ -712,6 +720,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         const costCheck = await isOverCostLimit(agent);
         if (costCheck.limited) {
             logVA('direct-chat-over-cost-limit', { agent: virtualAgentName, from: fromAgent, reason: costCheck.reason });
+            await chatSend(virtualAgentName, [fromAgent], null,
+                `[Error] ${costCheck.reason}`, null);
             return;
         }
 
@@ -740,7 +750,19 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
-        logVA('direct-chat-error', { agent: virtualAgentName, from: fromAgent, error: err.message });
+        logError('virtual-agent', 'direct-chat-error', {
+            agent: virtualAgentName,
+            context: 'chat',
+            message: err.message,
+            detail: err.stack
+        });
+        // Send error feedback to the caller so they know it failed
+        try {
+            await chatSend(virtualAgentName, [fromAgent], null,
+                `[Error] Failed to generate response: ${err.message}`, null);
+        } catch (sendErr) {
+            logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
+        }
     }
 }
 
@@ -776,6 +798,10 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         // Rate limit check
         if (isRateLimited(agent.agent)) {
             logVA('direct-mail-rate-limited', { agent: virtualAgentName, from: fromAgent, mailId });
+            const { mailSend: mailSendErr } = require('./mail');
+            const errSubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
+            await mailSendErr(fromAgent, virtualAgentName, errSubject,
+                '[Error] Rate limited — too many API calls. Please wait before trying again.');
             return;
         }
 
@@ -783,6 +809,10 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         const costCheck = await isOverCostLimit(agent);
         if (costCheck.limited) {
             logVA('direct-mail-over-cost-limit', { agent: virtualAgentName, from: fromAgent, mailId, reason: costCheck.reason });
+            const { mailSend: mailSendErr } = require('./mail');
+            const errSubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
+            await mailSendErr(fromAgent, virtualAgentName, errSubject,
+                `[Error] ${costCheck.reason}`);
             return;
         }
 
@@ -810,7 +840,24 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
-        logVA('direct-mail-error', { agent: virtualAgentName, from: fromAgent, mailId, error: err.message });
+        logError('virtual-agent', 'direct-mail-error', {
+            agent: virtualAgentName,
+            context: 'mail',
+            contextId: mailId,
+            message: err.message,
+            detail: err.stack
+        });
+        // Send error reply mail so the caller knows it failed
+        try {
+            const { mailSend: mailSendErr } = require('./mail');
+            const mailResult = await pool.query('SELECT subject FROM mail WHERE id = $1', [mailId]);
+            const subject = mailResult.rows.length > 0 ? mailResult.rows[0].subject : 'Unknown';
+            const errSubject = subject.startsWith('Re: ') ? subject : `Re: ${subject}`;
+            await mailSendErr(fromAgent, virtualAgentName, errSubject,
+                `[Error] Failed to generate response: ${err.message}`);
+        } catch (sendErr) {
+            logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
+        }
     }
 }
 

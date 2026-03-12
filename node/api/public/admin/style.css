@@ -791,6 +791,25 @@ h4 i {
     background: var(--pico-background-color);
 }
 
+/* Error log detail expansion */
+
+.error-detail-cell {
+    padding: 0.4em 0.8em !important;
+    background: rgba(255, 0, 0, 0.05);
+    border-top: none !important;
+}
+
+.error-detail-pre {
+    margin: 0;
+    padding: 0.4em;
+    font-size: 0.8em;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 15em;
+    overflow-y: auto;
+    color: var(--pico-muted-color);
+}
+
 /* Notes view */
 
 .notes-layout {

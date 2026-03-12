@@ -7,6 +7,7 @@ const { hash: hashToken, generateSalt } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote, moveNote } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
+const { getErrorLogEntries } = require('../services/logger');
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
@@ -188,6 +189,20 @@ router.post('/admin/api-log', async (req, res) => {
         console.error('Admin api-log error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to fetch API log' }
+        });
+    }
+});
+
+// POST /admin/error-log — recent errors from error_log table
+router.post('/admin/error-log', async (req, res) => {
+    const { since_id, limit } = req.body;
+    try {
+        const entries = await getErrorLogEntries(since_id || 0, limit || 100);
+        res.json({ entries });
+    } catch (err) {
+        console.error('Admin error-log error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to fetch error log' }
         });
     }
 });

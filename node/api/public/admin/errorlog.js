@@ -1,0 +1,92 @@
+// errorlog.js — Error log viewer with polling and filtering
+
+function useErrorLog({ api, authenticated }) {
+    const errorLogEntries = ref([]);
+    const errorLogPaused = ref(false);
+    const errorLogLastId = ref(0);
+    const errorLogFilterAgent = ref('');
+    const errorLogFilterSubsystem = ref('');
+    const errorLogExpandedId = ref(null);
+    let errorLogTimer = null;
+
+    const ERROR_LOG_POLL_MS = 3000;
+    const ERROR_LOG_MAX_ENTRIES = 500;
+
+    const errorLogAgents = computed(() => {
+        const agents = new Set();
+        for (const e of errorLogEntries.value) {
+            if (e.agent) agents.add(e.agent);
+        }
+        return [...agents].sort();
+    });
+
+    const errorLogSubsystems = computed(() => {
+        const subs = new Set();
+        for (const e of errorLogEntries.value) {
+            if (e.subsystem) subs.add(e.subsystem);
+        }
+        return [...subs].sort();
+    });
+
+    const errorLogFiltered = computed(() => {
+        let entries = errorLogEntries.value;
+        if (errorLogFilterAgent.value) {
+            entries = entries.filter(e => e.agent === errorLogFilterAgent.value);
+        }
+        if (errorLogFilterSubsystem.value) {
+            entries = entries.filter(e => e.subsystem === errorLogFilterSubsystem.value);
+        }
+        return entries;
+    });
+
+    function toggleErrorDetail(id) {
+        if (errorLogExpandedId.value === id) {
+            errorLogExpandedId.value = null;
+        } else {
+            errorLogExpandedId.value = id;
+        }
+    }
+
+    async function pollErrorLog() {
+        if (errorLogPaused.value) return;
+        try {
+            const data = await api('/admin/error-log', { since_id: errorLogLastId.value, limit: 200 });
+            if (data.entries.length > 0) {
+                errorLogEntries.value.unshift(...data.entries.reverse());
+                if (errorLogEntries.value.length > ERROR_LOG_MAX_ENTRIES) {
+                    errorLogEntries.value.length = ERROR_LOG_MAX_ENTRIES;
+                }
+                errorLogLastId.value = data.entries[0].id;
+            }
+        } catch (err) {
+            console.error('Failed to poll error log:', err);
+        }
+    }
+
+    function startErrorLogPolling() {
+        if (errorLogTimer) return;
+        pollErrorLog();
+        errorLogTimer = setInterval(() => {
+            if (authenticated.value) {
+                pollErrorLog();
+            }
+        }, ERROR_LOG_POLL_MS);
+    }
+
+    function stopErrorLogPolling() {
+        if (errorLogTimer) {
+            clearInterval(errorLogTimer);
+            errorLogTimer = null;
+        }
+    }
+
+    return {
+        errorLogEntries, errorLogPaused, errorLogLastId,
+        errorLogFilterAgent, errorLogFilterSubsystem,
+        errorLogAgents, errorLogSubsystems, errorLogFiltered,
+        errorLogExpandedId, toggleErrorDetail,
+        pollErrorLog, startErrorLogPolling, stopErrorLogPolling
+    };
+}
+
+window.useErrorLog = useErrorLog;
