@@ -9,6 +9,7 @@ const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/ser
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const mcpAuth = require('../middleware/mcp-auth');
 const pool = require('../db');
+const { logError } = require('../services/logger');
 
 // Services
 const { searchMemory, ingestContent, deleteMemory } = require('../services/memory');
@@ -1070,6 +1071,7 @@ async function createMcpServer(req) {
             const result = await handler(args || {}, agent, defaultNamespace);
             return { content: [{ type: 'text', text: result }] };
         } catch (err) {
+            logError('mcp', `tool-${name}`, { agent, message: err.message, detail: err.stack });
             return {
                 content: [{ type: 'text', text: `Error: ${err.message}` }],
                 isError: true
@@ -1145,7 +1147,7 @@ router.post('/mcp', mcpAuth, async (req, res) => {
             await session.transport.handleRequest(req, res, req.body);
             return;
         } catch (err) {
-            console.error('MCP session rehydration error:', err.message);
+            logError('mcp', 'session-rehydrate', { agent: req.mcpAgent, message: err.message, detail: err.stack });
             return res.status(500).json({
                 jsonrpc: '2.0',
                 error: { code: -32000, message: 'Session rehydration failed' },
@@ -1180,7 +1182,7 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         pool.query(
             'INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)',
             [newSessionId, req.mcpAgent, TOOLS_HASH]
-        ).catch(err => console.error('MCP session persist error:', err.message));
+        ).catch(err => logError('mcp', 'session-persist', { agent: req.mcpAgent, message: err.message, detail: err.stack }));
 
         // Activate the activity spinner on new MCP session.
         // Agents that don't explicitly call activity_start (e.g. ChatGPT, third-party clients)
@@ -1213,7 +1215,7 @@ router.get('/mcp', mcpAuth, async (req, res) => {
                 ON CONFLICT (session_id) DO UPDATE SET tools_hash = $3
             `, [sessionId, req.mcpAgent, TOOLS_HASH]).catch(() => {});
         } catch (err) {
-            console.error('MCP session rehydration error:', err.message);
+            logError('mcp', 'session-rehydrate-sse', { agent: req.mcpAgent, message: err.message, detail: err.stack });
             return res.status(500).json({
                 jsonrpc: '2.0',
                 error: { code: -32000, message: 'Session rehydration failed' },

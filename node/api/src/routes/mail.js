@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const pool = require('../db');
-const { log } = require('../services/logger');
+const { log, logError } = require('../services/logger');
 
 const router = Router();
 
@@ -48,7 +48,7 @@ router.post('/mail/send', async (req, res) => {
             sent_at: result.rows[0].sent_at
         });
     } catch (err) {
-        console.error('Mail send error:', err.message);
+        logError('mail', 'send', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -82,7 +82,7 @@ router.post('/mail/receive', async (req, res) => {
 
         res.json({ messages: result.rows });
     } catch (err) {
-        console.error('Mail receive error:', err.message);
+        logError('mail', 'receive', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -144,7 +144,7 @@ router.post('/mail/edit', async (req, res) => {
 
         res.json(result.rows[0]);
     } catch (err) {
-        console.error('Mail edit error:', err.message);
+        logError('mail', 'edit', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -185,7 +185,7 @@ router.post('/mail/unsend', async (req, res) => {
 
         res.json(result.rows[0]);
     } catch (err) {
-        console.error('Mail unsend error:', err.message);
+        logError('mail', 'unsend', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -226,7 +226,7 @@ router.post('/mail/ack', async (req, res) => {
             acked_ids: result.rows.map(r => r.id)
         });
     } catch (err) {
-        console.error('Mail ack error:', err.message);
+        logError('mail', 'ack', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

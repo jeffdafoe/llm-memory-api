@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus } = require('../services/memory');
+const { logError } = require('../services/logger');
 
 const router = Router();
 
@@ -17,7 +18,7 @@ router.post('/memory/ingest', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Memory ingest error:', err.message);
+        if (status >= 500) logError('memory', 'ingest', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
         });
@@ -31,7 +32,7 @@ router.post('/memory/ingest/status', async (req, res) => {
         const result = await ingestStatus(namespace);
         res.json(result);
     } catch (err) {
-        console.error('Memory ingest/status error:', err.message);
+        logError('memory', 'ingest-status', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -51,7 +52,7 @@ router.post('/memory/search', async (req, res) => {
         const result = await searchMemory(query, namespace, limit);
         res.json(result);
     } catch (err) {
-        console.error('Memory search error:', err.message);
+        logError('memory', 'search', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -71,7 +72,7 @@ router.post('/memory/cleanup', async (req, res) => {
         const result = await cleanupMemory(namespace, valid_source_files);
         res.json(result);
     } catch (err) {
-        console.error('Memory cleanup error:', err.message);
+        logError('memory', 'cleanup', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -91,7 +92,7 @@ router.post('/memory/delete', async (req, res) => {
         const result = await deleteMemory(namespace, source_file);
         res.json(result);
     } catch (err) {
-        console.error('Memory delete error:', err.message);
+        logError('memory', 'delete', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

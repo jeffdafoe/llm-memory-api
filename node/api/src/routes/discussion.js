@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const pool = require('../db');
-const { log } = require('../services/logger');
+const { log, logError } = require('../services/logger');
 const config = require('../services/config');
 const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent } = require('../services/system-notify');
 const discussionService = require('../services/discussion');
@@ -214,7 +214,7 @@ router.post('/discussion/create', async (req, res) => {
             client.release();
         }
     } catch (err) {
-        console.error('Discussion create error:', err.message);
+        logError('discussion', 'create', { agent: req.authenticatedAgent || req.body.created_by, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -252,7 +252,7 @@ router.post('/discussion/list', async (req, res) => {
 
         res.json({ discussions: result.rows });
     } catch (err) {
-        console.error('Discussion list error:', err.message);
+        logError('discussion', 'list', { message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -319,7 +319,7 @@ router.post('/discussion/status', async (req, res) => {
             votes: updatedVotes.rows
         });
     } catch (err) {
-        console.error('Discussion status error:', err.message);
+        logError('discussion', 'status', { message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -394,7 +394,7 @@ router.post('/discussion/pending', async (req, res) => {
             open_votes: openVotes.rows
         });
     } catch (err) {
-        console.error('Discussion pending error:', err.message);
+        logError('discussion', 'pending', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -417,7 +417,7 @@ router.post('/discussion/conclude', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Discussion conclude error:', err.message);
+        if (status >= 500) logError('discussion', 'conclude', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: err.code || 'INTERNAL_ERROR', message: err.message }
         });
@@ -447,6 +447,7 @@ router.post('/discussion/cancel', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
+        if (status >= 500) logError('discussion', 'cancel', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: err.code || 'INTERNAL_ERROR', message: err.message }
         });
@@ -531,7 +532,7 @@ router.post('/discussion/join', async (req, res) => {
 
         res.json({ discussion_id, agent, status: 'joined', discussion_status: current.rows[0].status });
     } catch (err) {
-        console.error('Discussion join error:', err.message);
+        logError('discussion', 'join', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -631,7 +632,7 @@ router.post('/discussion/defer', async (req, res) => {
             timeout_at: newTimeoutAt
         });
     } catch (err) {
-        console.error('Discussion defer error:', err.message);
+        logError('discussion', 'defer', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -682,7 +683,7 @@ router.post('/discussion/leave', async (req, res) => {
 
         res.json({ discussion_id, agent, status: 'left' });
     } catch (err) {
-        console.error('Discussion leave error:', err.message);
+        logError('discussion', 'leave', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -763,7 +764,7 @@ router.post('/discussion/vote/propose', async (req, res) => {
             }
         });
     } catch (err) {
-        console.error('Discussion vote propose error:', err.message);
+        logError('discussion', 'vote-propose', { agent: req.authenticatedAgent || req.body.proposed_by, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });
@@ -786,7 +787,7 @@ router.post('/discussion/vote/cast', async (req, res) => {
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
-        console.error('Discussion vote cast error:', err.message);
+        if (status >= 500) logError('discussion', 'vote-cast', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(status).json({
             error: { code: err.code || 'INTERNAL_ERROR', message: err.message }
         });
@@ -835,7 +836,7 @@ router.post('/discussion/vote/status', async (req, res) => {
             ballots: ballots.rows
         });
     } catch (err) {
-        console.error('Discussion vote status error:', err.message);
+        logError('discussion', 'vote-status', { message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

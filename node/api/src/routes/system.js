@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { handleError } = require('../services/error-handler');
-const { log } = require('../services/logger');
+const { log, logError } = require('../services/logger');
 
 const router = Router();
 
@@ -47,7 +47,7 @@ router.post('/system/error/report', async (req, res) => {
             reported_at: result.reported_at,
         });
     } catch (err) {
-        console.error('System error report failed:', err.message);
+        logError('system', 'error-report', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: err.message }
         });

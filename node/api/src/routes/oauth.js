@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
 const { hash } = require('../services/hashing');
+const { logError } = require('../services/logger');
 
 const router = Router();
 
@@ -192,7 +193,7 @@ async function handleClientCredentials(req, res) {
             expires_in: TOKEN_TTL_SECONDS
         });
     } catch (err) {
-        console.error('OAuth client_credentials error:', err.message);
+        logError('oauth', 'client-credentials', { agent: req.body.client_id, message: err.message, detail: err.stack });
         res.status(500).json({
             error: 'server_error',
             error_description: 'Token generation failed'
@@ -280,7 +281,7 @@ async function handleAuthorizationCode(req, res) {
             expires_in: TOKEN_TTL_SECONDS
         });
     } catch (err) {
-        console.error('OAuth authorization_code error:', err.message);
+        logError('oauth', 'authorization-code', { agent: req.body.client_id, message: err.message, detail: err.stack });
         res.status(500).json({
             error: 'server_error',
             error_description: 'Token generation failed'
