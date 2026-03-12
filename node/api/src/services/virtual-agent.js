@@ -5,7 +5,7 @@
 //   3. Direct mail — when a real agent mails a virtual agent, auto-replies
 
 const pool = require('../db');
-const { log, logError } = require('./logger');
+const { log, logError, safeErrorMessage } = require('./logger');
 const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey, calculateCost, getModelConfigVersion } = require('./provider');
 const { broadcast } = require('./events');
@@ -134,20 +134,6 @@ function logVA(action, details) {
     log('virtual-agent', action, details);
 }
 
-// Classify an error into a safe, user-facing description.
-// Full details go to error_log; callers get only the category.
-function safeErrorMessage(err) {
-    const msg = err.message || '';
-    if (msg.includes('API error 4')) return 'Provider API rejected the request (client error).';
-    if (msg.includes('API error 5')) return 'Provider API is temporarily unavailable (server error).';
-    if (msg.includes('API error')) return 'Provider API returned an error.';
-    if (msg.includes('Stale configuration')) return 'Agent configuration is outdated — re-save settings in the admin dashboard.';
-    if (msg.includes('No pricing data')) return 'Missing pricing data for this model — check provider configuration.';
-    if (msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT') || msg.includes('fetch failed')) return 'Could not reach the provider API (network error).';
-    if (msg.includes('API key')) return 'API key error — check the agent\'s API key configuration.';
-    if (msg.includes('Unsupported provider')) return 'Unsupported provider — check agent profile settings.';
-    return 'An internal error occurred while processing the request.';
-}
 
 // Check if learning extraction is enabled for an agent.
 // Global toggle must be on, and per-agent column can disable.
