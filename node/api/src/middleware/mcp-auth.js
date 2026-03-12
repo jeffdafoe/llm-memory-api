@@ -12,16 +12,12 @@ const { hash } = require('../services/hashing');
 const { broadcast } = require('../services/events');
 
 // Opportunistic heartbeat — update last_seen on every authenticated MCP request.
-// Also sets active_since unconditionally, so any MCP tool call keeps the activity
-// spinner alive (even after a staleness timeout clears it).
-// NOTE: We tried a conditional version (only refresh if already set) but it meant
-// agents that timed out never got the spinner back without an explicit activity_start.
-// This unconditional version may cause false spinners if something other than real
-// agent sessions hits the MCP endpoint — if that happens, revert to the conditional
-// version (AND active_since IS NOT NULL) and find another fix.
+// Also refreshes active_since if already set, so the activity spinner stays alive
+// as long as the agent is making tool calls (without requiring explicit re-calls).
+// Re-broadcasts the agent_activity event so the admin UI keeps the spinner visible.
 function heartbeat(agent) {
     pool.query('UPDATE agents SET last_seen = NOW() WHERE agent = $1', [agent]).catch(() => {});
-    pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent])
+    pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1 AND active_since IS NOT NULL', [agent])
         .then((result) => {
             if (result.rowCount > 0) {
                 broadcast('agent_activity', { agent, active: true });
