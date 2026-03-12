@@ -26,7 +26,7 @@ const models = {
                 max: 2.0,
                 step: 0.1
             },
-            max_tokens: {
+            max_completion_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
                 description: 'Maximum number of tokens the model will generate in its response.',
@@ -50,7 +50,7 @@ const models = {
                 max: 2.0,
                 step: 0.1
             },
-            max_tokens: {
+            max_completion_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
                 description: 'Maximum number of tokens the model will generate in its response.',
@@ -74,7 +74,7 @@ const models = {
                 max: 2.0,
                 step: 0.1
             },
-            max_tokens: {
+            max_completion_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
                 description: 'Maximum number of tokens the model will generate in its response.',
@@ -98,7 +98,7 @@ const models = {
                 max: 2.0,
                 step: 0.1
             },
-            max_tokens: {
+            max_completion_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
                 description: 'Maximum number of tokens the model will generate in its response.',
@@ -122,7 +122,7 @@ const models = {
                 max: 2.0,
                 step: 0.1
             },
-            max_tokens: {
+            max_completion_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
                 description: 'Maximum number of tokens the model will generate in its response.',
@@ -153,7 +153,7 @@ const models = {
                 default: 'none',
                 options: ['none', 'low', 'medium', 'high', 'xhigh']
             },
-            max_tokens: {
+            max_completion_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
                 description: 'Maximum number of tokens the model will generate in its response.',
@@ -184,7 +184,7 @@ const models = {
                 default: 'none',
                 options: ['none', 'low', 'medium', 'high', 'xhigh']
             },
-            max_tokens: {
+            max_completion_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
                 description: 'Maximum number of tokens the model will generate in its response.',
@@ -295,20 +295,18 @@ function createCall(model, apiKey, configuration) {
             ]
         };
 
-        // O-series reasoning models: use max_completion_tokens, reasoning_effort, no temperature.
-        // Standard models: use max_tokens, temperature.
-        // GPT-5.4+: supports both temperature and reasoning_effort with max_tokens.
+        // All OpenAI models now use max_completion_tokens (max_tokens is deprecated).
+        // Accept either key from stored config for backwards compatibility.
+        const maxTokens = conf.max_completion_tokens || conf.max_tokens;
+        if (maxTokens) {
+            body.max_completion_tokens = maxTokens;
+        }
+
         if (reasoning) {
-            if (conf.max_completion_tokens) {
-                body.max_completion_tokens = conf.max_completion_tokens;
-            }
             if (conf.reasoning_effort) {
                 body.reasoning_effort = conf.reasoning_effort;
             }
         } else {
-            if (conf.max_tokens) {
-                body.max_tokens = conf.max_tokens;
-            }
             if (conf.temperature !== undefined) {
                 body.temperature = conf.temperature;
             }
