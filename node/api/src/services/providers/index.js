@@ -126,6 +126,16 @@ function formatPricing(providerName, modelId) {
     return parts.join(' / ') + ' per 1M tokens';
 }
 
+// Get the configVersion for a specific provider + model.
+// Returns the version integer, or null if provider/model not found.
+function getModelConfigVersion(providerName, modelId) {
+    const mod = resolveProvider(providerName);
+    if (!mod) return null;
+    const model = mod.models[modelId];
+    if (!model) return null;
+    return model.configVersion || null;
+}
+
 // Get capabilities for a specific provider + model.
 // Returns the capabilities object, or null if not found.
 function getModelCapabilities(providerName, modelId) {
@@ -138,6 +148,7 @@ function getModelCapabilities(providerName, modelId) {
 
 // Build default configuration from a model's capability defaults.
 // Used when creating a new virtual agent to seed the configuration JSON.
+// Includes _configVersion so the stored config is immediately valid.
 function getDefaultConfiguration(providerName, modelId) {
     const capabilities = getModelCapabilities(providerName, modelId);
     if (!capabilities) return {};
@@ -148,6 +159,12 @@ function getDefaultConfiguration(providerName, modelId) {
             defaults[key] = cap.default;
         }
     }
+
+    const version = getModelConfigVersion(providerName, modelId);
+    if (version != null) {
+        defaults._configVersion = version;
+    }
+
     return defaults;
 }
 
@@ -193,6 +210,7 @@ module.exports = {
     encryptApiKey,
     decryptApiKey,
     getRegistry,
+    getModelConfigVersion,
     getModelCapabilities,
     getDefaultConfiguration,
     getModelPricing,
