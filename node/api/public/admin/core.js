@@ -190,6 +190,13 @@ function useCore() {
     };
     const fallbackColors = ['#8e6bbf', '#4caf88', '#c9a83e', '#d46a8e'];
 
+    // Strip common prefixes from agent names for display.
+    // Full name available via title attribute on hover.
+    function shortAgentName(name) {
+        if (!name) return '';
+        return name.replace(/^llm-memory-api-/, '');
+    }
+
     function agentColor(agent) {
         if (agentColors[agent]) return agentColors[agent];
         let hash = 0;
@@ -214,7 +221,7 @@ function useCore() {
         api, showConfirm, executeConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatTime,
-        statusIcon, outcomeIcon, agentColor, voteQuestion
+        statusIcon, outcomeIcon, agentColor, shortAgentName, voteQuestion
     };
 }
 

@@ -76,4 +76,19 @@ async function getErrorLogEntries(sinceId, limit) {
     return result.rows.reverse();
 }
 
-module.exports = { log, logError, getErrorLogEntries };
+// Classify an error into a safe, caller-facing description.
+// Full details go to error_log; callers get only the category.
+function safeErrorMessage(err) {
+    const msg = (err && err.message) || '';
+    if (msg.includes('API error 4')) return 'Provider API rejected the request (client error).';
+    if (msg.includes('API error 5')) return 'Provider API is temporarily unavailable (server error).';
+    if (msg.includes('API error')) return 'Provider API returned an error.';
+    if (msg.includes('Stale configuration')) return 'Agent configuration is outdated — re-save settings in the admin dashboard.';
+    if (msg.includes('No pricing data')) return 'Missing pricing data for this model — check provider configuration.';
+    if (msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT') || msg.includes('fetch failed')) return 'Could not reach the provider API (network error).';
+    if (msg.includes('API key')) return 'API key error — check the agent\'s API key configuration.';
+    if (msg.includes('Unsupported provider')) return 'Unsupported provider — check agent profile settings.';
+    return 'An internal error occurred while processing the request.';
+}
+
+module.exports = { log, logError, getErrorLogEntries, safeErrorMessage };

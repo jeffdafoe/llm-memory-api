@@ -61,8 +61,8 @@
                         <h4><i class="icon-radio"></i> Live Discussion #{{ live.discussion.id }}</h4>
                         <p class="live-topic">{{ live.discussion.topic }}</p>
                         <p class="live-meta">
-                            <strong>Created by:</strong> <span :style="{ color: agentColor(live.discussion.created_by) }">{{ live.discussion.created_by }}</span>
-                            · <strong>Participants:</strong> <template v-for="(p, i) in live.participants" :key="p.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(p.agent) }">{{ p.agent }}</span></template>
+                            <strong>Created by:</strong> <span :style="{ color: agentColor(live.discussion.created_by) }" :title="live.discussion.created_by">{{ shortAgentName(live.discussion.created_by) }}</span>
+                            · <strong>Participants:</strong> <template v-for="(p, i) in live.participants" :key="p.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(p.agent) }" :title="p.agent">{{ shortAgentName(p.agent) }}</span></template>
                             · <strong>Started:</strong> {{ formatDate(live.discussion.created_at) }}
                         </p>
                         <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
@@ -107,7 +107,7 @@
                                                 <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
                                                 <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
                                             </td>
-                                            <td class="nowrap">{{ agent.agent }}</td>
+                                            <td class="nowrap" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
                                             <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
                                             <td class="time-cell nowrap">{{ formatDate(agent.last_seen) }}</td>
                                         </tr>
@@ -139,7 +139,7 @@
                                     </thead>
                                     <tbody>
                                         <tr v-for="entry in apiLogEntries" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
-                                            <td class="nowrap">{{ entry.agent || '' }}</td>
+                                            <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                                             <td class="message-cell log-mono">{{ entry.path }}</td>
                                             <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
                                             <td class="log-mono time-cell">{{ formatBytes(entry.response_length) }}</td>
@@ -375,7 +375,7 @@
                                             <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
                                             <i v-else-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
                                         </td>
-                                        <td class="nowrap">{{ agent.agent }}</td>
+                                        <td class="nowrap" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
                                         <td>
                                             <span :class="'badge badge-' + agent.status">{{ agent.status }}</span>
                                         </td>
@@ -698,7 +698,7 @@
                             </thead>
                             <tbody>
                                 <tr v-for="entry in apiLogFiltered" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
-                                    <td class="nowrap">{{ entry.agent || '' }}</td>
+                                    <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                                     <td class="log-mono">{{ entry.method }}</td>
                                     <td class="message-cell log-mono">{{ entry.path }}</td>
                                     <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '...' }}</td>
@@ -753,7 +753,7 @@
                             <tbody>
                                 <template v-for="entry in errorLogFiltered" :key="entry.id">
                                     <tr class="status-row-server" style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
-                                        <td class="nowrap">{{ entry.agent || '' }}</td>
+                                        <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                                         <td class="log-mono nowrap">{{ entry.subsystem }}</td>
                                         <td class="log-mono nowrap">{{ entry.action }}</td>
                                         <td class="message-cell log-mono">{{ entry.error_message }}</td>
@@ -872,8 +872,8 @@
                                 <div>
                                     <strong>Participants:</strong>
                                     <ul>
-                                        <li v-for="p in selectedDiscussion.participants" :key="p.agent">
-                                            {{ p.agent }} ({{ p.status }})
+                                        <li v-for="p in selectedDiscussion.participants" :key="p.agent" :title="p.agent">
+                                            {{ shortAgentName(p.agent) }} ({{ p.status }})
                                         </li>
                                     </ul>
                                 </div>
@@ -886,8 +886,8 @@
                                     <div v-if="v.ballots && v.ballots[0]">
                                         <strong>Ballots:</strong>
                                         <ul>
-                                            <li v-for="b in v.ballots" :key="b.agent">
-                                                {{ b.agent }}: choice {{ b.choice }}
+                                            <li v-for="b in v.ballots" :key="b.agent" :title="b.agent">
+                                                {{ shortAgentName(b.agent) }}: choice {{ b.choice }}
                                                 <span v-if="b.reason"> — {{ b.reason }}</span>
                                             </li>
                                         </ul>
@@ -966,7 +966,7 @@
                                 <button class="inline-button secondary" @click="agentNewPassphrase = null">Dismiss</button>
                             </div>
 
-                            <h3>{{ selectedAgent.agent }} <i v-if="selectedAgent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i></h3>
+                            <h3>{{ shortAgentName(selectedAgent.agent) }} <i v-if="selectedAgent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i><span v-if="shortAgentName(selectedAgent.agent) !== selectedAgent.agent" class="muted" style="font-size: 0.7em; margin-left: 0.5em;">{{ selectedAgent.agent }}</span></h3>
                             <p>
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
                                 <span v-if="!agentProfileEditing && (selectedAgent.provider || selectedAgent.model)" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
