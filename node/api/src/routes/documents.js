@@ -47,6 +47,7 @@ router.post('/documents/list', async (req, res) => {
     }
 
     try {
+        validateNamespace(namespace);
         const actor = getActor(req);
         await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
         const result = await listNotes(namespace, limit, offset, prefix);
@@ -70,6 +71,7 @@ router.post('/documents/read', async (req, res) => {
     }
 
     try {
+        validateNamespace(namespace);
         const actor = getActor(req);
         await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
         const result = await readNote(namespace, slug);
@@ -195,9 +197,10 @@ router.post('/documents/grep', async (req, res) => {
 
     try {
         const actor = getActor(req);
-        // For wildcard searches, post-filter results to readable namespaces.
-        // For specific namespace, check read access directly.
+        // For specific namespace, validate and check read access directly.
+        // For wildcard searches, push namespace filtering into the query.
         if (namespace && namespace !== '*') {
+            validateNamespace(namespace);
             await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
         }
         // For wildcard searches, push namespace filtering into the query

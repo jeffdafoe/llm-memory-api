@@ -63,6 +63,7 @@ router.post('/memory/search', async (req, res) => {
     try {
         const actor = getActor(req);
         if (namespace && namespace !== '*') {
+            validateNamespace(namespace);
             await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
         }
         // For wildcard searches, push namespace filtering into the query

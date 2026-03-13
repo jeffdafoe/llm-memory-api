@@ -650,7 +650,8 @@ router.post('/admin/notes/list', async (req, res) => {
         });
     }
     try {
-        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
+        validateNamespace(namespace);
+        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
         const data = await listNotes(namespace, limit || 200, offset, prefix);
         res.json(data);
     } catch (err) {
@@ -671,7 +672,8 @@ router.post('/admin/notes/read', async (req, res) => {
         });
     }
     try {
-        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
+        validateNamespace(namespace);
+        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
         const note = await readNote(namespace, slug);
         res.json({ note });
     } catch (err) {
@@ -799,6 +801,7 @@ router.post('/admin/notes/search', async (req, res) => {
     try {
         const targetNs = namespace || '*';
         if (targetNs !== '*') {
+            validateNamespace(targetNs);
             await requireAccess(req.actorId, req.authenticatedUser.username, targetNs, 'read');
         }
         // For wildcard searches, push namespace filtering into the query

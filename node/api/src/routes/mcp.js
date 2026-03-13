@@ -581,6 +581,7 @@ const TOOL_HANDLERS = {
     async search(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
         if (targetNs && targetNs !== '*') {
+            validateNamespace(targetNs);
             await requireAccess(actorId, agent, targetNs, 'read');
         }
         // For wildcard searches, push namespace filtering into the query
@@ -626,6 +627,7 @@ const TOOL_HANDLERS = {
 
     async list_notes(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
+        validateNamespace(targetNs);
         await requireAccess(actorId, agent, targetNs, 'read');
         const data = await listNotes(targetNs, args.limit, args.offset, args.prefix);
         if (data.notes.length === 0) {
@@ -636,6 +638,7 @@ const TOOL_HANDLERS = {
 
     async read_note(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
+        validateNamespace(targetNs);
         await requireAccess(actorId, agent, targetNs, 'read');
         const doc = await readNote(targetNs, args.slug);
         return `# ${doc.title}\n\n${doc.content}`;
@@ -682,6 +685,7 @@ const TOOL_HANDLERS = {
     async grep(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
         if (targetNs && targetNs !== '*') {
+            validateNamespace(targetNs);
             await requireAccess(actorId, agent, targetNs, 'read');
         }
         // For wildcard searches, push namespace filtering into the query
