@@ -858,8 +858,7 @@
                             <div v-if="notesEditing" class="notes-editor">
                                 <textarea v-model="notesEditContent" class="notes-edit-textarea"></textarea>
                             </div>
-                            <div v-else class="notes-body">
-                                <pre class="notes-pre">{{ selectedNote.content }}</pre>
+                            <div v-else class="notes-body markdown-rendered" v-html="renderMarkdown(selectedNote.content)">
                             </div>
                         </div>
                     </div>
@@ -1456,6 +1455,8 @@
     </div>
 
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
     <script src="core.js"></script>
     <script src="events.js"></script>
     <script src="agents.js"></script>
