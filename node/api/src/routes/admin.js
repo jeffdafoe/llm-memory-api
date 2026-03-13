@@ -1509,7 +1509,11 @@ function parseActorId(raw, res) {
 router.post('/admin/actors/list', async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, type, created_at FROM actors ORDER BY type, name'
+            `SELECT a.id, a.name, a.created_at,
+                    CASE WHEN ac.actor_id IS NOT NULL THEN 'agent' ELSE 'user' END AS type
+             FROM actors a
+             LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
+             ORDER BY type, a.name`
         );
         res.json({ actors: result.rows });
     } catch (err) {
