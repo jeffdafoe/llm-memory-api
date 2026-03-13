@@ -1389,4 +1389,113 @@ router.post('/admin/agents/usage', async (req, res) => {
     }
 });
 
+// ─── Namespace Permissions ───────────────────────────────────────────────────
+
+// POST /admin/permissions/list — list all namespace permissions (explicit + implicit)
+router.post('/admin/permissions/list', async (req, res) => {
+    try {
+        // Explicit permissions from DB
+        const explicit = await pool.query(
+            `SELECT np.id, a.name AS agent, a.type AS actor_type, np.namespace, np.can_read, np.can_write, np.can_delete
+             FROM namespace_permissions np
+             JOIN actors a ON a.id = np.actor_id
+             ORDER BY np.namespace, a.name`
+        );
+
+        // Implicit own-namespace permissions for agents
+        const agents = await pool.query(
+            `SELECT a.name FROM agents ag JOIN actors a ON a.id = ag.actor_id`
+        );
+        const implicit = agents.rows.map(a => ({
+            id: null,
+            agent: a.name,
+            namespace: a.name,
+            can_read: true,
+            can_write: true,
+            can_delete: true,
+            implicit: true
+        }));
+
+        // Filter out implicit rows that have explicit overrides
+        const explicitKeys = new Set(explicit.rows.map(r => `${r.agent}:${r.namespace}`));
+        const implicitFiltered = implicit.filter(r => !explicitKeys.has(`${r.agent}:${r.namespace}`));
+
+        res.json({
+            permissions: [
+                ...explicit.rows.map(r => ({ ...r, implicit: false })),
+                ...implicitFiltered
+            ]
+        });
+    } catch (err) {
+        console.error('Admin permissions list error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to list permissions' } });
+    }
+});
+
+// POST /admin/permissions/upsert — create or update a permission row
+router.post('/admin/permissions/upsert', async (req, res) => {
+    const { agent, namespace, can_read, can_write, can_delete } = req.body;
+    if (!agent || !namespace) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: agent, namespace' }
+        });
+    }
+    try {
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: `Agent not found: ${agent}` } });
+        }
+
+        // Check if row exists
+        const existing = await pool.query(
+            'SELECT id FROM namespace_permissions WHERE actor_id = $1 AND namespace = $2',
+            [actor.id, namespace]
+        );
+
+        if (existing.rows.length > 0) {
+            await pool.query(
+                `UPDATE namespace_permissions SET can_read = $1, can_write = $2, can_delete = $3
+                 WHERE actor_id = $4 AND namespace = $5`,
+                [!!can_read, !!can_write, !!can_delete, actor.id, namespace]
+            );
+        } else {
+            await pool.query(
+                `INSERT INTO namespace_permissions (actor_id, namespace, can_read, can_write, can_delete)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [actor.id, namespace, !!can_read, !!can_write, !!can_delete]
+            );
+        }
+
+        logAdmin('permission_upsert', { agent, namespace, can_read: !!can_read, can_write: !!can_write, can_delete: !!can_delete });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Admin permissions upsert error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save permission' } });
+    }
+});
+
+// POST /admin/permissions/delete — remove a permission row
+router.post('/admin/permissions/delete', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
+        });
+    }
+    try {
+        const result = await pool.query(
+            'DELETE FROM namespace_permissions WHERE id = $1 RETURNING id',
+            [id]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Permission not found' } });
+        }
+        logAdmin('permission_delete', { id });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Admin permissions delete error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to delete permission' } });
+    }
+});
+
 module.exports = router;
