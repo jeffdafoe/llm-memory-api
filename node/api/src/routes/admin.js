@@ -1239,65 +1239,68 @@ function parseCostBudget(value, fieldName) {
     return parsed;
 }
 
-// ---- Agent Creation ----
+// ---- Actor Creation ----
 
-// POST /admin/agents/create — create an agent (active immediately) with optional welcome mail
-router.post('/admin/agents/create', async (req, res) => {
-    const { agent, provider, model, welcome_template_id, virtual: isVirtual, personality,
+// POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
+router.post('/admin/actors/create', async (req, res) => {
+    const { name, provider, model, welcome_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
-            cache_prompts, learning_enabled, max_tokens, temperature, configuration } = req.body;
+            cache_prompts, learning_enabled, max_tokens, temperature, configuration,
+            ui_access, password } = req.body;
 
-    if (!agent) {
+    if (!name || !name.trim()) {
         return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
+            error: { code: 'BAD_REQUEST', message: 'Required field: name' }
         });
+    }
+    const actorName = name.trim().toLowerCase();
+
+    // Validate UI access fields
+    if (ui_access) {
+        if (!password || password.length < 4) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+            });
+        }
     }
 
     try {
-        // Check if agent already exists (by actor name)
-        const existingActor = await resolveByName(agent);
+        // Check if actor already exists
+        const existingActor = await resolveByName(actorName);
         if (existingActor) {
-            const existing = await pool.query(
-                'SELECT actor_id FROM agent_configuration WHERE actor_id = $1',
-                [existingActor.id]
-            );
-            if (existing.rows.length > 0) {
-                return res.status(409).json({
-                    error: { code: 'ALREADY_EXISTS', message: 'Agent already exists' }
-                });
-            }
+            return res.status(409).json({
+                error: { code: 'ALREADY_EXISTS', message: 'Actor already exists: ' + actorName }
+            });
         }
 
-        // Generate passphrase and hash it
+        // Generate passphrase and hash it (all actors get a passphrase for API auth)
         const words = generatePassphrase(3);
         const passphrase = words.join('-');
-        const salt = generateSalt();
-        const hash = hashToken(passphrase, salt);
+        const passphraseSalt = generateSalt();
+        const passphraseHash = hashToken(passphrase, passphraseSalt);
 
-        // Wrap actor + agent_configuration creation in a transaction
-        // to avoid orphaned actor rows if the second INSERT fails.
+        // Optionally hash the UI password
+        let passwordHash = null;
+        let passwordSalt = null;
+        if (ui_access && password) {
+            passwordSalt = generateSalt();
+            passwordHash = hashToken(password, passwordSalt);
+        }
+
         const client = await pool.connect();
         let actorId;
         try {
             await client.query('BEGIN');
 
-            // Create actor if it doesn't exist (with credentials on actors)
-            if (existingActor) {
-                actorId = existingActor.id;
-                // Update credentials on the existing actor
-                await client.query(
-                    "UPDATE actors SET token_hash = $1, token_salt = $2, status = 'active' WHERE id = $3",
-                    [hash, salt, actorId]
-                );
-            } else {
-                const actorResult = await client.query(
-                    "INSERT INTO actors (name, token_hash, token_salt, status) VALUES ($1, $2, $3, 'active') RETURNING id",
-                    [agent, hash, salt]
-                );
-                actorId = actorResult.rows[0].id;
-            }
+            // Create actor
+            const actorResult = await client.query(
+                `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status)
+                 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
+                [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt]
+            );
+            actorId = actorResult.rows[0].id;
 
-            // Create agent configuration (AI config only)
+            // Create agent configuration
             await client.query(
                 `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
@@ -1319,9 +1322,9 @@ router.post('/admin/agents/create', async (req, res) => {
             client.release();
         }
 
-        // Apply welcome template if selected
+        // Apply welcome template if selected (non-virtual only)
         let welcomeMailSent = false;
-        if (welcome_template_id) {
+        if (welcome_template_id && !isVirtual) {
             const tplResult = await pool.query(
                 'SELECT content FROM templates WHERE id = $1 AND kind = $2',
                 [welcome_template_id, 'welcome']
@@ -1329,7 +1332,7 @@ router.post('/admin/agents/create', async (req, res) => {
             if (tplResult.rows.length > 0) {
                 const rawContent = tplResult.rows[0].content;
                 const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
-                const mailBody = tplBody.replace(/\{agent\}/g, agent);
+                const mailBody = tplBody.replace(/\{agent\}/g, actorName);
 
                 // Copy template body to startup_instructions (persistent)
                 await pool.query(
@@ -1338,29 +1341,30 @@ router.post('/admin/agents/create', async (req, res) => {
                 );
 
                 // Also send as welcome mail (fallback / immediate context)
-                const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, agent);
-                await mailSend(agent, 'system', mailSubject, mailBody);
+                const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, actorName);
+                await mailSend(actorName, 'system', mailSubject, mailBody);
                 welcomeMailSent = true;
             }
         }
 
-        logAdmin('agent_create', { agent, virtual: isVirtual === true, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
+        logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
 
         res.json({
-            agent,
+            name: actorName,
             passphrase,
             virtual: isVirtual === true,
+            ui_access: !!ui_access,
             status: 'active',
             welcome_mail_sent: welcomeMailSent,
-            message: isVirtual ? 'Virtual agent created.' : 'Agent created. Save the passphrase — it will not be shown again.'
+            message: isVirtual ? 'Virtual agent created.' : 'Actor created. Save the passphrase — it will not be shown again.'
         });
     } catch (err) {
         if (err.statusCode === 400) {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
         }
-        console.error('Admin agent create error:', err.message);
+        console.error('Admin actor create error:', err.message);
         res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to create agent' }
+            error: { code: 'INTERNAL', message: 'Failed to create actor' }
         });
     }
 });

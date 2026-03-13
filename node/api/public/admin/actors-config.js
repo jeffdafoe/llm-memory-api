@@ -1,6 +1,6 @@
-// actors-config.js — Actor permissions & visibility management (Configuration > Actors tab)
+// actors-config.js — Actor permissions, visibility, and creation management (Configuration > Actors tab)
 
-function useActorsConfig({ api, showToast, showConfirm }) {
+function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
     const actorsConfigList = ref([]);
     const actorsConfigLoading = ref(false);
 
@@ -24,6 +24,21 @@ function useActorsConfig({ api, showToast, showConfirm }) {
 
     // Available actors (for visibility dropdown)
     const newVisibilityTarget = ref('');
+
+    // ─── Create Actor ───
+    const actorCreating = ref(false);
+    const newActorName = ref('');
+    const newActorProvider = ref('');
+    const newActorModel = ref('');
+    const newActorVirtual = ref(false);
+    const newActorPersonality = ref('');
+    const newActorApiKey = ref('');
+    const newActorConfig = ref({});
+    const newActorUiAccess = ref(false);
+    const newActorPassword = ref('');
+    const newActorTemplateId = ref(null);
+    const newActorCreating = ref(false);
+    const newActorPassphrase = ref(null);
 
     async function loadActorsConfig() {
         actorsConfigLoading.value = true;
@@ -190,8 +205,89 @@ function useActorsConfig({ api, showToast, showConfirm }) {
         return availableNamespaces.value.filter(ns => !existing.has(ns));
     });
 
+    // ─── Create Actor ───
+
+    function startCreateActor() {
+        agentsModule.loadProviderRegistry();
+        agentsModule.loadTemplates();
+        actorCreating.value = true;
+        newActorName.value = '';
+        newActorProvider.value = '';
+        newActorModel.value = '';
+        newActorVirtual.value = false;
+        newActorPersonality.value = '';
+        newActorApiKey.value = '';
+        newActorConfig.value = {};
+        newActorUiAccess.value = false;
+        newActorPassword.value = '';
+        newActorTemplateId.value = null;
+        newActorCreating.value = false;
+        newActorPassphrase.value = null;
+    }
+
+    function onNewActorProviderChange() {
+        const models = agentsModule.modelsForProvider(newActorProvider.value);
+        if (models.length > 0) {
+            newActorModel.value = models[0].id;
+        } else {
+            newActorModel.value = '';
+        }
+    }
+
+    async function createActor() {
+        if (!newActorName.value.trim()) return;
+        newActorCreating.value = true;
+        try {
+            const body = { name: newActorName.value.trim() };
+            if (newActorProvider.value) body.provider = newActorProvider.value;
+            if (newActorModel.value) body.model = newActorModel.value;
+            if (newActorVirtual.value) {
+                body.virtual = true;
+                if (newActorPersonality.value) body.personality = newActorPersonality.value;
+                if (Object.keys(newActorConfig.value).length > 0) {
+                    const configCopy = Object.assign({}, newActorConfig.value);
+                    const version = agentsModule.configVersionFor(newActorProvider.value, newActorModel.value);
+                    if (version != null) {
+                        configCopy._configVersion = version;
+                    }
+                    body.configuration = configCopy;
+                }
+            }
+            if (newActorUiAccess.value && newActorPassword.value) {
+                body.ui_access = true;
+                body.password = newActorPassword.value;
+            }
+            if (newActorTemplateId.value && !newActorVirtual.value) {
+                body.welcome_template_id = newActorTemplateId.value;
+            }
+            const data = await api('/admin/actors/create', body);
+            newActorPassphrase.value = data.passphrase;
+
+            // If virtual and API key provided, update it separately (encrypted)
+            if (newActorVirtual.value && newActorApiKey.value) {
+                await api('/admin/agents/update', {
+                    agent: data.name,
+                    api_key: newActorApiKey.value
+                });
+            }
+
+            const msg = data.virtual
+                ? 'Virtual agent "' + data.name + '" created'
+                : 'Actor "' + data.name + '" created' + (data.welcome_mail_sent ? ' with welcome mail' : '');
+            showToast(msg, 'success');
+            loadActorsConfig();
+            agentsModule.loadAgents();
+        } catch (err) {
+            console.error('Failed to create actor:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            newActorCreating.value = false;
+        }
+    }
+
     function closeDialogs() {
         selectedActorConfig.value = null;
+        actorCreating.value = false;
     }
 
     return {
@@ -204,7 +300,13 @@ function useActorsConfig({ api, showToast, showConfirm }) {
         loadActorsConfig, openActorConfig, closeActorConfig,
         addPermissionRow, removePermissionRow, savePermissions,
         addVisibilityGrant, removeVisibilityGrant, saveVisibility,
-        closeDialogs: closeDialogs
+        // Create actor
+        actorCreating, newActorName, newActorProvider, newActorModel,
+        newActorVirtual, newActorPersonality, newActorApiKey, newActorConfig,
+        newActorUiAccess, newActorPassword,
+        newActorTemplateId, newActorCreating, newActorPassphrase,
+        startCreateActor, onNewActorProviderChange, createActor,
+        closeDialogs
     };
 }
 

@@ -1,4 +1,4 @@
-// agents.js — Agents list, detail, creation, welcome templates, provider registry
+// agents.js — Agents list, detail, welcome templates, provider registry
 
 function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
@@ -26,19 +26,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentProfileApiKey = ref('');
     const agentProfilePersonality = ref('');
     const agentProfileSaving = ref(false);
-
-    // Agent creation
-    const agentCreating = ref(false);
-    const newAgentName = ref('');
-    const newAgentProvider = ref('');
-    const newAgentModel = ref('');
-    const newAgentTemplateId = ref(null);
-    const newAgentCreating = ref(false);
-    const newAgentPassphrase = ref(null);
-    const newAgentVirtual = ref(false);
-    const newAgentPersonality = ref('');
-    const newAgentApiKey = ref('');
-    const newAgentConfig = ref({});
 
     // Cost budgets
     const costBudgetEditing = ref(false);
@@ -441,73 +428,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
 
     // ── Agent creation ───────────────────────────────────────────────────────
 
-    function startCreateAgent() {
-        loadProviderRegistry();
-        agentCreating.value = true;
-        newAgentName.value = '';
-        newAgentProvider.value = '';
-        newAgentModel.value = '';
-        newAgentTemplateId.value = null;
-        newAgentCreating.value = false;
-        newAgentPassphrase.value = null;
-        newAgentVirtual.value = false;
-        newAgentPersonality.value = '';
-        newAgentApiKey.value = '';
-        newAgentConfig.value = {};
-        loadTemplates();
-    }
-
-    function onNewProviderChange() {
-        const models = modelsForProvider(newAgentProvider.value);
-        newAgentModel.value = models.length > 0 ? models[0].id : '';
-    }
-
-
-
-    async function createAgent() {
-        if (!newAgentName.value) return;
-        newAgentCreating.value = true;
-        try {
-            const body = { agent: newAgentName.value };
-            if (newAgentProvider.value) body.provider = newAgentProvider.value;
-            if (newAgentModel.value) body.model = newAgentModel.value;
-            if (newAgentVirtual.value) {
-                body.virtual = true;
-                if (newAgentPersonality.value) body.personality = newAgentPersonality.value;
-                if (Object.keys(newAgentConfig.value).length > 0) {
-                    const configCopy = Object.assign({}, newAgentConfig.value);
-                    const version = configVersionFor(newAgentProvider.value, newAgentModel.value);
-                    if (version != null) {
-                        configCopy._configVersion = version;
-                    }
-                    body.configuration = configCopy;
-                }
-            }
-            if (newAgentTemplateId.value && !newAgentVirtual.value) body.welcome_template_id = newAgentTemplateId.value;
-            const data = await api('/admin/agents/create', body);
-            newAgentPassphrase.value = data.passphrase;
-
-            // If virtual and API key provided, update it separately (encrypted)
-            if (newAgentVirtual.value && newAgentApiKey.value) {
-                await api('/admin/agents/update', {
-                    agent: newAgentName.value,
-                    api_key: newAgentApiKey.value
-                });
-            }
-
-            const msg = data.virtual
-                ? 'Virtual agent "' + data.agent + '" created'
-                : 'Agent "' + data.agent + '" created' + (data.welcome_mail_sent ? ' with welcome mail' : '');
-            showToast(msg, 'success');
-            loadAgents();
-        } catch (err) {
-            console.error('Failed to create agent:', err);
-            showToast('Failed: ' + err.message, 'error');
-        } finally {
-            newAgentCreating.value = false;
-        }
-    }
-
     // ── Templates ────────────────────────────────────────────────────────────
 
     async function loadTemplates() {
@@ -592,7 +512,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
 
     function closeDialogs() {
         selectedAgent.value = null;
-        agentCreating.value = false;
     }
 
     return {
@@ -614,11 +533,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,
         resetAgentPassphrase,
-        // Agent creation
-        agentCreating, newAgentName, newAgentProvider, newAgentModel,
-        newAgentTemplateId, newAgentCreating, newAgentPassphrase,
-        newAgentVirtual, newAgentPersonality, newAgentApiKey, newAgentConfig,
-        startCreateAgent, onNewProviderChange, createAgent,
         // Templates
         welcomeTemplates, templateEditing, templateEditId,
         templateEditName, templateEditKind, templateEditDescription, templateEditContent, templateSaving,
