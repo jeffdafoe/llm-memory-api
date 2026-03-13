@@ -65,7 +65,16 @@ function useCore() {
         loggingIn.value = true;
         loginError.value = '';
         try {
-            const data = await api('/admin/login', loginForm.value);
+            // Bypass api() helper to avoid the generic 401 → "Session expired" interceptor
+            const response = await fetch(API_BASE + '/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(loginForm.value)
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error?.message || 'Login failed');
+            }
             sessionToken.value = data.session_token;
             user.value = data.user;
             authenticated.value = true;
