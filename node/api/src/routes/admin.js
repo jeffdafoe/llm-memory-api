@@ -251,7 +251,8 @@ router.post('/admin/dashboard', async (req, res) => {
 router.post('/admin/api-log', async (req, res) => {
     const { since_id, limit } = req.body;
     try {
-        const entries = await getRequestLogEntries(since_id || 0, limit || 100);
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        const entries = await getRequestLogEntries(since_id || 0, limit || 100, visibleIds);
         res.json({ entries });
     } catch (err) {
         console.error('Admin api-log error:', err.message);
@@ -898,7 +899,7 @@ router.post('/admin/notes/search', async (req, res) => {
         // For wildcard searches, push namespace filtering into the query
         let readable = null;
         if (targetNs === '*') {
-            readable = await getReadableNamespaces(req.actorId);
+            readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
         }
         let data = await searchMemory(query, targetNs, limit || 10, readable);
         res.json(data);
@@ -923,7 +924,7 @@ router.post('/admin/notes/namespaces', async (req, res) => {
         );
         let namespaces = result.rows;
         // Filter to readable namespaces
-        const readable = await getReadableNamespaces(req.actorId);
+        const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
         if (readable !== null) {
             namespaces = namespaces.filter(r => readable.includes(r.namespace));
         }
