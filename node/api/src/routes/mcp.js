@@ -839,7 +839,7 @@ const TOOL_HANDLERS = {
             LEFT JOIN (
                 SELECT ml.from_actor_id, COUNT(*) AS unread_count
                 FROM mail ml
-                WHERE ml.to_actor_id = $1 AND ml.acked_at IS NULL
+                WHERE ml.to_actor_id = $1 AND ml.acked_at IS NULL AND ml.deleted_at IS NULL
                 GROUP BY ml.from_actor_id
             ) m ON m.from_actor_id = a.actor_id
             ORDER BY a.agent`,
