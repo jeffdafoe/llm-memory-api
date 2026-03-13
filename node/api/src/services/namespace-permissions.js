@@ -42,9 +42,10 @@ async function getPermissions(actorId) {
 // Check if an actor has the specified access on a namespace.
 // operation: 'read' | 'write' | 'delete'
 // Returns true/false.
-async function hasAccess(actorId, actorName, namespace, operation) {
-    // Implicit: agents always have full access to their own namespace
-    if (actorName && namespace === actorName) {
+async function hasAccess(actorId, actorName, actorType, namespace, operation) {
+    // Implicit: agents always have full access to their own namespace.
+    // Only applies to agents — users don't have matching namespaces.
+    if (actorType === 'agent' && actorName && namespace === actorName) {
         return true;
     }
 
@@ -66,8 +67,8 @@ async function hasAccess(actorId, actorName, namespace, operation) {
 }
 
 // Require access — throws 403 if denied. Use in route handlers.
-async function requireAccess(actorId, actorName, namespace, operation) {
-    const allowed = await hasAccess(actorId, actorName, namespace, operation);
+async function requireAccess(actorId, actorName, actorType, namespace, operation) {
+    const allowed = await hasAccess(actorId, actorName, actorType, namespace, operation);
     if (!allowed) {
         throw Object.assign(
             new Error(`Actor "${actorName}" does not have ${operation} access to namespace "${namespace}"`),
@@ -79,7 +80,7 @@ async function requireAccess(actorId, actorName, namespace, operation) {
 // Get all namespaces an actor can read — used to filter namespace:* queries.
 // Returns an array of namespace strings, or null if the actor has wildcard access
 // (null means "no filtering needed").
-async function getReadableNamespaces(actorId, actorName) {
+async function getReadableNamespaces(actorId, actorName, actorType) {
     const perms = await getPermissions(actorId);
 
     // Wildcard means all namespaces — no filtering needed
@@ -95,8 +96,8 @@ async function getReadableNamespaces(actorId, actorName) {
         }
     }
 
-    // Implicit: own namespace is always readable
-    if (actorName && !namespaces.includes(actorName)) {
+    // Implicit: agents' own namespace is always readable
+    if (actorType === 'agent' && actorName && !namespaces.includes(actorName)) {
         namespaces.push(actorName);
     }
 

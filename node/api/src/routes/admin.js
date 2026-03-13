@@ -651,7 +651,7 @@ router.post('/admin/notes/list', async (req, res) => {
     }
     try {
         validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
+        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
         const data = await listNotes(namespace, limit || 200, offset, prefix);
         res.json(data);
     } catch (err) {
@@ -673,7 +673,7 @@ router.post('/admin/notes/read', async (req, res) => {
     }
     try {
         validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
+        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
         const note = await readNote(namespace, slug);
         res.json({ note });
     } catch (err) {
@@ -700,7 +700,7 @@ router.post('/admin/notes/save', async (req, res) => {
     }
     try {
         validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
+        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
         const doc = await saveNote(namespace, title, content, slug, null);
         logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ note: doc });
@@ -727,7 +727,7 @@ router.post('/admin/notes/delete', async (req, res) => {
     }
     try {
         validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'delete');
+        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'delete');
         await deleteNote(namespace, slug);
         logAdmin('note_delete', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ deleted: true, namespace, slug });
@@ -760,9 +760,9 @@ router.post('/admin/notes/move', async (req, res) => {
     try {
         validateNamespace(namespace);
         if (new_namespace) validateNamespace(new_namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
+        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
         if (new_namespace && new_namespace !== namespace) {
-            await requireAccess(req.actorId, req.authenticatedUser.username, new_namespace, 'write');
+            await requireAccess(req.actorId, req.authenticatedUser.username, 'user', new_namespace, 'write');
         }
         const doc = await moveNote(namespace, slug, new_slug, new_namespace);
         logAdmin('note_move', { namespace, slug, new_slug, new_namespace: new_namespace || namespace, user_id: req.authenticatedUser.id });
@@ -802,7 +802,7 @@ router.post('/admin/notes/search', async (req, res) => {
         const targetNs = namespace || '*';
         if (targetNs !== '*') {
             validateNamespace(targetNs);
-            await requireAccess(req.actorId, req.authenticatedUser.username, targetNs, 'read');
+            await requireAccess(req.actorId, req.authenticatedUser.username, 'user', targetNs, 'read');
         }
         // For wildcard searches, push namespace filtering into the query
         let readable = null;

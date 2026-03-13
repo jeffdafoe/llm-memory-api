@@ -9,7 +9,8 @@ const router = Router();
 function getActor(req) {
     return {
         actorId: req.actorId,
-        actorName: req.authenticatedAgent || (req.authenticatedUser && req.authenticatedUser.username) || 'unknown'
+        actorName: req.authenticatedAgent || (req.authenticatedUser && req.authenticatedUser.username) || 'unknown',
+        actorType: req.authenticatedAgent ? 'agent' : 'user'
     };
 }
 
@@ -25,7 +26,7 @@ router.post('/memory/ingest', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'write');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
         const result = await ingestContent(namespace, source_file, content);
         res.json(result);
     } catch (err) {
@@ -64,12 +65,12 @@ router.post('/memory/search', async (req, res) => {
         const actor = getActor(req);
         if (namespace && namespace !== '*') {
             validateNamespace(namespace);
-            await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
+            await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
         }
         // For wildcard searches, push namespace filtering into the query
         let readable = null;
         if (!namespace || namespace === '*') {
-            readable = await getReadableNamespaces(actor.actorId, actor.actorName);
+            readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
         }
         const result = await searchMemory(query, namespace, limit, readable);
         res.json(result);
@@ -94,7 +95,7 @@ router.post('/memory/cleanup', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'delete');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'delete');
         const result = await cleanupMemory(namespace, valid_source_files);
         res.json(result);
     } catch (err) {
@@ -118,7 +119,7 @@ router.post('/memory/delete', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'delete');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'delete');
         const result = await deleteMemory(namespace, source_file);
         res.json(result);
     } catch (err) {
