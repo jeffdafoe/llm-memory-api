@@ -25,6 +25,10 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
     // Available actors (for visibility dropdown)
     const newVisibilityTarget = ref('');
 
+    // UI Access (password) state
+    const actorPasswordInput = ref('');
+    const actorPasswordSaving = ref(false);
+
     // ─── Create Actor ───
     const actorCreating = ref(false);
     const newActorName = ref('');
@@ -97,6 +101,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         actorHasWildcardVis.value = false;
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
+        actorPasswordInput.value = '';
     }
 
     // ─── Permissions ───
@@ -214,6 +219,50 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         return availableNamespaces.value.filter(ns => !existing.has(ns));
     });
 
+    // ─── UI Access (Password) ───
+
+    async function setActorPassword() {
+        if (!selectedActorConfig.value || !actorPasswordInput.value) return;
+        actorPasswordSaving.value = true;
+        try {
+            const data = await api('/admin/actors/password', {
+                actor_id: selectedActorConfig.value.id,
+                password: actorPasswordInput.value
+            });
+            selectedActorConfig.value.is_user = data.is_user;
+            actorPasswordInput.value = '';
+            showToast('Password updated', 'success');
+            loadActorsConfig();
+        } catch (err) {
+            console.error('Failed to set password:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            actorPasswordSaving.value = false;
+        }
+    }
+
+    async function clearActorPassword() {
+        if (!selectedActorConfig.value) return;
+        const confirmed = await showConfirm('Remove UI access for ' + selectedActorConfig.value.name + '?');
+        if (!confirmed) return;
+        actorPasswordSaving.value = true;
+        try {
+            const data = await api('/admin/actors/password', {
+                actor_id: selectedActorConfig.value.id,
+                password: null
+            });
+            selectedActorConfig.value.is_user = data.is_user;
+            actorPasswordInput.value = '';
+            showToast('UI access removed', 'success');
+            loadActorsConfig();
+        } catch (err) {
+            console.error('Failed to clear password:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            actorPasswordSaving.value = false;
+        }
+    }
+
     // ─── Create Actor ───
 
     function startCreateActor() {
@@ -309,6 +358,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         loadActorsConfig, openActorConfig, closeActorConfig,
         addPermissionRow, removePermissionRow, savePermissions,
         addVisibilityGrant, removeVisibilityGrant, saveVisibility,
+        // UI Access
+        actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Create actor
         actorCreating, newActorName, newActorProvider, newActorModel,
         newActorVirtual, newActorPersonality, newActorApiKey, newActorConfig,
