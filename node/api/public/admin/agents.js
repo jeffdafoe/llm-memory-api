@@ -3,7 +3,6 @@
 function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
     const selectedAgent = ref(null);
-    const agentSubTab = ref('list');
 
     // Provider registry (loaded once from backend)
     const providerRegistry = ref([]);
@@ -515,7 +514,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     }
 
     return {
-        agents, selectedAgent, agentSubTab,
+        agents, selectedAgent,
         // Provider registry
         providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, configVersionFor, modelDeprecation,
         parseAgentConfig, capabilityVisible, formatConfigValue,

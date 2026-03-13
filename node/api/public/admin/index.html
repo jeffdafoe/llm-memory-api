@@ -336,17 +336,10 @@
                     </details>
                 </div>
 
-                <!-- Agents view (with sub-tabs) -->
+                <!-- Agents view -->
                 <div v-if="currentView === 'agents'">
-                    <div class="sub-tabs">
-                        <a href="#" :class="{ active: agentSubTab === 'list' }" @click.prevent="agentSubTab = 'list'">Agents</a>
-                        <a href="#" :class="{ active: agentSubTab === 'templates' }" @click.prevent="agentSubTab = 'templates'; loadTemplates()">Templates</a>
-                    </div>
-
-                    <!-- Agents sub-tab -->
-                    <div v-if="agentSubTab === 'list'">
-                        <div class="table-wrap">
-                            <table class="fixed-table">
+                    <div class="table-wrap">
+                        <table class="fixed-table">
                                 <colgroup>
                                     <col class="col-activity">
                                     <col>
@@ -381,81 +374,6 @@
                                         <td class="muted">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}</td>
                                         <td class="time-cell">{{ formatDate(agent.last_seen) }}</td>
                                         <td class="time-cell">{{ formatDate(agent.registered_at) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Templates sub-tab -->
-                    <div v-if="agentSubTab === 'templates'">
-                        <div class="mail-toolbar">
-                            <button v-if="!templateEditing" class="inline-button" @click="startNewTemplate"><i class="icon-plus"></i> New Template</button>
-                        </div>
-
-                        <div v-if="templateEditing" class="compose-form">
-                            <div class="form-row">
-                                <label>
-                                    Name
-                                    <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
-                                </label>
-                            </div>
-                            <div class="form-row">
-                                <label>
-                                    Kind
-                                    <select v-model="templateEditKind">
-                                        <option value="welcome">welcome</option>
-                                    </select>
-                                </label>
-                            </div>
-                            <div class="form-row">
-                                <label>
-                                    Description (optional)
-                                    <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
-                                </label>
-                            </div>
-                            <div class="form-row">
-                                <label>
-                                    Content
-                                    <textarea v-model="templateEditContent" rows="12" placeholder="Use {agent} as a placeholder for the agent's name. Welcome templates can use YAML frontmatter for subject: ---&#10;subject: Welcome, {agent}&#10;---"></textarea>
-                                </label>
-                            </div>
-                            <div class="dialog-actions">
-                                <button @click="saveTemplate" :disabled="templateSaving || !templateEditName || !templateEditContent">
-                                    {{ templateSaving ? 'Saving...' : (templateEditId ? 'Update' : 'Create') }}
-                                </button>
-                                <button class="secondary" @click="templateEditing = false">Cancel</button>
-                            </div>
-                        </div>
-
-                        <div v-if="!templateEditing" class="table-wrap">
-                            <table class="fixed-table">
-                                <colgroup>
-                                    <col style="width: 12em;">
-                                    <col style="width: 8em;">
-                                    <col>
-                                    <col class="col-time">
-                                    <col style="width: 5em;">
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Kind</th>
-                                        <th>Description</th>
-                                        <th class="time-cell">Updated</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="t in welcomeTemplates" :key="t.id">
-                                        <td><a href="#" @click.prevent="editTemplate(t)">{{ t.name }}</a></td>
-                                        <td>{{ t.kind }}</td>
-                                        <td class="muted message-cell">{{ t.description || '—' }}</td>
-                                        <td class="time-cell">{{ formatDate(t.updated_at) }}</td>
-                                        <td><button class="inline-button" @click="confirmDeleteTemplate(t)" title="Delete"><i class="icon-trash-2"></i></button></td>
-                                    </tr>
-                                    <tr v-if="welcomeTemplates.length === 0">
-                                        <td colspan="5" class="muted">No templates yet.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -617,6 +535,7 @@
                         <a href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
                         <a href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
                         <a href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
+                        <a href="#" :class="{ active: configSubTab === 'templates' }" @click.prevent="configSubTab = 'templates'; loadTemplates()">Templates</a>
                     </div>
 
                     <!-- Actors sub-tab -->
@@ -788,6 +707,81 @@
                             </tbody>
                         </table>
                     </div>
+                    </div>
+
+                    <!-- Templates sub-tab -->
+                    <div v-if="configSubTab === 'templates'">
+                        <div class="mail-toolbar">
+                            <button v-if="!templateEditing" class="inline-button" @click="startNewTemplate"><i class="icon-plus"></i> New Template</button>
+                        </div>
+
+                        <div v-if="templateEditing" class="compose-form">
+                            <div class="form-row">
+                                <label>
+                                    Name
+                                    <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label>
+                                    Kind
+                                    <select v-model="templateEditKind">
+                                        <option value="welcome">welcome</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label>
+                                    Description (optional)
+                                    <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label>
+                                    Content
+                                    <textarea v-model="templateEditContent" rows="12" placeholder="Use {agent} as a placeholder for the agent's name. Welcome templates can use YAML frontmatter for subject: ---&#10;subject: Welcome, {agent}&#10;---"></textarea>
+                                </label>
+                            </div>
+                            <div class="dialog-actions">
+                                <button @click="saveTemplate" :disabled="templateSaving || !templateEditName || !templateEditContent">
+                                    {{ templateSaving ? 'Saving...' : (templateEditId ? 'Update' : 'Create') }}
+                                </button>
+                                <button class="secondary" @click="templateEditing = false">Cancel</button>
+                            </div>
+                        </div>
+
+                        <div v-if="!templateEditing" class="table-wrap">
+                            <table class="fixed-table">
+                                <colgroup>
+                                    <col style="width: 12em;">
+                                    <col style="width: 8em;">
+                                    <col>
+                                    <col class="col-time">
+                                    <col style="width: 5em;">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Kind</th>
+                                        <th>Description</th>
+                                        <th class="time-cell">Updated</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="t in welcomeTemplates" :key="t.id">
+                                        <td><a href="#" @click.prevent="editTemplate(t)">{{ t.name }}</a></td>
+                                        <td>{{ t.kind }}</td>
+                                        <td class="muted message-cell">{{ t.description || '—' }}</td>
+                                        <td class="time-cell">{{ formatDate(t.updated_at) }}</td>
+                                        <td><button class="inline-button" @click="confirmDeleteTemplate(t)" title="Delete"><i class="icon-trash-2"></i></button></td>
+                                    </tr>
+                                    <tr v-if="welcomeTemplates.length === 0">
+                                        <td colspan="5" class="muted">No templates yet.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
