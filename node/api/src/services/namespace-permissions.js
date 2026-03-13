@@ -42,7 +42,12 @@ async function getPermissions(actorId) {
 // Check if an actor has the specified access on a namespace.
 // operation: 'read' | 'write' | 'delete'
 // Returns true/false.
-async function hasAccess(actorId, namespace, operation) {
+async function hasAccess(actorId, actorName, namespace, operation) {
+    // Implicit: agents always have full access to their own namespace
+    if (actorName && namespace === actorName) {
+        return true;
+    }
+
     const perms = await getPermissions(actorId);
 
     // Check wildcard first — '/' grants access to everything
@@ -62,7 +67,7 @@ async function hasAccess(actorId, namespace, operation) {
 
 // Require access — throws 403 if denied. Use in route handlers.
 async function requireAccess(actorId, actorName, namespace, operation) {
-    const allowed = await hasAccess(actorId, namespace, operation);
+    const allowed = await hasAccess(actorId, actorName, namespace, operation);
     if (!allowed) {
         throw Object.assign(
             new Error(`Actor "${actorName}" does not have ${operation} access to namespace "${namespace}"`),
@@ -74,7 +79,7 @@ async function requireAccess(actorId, actorName, namespace, operation) {
 // Get all namespaces an actor can read — used to filter namespace:* queries.
 // Returns an array of namespace strings, or null if the actor has wildcard access
 // (null means "no filtering needed").
-async function getReadableNamespaces(actorId) {
+async function getReadableNamespaces(actorId, actorName) {
     const perms = await getPermissions(actorId);
 
     // Wildcard means all namespaces — no filtering needed
@@ -89,6 +94,12 @@ async function getReadableNamespaces(actorId) {
             namespaces.push(ns);
         }
     }
+
+    // Implicit: own namespace is always readable
+    if (actorName && !namespaces.includes(actorName)) {
+        namespaces.push(actorName);
+    }
+
     return namespaces;
 }
 

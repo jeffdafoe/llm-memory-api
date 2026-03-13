@@ -587,7 +587,7 @@ const TOOL_HANDLERS = {
         // For wildcard searches, push namespace filtering into the query
         let readable = null;
         if (!targetNs || targetNs === '*') {
-            readable = await getReadableNamespaces(actorId);
+            readable = await getReadableNamespaces(actorId, agent);
         }
         const data = await searchMemory(args.query, targetNs, args.limit || 5, readable);
         const lines = data.results.map(r => {
@@ -691,7 +691,7 @@ const TOOL_HANDLERS = {
         // For wildcard searches, push namespace filtering into the query
         let readable = null;
         if (!targetNs || targetNs === '*') {
-            readable = await getReadableNamespaces(actorId);
+            readable = await getReadableNamespaces(actorId, agent);
         }
         let results = await grepNotes(args.pattern, targetNs, args.limit, readable);
         if (results.length === 0) {

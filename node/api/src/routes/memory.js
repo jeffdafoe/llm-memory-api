@@ -69,7 +69,7 @@ router.post('/memory/search', async (req, res) => {
         // For wildcard searches, push namespace filtering into the query
         let readable = null;
         if (!namespace || namespace === '*') {
-            readable = await getReadableNamespaces(actor.actorId);
+            readable = await getReadableNamespaces(actor.actorId, actor.actorName);
         }
         const result = await searchMemory(query, namespace, limit, readable);
         res.json(result);
