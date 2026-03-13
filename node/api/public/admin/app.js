@@ -5,7 +5,7 @@ createApp({
     setup() {
         const currentView = ref('dashboard');
 
-        const configSubTab = ref('system');
+        const configSubTab = ref('actors');
         const commSubTab = ref('mail');
 
         const viewTitles = {
