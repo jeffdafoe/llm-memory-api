@@ -83,20 +83,36 @@ function requestLog(req, res, next) {
 
 // Query entries from DB. Supports since_id for incremental polling and limit for initial load.
 // Aliases duration_ms → duration and timestamp → timestamp for frontend compatibility.
-async function getEntries(sinceId, limit) {
+// visibleActorIds: null (no filtering) or Set/Array of actor IDs to restrict results.
+async function getEntries(sinceId, limit, visibleActorIds) {
     const cols = `r.id, r.timestamp, r.method, r.path, r.status,
                   r.duration_ms AS duration, ac.name AS agent, r.ip,
                   r.request_length, r.response_length`;
+    // Build optional visibility filter
+    let visFilter = '';
+    const params = [];
+    if (visibleActorIds) {
+        const ids = Array.from(visibleActorIds);
+        if (ids.length === 0) {
+            return []; // can't see anyone — return nothing
+        }
+        // Filter to requests from visible actors (exclude rows with no actor — those are unauthenticated)
+        const placeholders = ids.map((id, i) => '$' + (i + 1));
+        visFilter = ` AND r.actor_id IN (${placeholders.join(', ')})`;
+        params.push(...ids);
+    }
     if (sinceId) {
+        params.push(sinceId);
         const result = await pool.query(
-            `SELECT ${cols} FROM request_log r LEFT JOIN actors ac ON ac.id = r.actor_id WHERE r.id > $1 ORDER BY r.id ASC LIMIT 500`,
-            [sinceId]
+            `SELECT ${cols} FROM request_log r LEFT JOIN actors ac ON ac.id = r.actor_id WHERE r.id > $${params.length}${visFilter} ORDER BY r.id ASC LIMIT 500`,
+            params
         );
         return result.rows;
     }
+    params.push(limit || 100);
     const result = await pool.query(
-        `SELECT ${cols} FROM request_log r LEFT JOIN actors ac ON ac.id = r.actor_id ORDER BY r.id DESC LIMIT $1`,
-        [limit || 100]
+        `SELECT ${cols} FROM request_log r LEFT JOIN actors ac ON ac.id = r.actor_id WHERE 1=1${visFilter} ORDER BY r.id DESC LIMIT $${params.length}`,
+        params
     );
     // Reverse so oldest-first (consistent with incremental polling order)
     return result.rows.reverse();
