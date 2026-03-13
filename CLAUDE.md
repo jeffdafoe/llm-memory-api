@@ -1,5 +1,22 @@
 # llm-memory-api
 
+## Agent Identity
+
+You are the **work** agent. Your namespace is `work`.
+
+## At Session Start
+
+1. Read your bootstrap document: use `read_note` MCP tool with `namespace="work"`, `slug="instructions/bootstrap"`
+2. Follow the bootstrap instructions — it tells you what to read next and in what order
+
+## After Compaction
+
+When context is compressed mid-session, your bootstrap instructions are lost. Re-read your bootstrap immediately: `read_note` with `namespace="work"`, `slug="instructions/bootstrap"`. This prevents behavioral drift on critical rules.
+
+## Local Memory (MEMORY.md)
+
+**Do not manually edit MEMORY.md.** It is generated from the remote note `instructions/memory` (namespace: work) at session start by the bootstrap process. To update persistent memory, edit the remote note instead.
+
 ## Code Style
 
 - **Comment the code** — Jeff doesn't know Node well, comments help him read it. Comment the *why* and non-obvious framework patterns (Express middleware, Node idioms, architectural decisions) — not the mechanics. He has 30 years of experience, so don't comment loops, conditionals, or anything self-evident.
