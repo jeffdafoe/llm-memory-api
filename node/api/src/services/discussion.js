@@ -287,7 +287,7 @@ async function discussionCreate(topic, createdBy, participants, optionalParticip
         // Look up which agents are virtual (auto-join them)
         const actorIds = allParticipants.map(n => actorMap.get(n).id);
         const virtualCheck = await client.query(
-            'SELECT actor_id FROM agents WHERE actor_id = ANY($1) AND virtual = TRUE',
+            'SELECT actor_id FROM agent_configuration WHERE actor_id = ANY($1) AND virtual = TRUE',
             [actorIds]
         );
         const virtualActorIds = new Set(virtualCheck.rows.map(r => r.actor_id));

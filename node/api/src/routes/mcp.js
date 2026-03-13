@@ -619,7 +619,7 @@ const TOOL_HANDLERS = {
         await requireAccess(actorId, agent, 'agent', targetNs, 'write');
         const doc = await saveNote(targetNs, args.title, args.content, args.slug, agent);
         // Refresh activity indicator
-        pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [actorId])
+        pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
             .catch(() => {});
         return `Saved: ${doc.namespace}/${doc.slug}`;
@@ -712,7 +712,7 @@ const TOOL_HANDLERS = {
     // --- Instructions ---
     async read_instructions(args, agent, namespace, actorId) {
         const result = await pool.query(
-            'SELECT startup_instructions FROM agents WHERE actor_id = $1',
+            'SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1',
             [actorId]
         );
         if (result.rows.length === 0) {
@@ -726,7 +726,7 @@ const TOOL_HANDLERS = {
             throw Object.assign(new Error('Required field: content'), { statusCode: 400 });
         }
         await pool.query(
-            'UPDATE agents SET startup_instructions = $1 WHERE actor_id = $2',
+            'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2',
             [args.content, actorId]
         );
         return `Instructions saved (${args.content.length} characters)`;
@@ -781,7 +781,7 @@ const TOOL_HANDLERS = {
     async mail_send(args, agent, namespace, actorId) {
         const data = await mailSend(args.to, validateIdentity(args.from, agent, 'from'), args.subject, args.body);
         // Refresh activity indicator
-        pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [actorId])
+        pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
             .catch(() => {});
         return `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")`;
@@ -882,7 +882,7 @@ const TOOL_HANDLERS = {
             .map(e => e.trim().toLowerCase());
 
         const json = JSON.stringify(cleaned);
-        await pool.query('UPDATE agents SET expertise = $1 WHERE actor_id = $2', [json, actorId]);
+        await pool.query('UPDATE actors SET expertise = $1 WHERE id = $2', [json, actorId]);
         return `Expertise updated for ${agent}: ${cleaned.join(', ') || '(none)'}`;
     },
 
@@ -905,7 +905,7 @@ const TOOL_HANDLERS = {
         }
         vals.push(actorId);
 
-        await pool.query(`UPDATE agents SET ${sets.join(', ')} WHERE actor_id = $${idx}`, vals);
+        await pool.query(`UPDATE agent_configuration SET ${sets.join(', ')} WHERE actor_id = $${idx}`, vals);
 
         const parts = [];
         if (args.provider !== undefined) {
@@ -919,13 +919,13 @@ const TOOL_HANDLERS = {
 
     // --- Activity ---
     async activity_start(args, agent, namespace, actorId) {
-        await pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [actorId]);
+        await pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId]);
         broadcast('agent_activity', { agent, active: true });
         return `Activity started for ${agent}.`;
     },
 
     async activity_stop(args, agent, namespace, actorId) {
-        await pool.query('UPDATE agents SET active_since = NULL WHERE actor_id = $1', [actorId]);
+        await pool.query('UPDATE actors SET active_since = NULL WHERE id = $1', [actorId]);
         broadcast('agent_activity', { agent, active: false });
         return `Activity stopped for ${agent}.`;
     },
@@ -1071,7 +1071,7 @@ async function createMcpServer(req) {
     // This way Claude gets instructions on connect — no tool call needed.
     let instructions = 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.';
     try {
-        const result = await pool.query('SELECT startup_instructions FROM agents WHERE actor_id = $1', [req.mcpActorId]);
+        const result = await pool.query('SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1', [req.mcpActorId]);
         if (result.rows.length > 0 && result.rows[0].startup_instructions) {
             instructions = result.rows[0].startup_instructions;
         }
@@ -1254,7 +1254,7 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         // Activate the activity spinner on new MCP session.
         // Agents that don't explicitly call activity_start (e.g. ChatGPT, third-party clients)
         // still show as active when they connect.
-        pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [req.mcpActorId])
+        pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [req.mcpActorId])
             .then(() => broadcast('agent_activity', { agent: req.mcpAgent, active: true }))
             .catch(() => {});
     }

@@ -126,7 +126,7 @@ router.get('/authorize', async (req, res) => {
     let agentResult = { rows: [] };
     if (actor) {
         agentResult = await pool.query(
-            'SELECT ac.name AS agent, a.status FROM agents a JOIN actors ac ON ac.id = a.actor_id WHERE a.actor_id = $1',
+            'SELECT ac.name AS agent, ac.status FROM actors ac WHERE ac.id = $1',
             [actor.id]
         );
     }

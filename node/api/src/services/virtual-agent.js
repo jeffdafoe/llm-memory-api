@@ -257,14 +257,14 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
 async function withActivityIndicator(agentName, fn) {
     const start = Date.now();
     const actor = await requireByName(agentName);
-    await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE actor_id = $1', [actor.id]);
+    await pool.query('UPDATE actors SET active_since = NOW(), last_seen = NOW() WHERE id = $1', [actor.id]);
     broadcast('agent_activity', { agent: agentName, active: true });
     try {
         return await fn();
     } finally {
         const remaining = Math.max(0, MIN_ACTIVITY_MS - (Date.now() - start));
         setTimeout(() => {
-            pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE actor_id = $1', [actor.id]).catch(() => {});
+            pool.query('UPDATE actors SET active_since = NULL, last_seen = NOW() WHERE id = $1', [actor.id]).catch(() => {});
             broadcast('agent_activity', { agent: agentName, active: false });
         }, remaining);
     }
@@ -273,11 +273,11 @@ async function withActivityIndicator(agentName, fn) {
 // Load an agent row with virtual-agent fields.
 async function loadAgent(agentName) {
     const result = await pool.query(
-        `SELECT ac.id AS actor_id, ac.name AS agent, a.virtual, a.provider, a.model, a.api_key, a.configuration,
-                a.startup_instructions, a.personality, a.expertise, a.cost_budget_daily, a.cost_budget_monthly,
-                a.cache_prompts, a.learning_enabled, a.max_tokens, a.temperature
-         FROM agents a
-         JOIN actors ac ON ac.id = a.actor_id
+        `SELECT ac.id AS actor_id, ac.name AS agent, agc.virtual, agc.provider, agc.model, agc.api_key, agc.configuration,
+                agc.startup_instructions, agc.personality, ac.expertise, agc.cost_budget_daily, agc.cost_budget_monthly,
+                agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature
+         FROM agent_configuration agc
+         JOIN actors ac ON ac.id = agc.actor_id
          WHERE ac.name = $1`,
         [agentName]
     );

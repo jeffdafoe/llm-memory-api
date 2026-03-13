@@ -73,9 +73,9 @@ router.post('/chat/send', async (req, res) => {
         if (to_agents && to_agents.length === 1 && to_agents[0] === '*') {
             const fromActor = await requireByName(from_agent);
             const known = await pool.query(
-                `SELECT ac.name AS agent FROM agents a
-                 JOIN actors ac ON ac.id = a.actor_id
-                 WHERE a.actor_id != $1`,
+                `SELECT ac.name AS agent FROM agent_configuration agc
+                 JOIN actors ac ON ac.id = agc.actor_id
+                 WHERE agc.actor_id != $1`,
                 [fromActor.id]
             );
             for (const row of known.rows) {

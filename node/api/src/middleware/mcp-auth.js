@@ -17,8 +17,8 @@ const { resolveByName } = require('../services/actors');
 // as long as the agent is making tool calls (without requiring explicit re-calls).
 // Re-broadcasts the agent_activity event so the admin UI keeps the spinner visible.
 function heartbeat(actorId, agentName) {
-    pool.query('UPDATE agents SET last_seen = NOW() WHERE actor_id = $1', [actorId]).catch(() => {});
-    pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1 AND active_since IS NOT NULL', [actorId])
+    pool.query('UPDATE actors SET last_seen = NOW() WHERE id = $1', [actorId]).catch(() => {});
+    pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1 AND active_since IS NOT NULL', [actorId])
         .then((result) => {
             if (result.rowCount > 0) {
                 broadcast('agent_activity', { agent: agentName, active: true });

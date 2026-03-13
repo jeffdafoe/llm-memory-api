@@ -20,8 +20,8 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
         const passwordHash = hash(password, salt);
 
         await pool.query(
-            `INSERT INTO users (username, password_hash, password_salt) VALUES ($1, $2, $3)
-             ON CONFLICT (username) DO UPDATE SET password_hash = $2, password_salt = $3`,
+            `INSERT INTO actors (name, type, password_hash, password_salt) VALUES ($1, 'user', $2, $3)
+             ON CONFLICT (name) DO UPDATE SET password_hash = $2, password_salt = $3`,
             [username, passwordHash, salt]
         );
 

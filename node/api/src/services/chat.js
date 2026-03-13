@@ -54,8 +54,8 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
 
     if (toAgents && toAgents.length === 1 && toAgents[0] === '*') {
         const known = await pool.query(
-            `SELECT ac.name AS agent FROM agents a
-             JOIN actors ac ON ac.id = a.actor_id
+            `SELECT ac.name AS agent FROM agent_configuration agc
+             JOIN actors ac ON ac.id = agc.actor_id
              WHERE ac.name != $1`,
             [fromAgent]
         );
@@ -120,15 +120,15 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
         (async () => {
             try {
                 const senderRow = await pool.query(
-                    'SELECT a.virtual FROM agents a WHERE a.actor_id = $1',
+                    'SELECT agc.virtual FROM agent_configuration agc WHERE agc.actor_id = $1',
                     [fromActor.id]
                 );
                 if (senderRow.rows[0] && senderRow.rows[0].virtual) return;
                 const recipientIds = recipients.map(r => recipientActors.get(r).id);
                 const vr = await pool.query(
-                    `SELECT ac.name AS agent FROM agents a
-                     JOIN actors ac ON ac.id = a.actor_id
-                     WHERE a.actor_id = ANY($1) AND a.virtual = true`,
+                    `SELECT ac.name AS agent FROM agent_configuration agc
+                     JOIN actors ac ON ac.id = agc.actor_id
+                     WHERE agc.actor_id = ANY($1) AND agc.virtual = true`,
                     [recipientIds]
                 );
                 if (vr.rows.length === 0) return;
