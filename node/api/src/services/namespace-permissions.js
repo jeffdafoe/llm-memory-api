@@ -43,9 +43,8 @@ async function getPermissions(actorId) {
 // operation: 'read' | 'write' | 'delete'
 // Returns true/false.
 async function hasAccess(actorId, actorName, actorType, namespace, operation) {
-    // Implicit: agents always have full access to their own namespace.
-    // Only applies to agents — users don't have matching namespaces.
-    if (actorType === 'agent' && actorName && namespace === actorName) {
+    // Implicit: all actors have full access to their own namespace.
+    if (actorName && namespace === actorName) {
         return true;
     }
 
@@ -96,8 +95,8 @@ async function getReadableNamespaces(actorId, actorName, actorType) {
         }
     }
 
-    // Implicit: agents' own namespace is always readable
-    if (actorType === 'agent' && actorName && !namespaces.includes(actorName)) {
+    // Implicit: own namespace is always readable
+    if (actorName && !namespaces.includes(actorName)) {
         namespaces.push(actorName);
     }
 
