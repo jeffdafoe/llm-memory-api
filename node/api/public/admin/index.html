@@ -616,8 +616,27 @@
                 <div v-if="currentView === 'config'">
                     <div class="sub-tabs">
                         <a href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
+                        <a href="#" :class="{ active: configSubTab === 'actors' }" @click.prevent="configSubTab = 'actors'">Actors</a>
                         <a href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
                         <a href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
+                    </div>
+
+                    <!-- Actors sub-tab -->
+                    <div v-if="configSubTab === 'actors'">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="openActorConfig(actor)">
+                                    <td>{{ actor.name }}</td>
+                                    <td><span class="badge" :class="'badge-type-' + actor.type">{{ actor.type }}</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
 
                     <!-- System sub-tab -->
@@ -852,6 +871,124 @@
                 </div>
 
                 <!-- Shared dialogs (accessible from any view) -->
+
+                <!-- Actor config dialog (permissions + visibility) -->
+                <dialog :open="selectedActorConfig !== null" @close="closeActorConfig()">
+                    <article v-if="selectedActorConfig" class="actor-config-dialog">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
+                            <h3>{{ selectedActorConfig.name }} <span class="badge" :class="'badge-type-' + selectedActorConfig.type">{{ selectedActorConfig.type }}</span></h3>
+                        </header>
+                        <div class="dialog-body" v-if="!actorConfigLoading">
+
+                            <!-- Namespace Permissions -->
+                            <h4><i class="icon-shield"></i> Namespace Permissions</h4>
+
+                            <label class="checkbox-label">
+                                <input type="checkbox" v-model="actorHasWildcardPerm">
+                                Full access to all namespaces (wildcard)
+                            </label>
+
+                            <p v-if="isAgent(selectedActorConfig)" class="muted" style="font-size: 0.85em; margin-bottom: 0.5rem;">
+                                Agents always have implicit full access to their own namespace ({{ selectedActorConfig.name }}).
+                            </p>
+
+                            <table v-if="!actorHasWildcardPerm" class="actor-perm-table">
+                                <thead>
+                                    <tr>
+                                        <th>Namespace</th>
+                                        <th style="width: 4em; text-align: center;">Read</th>
+                                        <th style="width: 4em; text-align: center;">Write</th>
+                                        <th style="width: 5em; text-align: center;">Delete</th>
+                                        <th style="width: 3em;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(perm, idx) in actorPermissions" :key="perm.namespace">
+                                        <td class="log-mono">{{ perm.namespace }}</td>
+                                        <td style="text-align: center;"><input type="checkbox" v-model="perm.can_read"></td>
+                                        <td style="text-align: center;"><input type="checkbox" v-model="perm.can_write"></td>
+                                        <td style="text-align: center;"><input type="checkbox" v-model="perm.can_delete"></td>
+                                        <td><button class="inline-button compact danger" @click="removePermissionRow(idx)" title="Remove">&times;</button></td>
+                                    </tr>
+                                    <tr v-if="actorPermissions.length === 0">
+                                        <td colspan="5" class="muted">No namespace permissions configured.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <div v-if="!actorHasWildcardPerm" class="add-row" style="margin-top: 0.5rem;">
+                                <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                                    <input type="text" v-model="newNamespaceInput" list="ns-suggestions" placeholder="Namespace..." style="margin-bottom: 0; flex: 1;" @keyup.enter="addPermissionRow">
+                                    <datalist id="ns-suggestions">
+                                        <option v-for="ns in availableNamespacesFiltered" :key="ns" :value="ns"></option>
+                                    </datalist>
+                                    <button class="inline-button" @click="addPermissionRow">Add</button>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 0.75rem;">
+                                <button class="inline-button" @click="savePermissions" :disabled="permissionsSaving">
+                                    {{ permissionsSaving ? 'Saving...' : 'Save Permissions' }}
+                                </button>
+                            </div>
+
+                            <!-- Actor Visibility -->
+                            <h4 style="margin-top: 1.5rem;"><i class="icon-eye"></i> Actor Visibility</h4>
+
+                            <label class="checkbox-label">
+                                <input type="checkbox" v-model="actorHasWildcardVis">
+                                Can see all actors
+                            </label>
+
+                            <p class="muted" style="font-size: 0.85em; margin-bottom: 0.5rem;">
+                                Every actor can always see themselves (implicit).
+                            </p>
+
+                            <div v-if="!actorHasWildcardVis">
+                                <table class="actor-perm-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Actor</th>
+                                            <th style="width: 5em;">Type</th>
+                                            <th style="width: 3em;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(grant, idx) in actorVisibilityGrants" :key="grant.target_actor_id">
+                                            <td>{{ grant.target_name }}</td>
+                                            <td><span class="badge" :class="'badge-type-' + grant.target_type">{{ grant.target_type }}</span></td>
+                                            <td><button class="inline-button compact danger" @click="removeVisibilityGrant(idx)" title="Remove">&times;</button></td>
+                                        </tr>
+                                        <tr v-if="actorVisibilityGrants.length === 0">
+                                            <td colspan="3" class="muted">No visibility grants — can only see self.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <div class="add-row" style="margin-top: 0.5rem;">
+                                    <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                                        <select v-model="newVisibilityTarget" style="margin-bottom: 0; flex: 1;">
+                                            <option value="">Select actor...</option>
+                                            <option v-for="a in availableVisibilityTargets" :key="a.id" :value="a.id">{{ a.name }} ({{ a.type }})</option>
+                                        </select>
+                                        <button class="inline-button" @click="addVisibilityGrant">Add</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 0.75rem;">
+                                <button class="inline-button" @click="saveVisibility" :disabled="visibilitySaving">
+                                    {{ visibilitySaving ? 'Saving...' : 'Save Visibility' }}
+                                </button>
+                            </div>
+
+                        </div>
+                        <div v-else class="dialog-body">
+                            <p class="muted">Loading...</p>
+                        </div>
+                    </article>
+                </dialog>
 
                 <!-- Discussion detail modal -->
                 <dialog :open="selectedDiscussion !== null" @close="selectedDiscussion = null">
@@ -1285,6 +1422,7 @@
     <script src="apilog.js"></script>
     <script src="errorlog.js"></script>
     <script src="config.js"></script>
+    <script src="actors-config.js"></script>
     <script src="dashboard.js"></script>
     <script src="app.js"></script>
 </body>

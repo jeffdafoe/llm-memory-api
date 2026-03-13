@@ -34,6 +34,7 @@ createApp({
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
+        const actorsConfigModule = useActorsConfig(deps);
         const dashboardModule = useDashboard(deps);
 
         // View loading — route data fetches to the right module
@@ -51,6 +52,7 @@ createApp({
                 errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'config') {
                 configModule.loadConfig();
+                if (configSubTab.value === 'actors') actorsConfigModule.loadActorsConfig();
                 apiLogModule.startApiLogPolling();
                 errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'agents') {
@@ -73,6 +75,7 @@ createApp({
             discussionsModule.closeDialogs();
             chatModule.closeDialogs();
             mailModule.closeDialogs();
+            actorsConfigModule.closeDialogs();
             core.confirmPrompt.value = null;
         }
 
@@ -116,6 +119,11 @@ createApp({
         });
         watch(commSubTab, () => {
             if (currentView.value === 'comms') loadCurrentView();
+        });
+        watch(configSubTab, (tab) => {
+            if (currentView.value === 'config' && tab === 'actors') {
+                actorsConfigModule.loadActorsConfig();
+            }
         });
 
         // Lifecycle
@@ -191,6 +199,8 @@ createApp({
             ...errorLogModule,
             // Config
             ...configModule,
+            // Actors Config
+            ...actorsConfigModule,
             // Dashboard
             ...dashboardModule,
         };

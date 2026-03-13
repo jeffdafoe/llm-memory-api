@@ -1127,6 +1127,50 @@ h4 i {
     font-size: 0.85em;
 }
 
+/* Actor config dialog */
+
+.actor-config-dialog {
+    max-width: 700px;
+}
+
+.actor-config-dialog h4 {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--pico-muted-color);
+    margin-bottom: 0.4rem;
+    margin-top: 1.25rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    padding-bottom: 0.3rem;
+}
+
+.actor-perm-table {
+    margin-bottom: 0;
+}
+
+.actor-perm-table input[type="checkbox"] {
+    width: 1.2em !important;
+    min-width: 1.2em;
+    height: 1.2em;
+    margin: 0 auto;
+    display: block;
+}
+
+.badge-type-user {
+    background: #4a7c9b;
+    color: white;
+}
+
+.badge-type-agent {
+    background: #5a9a5a;
+    color: white;
+}
+
+.badge-type-system {
+    background: #888;
+    color: white;
+}
+
 .mail-compose-actions {
     display: flex;
     gap: 0.5rem;
