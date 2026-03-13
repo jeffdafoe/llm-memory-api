@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
-const { hash } = require('../services/hashing');
+const { verify } = require('../services/hashing');
 const { broadcast } = require('../services/events');
 const { resolveByName } = require('../services/actors');
 
@@ -16,15 +16,20 @@ const { resolveByName } = require('../services/actors');
 // Also refreshes active_since if already set, so the activity spinner stays alive
 // as long as the agent is making tool calls (without requiring explicit re-calls).
 // Re-broadcasts the agent_activity event so the admin UI keeps the spinner visible.
+// Combined into a single query for efficiency.
 function heartbeat(actorId, agentName) {
-    pool.query('UPDATE actors SET last_seen = NOW() WHERE id = $1', [actorId]).catch(() => {});
-    pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1 AND active_since IS NOT NULL', [actorId])
-        .then((result) => {
-            if (result.rowCount > 0) {
-                broadcast('agent_activity', { agent: agentName, active: true });
-            }
-        })
-        .catch(() => {});
+    pool.query(
+        `UPDATE actors
+         SET last_seen = NOW(),
+             active_since = CASE WHEN active_since IS NOT NULL THEN NOW() ELSE active_since END
+         WHERE id = $1
+         RETURNING (active_since IS NOT NULL) AS was_active`,
+        [actorId]
+    ).then((result) => {
+        if (result.rows.length > 0 && result.rows[0].was_active) {
+            broadcast('agent_activity', { agent: agentName, active: true });
+        }
+    }).catch(() => {});
 }
 
 function getResourceMetadataUrl(req) {
@@ -72,8 +77,7 @@ async function tryApiKeyAuth(token) {
     );
 
     for (const row of keys.rows) {
-        const computed = hash(token, row.key_salt);
-        if (computed === row.key_hash) {
+        if (verify(token, row.key_salt, row.key_hash)) {
             // Update last_used_at
             pool.query(
                 'UPDATE agent_api_keys SET last_used_at = NOW() WHERE actor_id = $1 AND key_salt = $2',

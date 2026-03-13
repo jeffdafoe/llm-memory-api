@@ -3,7 +3,8 @@
 // pushes them to connected admin browsers in real time.
 
 const { WebSocketServer } = require('ws');
-const pool = require('../db');
+const { SESSION_KIND } = require('../constants');
+const { validateSessionToken } = require('./sessions');
 
 // Auth cache — reuse the same cache from the auth middleware so we don't
 // double-query the DB for tokens we've already validated.
@@ -45,20 +46,11 @@ async function validateAdminToken(token) {
         return cached.user;
     }
 
-    // Cache miss — check DB (hashed token iteration, same pattern as auth.js)
-    const { hash: hashToken } = require('../services/hashing');
+    // Cache miss — use shared session validation
     try {
-        const result = await pool.query(
-            `SELECT s.id, s.actor_id, s.token_hash, s.token_salt, s.expires_at, ac.name AS username
-             FROM sessions s
-             JOIN actors ac ON ac.id = s.actor_id
-             WHERE s.kind = 'web' AND s.expires_at > NOW()`
-        );
-        for (const row of result.rows) {
-            const computed = hashToken(token, row.token_salt);
-            if (computed === row.token_hash) {
-                return { id: row.actor_id, username: row.username };
-            }
+        const row = await validateSessionToken(token, SESSION_KIND.WEB);
+        if (row) {
+            return { id: row.actor_id, username: row.name };
         }
     } catch (err) {
         console.error('WebSocket auth error:', err.message);

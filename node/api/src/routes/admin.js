@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
 const { log } = require('../services/logger');
-const { hash: hashToken, generateSalt } = require('../services/hashing');
+const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote, moveNote } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
@@ -14,6 +14,7 @@ const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { requireByName, resolveByName, resolveById } = require('../services/actors');
 const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
+const { SESSION_KIND } = require('../constants');
 
 const router = Router();
 
@@ -55,14 +56,22 @@ router.post('/admin/login', async (req, res) => {
 
     try {
         const result = await pool.query(
-            "SELECT id, name AS username, password_hash, password_salt FROM actors WHERE name = $1 AND type = 'user'",
+            "SELECT id, name AS username, password_hash, password_salt FROM actors WHERE name = $1 AND password_hash IS NOT NULL",
             [username]
         );
 
         const row = result.rows[0];
-        const hash = hashToken(password, row ? row.password_salt : DUMMY_SALT);
 
-        if (!row || hash !== row.password_hash) {
+        // Compute hash even when row is missing (timing-safe rejection)
+        if (!row) {
+            hashToken(password, DUMMY_SALT);
+            logAdmin('login_failed', { username });
+            return res.status(401).json({
+                error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password' }
+            });
+        }
+
+        if (!verify(password, row.password_salt, row.password_hash)) {
             logAdmin('login_failed', { username });
             return res.status(401).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password' }
@@ -75,8 +84,8 @@ router.post('/admin/login', async (req, res) => {
         const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
         await pool.query(
-            "INSERT INTO sessions (actor_id, token_hash, token_salt, kind, expires_at) VALUES ($1, $2, $3, 'web', $4)",
-            [row.id, tokenHash, salt, expiresAt]
+            "INSERT INTO sessions (actor_id, token_hash, token_salt, kind, expires_at) VALUES ($1, $2, $3, $4, $5)",
+            [row.id, tokenHash, salt, SESSION_KIND.WEB, expiresAt]
         );
 
         await pool.query(
@@ -102,16 +111,25 @@ router.post('/admin/login', async (req, res) => {
 // POST /admin/logout
 router.post('/admin/logout', async (req, res) => {
     try {
-        // Delete all web sessions for this user (can't look up by hashed token directly)
-        await pool.query(
-            "DELETE FROM sessions WHERE actor_id = $1 AND kind = 'web'",
-            [req.authenticatedUser.id]
-        );
-        // Clear cached sessions for this user
         const token = req.headers.authorization?.replace('Bearer ', '');
+
+        // Find and delete only the session matching this token (not all web sessions)
         if (token) {
+            const sessions = await pool.query(
+                "SELECT id, token_hash, token_salt FROM sessions WHERE actor_id = $1 AND kind = $2",
+                [req.authenticatedUser.id, SESSION_KIND.WEB]
+            );
+
+            for (const row of sessions.rows) {
+                if (verify(token, row.token_salt, row.token_hash)) {
+                    await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
+                    break;
+                }
+            }
+
             auth.sessionCache.delete(token);
         }
+
         logAdmin('logout', { user_id: req.authenticatedUser.id });
         res.json({ message: 'Logged out' });
     } catch (err) {
@@ -378,7 +396,7 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
         }
 
         // Invalidate all sessions
-        await pool.query("DELETE FROM sessions WHERE actor_id = $1 AND kind = 'api'", [actor.id]);
+        await pool.query("DELETE FROM sessions WHERE actor_id = $1 AND kind = $2", [actor.id, SESSION_KIND.API]);
 
         // Clear cached sessions
         for (const [key, value] of auth.sessionCache.entries()) {
@@ -1140,36 +1158,50 @@ router.post('/admin/agents/create', async (req, res) => {
         const salt = generateSalt();
         const hash = hashToken(passphrase, salt);
 
-        // Create actor if it doesn't exist (with credentials on actors)
+        // Wrap actor + agent_configuration creation in a transaction
+        // to avoid orphaned actor rows if the second INSERT fails.
+        const client = await pool.connect();
         let actorId;
-        if (existingActor) {
-            actorId = existingActor.id;
-            // Update credentials on the existing actor
-            await pool.query(
-                "UPDATE actors SET token_hash = $1, token_salt = $2, status = 'active' WHERE id = $3",
-                [hash, salt, actorId]
-            );
-        } else {
-            const actorResult = await pool.query(
-                "INSERT INTO actors (name, type, token_hash, token_salt, status) VALUES ($1, 'agent', $2, $3, 'active') RETURNING id",
-                [agent, hash, salt]
-            );
-            actorId = actorResult.rows[0].id;
-        }
+        try {
+            await client.query('BEGIN');
 
-        // Create agent configuration (AI config only)
-        await pool.query(
-            `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-            [actorId, provider || null, model || null,
-             isVirtual === true, personality || null,
-             parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
-             parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
-             cache_prompts === true, learning_enabled !== false,
-             max_tokens != null ? parseInt(max_tokens) : null,
-             temperature != null ? parseFloat(temperature) : null,
-             configuration ? JSON.stringify(configuration) : null]
-        );
+            // Create actor if it doesn't exist (with credentials on actors)
+            if (existingActor) {
+                actorId = existingActor.id;
+                // Update credentials on the existing actor
+                await client.query(
+                    "UPDATE actors SET token_hash = $1, token_salt = $2, status = 'active' WHERE id = $3",
+                    [hash, salt, actorId]
+                );
+            } else {
+                const actorResult = await client.query(
+                    "INSERT INTO actors (name, token_hash, token_salt, status) VALUES ($1, $2, $3, 'active') RETURNING id",
+                    [agent, hash, salt]
+                );
+                actorId = actorResult.rows[0].id;
+            }
+
+            // Create agent configuration (AI config only)
+            await client.query(
+                `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                [actorId, provider || null, model || null,
+                 isVirtual === true, personality || null,
+                 parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
+                 parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
+                 cache_prompts === true, learning_enabled !== false,
+                 max_tokens != null ? parseInt(max_tokens) : null,
+                 temperature != null ? parseFloat(temperature) : null,
+                 configuration ? JSON.stringify(configuration) : null]
+            );
+
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
+        }
 
         // Apply welcome template if selected
         let welcomeMailSent = false;

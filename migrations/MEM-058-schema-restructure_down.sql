@@ -98,10 +98,18 @@ WHERE a.actor_id = ac.id;
 ALTER TABLE agents ADD CONSTRAINT chk_agents_status CHECK (status IN ('active'));
 
 -- ============================================================
--- Step 4: Drop new tables and columns from actors
+-- Step 4: Drop new tables and columns from actors, restore type column
 -- ============================================================
 
 DROP TABLE sessions;
+
+-- Restore the type column (dropped in MEM-058 forward migration)
+ALTER TABLE actors ADD COLUMN type VARCHAR(20) NOT NULL DEFAULT 'agent';
+
+-- Set type based on what's attached:
+-- actors with agent_configuration rows = 'agent', others = 'user'
+UPDATE actors SET type = 'user'
+WHERE id NOT IN (SELECT actor_id FROM agents);
 
 ALTER TABLE actors DROP CONSTRAINT IF EXISTS chk_actors_status;
 ALTER TABLE actors DROP COLUMN token_hash;

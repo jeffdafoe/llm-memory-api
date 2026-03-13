@@ -124,13 +124,21 @@ DROP TABLE users;
 DROP TABLE agent_sessions;
 
 -- ============================================================
--- Step 7: Recreate agent_status view
+-- Step 7: Drop the type column from actors
+-- ============================================================
+-- Actor identity is capability-based: has agent_configuration row = agent,
+-- has password_hash = web user, has both = dual identity (e.g. Wendy).
+-- The type column is redundant and eliminated.
+
+ALTER TABLE actors DROP COLUMN type;
+
+-- ============================================================
+-- Step 8: Recreate agent_status view
 -- ============================================================
 
 CREATE VIEW agent_status AS
 SELECT ac.id AS actor_id,
        ac.name AS agent,
-       ac.type AS actor_type,
        CASE
            WHEN agc.virtual = TRUE THEN 'available'
            WHEN ac.last_seen > NOW() - INTERVAL '15 minutes' THEN 'online'

@@ -11,7 +11,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
-const { hash } = require('../services/hashing');
+const { hash, verify } = require('../services/hashing');
 const { logError } = require('../services/logger');
 
 const router = Router();
@@ -51,8 +51,7 @@ async function validateClientCredentials(clientId, clientSecret) {
     );
 
     for (const row of result.rows) {
-        const computed = hash(clientSecret, row.key_salt);
-        if (computed === row.key_hash) {
+        if (verify(clientSecret, row.key_salt, row.key_hash)) {
             // Track usage
             pool.query('UPDATE agent_api_keys SET last_used_at = NOW() WHERE id = $1', [row.id]).catch(() => {});
             return clientId;

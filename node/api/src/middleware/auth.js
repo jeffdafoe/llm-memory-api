@@ -1,6 +1,8 @@
 const pool = require('../db');
-const { hash: hashToken } = require('../services/hashing');
+const { verify } = require('../services/hashing');
 const { logError } = require('../services/logger');
+const { SESSION_KIND } = require('../constants');
+const { validateSessionToken } = require('../services/sessions');
 
 // Cache session tokens in memory to avoid DB lookup on every request
 // Key: bearer token, Value: { agent, actorId, expires }
@@ -52,31 +54,22 @@ async function auth(req, res, next) {
 
     // Cache miss — check active API sessions (agents) in unified sessions table
     try {
-        const result = await pool.query(
-            `SELECT s.id, ac.name AS agent, s.actor_id, s.token_hash, s.token_salt, s.expires_at
-             FROM sessions s
-             JOIN actors ac ON ac.id = s.actor_id
-             WHERE s.kind = 'api' AND s.expires_at > NOW()`
-        );
-
-        for (const row of result.rows) {
-            const hash = hashToken(token, row.token_salt);
-            if (hash === row.token_hash) {
-                sessionCache.set(token, {
-                    type: 'agent',
-                    agent: row.agent,
-                    actorId: row.actor_id,
-                    expires: Math.min(
-                        Date.now() + CACHE_TTL_MS,
-                        new Date(row.expires_at).getTime()
-                    )
-                });
-                req.authMethod = 'session';
-                req.authenticatedAgent = row.agent;
-                req.actorId = row.actor_id;
-                heartbeat(row.actor_id);
-                return next();
-            }
+        const apiRow = await validateSessionToken(token, SESSION_KIND.API);
+        if (apiRow) {
+            sessionCache.set(token, {
+                type: 'agent',
+                agent: apiRow.name,
+                actorId: apiRow.actor_id,
+                expires: Math.min(
+                    Date.now() + CACHE_TTL_MS,
+                    new Date(apiRow.expires_at).getTime()
+                )
+            });
+            req.authMethod = 'session';
+            req.authenticatedAgent = apiRow.name;
+            req.actorId = apiRow.actor_id;
+            heartbeat(apiRow.actor_id);
+            return next();
         }
     } catch (err) {
         console.error('Auth API session lookup error:', err.message);
@@ -84,30 +77,21 @@ async function auth(req, res, next) {
 
     // Check web sessions (admin UI) in unified sessions table
     try {
-        const result = await pool.query(
-            `SELECT s.id, s.actor_id, s.token_hash, s.token_salt, s.expires_at, ac.name AS username
-             FROM sessions s
-             JOIN actors ac ON ac.id = s.actor_id
-             WHERE s.kind = 'web' AND s.expires_at > NOW()`
-        );
-
-        for (const row of result.rows) {
-            const hash = hashToken(token, row.token_salt);
-            if (hash === row.token_hash) {
-                sessionCache.set(token, {
-                    type: 'user',
-                    user: { id: row.actor_id, username: row.username },
-                    actorId: row.actor_id,
-                    expires: Math.min(
-                        Date.now() + CACHE_TTL_MS,
-                        new Date(row.expires_at).getTime()
-                    )
-                });
-                req.authMethod = 'session';
-                req.authenticatedUser = { id: row.actor_id, username: row.username };
-                req.actorId = row.actor_id;
-                return next();
-            }
+        const webRow = await validateSessionToken(token, SESSION_KIND.WEB);
+        if (webRow) {
+            sessionCache.set(token, {
+                type: 'user',
+                user: { id: webRow.actor_id, username: webRow.name },
+                actorId: webRow.actor_id,
+                expires: Math.min(
+                    Date.now() + CACHE_TTL_MS,
+                    new Date(webRow.expires_at).getTime()
+                )
+            });
+            req.authMethod = 'session';
+            req.authenticatedUser = { id: webRow.actor_id, username: webRow.name };
+            req.actorId = webRow.actor_id;
+            return next();
         }
     } catch (err) {
         console.error('Auth web session lookup error:', err.message);

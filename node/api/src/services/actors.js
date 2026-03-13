@@ -1,6 +1,11 @@
 // Actor resolution service — maps between agent names and integer actor IDs.
 // All external APIs continue to use agent names; this service handles the
 // internal translation to/from actors.id for database queries.
+//
+// Actor identity is capability-based (no type column):
+//   - Has agent_configuration row → can authenticate as agent
+//   - Has password_hash → can authenticate as web user
+//   - Has both → dual identity (e.g. Wendy)
 
 const pool = require('../db');
 
@@ -9,25 +14,15 @@ const nameCache = new Map(); // name -> { actor, expires }
 const idCache = new Map();   // id -> { actor, expires }
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function resolveByName(name, type) {
-    const cacheKey = type ? `${name}:${type}` : name;
-    const cached = nameCache.get(cacheKey);
+async function resolveByName(name) {
+    const cached = nameCache.get(name);
     if (cached && cached.expires > Date.now()) return cached.actor;
 
-    let result;
-    if (type) {
-        result = await pool.query('SELECT id, name, type FROM actors WHERE name = $1 AND type = $2', [name, type]);
-    } else {
-        result = await pool.query('SELECT id, name, type FROM actors WHERE name = $1', [name]);
-    }
+    const result = await pool.query('SELECT id, name FROM actors WHERE name = $1', [name]);
     if (result.rows.length === 0) return null;
 
     const actor = result.rows[0];
     cacheActor(actor);
-    // Also cache under the typed key so future typed lookups hit cache
-    if (type) {
-        nameCache.set(cacheKey, { actor, expires: Date.now() + CACHE_TTL_MS });
-    }
     return actor;
 }
 
@@ -35,7 +30,7 @@ async function resolveById(id) {
     const cached = idCache.get(id);
     if (cached && cached.expires > Date.now()) return cached.actor;
 
-    const result = await pool.query('SELECT id, name, type FROM actors WHERE id = $1', [id]);
+    const result = await pool.query('SELECT id, name FROM actors WHERE id = $1', [id]);
     if (result.rows.length === 0) return null;
 
     const actor = result.rows[0];
@@ -58,7 +53,7 @@ async function resolveMultipleByName(names) {
     }
 
     if (uncached.length > 0) {
-        const rows = await pool.query('SELECT id, name, type FROM actors WHERE name = ANY($1)', [uncached]);
+        const rows = await pool.query('SELECT id, name FROM actors WHERE name = ANY($1)', [uncached]);
         for (const row of rows.rows) {
             cacheActor(row);
             result.set(row.name, row);
