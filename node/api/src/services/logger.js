@@ -69,20 +69,35 @@ function logError(subsystem, action, opts) {
 
 // Query error_log entries for the admin UI.
 // Supports since_id for incremental polling and limit for initial load.
-async function getErrorLogEntries(sinceId, limit) {
+// visibleActorIds: null (no filtering) or Set/Array of actor IDs to restrict results.
+async function getErrorLogEntries(sinceId, limit, visibleActorIds) {
     const pool = require('../db');
     const cols = `e.id, e.created_at, e.subsystem, e.action, ac.name AS agent,
                   e.context, e.context_id, e.error_message, e.error_detail`;
+    // Build optional visibility filter
+    let visFilter = '';
+    const params = [];
+    if (visibleActorIds) {
+        const ids = Array.from(visibleActorIds);
+        if (ids.length === 0) {
+            return [];
+        }
+        const placeholders = ids.map((id, i) => '$' + (i + 1));
+        visFilter = ` AND e.actor_id IN (${placeholders.join(', ')})`;
+        params.push(...ids);
+    }
     if (sinceId) {
+        params.push(sinceId);
         const result = await pool.query(
-            `SELECT ${cols} FROM error_log e LEFT JOIN actors ac ON ac.id = e.actor_id WHERE e.id > $1 ORDER BY e.id ASC LIMIT 500`,
-            [sinceId]
+            `SELECT ${cols} FROM error_log e LEFT JOIN actors ac ON ac.id = e.actor_id WHERE e.id > $${params.length}${visFilter} ORDER BY e.id ASC LIMIT 500`,
+            params
         );
         return result.rows;
     }
+    params.push(limit || 100);
     const result = await pool.query(
-        `SELECT ${cols} FROM error_log e LEFT JOIN actors ac ON ac.id = e.actor_id ORDER BY e.id DESC LIMIT $1`,
-        [limit || 100]
+        `SELECT ${cols} FROM error_log e LEFT JOIN actors ac ON ac.id = e.actor_id WHERE 1=1${visFilter} ORDER BY e.id DESC LIMIT $${params.length}`,
+        params
     );
     return result.rows.reverse();
 }

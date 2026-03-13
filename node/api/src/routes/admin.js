@@ -266,7 +266,8 @@ router.post('/admin/api-log', async (req, res) => {
 router.post('/admin/error-log', async (req, res) => {
     const { since_id, limit } = req.body;
     try {
-        const entries = await getErrorLogEntries(since_id || 0, limit || 100);
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        const entries = await getErrorLogEntries(since_id || 0, limit || 100, visibleIds);
         res.json({ entries });
     } catch (err) {
         console.error('Admin error-log error:', err.message);
