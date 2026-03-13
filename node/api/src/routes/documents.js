@@ -9,7 +9,8 @@ const router = Router();
 function getActor(req) {
     return {
         actorId: req.actorId,
-        actorName: req.authenticatedAgent || (req.authenticatedUser && req.authenticatedUser.username) || 'unknown'
+        actorName: req.authenticatedAgent || (req.authenticatedUser && req.authenticatedUser.username) || 'unknown',
+        actorType: req.authenticatedAgent ? 'agent' : 'user'
     };
 }
 
@@ -25,7 +26,7 @@ router.post('/documents/save', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'write');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
         const result = await saveNote(namespace, title, content, slug, created_by);
         res.json(result);
     } catch (err) {
@@ -49,7 +50,7 @@ router.post('/documents/list', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
         const result = await listNotes(namespace, limit, offset, prefix);
         res.json(result);
     } catch (err) {
@@ -73,7 +74,7 @@ router.post('/documents/read', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
         const result = await readNote(namespace, slug);
         res.json(result);
     } catch (err) {
@@ -97,7 +98,7 @@ router.post('/documents/delete', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'delete');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'delete');
         const result = await deleteNote(namespace, slug);
         res.json(result);
     } catch (err) {
@@ -121,7 +122,7 @@ router.post('/documents/restore', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'write');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
         const result = await restoreNote(namespace, slug);
         res.json(result);
     } catch (err) {
@@ -145,7 +146,7 @@ router.post('/documents/edit', async (req, res) => {
     try {
         validateNamespace(namespace);
         const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'write');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
         const result = await editNote(namespace, slug, old_string, new_string, replace_all);
         res.json(result);
     } catch (err) {
@@ -171,9 +172,9 @@ router.post('/documents/move', async (req, res) => {
         if (new_namespace) validateNamespace(new_namespace);
         const actor = getActor(req);
         // Need write on source (to remove) and write on target (to create)
-        await requireAccess(actor.actorId, actor.actorName, namespace, 'write');
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
         if (new_namespace && new_namespace !== namespace) {
-            await requireAccess(actor.actorId, actor.actorName, new_namespace, 'write');
+            await requireAccess(actor.actorId, actor.actorName, actor.actorType, new_namespace, 'write');
         }
         const result = await moveNote(namespace, slug, new_slug, new_namespace);
         res.json(result);
@@ -201,12 +202,12 @@ router.post('/documents/grep', async (req, res) => {
         // For wildcard searches, push namespace filtering into the query.
         if (namespace && namespace !== '*') {
             validateNamespace(namespace);
-            await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
+            await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
         }
         // For wildcard searches, push namespace filtering into the query
         let readable = null;
         if (!namespace || namespace === '*') {
-            readable = await getReadableNamespaces(actor.actorId, actor.actorName);
+            readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
         }
         let results = await grepNotes(pattern, namespace, limit, readable);
         res.json({ results });
