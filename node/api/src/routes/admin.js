@@ -1264,6 +1264,24 @@ router.post('/admin/actors/create', async (req, res) => {
         }
     }
 
+    // Validate max_tokens and temperature if provided
+    if (max_tokens != null) {
+        const parsed = parseInt(max_tokens);
+        if (isNaN(parsed) || parsed < 1) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'max_tokens must be a positive integer' }
+            });
+        }
+    }
+    if (temperature != null) {
+        const parsed = parseFloat(temperature);
+        if (isNaN(parsed) || parsed < 0 || parsed > 2) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'temperature must be a number between 0 and 2' }
+            });
+        }
+    }
+
     try {
         // Check if actor already exists
         const existingActor = await resolveByName(actorName);
@@ -1323,33 +1341,40 @@ router.post('/admin/actors/create', async (req, res) => {
         }
 
         // Apply welcome template if selected (non-virtual only)
+        // Wrapped in its own try/catch — actor is already committed at this point
         let welcomeMailSent = false;
+        let postCommitError = null;
         if (welcome_template_id && !isVirtual) {
-            const tplResult = await pool.query(
-                'SELECT content FROM templates WHERE id = $1 AND kind = $2',
-                [welcome_template_id, 'welcome']
-            );
-            if (tplResult.rows.length > 0) {
-                const rawContent = tplResult.rows[0].content;
-                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
-                const mailBody = tplBody.replace(/\{agent\}/g, actorName);
-
-                // Copy template body to startup_instructions (persistent)
-                await pool.query(
-                    'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2',
-                    [mailBody, actorId]
+            try {
+                const tplResult = await pool.query(
+                    'SELECT content FROM templates WHERE id = $1 AND kind = $2',
+                    [welcome_template_id, 'welcome']
                 );
+                if (tplResult.rows.length > 0) {
+                    const rawContent = tplResult.rows[0].content;
+                    const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                    const mailBody = tplBody.replace(/\{agent\}/g, actorName);
 
-                // Also send as welcome mail (fallback / immediate context)
-                const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, actorName);
-                await mailSend(actorName, 'system', mailSubject, mailBody);
-                welcomeMailSent = true;
+                    // Copy template body to startup_instructions (persistent)
+                    await pool.query(
+                        'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2',
+                        [mailBody, actorId]
+                    );
+
+                    // Also send as welcome mail (fallback / immediate context)
+                    const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, actorName);
+                    await mailSend(actorName, 'system', mailSubject, mailBody);
+                    welcomeMailSent = true;
+                }
+            } catch (postErr) {
+                console.error('Post-commit welcome template error:', postErr.message);
+                postCommitError = 'Actor created but welcome template failed: ' + postErr.message;
             }
         }
 
         logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
 
-        res.json({
+        const response = {
             name: actorName,
             passphrase,
             virtual: isVirtual === true,
@@ -1357,7 +1382,11 @@ router.post('/admin/actors/create', async (req, res) => {
             status: 'active',
             welcome_mail_sent: welcomeMailSent,
             message: isVirtual ? 'Virtual agent created.' : 'Actor created. Save the passphrase — it will not be shown again.'
-        });
+        };
+        if (postCommitError) {
+            response.warning = postCommitError;
+        }
+        res.json(response);
     } catch (err) {
         if (err.statusCode === 400) {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
@@ -1757,7 +1786,7 @@ router.post('/admin/actors/visibility/save', async (req, res) => {
 router.post('/admin/actors/namespaces', async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT DISTINCT namespace FROM documents ORDER BY namespace'
+            "SELECT DISTINCT namespace FROM documents WHERE namespace != '/' ORDER BY namespace"
         );
         res.json({ namespaces: result.rows.map(r => r.namespace) });
     } catch (err) {

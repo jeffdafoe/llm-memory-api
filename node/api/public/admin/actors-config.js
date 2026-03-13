@@ -74,7 +74,10 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
 
             // Visibility
             actorHasWildcardVis.value = visData.wildcard;
-            actorVisibilityGrants.value = visData.grants;
+            actorVisibilityGrants.value = visData.grants.map(g => ({
+                ...g,
+                target_actor_id: parseInt(g.target_actor_id)
+            }));
 
             // Available namespaces
             availableNamespaces.value = nsData.namespaces;
@@ -88,6 +91,12 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
 
     function closeActorConfig() {
         selectedActorConfig.value = null;
+        actorPermissions.value = [];
+        actorHasWildcardPerm.value = false;
+        actorVisibilityGrants.value = [];
+        actorHasWildcardVis.value = false;
+        newNamespaceInput.value = '';
+        newVisibilityTarget.value = '';
     }
 
     // ─── Permissions ───
