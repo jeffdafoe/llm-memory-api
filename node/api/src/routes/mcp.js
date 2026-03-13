@@ -1158,6 +1158,18 @@ router.post('/mcp', mcpAuth, async (req, res) => {
     }
 
     // No session ID — new session (initialize request)
+    // Diagnostic: log headers on new MCP session to differentiate connectors (DIAG-001)
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
+    console.log('[DIAG-001] New MCP session', JSON.stringify({
+        agent: req.mcpAgent,
+        ip,
+        userAgent: req.headers['user-agent'] || null,
+        origin: req.headers['origin'] || null,
+        referer: req.headers['referer'] || null,
+        host: req.headers['host'] || null,
+        allHeaders: Object.keys(req.headers).sort()
+    }));
+
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID()
     });
