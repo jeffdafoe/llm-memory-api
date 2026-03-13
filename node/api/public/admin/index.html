@@ -979,6 +979,22 @@
                                 </button>
                             </div>
 
+                            <hr style="margin: 1.5rem 0;">
+
+                            <!-- UI Access -->
+                            <h4>UI Access</h4>
+                            <p v-if="selectedActorConfig.is_user" class="muted" style="margin-bottom: 0.5rem;">This actor has UI login access.</p>
+                            <p v-else class="muted" style="margin-bottom: 0.5rem;">This actor does not have UI login access. Set a password to enable it.</p>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="password" v-model="actorPasswordInput" :placeholder="selectedActorConfig.is_user ? 'New password' : 'Set password'" style="flex: 1; max-width: 20em;">
+                                <button class="inline-button" @click="setActorPassword" :disabled="actorPasswordSaving || !actorPasswordInput">
+                                    {{ actorPasswordSaving ? 'Saving...' : (selectedActorConfig.is_user ? 'Change Password' : 'Set Password') }}
+                                </button>
+                                <button v-if="selectedActorConfig.is_user" class="inline-button" @click="clearActorPassword" :disabled="actorPasswordSaving" style="color: var(--error-color, #e74c3c);">
+                                    Remove UI Access
+                                </button>
+                            </div>
+
                         </div>
                         <div v-else class="dialog-body">
                             <p class="muted">Loading...</p>

@@ -1782,6 +1782,48 @@ router.post('/admin/actors/visibility/save', async (req, res) => {
     }
 });
 
+// POST /admin/actors/password — set or clear an actor's UI password
+// Pass { actor_id, password: "string" } to set/change, or { actor_id, password: null } to clear
+router.post('/admin/actors/password', async (req, res) => {
+    const { actor_id, password } = req.body;
+    const actorId = parseActorId(actor_id, res);
+    if (!actorId) return;
+
+    try {
+        const actor = await resolveById(actorId);
+        if (!actor) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+        }
+
+        if (password === null || password === undefined) {
+            // Clear password — remove UI access
+            await pool.query(
+                'UPDATE actors SET password_hash = NULL, password_salt = NULL WHERE id = $1',
+                [actorId]
+            );
+            logAdmin('actor_password_clear', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
+            res.json({ message: 'UI access removed', is_user: false });
+        } else {
+            if (typeof password !== 'string' || password.length < 4) {
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+                });
+            }
+            const salt = generateSalt();
+            const hash = hashToken(password, salt);
+            await pool.query(
+                'UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3',
+                [hash, salt, actorId]
+            );
+            logAdmin('actor_password_set', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
+            res.json({ message: 'Password updated', is_user: true });
+        }
+    } catch (err) {
+        console.error('Admin actor password error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to update password' } });
+    }
+});
+
 // POST /admin/actors/namespaces — get distinct namespaces from documents (for dropdown)
 router.post('/admin/actors/namespaces', async (req, res) => {
     try {
