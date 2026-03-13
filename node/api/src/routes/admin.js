@@ -55,7 +55,7 @@ router.post('/admin/login', async (req, res) => {
 
     try {
         const result = await pool.query(
-            'SELECT id, username, password_hash, password_salt FROM users WHERE username = $1',
+            "SELECT id, name AS username, password_hash, password_salt FROM actors WHERE name = $1 AND type = 'user'",
             [username]
         );
 
@@ -70,15 +70,17 @@ router.post('/admin/login', async (req, res) => {
         }
 
         const sessionToken = generateSessionToken();
+        const salt = generateSalt();
+        const tokenHash = hashToken(sessionToken, salt);
         const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
         await pool.query(
-            'INSERT INTO user_sessions (user_id, session_token, expires_at) VALUES ($1, $2, $3)',
-            [row.id, sessionToken, expiresAt]
+            "INSERT INTO sessions (actor_id, token_hash, token_salt, kind, expires_at) VALUES ($1, $2, $3, 'web', $4)",
+            [row.id, tokenHash, salt, expiresAt]
         );
 
         await pool.query(
-            'UPDATE users SET last_login = NOW() WHERE id = $1',
+            'UPDATE actors SET last_seen = NOW() WHERE id = $1',
             [row.id]
         );
 
@@ -100,12 +102,15 @@ router.post('/admin/login', async (req, res) => {
 // POST /admin/logout
 router.post('/admin/logout', async (req, res) => {
     try {
+        // Delete all web sessions for this user (can't look up by hashed token directly)
+        await pool.query(
+            "DELETE FROM sessions WHERE actor_id = $1 AND kind = 'web'",
+            [req.authenticatedUser.id]
+        );
+        // Clear cached sessions for this user
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (token) {
-            await pool.query(
-                'DELETE FROM user_sessions WHERE session_token = $1',
-                [token]
-            );
+            auth.sessionCache.delete(token);
         }
         logAdmin('logout', { user_id: req.authenticatedUser.id });
         res.json({ message: 'Logged out' });
@@ -250,7 +255,7 @@ router.post('/admin/agents/instructions/read', async (req, res) => {
             });
         }
         const result = await pool.query(
-            'SELECT startup_instructions FROM agents WHERE actor_id = $1',
+            'SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1',
             [actor.id]
         );
         if (result.rows.length === 0) {
@@ -283,7 +288,7 @@ router.post('/admin/agents/instructions/save', async (req, res) => {
             });
         }
         const result = await pool.query(
-            'UPDATE agents SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id',
+            'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id',
             [content, actor.id]
         );
         if (result.rows.length === 0) {
@@ -322,7 +327,7 @@ router.post('/admin/agents/expertise/save', async (req, res) => {
             });
         }
         const result = await pool.query(
-            'UPDATE agents SET expertise = $1 WHERE actor_id = $2 RETURNING actor_id',
+            'UPDATE actors SET expertise = $1 WHERE id = $2 RETURNING id',
             [json, actor.id]
         );
         if (result.rows.length === 0) {
@@ -363,7 +368,7 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
         }
 
         const result = await pool.query(
-            'UPDATE agents SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE actor_id = $3 RETURNING actor_id',
+            'UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3 RETURNING id',
             [hash, salt, actor.id]
         );
         if (result.rows.length === 0) {
@@ -373,7 +378,7 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
         }
 
         // Invalidate all sessions
-        await pool.query('DELETE FROM agent_sessions WHERE actor_id = $1', [actor.id]);
+        await pool.query("DELETE FROM sessions WHERE actor_id = $1 AND kind = 'api'", [actor.id]);
 
         // Clear cached sessions
         for (const [key, value] of auth.sessionCache.entries()) {
@@ -1119,7 +1124,7 @@ router.post('/admin/agents/create', async (req, res) => {
         const existingActor = await resolveByName(agent);
         if (existingActor) {
             const existing = await pool.query(
-                'SELECT actor_id FROM agents WHERE actor_id = $1',
+                'SELECT actor_id FROM agent_configuration WHERE actor_id = $1',
                 [existingActor.id]
             );
             if (existing.rows.length > 0) {
@@ -1135,23 +1140,28 @@ router.post('/admin/agents/create', async (req, res) => {
         const salt = generateSalt();
         const hash = hashToken(passphrase, salt);
 
-        // Create actor if it doesn't exist
+        // Create actor if it doesn't exist (with credentials on actors)
         let actorId;
         if (existingActor) {
             actorId = existingActor.id;
+            // Update credentials on the existing actor
+            await pool.query(
+                "UPDATE actors SET token_hash = $1, token_salt = $2, status = 'active' WHERE id = $3",
+                [hash, salt, actorId]
+            );
         } else {
             const actorResult = await pool.query(
-                "INSERT INTO actors (name, type) VALUES ($1, 'agent') RETURNING id",
-                [agent]
+                "INSERT INTO actors (name, type, token_hash, token_salt, status) VALUES ($1, 'agent', $2, $3, 'active') RETURNING id",
+                [agent, hash, salt]
             );
             actorId = actorResult.rows[0].id;
         }
 
-        // Create agent as active (skip pending/ack dance — admin is creating it)
+        // Create agent configuration (AI config only)
         await pool.query(
-            `INSERT INTO agents (actor_id, token_hash, token_salt, status, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-            [actorId, hash, salt, 'active', provider || null, model || null,
+            `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [actorId, provider || null, model || null,
              isVirtual === true, personality || null,
              parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
              parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
@@ -1175,7 +1185,7 @@ router.post('/admin/agents/create', async (req, res) => {
 
                 // Copy template body to startup_instructions (persistent)
                 await pool.query(
-                    'UPDATE agents SET startup_instructions = $1 WHERE actor_id = $2',
+                    'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2',
                     [mailBody, actorId]
                 );
 
@@ -1219,12 +1229,12 @@ router.post('/admin/agents/read', async (req, res) => {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
         }
         const result = await pool.query(
-            `SELECT ac.name AS agent, a.provider, a.model, a.virtual, a.personality, a.configuration, a.expertise,
-                    a.cache_prompts, a.learning_enabled, a.max_tokens, a.temperature,
-                    a.cost_budget_daily, a.cost_budget_monthly, a.api_key IS NOT NULL AS has_api_key
-             FROM agents a
-             JOIN actors ac ON ac.id = a.actor_id
-             WHERE a.actor_id = $1`,
+            `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
+                    agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
+                    agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key
+             FROM agent_configuration agc
+             JOIN actors ac ON ac.id = agc.actor_id
+             WHERE agc.actor_id = $1`,
             [actor.id]
         );
         if (result.rows.length === 0) {
@@ -1275,7 +1285,7 @@ router.post('/admin/agents/update', async (req, res) => {
                 error: { code: 'NOT_FOUND', message: 'Agent not found' }
             });
         }
-        const existing = await pool.query('SELECT actor_id, virtual FROM agents WHERE actor_id = $1', [actor.id]);
+        const existing = await pool.query('SELECT actor_id, virtual FROM agent_configuration WHERE actor_id = $1', [actor.id]);
         if (existing.rows.length === 0) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Agent not found' }
@@ -1345,7 +1355,7 @@ router.post('/admin/agents/update', async (req, res) => {
 
         params.push(actor.id);
         await pool.query(
-            `UPDATE agents SET ${updates.join(', ')} WHERE actor_id = $${idx}`,
+            `UPDATE agent_configuration SET ${updates.join(', ')} WHERE actor_id = $${idx}`,
             params
         );
 

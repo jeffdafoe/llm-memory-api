@@ -34,7 +34,7 @@ const pingTimer = setInterval(() => {
 // Don't let the timer keep the process alive on shutdown
 pingTimer.unref();
 
-// Validate an admin session token against the user_sessions table.
+// Validate an admin session token against the unified sessions table.
 // Returns the user object if valid, null otherwise.
 async function validateAdminToken(token) {
     if (!token) return null;
@@ -45,17 +45,20 @@ async function validateAdminToken(token) {
         return cached.user;
     }
 
-    // Cache miss — check DB
+    // Cache miss — check DB (hashed token iteration, same pattern as auth.js)
+    const { hash: hashToken } = require('../services/hashing');
     try {
         const result = await pool.query(
-            `SELECT us.session_token, us.expires_at, u.id, u.username
-             FROM user_sessions us JOIN users u ON u.id = us.user_id
-             WHERE us.session_token = $1 AND us.expires_at > NOW()`,
-            [token]
+            `SELECT s.id, s.actor_id, s.token_hash, s.token_salt, s.expires_at, ac.name AS username
+             FROM sessions s
+             JOIN actors ac ON ac.id = s.actor_id
+             WHERE s.kind = 'web' AND s.expires_at > NOW()`
         );
-        if (result.rows.length > 0) {
-            const row = result.rows[0];
-            return { id: row.id, username: row.username };
+        for (const row of result.rows) {
+            const computed = hashToken(token, row.token_salt);
+            if (computed === row.token_hash) {
+                return { id: row.actor_id, username: row.username };
+            }
         }
     } catch (err) {
         console.error('WebSocket auth error:', err.message);

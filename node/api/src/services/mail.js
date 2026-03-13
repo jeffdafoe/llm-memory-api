@@ -28,9 +28,9 @@ async function mailSend(toAgent, fromAgent, subject, body) {
     if (fromAgent !== 'system') {
         (async () => {
             try {
-                const recipientRow = await pool.query('SELECT virtual FROM agents WHERE actor_id = $1', [toActor.id]);
+                const recipientRow = await pool.query('SELECT virtual FROM agent_configuration WHERE actor_id = $1', [toActor.id]);
                 if (!recipientRow.rows[0] || !recipientRow.rows[0].virtual) return;
-                const senderRow = await pool.query('SELECT virtual FROM agents WHERE actor_id = $1', [fromActor.id]);
+                const senderRow = await pool.query('SELECT virtual FROM agent_configuration WHERE actor_id = $1', [fromActor.id]);
                 if (senderRow.rows[0] && senderRow.rows[0].virtual) return;
                 const { handleDirectMail } = require('./virtual-agent');
                 handleDirectMail(toAgent, fromAgent, result.rows[0].id).catch(() => {});

@@ -70,15 +70,13 @@ config.init().then(() => {
     const staleActivityTimer = setInterval(async () => {
         try {
             const { rows } = await pool.query(
-                `UPDATE agents SET active_since = NULL
+                `UPDATE actors SET active_since = NULL
                  WHERE active_since IS NOT NULL
                    AND last_seen < NOW() - INTERVAL '${STALE_ACTIVITY_THRESHOLD}'
-                 RETURNING actor_id`
+                 RETURNING id, name`
             );
             for (const row of rows) {
-                const { resolveById } = require('./services/actors');
-                const actor = await resolveById(row.actor_id);
-                if (actor) broadcast('agent_activity', { agent: actor.name, active: false });
+                broadcast('agent_activity', { agent: row.name, active: false });
             }
         } catch (err) {
             // Don't crash the server if this housekeeping query fails

@@ -3,9 +3,8 @@
 #
 # Cleans up:
 #   1. request_log entries older than 7 days
-#   2. Expired agent sessions
-#   3. Expired user sessions
-#   4. Stale MCP sessions older than 7 days
+#   2. Expired sessions (agent + web)
+#   3. Stale MCP sessions older than 7 days
 #
 # Designed to run as a daily cron job. Reads DATABASE_URL from the app's
 # env file so it uses the same credentials as the running service.
@@ -34,11 +33,8 @@ psql "$DATABASE_URL" --no-psqlrc -q <<'SQL'
 -- 1. Purge request_log entries older than 7 days
 DELETE FROM request_log WHERE timestamp < NOW() - INTERVAL '7 days';
 
--- 2. Delete expired agent sessions
-DELETE FROM agent_sessions WHERE expires_at < NOW();
-
--- 3. Delete expired user sessions
-DELETE FROM user_sessions WHERE expires_at < NOW();
+-- 2. Delete expired sessions (unified table covers both agent and web sessions)
+DELETE FROM sessions WHERE expires_at < NOW();
 
 -- 4. Delete stale MCP sessions older than 7 days
 --    (MCP sessions have no expiry — they auto-rehydrate on demand,
