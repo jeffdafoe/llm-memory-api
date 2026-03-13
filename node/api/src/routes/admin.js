@@ -1510,10 +1510,11 @@ router.post('/admin/actors/list', async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT a.id, a.name, a.created_at,
-                    CASE WHEN ac.actor_id IS NOT NULL THEN 'agent' ELSE 'user' END AS type
+                    (ac.actor_id IS NOT NULL) AS is_agent,
+                    (a.password_hash IS NOT NULL) AS is_user
              FROM actors a
              LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
-             ORDER BY type, a.name`
+             ORDER BY a.name`
         );
         res.json({ actors: result.rows });
     } catch (err) {
@@ -1620,9 +1621,12 @@ router.post('/admin/actors/visibility/read', async (req, res) => {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
         }
         const result = await pool.query(
-            `SELECT avc.target_actor_id, a.name AS target_name, a.type AS target_type
+            `SELECT avc.target_actor_id, a.name AS target_name,
+                    (ac.actor_id IS NOT NULL) AS target_is_agent,
+                    (a.password_hash IS NOT NULL) AS target_is_user
              FROM actor_visibility_configuration avc
              LEFT JOIN actors a ON a.id = avc.target_actor_id
+             LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
              WHERE avc.actor_id = $1
              ORDER BY a.name NULLS FIRST`,
             [actorId]

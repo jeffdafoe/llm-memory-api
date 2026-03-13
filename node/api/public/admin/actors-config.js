@@ -148,7 +148,8 @@ function useActorsConfig({ api, showToast, showConfirm }) {
         actorVisibilityGrants.value.push({
             target_actor_id: target.id,
             target_name: target.name,
-            target_type: target.type
+            target_is_agent: target.is_agent,
+            target_is_user: target.is_user
         });
         newVisibilityTarget.value = '';
     }

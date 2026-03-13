@@ -633,7 +633,7 @@
                             <tbody>
                                 <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="openActorConfig(actor)">
                                     <td>{{ actor.name }}</td>
-                                    <td><span class="badge" :class="'badge-type-' + actor.type">{{ actor.type }}</span></td>
+                                    <td><span v-if="actor.is_agent" class="badge badge-type-agent">agent</span> <span v-if="actor.is_user" class="badge badge-type-user">user</span></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -877,7 +877,7 @@
                     <article v-if="selectedActorConfig" class="actor-config-dialog">
                         <header>
                             <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
-                            <h3>{{ selectedActorConfig.name }} <span class="badge" :class="'badge-type-' + selectedActorConfig.type">{{ selectedActorConfig.type }}</span></h3>
+                            <h3>{{ selectedActorConfig.name }} <span v-if="selectedActorConfig.is_agent" class="badge badge-type-agent">agent</span> <span v-if="selectedActorConfig.is_user" class="badge badge-type-user">user</span></h3>
                         </header>
                         <div class="dialog-body" v-if="!actorConfigLoading">
 
@@ -957,7 +957,7 @@
                                     <tbody>
                                         <tr v-for="(grant, idx) in actorVisibilityGrants" :key="grant.target_actor_id">
                                             <td>{{ grant.target_name }}</td>
-                                            <td><span class="badge" :class="'badge-type-' + grant.target_type">{{ grant.target_type }}</span></td>
+                                            <td><span v-if="grant.target_is_agent" class="badge badge-type-agent">agent</span> <span v-if="grant.target_is_user" class="badge badge-type-user">user</span></td>
                                             <td><button class="inline-button compact danger" @click="removeVisibilityGrant(idx)" title="Remove">&times;</button></td>
                                         </tr>
                                         <tr v-if="actorVisibilityGrants.length === 0">
@@ -970,7 +970,7 @@
                                     <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
                                         <select v-model="newVisibilityTarget" style="margin-bottom: 0; flex: 1;">
                                             <option value="">Select actor...</option>
-                                            <option v-for="a in availableVisibilityTargets" :key="a.id" :value="a.id">{{ a.name }} ({{ a.type }})</option>
+                                            <option v-for="a in availableVisibilityTargets" :key="a.id" :value="a.id">{{ a.name }} ({{ [a.is_agent ? 'agent' : '', a.is_user ? 'user' : ''].filter(Boolean).join(', ') }})</option>
                                         </select>
                                         <button class="inline-button" @click="addVisibilityGrant">Add</button>
                                     </div>
