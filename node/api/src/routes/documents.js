@@ -206,7 +206,7 @@ router.post('/documents/grep', async (req, res) => {
         // For wildcard searches, push namespace filtering into the query
         let readable = null;
         if (!namespace || namespace === '*') {
-            readable = await getReadableNamespaces(actor.actorId);
+            readable = await getReadableNamespaces(actor.actorId, actor.actorName);
         }
         let results = await grepNotes(pattern, namespace, limit, readable);
         res.json({ results });
