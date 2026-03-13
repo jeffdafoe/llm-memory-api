@@ -2,6 +2,8 @@
 -- PostgreSQL database dump
 --
 
+\restrict IulCA3QBrzNlB8bK2coJjfNPFfQoqKd899t2pdElKhXtXdKsxyxKh9N1Xi4Lb5M
+
 -- Dumped from database version 17.8 (Debian 17.8-0+deb13u1)
 -- Dumped by pg_dump version 17.8 (Debian 17.8-0+deb13u1)
 
@@ -24,9 +26,48 @@ SET row_security = off;
 CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 
 
+--
+-- Name: EXTENSION vector; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: actor_visibility_configuration; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.actor_visibility_configuration (
+    id integer NOT NULL,
+    actor_id integer NOT NULL,
+    target_actor_id integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: actor_visibility_configuration_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.actor_visibility_configuration_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: actor_visibility_configuration_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.actor_visibility_configuration_id_seq OWNED BY public.actor_visibility_configuration.id;
+
 
 --
 -- Name: actors; Type: TABLE; Schema: public; Owner: -
@@ -35,9 +76,17 @@ SET default_table_access_method = heap;
 CREATE TABLE public.actors (
     id integer NOT NULL,
     name character varying(50) NOT NULL,
-    type character varying(20) DEFAULT 'agent'::character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT actors_type_check CHECK (((type)::text = ANY ((ARRAY['agent'::character varying, 'user'::character varying, 'system'::character varying])::text[])))
+    token_hash character varying(128),
+    token_salt character varying(64),
+    password_hash text,
+    password_salt text,
+    passphrase_rotated_at timestamp with time zone,
+    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
+    last_seen timestamp with time zone,
+    active_since timestamp with time zone,
+    expertise text DEFAULT '[]'::text NOT NULL,
+    CONSTRAINT chk_actors_status CHECK (((status)::text = 'active'::text))
 );
 
 
@@ -98,6 +147,29 @@ ALTER SEQUENCE public.agent_api_keys_id_seq OWNED BY public.agent_api_keys.id;
 
 
 --
+-- Name: agent_configuration; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_configuration (
+    startup_instructions text,
+    provider character varying(50),
+    model character varying(100),
+    virtual boolean DEFAULT false NOT NULL,
+    personality text,
+    api_key character varying(512),
+    configuration text,
+    cache_prompts boolean DEFAULT false NOT NULL,
+    learning_enabled boolean DEFAULT true NOT NULL,
+    max_tokens integer,
+    temperature numeric,
+    cost_budget_daily numeric(10,2),
+    cost_budget_monthly numeric(10,2),
+    actor_id integer NOT NULL,
+    CONSTRAINT chk_agent_configuration_provider CHECK (((provider IS NULL) OR ((provider)::text = ANY ((ARRAY['anthropic'::character varying, 'google'::character varying, 'openai'::character varying, 'perplexity'::character varying])::text[]))))
+);
+
+
+--
 -- Name: agent_permissions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -109,86 +181,38 @@ CREATE TABLE public.agent_permissions (
 
 
 --
--- Name: agent_sessions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.agent_sessions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    token_hash text NOT NULL,
-    token_salt text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    subsystem text,
-    actor_id integer NOT NULL
-);
-
-
---
--- Name: agents; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.agents (
-    registered_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_seen timestamp with time zone,
-    token_hash character varying(128),
-    token_salt character varying(64),
-    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
-    passphrase_rotated_at timestamp with time zone,
-    startup_instructions text,
-    expertise text DEFAULT '[]'::text NOT NULL,
-    provider character varying(50),
-    model character varying(100),
-    virtual boolean DEFAULT false NOT NULL,
-    personality text,
-    api_key character varying(512),
-    configuration text,
-    active_since timestamp with time zone,
-    cache_prompts boolean DEFAULT false NOT NULL,
-    learning_enabled boolean DEFAULT true NOT NULL,
-    max_tokens integer,
-    temperature numeric,
-    cost_budget_daily numeric(10,2),
-    cost_budget_monthly numeric(10,2),
-    actor_id integer NOT NULL,
-    CONSTRAINT chk_agents_provider CHECK (((provider IS NULL) OR ((provider)::text = ANY ((ARRAY['anthropic'::character varying, 'google'::character varying, 'openai'::character varying, 'perplexity'::character varying])::text[])))),
-    CONSTRAINT chk_agents_status CHECK (((status)::text = 'active'::text))
-);
-
-
---
 -- Name: agent_status; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.agent_status AS
  SELECT ac.id AS actor_id,
     ac.name AS agent,
-    ac.type AS actor_type,
         CASE
-            WHEN (a.virtual = true) THEN 'available'::text
-            WHEN (a.last_seen > (now() - '00:15:00'::interval)) THEN 'online'::text
-            WHEN (a.last_seen IS NOT NULL) THEN 'offline'::text
+            WHEN (agc.virtual = true) THEN 'available'::text
+            WHEN (ac.last_seen > (now() - '00:15:00'::interval)) THEN 'online'::text
+            WHEN (ac.last_seen IS NOT NULL) THEN 'offline'::text
             ELSE 'unknown'::text
         END AS status,
-    a.last_seen,
-    a.passphrase_rotated_at,
+    ac.last_seen,
+    ac.passphrase_rotated_at,
     ac.created_at AS registered_at,
-    a.expertise,
-    a.provider,
-    a.model,
-    a.virtual,
-    a.personality,
-    a.cost_budget_daily,
-    a.cost_budget_monthly,
+    ac.expertise,
+    agc.provider,
+    agc.model,
+    agc.virtual,
+    agc.personality,
+    agc.cost_budget_daily,
+    agc.cost_budget_monthly,
         CASE
-            WHEN ((a.active_since IS NOT NULL) AND (a.active_since > (now() - '00:30:00'::interval))) THEN a.active_since
+            WHEN ((ac.active_since IS NOT NULL) AND (ac.active_since > (now() - '00:30:00'::interval))) THEN ac.active_since
             ELSE NULL::timestamp with time zone
         END AS active_since,
-    a.cache_prompts,
-    a.learning_enabled,
-    a.max_tokens,
-    a.temperature
+    agc.cache_prompts,
+    agc.learning_enabled,
+    agc.max_tokens,
+    agc.temperature
    FROM (public.actors ac
-     JOIN public.agents a ON ((a.actor_id = ac.id)));
+     JOIN public.agent_configuration agc ON ((agc.actor_id = ac.id)));
 
 
 --
@@ -605,6 +629,23 @@ ALTER SEQUENCE public.request_log_id_seq OWNED BY public.request_log.id;
 
 
 --
+-- Name: sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    actor_id integer NOT NULL,
+    token_hash text NOT NULL,
+    token_salt text NOT NULL,
+    kind character varying(10) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    subsystem text,
+    CONSTRAINT sessions_kind_check CHECK (((kind)::text = ANY ((ARRAY['web'::character varying, 'api'::character varying])::text[])))
+);
+
+
+--
 -- Name: system_errors; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -655,53 +696,6 @@ CREATE TABLE public.templates (
     kind character varying(50) DEFAULT 'welcome'::character varying NOT NULL,
     CONSTRAINT templates_kind_check CHECK (((kind)::text = 'welcome'::text))
 );
-
-
---
--- Name: user_sessions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.user_sessions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    user_id integer NOT NULL,
-    session_token text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    expires_at timestamp with time zone NOT NULL
-);
-
-
---
--- Name: users; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.users (
-    id integer NOT NULL,
-    username text NOT NULL,
-    password_hash text NOT NULL,
-    password_salt text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_login timestamp with time zone
-);
-
-
---
--- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.users_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 
 
 --
@@ -761,6 +755,13 @@ CREATE SEQUENCE public.welcome_templates_id_seq
 --
 
 ALTER SEQUENCE public.welcome_templates_id_seq OWNED BY public.templates.id;
+
+
+--
+-- Name: actor_visibility_configuration id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.actor_visibility_configuration ALTER COLUMN id SET DEFAULT nextval('public.actor_visibility_configuration_id_seq'::regclass);
 
 
 --
@@ -855,17 +856,26 @@ ALTER TABLE ONLY public.templates ALTER COLUMN id SET DEFAULT nextval('public.we
 
 
 --
--- Name: users id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
-
-
---
 -- Name: virtual_agent_usage id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.virtual_agent_usage ALTER COLUMN id SET DEFAULT nextval('public.virtual_agent_usage_id_seq'::regclass);
+
+
+--
+-- Name: actor_visibility_configuration actor_visibility_configuration_actor_id_target_actor_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.actor_visibility_configuration
+    ADD CONSTRAINT actor_visibility_configuration_actor_id_target_actor_id_key UNIQUE (actor_id, target_actor_id);
+
+
+--
+-- Name: actor_visibility_configuration actor_visibility_configuration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.actor_visibility_configuration
+    ADD CONSTRAINT actor_visibility_configuration_pkey PRIMARY KEY (id);
 
 
 --
@@ -893,27 +903,19 @@ ALTER TABLE ONLY public.agent_api_keys
 
 
 --
+-- Name: agent_configuration agent_configuration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_configuration
+    ADD CONSTRAINT agent_configuration_pkey PRIMARY KEY (actor_id);
+
+
+--
 -- Name: agent_permissions agent_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_permissions
     ADD CONSTRAINT agent_permissions_pkey PRIMARY KEY (actor_id, permission_id);
-
-
---
--- Name: agent_sessions agent_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.agent_sessions
-    ADD CONSTRAINT agent_sessions_pkey PRIMARY KEY (id);
-
-
---
--- Name: agents agents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.agents
-    ADD CONSTRAINT agents_pkey PRIMARY KEY (actor_id);
 
 
 --
@@ -1061,6 +1063,14 @@ ALTER TABLE ONLY public.request_log
 
 
 --
+-- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: system_errors system_errors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1069,43 +1079,11 @@ ALTER TABLE ONLY public.system_errors
 
 
 --
--- Name: agents uq_agents_actor_id; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: agent_configuration uq_agent_configuration_actor_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.agents
-    ADD CONSTRAINT uq_agents_actor_id UNIQUE (actor_id);
-
-
---
--- Name: user_sessions user_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.user_sessions
-    ADD CONSTRAINT user_sessions_pkey PRIMARY KEY (id);
-
-
---
--- Name: user_sessions user_sessions_session_token_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.user_sessions
-    ADD CONSTRAINT user_sessions_session_token_key UNIQUE (session_token);
-
-
---
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-
---
--- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_username_key UNIQUE (username);
+ALTER TABLE ONLY public.agent_configuration
+    ADD CONSTRAINT uq_agent_configuration_actor_id UNIQUE (actor_id);
 
 
 --
@@ -1140,17 +1118,24 @@ CREATE INDEX idx_agent_api_keys_actor ON public.agent_api_keys USING btree (acto
 
 
 --
--- Name: idx_agent_sessions_actor; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_avc_actor; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_agent_sessions_actor ON public.agent_sessions USING btree (actor_id);
+CREATE INDEX idx_avc_actor ON public.actor_visibility_configuration USING btree (actor_id);
 
 
 --
--- Name: idx_agent_sessions_expires; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_avc_target; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_agent_sessions_expires ON public.agent_sessions USING btree (expires_at);
+CREATE INDEX idx_avc_target ON public.actor_visibility_configuration USING btree (target_actor_id);
+
+
+--
+-- Name: idx_avc_wildcard; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_avc_wildcard ON public.actor_visibility_configuration USING btree (actor_id) WHERE (target_actor_id IS NULL);
 
 
 --
@@ -1266,6 +1251,20 @@ CREATE INDEX idx_request_log_timestamp ON public.request_log USING btree ("times
 
 
 --
+-- Name: idx_sessions_actor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sessions_actor ON public.sessions USING btree (actor_id);
+
+
+--
+-- Name: idx_sessions_expires; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sessions_expires ON public.sessions USING btree (expires_at);
+
+
+--
 -- Name: idx_system_errors_actor; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1287,31 +1286,26 @@ CREATE INDEX idx_system_errors_status ON public.system_errors USING btree (statu
 
 
 --
--- Name: idx_user_sessions_expires; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_user_sessions_expires ON public.user_sessions USING btree (expires_at);
-
-
---
--- Name: idx_user_sessions_token; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_user_sessions_token ON public.user_sessions USING btree (session_token);
-
-
---
--- Name: idx_user_sessions_user_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_user_sessions_user_id ON public.user_sessions USING btree (user_id);
-
-
---
 -- Name: idx_va_usage_actor_date; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_va_usage_actor_date ON public.virtual_agent_usage USING btree (actor_id, created_at);
+
+
+--
+-- Name: actor_visibility_configuration actor_visibility_configuration_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.actor_visibility_configuration
+    ADD CONSTRAINT actor_visibility_configuration_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.actors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: actor_visibility_configuration actor_visibility_configuration_target_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.actor_visibility_configuration
+    ADD CONSTRAINT actor_visibility_configuration_target_actor_id_fkey FOREIGN KEY (target_actor_id) REFERENCES public.actors(id) ON DELETE CASCADE;
 
 
 --
@@ -1355,11 +1349,11 @@ ALTER TABLE ONLY public.agent_api_keys
 
 
 --
--- Name: agents fk_agents_actor; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: agent_configuration fk_agent_configuration_actor; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.agents
-    ADD CONSTRAINT fk_agents_actor FOREIGN KEY (actor_id) REFERENCES public.actors(id);
+ALTER TABLE ONLY public.agent_configuration
+    ADD CONSTRAINT fk_agent_configuration_actor FOREIGN KEY (actor_id) REFERENCES public.actors(id);
 
 
 --
@@ -1368,14 +1362,6 @@ ALTER TABLE ONLY public.agents
 
 ALTER TABLE ONLY public.agent_permissions
     ADD CONSTRAINT fk_ap_actor FOREIGN KEY (actor_id) REFERENCES public.actors(id);
-
-
---
--- Name: agent_sessions fk_as_actor; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.agent_sessions
-    ADD CONSTRAINT fk_as_actor FOREIGN KEY (actor_id) REFERENCES public.actors(id);
 
 
 --
@@ -1475,15 +1461,16 @@ ALTER TABLE ONLY public.namespace_permissions
 
 
 --
--- Name: user_sessions user_sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: sessions sessions_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.user_sessions
-    ADD CONSTRAINT user_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT sessions_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.actors(id);
 
 
 --
 -- PostgreSQL database dump complete
 --
 
+\unrestrict IulCA3QBrzNlB8bK2coJjfNPFfQoqKd899t2pdElKhXtXdKsxyxKh9N1Xi4Lb5M
 
