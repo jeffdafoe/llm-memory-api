@@ -73,10 +73,12 @@ config.init().then(() => {
                 `UPDATE agents SET active_since = NULL
                  WHERE active_since IS NOT NULL
                    AND last_seen < NOW() - INTERVAL '${STALE_ACTIVITY_THRESHOLD}'
-                 RETURNING agent`
+                 RETURNING actor_id`
             );
             for (const row of rows) {
-                broadcast('agent_activity', { agent: row.agent, active: false });
+                const { resolveById } = require('./services/actors');
+                const actor = await resolveById(row.actor_id);
+                if (actor) broadcast('agent_activity', { agent: actor.name, active: false });
             }
         } catch (err) {
             // Don't crash the server if this housekeeping query fails
