@@ -13,9 +13,9 @@ const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { requireByName, resolveByName, resolveById } = require('../services/actors');
-const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
+const { requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
-const { getVisibleActorIds, canSee } = require('../services/actor-visibility');
+const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
 
 const router = Router();
 
@@ -1490,6 +1490,221 @@ router.post('/admin/agents/usage', async (req, res) => {
     } catch (err) {
         console.error('Admin agent usage error:', err.message);
         res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch usage data' } });
+    }
+});
+
+// ─── Actor permissions & visibility management ───
+
+// Helper: parse and validate actor_id from request body. Returns integer or sends 400.
+function parseActorId(raw, res) {
+    const id = parseInt(raw, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid actor_id' } });
+        return null;
+    }
+    return id;
+}
+
+// POST /admin/actors/list — list all actors (for the Actors config tab)
+router.post('/admin/actors/list', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, name, type, created_at FROM actors ORDER BY type, name'
+        );
+        res.json({ actors: result.rows });
+    } catch (err) {
+        console.error('Admin actors list error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch actors' } });
+    }
+});
+
+// POST /admin/actors/permissions/read — get namespace permissions for one actor
+router.post('/admin/actors/permissions/read', async (req, res) => {
+    const actorId = parseActorId(req.body.actor_id, res);
+    if (actorId === null) return;
+    try {
+        // Verify actor exists
+        const actor = await resolveById(actorId);
+        if (!actor) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+        }
+        const result = await pool.query(
+            'SELECT namespace, can_read, can_write, can_delete FROM namespace_permissions WHERE actor_id = $1 ORDER BY namespace',
+            [actorId]
+        );
+        res.json({ permissions: result.rows });
+    } catch (err) {
+        console.error('Admin permissions read error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch permissions' } });
+    }
+});
+
+// POST /admin/actors/permissions/save — full replace of namespace permissions for one actor
+// Body: { actor_id, permissions: [{ namespace, can_read, can_write, can_delete }] }
+router.post('/admin/actors/permissions/save', async (req, res) => {
+    const actorId = parseActorId(req.body.actor_id, res);
+    if (actorId === null) return;
+    const { permissions } = req.body;
+    if (!Array.isArray(permissions)) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: permissions (array)' } });
+    }
+
+    // Verify actor exists
+    const actor = await resolveById(actorId);
+    if (!actor) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+    }
+
+    // Normalize first, then validate
+    const normalized = permissions.map(p => ({
+        namespace: (typeof p.namespace === 'string') ? p.namespace.trim() : '',
+        can_read: !!p.can_read,
+        can_write: !!p.can_write,
+        can_delete: !!p.can_delete
+    }));
+
+    // Validate each namespace using the shared helper (allows '/' wildcard, rejects '*' and empty)
+    for (const perm of normalized) {
+        if (perm.namespace === '/') continue; // wildcard is allowed in permissions
+        try {
+            validateNamespace(perm.namespace);
+        } catch (err) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
+        }
+        if (!perm.namespace) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Empty namespace not allowed' } });
+        }
+    }
+
+    // Check for duplicates after normalization
+    const namespaces = normalized.map(p => p.namespace);
+    if (new Set(namespaces).size !== namespaces.length) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Duplicate namespace entries' } });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM namespace_permissions WHERE actor_id = $1', [actorId]);
+        for (const perm of normalized) {
+            await client.query(
+                'INSERT INTO namespace_permissions (actor_id, namespace, can_read, can_write, can_delete) VALUES ($1, $2, $3, $4, $5)',
+                [actorId, perm.namespace, perm.can_read, perm.can_write, perm.can_delete]
+            );
+        }
+        await client.query('COMMIT');
+        clearPermissionsCache(actorId);
+        logAdmin('permissions.save', { actor_id: actorId, count: normalized.length });
+        res.json({ ok: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Admin permissions save error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save permissions' } });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /admin/actors/visibility/read — get visibility grants for one actor
+router.post('/admin/actors/visibility/read', async (req, res) => {
+    const actorId = parseActorId(req.body.actor_id, res);
+    if (actorId === null) return;
+    try {
+        // Verify actor exists
+        const actor = await resolveById(actorId);
+        if (!actor) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+        }
+        const result = await pool.query(
+            `SELECT avc.target_actor_id, a.name AS target_name, a.type AS target_type
+             FROM actor_visibility_configuration avc
+             LEFT JOIN actors a ON a.id = avc.target_actor_id
+             WHERE avc.actor_id = $1
+             ORDER BY a.name NULLS FIRST`,
+            [actorId]
+        );
+        // A row with target_actor_id = null means wildcard
+        const hasWildcard = result.rows.some(r => r.target_actor_id === null);
+        const grants = result.rows.filter(r => r.target_actor_id !== null);
+        res.json({ wildcard: hasWildcard, grants });
+    } catch (err) {
+        console.error('Admin visibility read error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch visibility' } });
+    }
+});
+
+// POST /admin/actors/visibility/save — full replace of visibility grants for one actor
+// Body: { actor_id, wildcard: bool, grants: [actor_id, ...] }
+router.post('/admin/actors/visibility/save', async (req, res) => {
+    const actorId = parseActorId(req.body.actor_id, res);
+    if (actorId === null) return;
+    const { wildcard, grants } = req.body;
+    if (typeof wildcard !== 'boolean' || !Array.isArray(grants)) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required fields: wildcard (bool), grants (array of actor IDs)' } });
+    }
+
+    // Verify actor exists
+    const actor = await resolveById(actorId);
+    if (!actor) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+    }
+
+    // Normalize grant IDs to integers, dedupe, exclude self
+    const normalizedGrants = grants.map(g => parseInt(g, 10));
+    if (normalizedGrants.some(g => !Number.isInteger(g) || g <= 0)) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid grant actor ID' } });
+    }
+    const deduped = [...new Set(normalizedGrants)].filter(g => g !== actorId);
+
+    // Verify all target actors exist
+    if (deduped.length > 0) {
+        const existCheck = await pool.query('SELECT id FROM actors WHERE id = ANY($1)', [deduped]);
+        if (existCheck.rows.length !== deduped.length) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'One or more target actors do not exist' } });
+        }
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM actor_visibility_configuration WHERE actor_id = $1', [actorId]);
+        if (wildcard) {
+            // Insert wildcard row (NULL target)
+            await client.query(
+                'INSERT INTO actor_visibility_configuration (actor_id, target_actor_id) VALUES ($1, NULL)',
+                [actorId]
+            );
+        } else {
+            for (const targetId of deduped) {
+                await client.query(
+                    'INSERT INTO actor_visibility_configuration (actor_id, target_actor_id) VALUES ($1, $2)',
+                    [actorId, targetId]
+                );
+            }
+        }
+        await client.query('COMMIT');
+        clearVisibilityCache(actorId);
+        logAdmin('visibility.save', { actor_id: actorId, wildcard, count: deduped.length });
+        res.json({ ok: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Admin visibility save error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save visibility' } });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /admin/actors/namespaces — get distinct namespaces from documents (for dropdown)
+router.post('/admin/actors/namespaces', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT DISTINCT namespace FROM documents ORDER BY namespace'
+        );
+        res.json({ namespaces: result.rows.map(r => r.namespace) });
+    } catch (err) {
+        console.error('Admin namespaces error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch namespaces' } });
     }
 });
 
