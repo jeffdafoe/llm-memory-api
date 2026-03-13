@@ -34,6 +34,7 @@ createApp({
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
+        const permissionsModule = usePermissions(deps);
         const dashboardModule = useDashboard(deps);
 
         // View loading — route data fetches to the right module
@@ -51,6 +52,7 @@ createApp({
                 errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'config') {
                 configModule.loadConfig();
+                if (configSubTab.value === 'permissions') permissionsModule.loadPermissions();
                 apiLogModule.startApiLogPolling();
                 errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'agents') {
@@ -116,6 +118,11 @@ createApp({
         });
         watch(commSubTab, () => {
             if (currentView.value === 'comms') loadCurrentView();
+        });
+        watch(configSubTab, () => {
+            if (currentView.value === 'config') {
+                if (configSubTab.value === 'permissions') permissionsModule.loadPermissions();
+            }
         });
 
         // Lifecycle
@@ -191,6 +198,8 @@ createApp({
             ...errorLogModule,
             // Config
             ...configModule,
+            // Permissions
+            ...permissionsModule,
             // Dashboard
             ...dashboardModule,
         };
