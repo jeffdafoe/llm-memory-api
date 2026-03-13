@@ -1,13 +1,6 @@
 // app.js — Thin shell that composes all feature modules
 // Vue globals (ref, computed, etc.) are destructured in core.js
 
-// Markdown rendering with sanitization
-function renderMarkdown(text) {
-    if (!text) return '';
-    const html = marked.parse(text);
-    return DOMPurify.sanitize(html);
-}
-
 createApp({
     setup() {
         const currentView = ref('dashboard');
@@ -210,8 +203,6 @@ createApp({
             ...actorsConfigModule,
             // Dashboard
             ...dashboardModule,
-            // Utilities
-            renderMarkdown,
         };
     }
 }).mount('#app');
