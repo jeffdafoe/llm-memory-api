@@ -13,6 +13,7 @@ const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { requireByName, resolveByName, resolveById } = require('../services/actors');
+const { requireAccess, getReadableNamespaces } = require('../services/namespace-permissions');
 
 const router = Router();
 
@@ -649,9 +650,11 @@ router.post('/admin/notes/list', async (req, res) => {
         });
     }
     try {
+        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
         const data = await listNotes(namespace, limit || 200, offset, prefix);
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 403) return res.status(403).json({ error: { code: 'FORBIDDEN', message: err.message } });
         console.error('Admin notes list error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to list notes' }
@@ -668,9 +671,11 @@ router.post('/admin/notes/read', async (req, res) => {
         });
     }
     try {
+        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'read');
         const note = await readNote(namespace, slug);
         res.json({ note });
     } catch (err) {
+        if (err.statusCode === 403) return res.status(403).json({ error: { code: 'FORBIDDEN', message: err.message } });
         if (err.statusCode === 404) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: err.message }
@@ -692,10 +697,16 @@ router.post('/admin/notes/save', async (req, res) => {
         });
     }
     try {
+        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
         const doc = await saveNote(namespace, title, content, slug, null);
         logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ note: doc });
     } catch (err) {
+        if (err.statusCode === 403) {
+            return res.status(403).json({
+                error: { code: 'FORBIDDEN', message: err.message }
+            });
+        }
         console.error('Admin notes save error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to save note' }
@@ -712,10 +723,16 @@ router.post('/admin/notes/delete', async (req, res) => {
         });
     }
     try {
+        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'delete');
         await deleteNote(namespace, slug);
         logAdmin('note_delete', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ deleted: true, namespace, slug });
     } catch (err) {
+        if (err.statusCode === 403) {
+            return res.status(403).json({
+                error: { code: 'FORBIDDEN', message: err.message }
+            });
+        }
         if (err.statusCode === 404) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: err.message }
@@ -737,10 +754,21 @@ router.post('/admin/notes/move', async (req, res) => {
         });
     }
     try {
+        if (req.actorId) {
+            await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
+            if (new_namespace && new_namespace !== namespace) {
+                await requireAccess(req.actorId, req.authenticatedUser.username, new_namespace, 'write');
+            }
+        }
         const doc = await moveNote(namespace, slug, new_slug, new_namespace);
         logAdmin('note_move', { namespace, slug, new_slug, new_namespace: new_namespace || namespace, user_id: req.authenticatedUser.id });
         res.json({ note: doc });
     } catch (err) {
+        if (err.statusCode === 403) {
+            return res.status(403).json({
+                error: { code: 'FORBIDDEN', message: err.message }
+            });
+        }
         if (err.statusCode === 404) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: err.message }
@@ -767,9 +795,25 @@ router.post('/admin/notes/search', async (req, res) => {
         });
     }
     try {
-        const data = await searchMemory(query, namespace || '*', limit || 10);
+        const targetNs = namespace || '*';
+        if (req.actorId && targetNs !== '*') {
+            await requireAccess(req.actorId, req.authenticatedUser.username, targetNs, 'read');
+        }
+        let data = await searchMemory(query, targetNs, limit || 10);
+        // Post-filter wildcard results to readable namespaces
+        if (req.actorId && targetNs === '*' && data.results) {
+            const readable = await getReadableNamespaces(req.actorId);
+            if (readable !== null) {
+                data.results = data.results.filter(r => readable.includes(r.namespace));
+            }
+        }
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 403) {
+            return res.status(403).json({
+                error: { code: 'FORBIDDEN', message: err.message }
+            });
+        }
         console.error('Admin notes search error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Search failed' }
@@ -783,7 +827,15 @@ router.post('/admin/notes/namespaces', async (req, res) => {
         const result = await pool.query(
             'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
         );
-        res.json({ namespaces: result.rows });
+        let namespaces = result.rows;
+        // Filter to readable namespaces
+        if (req.actorId) {
+            const readable = await getReadableNamespaces(req.actorId);
+            if (readable !== null) {
+                namespaces = namespaces.filter(r => readable.includes(r.namespace));
+            }
+        }
+        res.json({ namespaces });
     } catch (err) {
         console.error('Admin notes namespaces error:', err.message);
         res.status(500).json({

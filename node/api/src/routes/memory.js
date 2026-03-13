@@ -1,8 +1,18 @@
 const { Router } = require('express');
 const { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus } = require('../services/memory');
 const { logError } = require('../services/logger');
+const { requireAccess, getReadableNamespaces } = require('../services/namespace-permissions');
 
 const router = Router();
+
+// Helper to get actor identity for permission checks.
+function getActor(req) {
+    if (!req.actorId) return null;
+    return {
+        actorId: req.actorId,
+        actorName: req.authenticatedAgent || (req.authenticatedUser && req.authenticatedUser.username) || 'unknown'
+    };
+}
 
 router.post('/memory/ingest', async (req, res) => {
     const { namespace, source_file, content } = req.body;
@@ -14,13 +24,15 @@ router.post('/memory/ingest', async (req, res) => {
     }
 
     try {
+        const actor = getActor(req);
+        if (actor) await requireAccess(actor.actorId, actor.actorName, namespace, 'write');
         const result = await ingestContent(namespace, source_file, content);
         res.json(result);
     } catch (err) {
         const status = err.statusCode || 500;
         if (status >= 500) logError('memory', 'ingest', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 400 ? 'BAD_REQUEST' : status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });
@@ -49,12 +61,24 @@ router.post('/memory/search', async (req, res) => {
     }
 
     try {
+        const actor = getActor(req);
+        if (actor && namespace && namespace !== '*') {
+            await requireAccess(actor.actorId, actor.actorName, namespace, 'read');
+        }
         const result = await searchMemory(query, namespace, limit);
+        // Filter wildcard search results to readable namespaces
+        if (actor && (!namespace || namespace === '*')) {
+            const readable = await getReadableNamespaces(actor.actorId);
+            if (readable !== null) {
+                result.results = result.results.filter(r => readable.includes(r.namespace));
+            }
+        }
         res.json(result);
     } catch (err) {
-        logError('memory', 'search', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+        const status = err.statusCode || 500;
+        if (status >= 500) logError('memory', 'search', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
+        res.status(status).json({
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });
@@ -69,12 +93,15 @@ router.post('/memory/cleanup', async (req, res) => {
     }
 
     try {
+        const actor = getActor(req);
+        if (actor) await requireAccess(actor.actorId, actor.actorName, namespace, 'delete');
         const result = await cleanupMemory(namespace, valid_source_files);
         res.json(result);
     } catch (err) {
-        logError('memory', 'cleanup', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+        const status = err.statusCode || 500;
+        if (status >= 500) logError('memory', 'cleanup', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
+        res.status(status).json({
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });
@@ -89,12 +116,15 @@ router.post('/memory/delete', async (req, res) => {
     }
 
     try {
+        const actor = getActor(req);
+        if (actor) await requireAccess(actor.actorId, actor.actorName, namespace, 'delete');
         const result = await deleteMemory(namespace, source_file);
         res.json(result);
     } catch (err) {
-        logError('memory', 'delete', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+        const status = err.statusCode || 500;
+        if (status >= 500) logError('memory', 'delete', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
+        res.status(status).json({
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });

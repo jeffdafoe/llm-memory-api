@@ -1,5 +1,6 @@
 const pool = require('../db');
 const { hash: hashToken } = require('../services/hashing');
+const { resolveByName } = require('../services/actors');
 
 // Cache session tokens in memory to avoid DB lookup on every request
 // Key: bearer token, Value: { agent, actorId, expires }
@@ -40,6 +41,7 @@ async function auth(req, res, next) {
         req.authMethod = 'session';
         if (cached.type === 'user') {
             req.authenticatedUser = cached.user;
+            req.actorId = cached.actorId;
         } else {
             req.authenticatedAgent = cached.agent;
             req.actorId = cached.actorId;
@@ -90,9 +92,13 @@ async function auth(req, res, next) {
 
         if (result.rows.length > 0) {
             const row = result.rows[0];
+            // Resolve user to actor for namespace permission checks
+            const userActor = await resolveByName(row.username);
+            const actorId = userActor ? userActor.id : null;
             sessionCache.set(token, {
                 type: 'user',
                 user: { id: row.id, username: row.username },
+                actorId,
                 expires: Math.min(
                     Date.now() + CACHE_TTL_MS,
                     new Date(row.expires_at).getTime()
@@ -100,6 +106,7 @@ async function auth(req, res, next) {
             });
             req.authMethod = 'session';
             req.authenticatedUser = { id: row.id, username: row.username };
+            req.actorId = actorId;
             return next();
         }
     } catch (err) {

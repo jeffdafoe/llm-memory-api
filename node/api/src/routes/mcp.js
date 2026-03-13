@@ -23,6 +23,7 @@ const {
 } = require('../services/discussion');
 const { broadcast } = require('../services/events');
 const { requireByName, resolveByName } = require('../services/actors');
+const { requireAccess, getReadableNamespaces } = require('../services/namespace-permissions');
 
 const router = Router();
 
@@ -577,27 +578,44 @@ function validateIdentity(argValue, authAgent, paramName) {
 // Tool handler functions — each takes (args, agent, namespace) and returns a text string
 const TOOL_HANDLERS = {
     // --- Memory ---
-    async search(args, agent, namespace) {
-        const data = await searchMemory(args.query, args.namespace || namespace, args.limit || 5);
+    async search(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        if (targetNs && targetNs !== '*') {
+            await requireAccess(actorId, agent, targetNs, 'read');
+        }
+        const data = await searchMemory(args.query, targetNs, args.limit || 5);
+        // Filter wildcard results to namespaces the actor can read
+        if (!targetNs || targetNs === '*') {
+            const readable = await getReadableNamespaces(actorId);
+            if (readable !== null) {
+                data.results = data.results.filter(r => readable.includes(r.namespace));
+            }
+        }
         const lines = data.results.map(r => {
             return `[${r.namespace}] ${r.source_file} — ${r.heading || '(no heading)'} (${(r.similarity * 100).toFixed(1)}%)\n${r.chunk_text}`;
         });
         return lines.join('\n\n---\n\n') || 'No results found.';
     },
 
-    async ingest(args, agent, namespace) {
-        const data = await ingestContent(args.namespace || namespace, args.source_file, args.content);
+    async ingest(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'write');
+        const data = await ingestContent(targetNs, args.source_file, args.content);
         return `Ingested ${data.chunks_created} chunks from ${data.source_file} into namespace "${data.namespace}"`;
     },
 
-    async delete(args, agent, namespace) {
-        const data = await deleteMemory(args.namespace || namespace, args.source_file);
+    async delete(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'delete');
+        const data = await deleteMemory(targetNs, args.source_file);
         return `Deleted ${data.chunks_deleted} chunks for ${args.source_file}`;
     },
 
     // --- Documents ---
     async save_note(args, agent, namespace, actorId) {
-        const doc = await saveNote(args.namespace || namespace, args.title, args.content, args.slug, agent);
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'write');
+        const doc = await saveNote(targetNs, args.title, args.content, args.slug, agent);
         // Refresh activity indicator
         pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
@@ -605,41 +623,69 @@ const TOOL_HANDLERS = {
         return `Saved: ${doc.namespace}/${doc.slug}`;
     },
 
-    async list_notes(args, agent, namespace) {
-        const data = await listNotes(args.namespace || namespace, args.limit, args.offset, args.prefix);
+    async list_notes(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'read');
+        const data = await listNotes(targetNs, args.limit, args.offset, args.prefix);
         if (data.notes.length === 0) {
             return 'No notes found.';
         }
         return data.notes.map(n => `${n.slug} — ${n.title} (updated ${n.updated_at})`).join('\n');
     },
 
-    async read_note(args, agent, namespace) {
-        const doc = await readNote(args.namespace || namespace, args.slug);
+    async read_note(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'read');
+        const doc = await readNote(targetNs, args.slug);
         return `# ${doc.title}\n\n${doc.content}`;
     },
 
-    async delete_note(args, agent, namespace) {
-        await deleteNote(args.namespace || namespace, args.slug);
-        return `Deleted: ${args.namespace || namespace}/${args.slug}`;
+    async delete_note(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'delete');
+        await deleteNote(targetNs, args.slug);
+        return `Deleted: ${targetNs}/${args.slug}`;
     },
 
-    async restore_note(args, agent, namespace) {
-        const doc = await restoreNote(args.namespace || namespace, args.slug);
+    async restore_note(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'write');
+        const doc = await restoreNote(targetNs, args.slug);
         return `Restored: ${doc.namespace}/${doc.slug} — "${doc.title}"`;
     },
 
-    async edit_note(args, agent, namespace) {
-        const result = await editNote(args.namespace || namespace, args.slug, args.old_string, args.new_string, args.replace_all);
+    async edit_note(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        await requireAccess(actorId, agent, targetNs, 'write');
+        const result = await editNote(targetNs, args.slug, args.old_string, args.new_string, args.replace_all);
         return `Edited: ${result.namespace}/${result.slug} (${result.replacements} replacement${result.replacements === 1 ? '' : 's'})`;
     },
 
-    async move_note(args, agent, namespace) {
-        const doc = await moveNote(args.namespace || namespace, args.slug, args.new_slug, args.new_namespace);
-        return `Moved: ${args.namespace || namespace}/${args.slug} → ${doc.namespace}/${doc.slug}`;
+    async move_note(args, agent, namespace, actorId) {
+        const sourceNs = args.namespace || namespace;
+        const targetNs = args.new_namespace || sourceNs;
+        // Need write on source (to remove) and write on target (to create)
+        await requireAccess(actorId, agent, sourceNs, 'write');
+        if (targetNs !== sourceNs) {
+            await requireAccess(actorId, agent, targetNs, 'write');
+        }
+        const doc = await moveNote(sourceNs, args.slug, args.new_slug, args.new_namespace);
+        return `Moved: ${sourceNs}/${args.slug} → ${doc.namespace}/${doc.slug}`;
     },
 
-    async grep(args, agent, namespace) {
-        const results = await grepNotes(args.pattern, args.namespace || namespace, args.limit);
+    async grep(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        if (targetNs && targetNs !== '*') {
+            await requireAccess(actorId, agent, targetNs, 'read');
+        }
+        let results = await grepNotes(args.pattern, targetNs, args.limit);
+        // Filter wildcard results to readable namespaces
+        if (!targetNs || targetNs === '*') {
+            const readable = await getReadableNamespaces(actorId);
+            if (readable !== null) {
+                results = results.filter(r => readable.includes(r.namespace));
+            }
+        }
         if (results.length === 0) {
             return `No notes matching "${args.pattern}".`;
         }
