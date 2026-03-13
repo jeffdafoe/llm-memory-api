@@ -922,12 +922,6 @@
                                 </div>
                             </div>
 
-                            <div style="margin-top: 0.75rem;">
-                                <button class="inline-button" @click="savePermissions" :disabled="permissionsSaving">
-                                    {{ permissionsSaving ? 'Saving...' : 'Save Permissions' }}
-                                </button>
-                            </div>
-
                             <!-- Actor Visibility -->
                             <hr style="margin: 1.5rem 0;">
                             <h4><i class="icon-eye"></i> Actor Visibility</h4>
@@ -973,9 +967,10 @@
                                 </div>
                             </div>
 
-                            <div style="margin-top: 0.75rem;">
-                                <button class="inline-button" @click="saveVisibility" :disabled="visibilitySaving">
-                                    {{ visibilitySaving ? 'Saving...' : 'Save Visibility' }}
+                            <!-- Save permissions + visibility -->
+                            <div style="margin-top: 1.5rem;">
+                                <button @click="saveActorConfig" :disabled="actorConfigSaving">
+                                    {{ actorConfigSaving ? 'Saving...' : 'Save' }}
                                 </button>
                             </div>
 

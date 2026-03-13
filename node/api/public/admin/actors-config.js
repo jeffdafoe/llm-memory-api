@@ -11,12 +11,13 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
     // Permissions state
     const actorPermissions = ref([]);
     const actorHasWildcardPerm = ref(false);
-    const permissionsSaving = ref(false);
 
     // Visibility state
     const actorVisibilityGrants = ref([]);
     const actorHasWildcardVis = ref(false);
-    const visibilitySaving = ref(false);
+
+    // Combined save state
+    const actorConfigSaving = ref(false);
 
     // Available namespaces (for dropdown)
     const availableNamespaces = ref([]);
@@ -131,36 +132,6 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         actorPermissions.value.splice(index, 1);
     }
 
-    async function savePermissions() {
-        if (!selectedActorConfig.value) return;
-        permissionsSaving.value = true;
-        try {
-            // Build the full list: wildcard + specific rows
-            const permissions = [];
-            if (actorHasWildcardPerm.value) {
-                permissions.push({ namespace: '/', can_read: true, can_write: true, can_delete: true });
-            }
-            for (const p of actorPermissions.value) {
-                permissions.push({
-                    namespace: p.namespace,
-                    can_read: !!p.can_read,
-                    can_write: !!p.can_write,
-                    can_delete: !!p.can_delete
-                });
-            }
-            await api('/admin/actors/permissions/save', {
-                actor_id: selectedActorConfig.value.id,
-                permissions
-            });
-            showToast('Permissions saved', 'success');
-        } catch (err) {
-            console.error('Failed to save permissions:', err);
-            showToast('Failed: ' + err.message, 'error');
-        } finally {
-            permissionsSaving.value = false;
-        }
-    }
-
     // ─── Visibility ───
 
     function addVisibilityGrant() {
@@ -187,21 +158,44 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         actorVisibilityGrants.value.splice(index, 1);
     }
 
-    async function saveVisibility() {
+    // ─── Save All (permissions + visibility) ───
+
+    async function saveActorConfig() {
         if (!selectedActorConfig.value) return;
-        visibilitySaving.value = true;
+        actorConfigSaving.value = true;
         try {
-            await api('/admin/actors/visibility/save', {
-                actor_id: selectedActorConfig.value.id,
-                wildcard: actorHasWildcardVis.value,
-                grants: actorVisibilityGrants.value.map(g => g.target_actor_id)
-            });
-            showToast('Visibility saved', 'success');
+            // Build permissions list
+            const permissions = [];
+            if (actorHasWildcardPerm.value) {
+                permissions.push({ namespace: '/', can_read: true, can_write: true, can_delete: true });
+            }
+            for (const p of actorPermissions.value) {
+                permissions.push({
+                    namespace: p.namespace,
+                    can_read: !!p.can_read,
+                    can_write: !!p.can_write,
+                    can_delete: !!p.can_delete
+                });
+            }
+
+            // Save permissions and visibility in parallel
+            await Promise.all([
+                api('/admin/actors/permissions/save', {
+                    actor_id: selectedActorConfig.value.id,
+                    permissions
+                }),
+                api('/admin/actors/visibility/save', {
+                    actor_id: selectedActorConfig.value.id,
+                    wildcard: actorHasWildcardVis.value,
+                    grants: actorVisibilityGrants.value.map(g => g.target_actor_id)
+                })
+            ]);
+            showToast('Actor configuration saved', 'success');
         } catch (err) {
-            console.error('Failed to save visibility:', err);
+            console.error('Failed to save actor config:', err);
             showToast('Failed: ' + err.message, 'error');
         } finally {
-            visibilitySaving.value = false;
+            actorConfigSaving.value = false;
         }
     }
 
@@ -351,13 +345,15 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
     return {
         actorsConfigList, actorsConfigLoading,
         selectedActorConfig, actorConfigLoading,
-        actorPermissions, actorHasWildcardPerm, permissionsSaving,
-        actorVisibilityGrants, actorHasWildcardVis, visibilitySaving,
+        actorPermissions, actorHasWildcardPerm,
+        actorVisibilityGrants, actorHasWildcardVis,
+        actorConfigSaving,
         availableNamespaces, newNamespaceInput, availableNamespacesFiltered,
         newVisibilityTarget, availableVisibilityTargets,
         loadActorsConfig, openActorConfig, closeActorConfig,
-        addPermissionRow, removePermissionRow, savePermissions,
-        addVisibilityGrant, removeVisibilityGrant, saveVisibility,
+        addPermissionRow, removePermissionRow,
+        addVisibilityGrant, removeVisibilityGrant,
+        saveActorConfig,
         // UI Access
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Create actor
