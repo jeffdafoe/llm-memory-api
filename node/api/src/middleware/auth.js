@@ -1,6 +1,7 @@
 const pool = require('../db');
 const { hash: hashToken } = require('../services/hashing');
 const { resolveByName } = require('../services/actors');
+const { logError } = require('../services/logger');
 
 // Cache session tokens in memory to avoid DB lookup on every request
 // Key: bearer token, Value: { agent, actorId, expires }
@@ -93,8 +94,17 @@ async function auth(req, res, next) {
         if (result.rows.length > 0) {
             const row = result.rows[0];
             // Resolve user to actor for namespace permission checks
-            const userActor = await resolveByName(row.username);
-            const actorId = userActor ? userActor.id : null;
+            const userActor = await resolveByName(row.username, 'user');
+            if (!userActor) {
+                logError('auth', 'user-actor-mapping', {
+                    message: `User "${row.username}" (id=${row.id}) has no actor mapping — misconfigured`,
+                    detail: 'Every user must have a corresponding actor row. Create one with: INSERT INTO actors (name, type) VALUES ($name, \'user\')'
+                });
+                return res.status(403).json({
+                    error: { code: 'FORBIDDEN', message: `User "${row.username}" has no actor mapping — cannot determine permissions` }
+                });
+            }
+            const actorId = userActor.id;
             sessionCache.set(token, {
                 type: 'user',
                 user: { id: row.id, username: row.username },

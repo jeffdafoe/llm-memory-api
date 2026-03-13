@@ -13,7 +13,7 @@ const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { requireByName, resolveByName, resolveById } = require('../services/actors');
-const { requireAccess, getReadableNamespaces } = require('../services/namespace-permissions');
+const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
 
 const router = Router();
 
@@ -697,7 +697,8 @@ router.post('/admin/notes/save', async (req, res) => {
         });
     }
     try {
-        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
+        validateNamespace(namespace);
+        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
         const doc = await saveNote(namespace, title, content, slug, null);
         logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ note: doc });
@@ -723,7 +724,8 @@ router.post('/admin/notes/delete', async (req, res) => {
         });
     }
     try {
-        if (req.actorId) await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'delete');
+        validateNamespace(namespace);
+        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'delete');
         await deleteNote(namespace, slug);
         logAdmin('note_delete', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ deleted: true, namespace, slug });
@@ -754,11 +756,11 @@ router.post('/admin/notes/move', async (req, res) => {
         });
     }
     try {
-        if (req.actorId) {
-            await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
-            if (new_namespace && new_namespace !== namespace) {
-                await requireAccess(req.actorId, req.authenticatedUser.username, new_namespace, 'write');
-            }
+        validateNamespace(namespace);
+        if (new_namespace) validateNamespace(new_namespace);
+        await requireAccess(req.actorId, req.authenticatedUser.username, namespace, 'write');
+        if (new_namespace && new_namespace !== namespace) {
+            await requireAccess(req.actorId, req.authenticatedUser.username, new_namespace, 'write');
         }
         const doc = await moveNote(namespace, slug, new_slug, new_namespace);
         logAdmin('note_move', { namespace, slug, new_slug, new_namespace: new_namespace || namespace, user_id: req.authenticatedUser.id });
@@ -796,17 +798,15 @@ router.post('/admin/notes/search', async (req, res) => {
     }
     try {
         const targetNs = namespace || '*';
-        if (req.actorId && targetNs !== '*') {
+        if (targetNs !== '*') {
             await requireAccess(req.actorId, req.authenticatedUser.username, targetNs, 'read');
         }
-        let data = await searchMemory(query, targetNs, limit || 10);
-        // Post-filter wildcard results to readable namespaces
-        if (req.actorId && targetNs === '*' && data.results) {
-            const readable = await getReadableNamespaces(req.actorId);
-            if (readable !== null) {
-                data.results = data.results.filter(r => readable.includes(r.namespace));
-            }
+        // For wildcard searches, push namespace filtering into the query
+        let readable = null;
+        if (targetNs === '*') {
+            readable = await getReadableNamespaces(req.actorId);
         }
+        let data = await searchMemory(query, targetNs, limit || 10, readable);
         res.json(data);
     } catch (err) {
         if (err.statusCode === 403) {
@@ -829,11 +829,9 @@ router.post('/admin/notes/namespaces', async (req, res) => {
         );
         let namespaces = result.rows;
         // Filter to readable namespaces
-        if (req.actorId) {
-            const readable = await getReadableNamespaces(req.actorId);
-            if (readable !== null) {
-                namespaces = namespaces.filter(r => readable.includes(r.namespace));
-            }
+        const readable = await getReadableNamespaces(req.actorId);
+        if (readable !== null) {
+            namespaces = namespaces.filter(r => readable.includes(r.namespace));
         }
         res.json({ namespaces });
     } catch (err) {

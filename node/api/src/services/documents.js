@@ -244,7 +244,7 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
 
 // Text search across notes — like grep but for the notes database.
 // Returns matching documents with line numbers and surrounding context.
-async function grepNotes(pattern, namespace, limit) {
+async function grepNotes(pattern, namespace, limit, readableNamespaces) {
     if (!pattern) {
         throw Object.assign(new Error('Required field: pattern'), { statusCode: 400 });
     }
@@ -262,6 +262,16 @@ async function grepNotes(pattern, namespace, limit) {
             LIMIT $3
         `;
         params = [namespace, ilikePattern, maxResults];
+    } else if (readableNamespaces) {
+        // Filter at query level to ensure LIMIT returns correct result count
+        sql = `
+            SELECT id, namespace, slug, title, content, updated_at
+            FROM documents
+            WHERE namespace = ANY($1) AND deleted_at IS NULL AND (content ILIKE $2 OR title ILIKE $2)
+            ORDER BY updated_at DESC
+            LIMIT $3
+        `;
+        params = [readableNamespaces, ilikePattern, maxResults];
     } else {
         sql = `
             SELECT id, namespace, slug, title, content, updated_at
