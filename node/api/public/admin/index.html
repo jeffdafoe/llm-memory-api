@@ -43,6 +43,7 @@
                     <li><a href="#" :class="{ active: currentView === 'comms' }" @click.prevent="currentView = 'comms'">Communications</a></li>
                     <li><a href="#" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">Notes</a></li>
                     <li><a href="#" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">Configuration</a></li>
+                    <li><a href="#" @click.prevent="showChangePassword = true" title="Change password"><i class="icon-key-round"></i></a></li>
                     <li><a href="#" @click.prevent="logout">Logout</a></li>
                 </ul>
             </nav>
@@ -1383,6 +1384,32 @@
                                     {{ newAgentCreating ? 'Creating...' : 'Create' }}
                                 </button>
                                 <button class="secondary" @click="agentCreating = false">{{ newAgentPassphrase ? 'Done' : 'Cancel' }}</button>
+                            </div>
+                        </div>
+                    </article>
+                </dialog>
+
+                <!-- Change password dialog -->
+                <dialog :open="showChangePassword" @close="showChangePassword = false">
+                    <article v-if="showChangePassword" class="confirm-dialog">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="showChangePassword = false"></button>
+                            <h3>Change Password</h3>
+                        </header>
+                        <div class="dialog-body">
+                            <label>Current password
+                                <input type="password" v-model="changePasswordForm.current" placeholder="Current password">
+                            </label>
+                            <label>New password
+                                <input type="password" v-model="changePasswordForm.newPassword" placeholder="New password">
+                            </label>
+                            <label>Confirm new password
+                                <input type="password" v-model="changePasswordForm.confirm" placeholder="Confirm new password">
+                            </label>
+                            <p v-if="changePasswordError" class="error-text">{{ changePasswordError }}</p>
+                            <div class="button-row">
+                                <button @click="changePassword" :disabled="changePasswordSaving">{{ changePasswordSaving ? 'Saving...' : 'Change Password' }}</button>
+                                <button class="secondary" @click="showChangePassword = false">Cancel</button>
                             </div>
                         </div>
                     </article>

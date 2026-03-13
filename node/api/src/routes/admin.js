@@ -158,6 +158,52 @@ router.post('/admin/logout', async (req, res) => {
     }
 });
 
+// POST /admin/change-password — change the logged-in user's password
+router.post('/admin/change-password', async (req, res) => {
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: current_password, new_password' }
+        });
+    }
+
+    if (new_password.length < 4) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            'SELECT password_hash, password_salt FROM actors WHERE id = $1',
+            [req.authenticatedUser.id]
+        );
+        const row = result.rows[0];
+
+        if (!row || !row.password_hash || !verify(current_password, row.password_salt, row.password_hash)) {
+            return res.status(401).json({
+                error: { code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect' }
+            });
+        }
+
+        const salt = generateSalt();
+        const hash = hashToken(new_password, salt);
+        await pool.query(
+            'UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3',
+            [hash, salt, req.authenticatedUser.id]
+        );
+
+        logAdmin('password_changed', { user_id: req.authenticatedUser.id });
+        res.json({ message: 'Password changed' });
+    } catch (err) {
+        console.error('Admin change-password error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to change password' }
+        });
+    }
+});
+
 // POST /admin/dashboard — combined summary data
 router.post('/admin/dashboard', async (req, res) => {
     try {

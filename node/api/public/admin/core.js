@@ -105,6 +105,42 @@ function useCore() {
         localStorage.removeItem('admin_session');
     }
 
+    // Change password
+    const showChangePassword = ref(false);
+    const changePasswordForm = ref({ current: '', newPassword: '', confirm: '' });
+    const changePasswordError = ref('');
+    const changePasswordSaving = ref(false);
+
+    async function changePassword() {
+        changePasswordError.value = '';
+        if (!changePasswordForm.value.current || !changePasswordForm.value.newPassword) {
+            changePasswordError.value = 'All fields are required';
+            return;
+        }
+        if (changePasswordForm.value.newPassword !== changePasswordForm.value.confirm) {
+            changePasswordError.value = 'New passwords do not match';
+            return;
+        }
+        if (changePasswordForm.value.newPassword.length < 4) {
+            changePasswordError.value = 'Password must be at least 4 characters';
+            return;
+        }
+        changePasswordSaving.value = true;
+        try {
+            await api('/admin/change-password', {
+                current_password: changePasswordForm.value.current,
+                new_password: changePasswordForm.value.newPassword
+            });
+            showChangePassword.value = false;
+            changePasswordForm.value = { current: '', newPassword: '', confirm: '' };
+            showToast('Password changed', 'success');
+        } catch (err) {
+            changePasswordError.value = err.message;
+        } finally {
+            changePasswordSaving.value = false;
+        }
+    }
+
     function restoreSession() {
         const saved = localStorage.getItem('admin_session');
         if (saved) {
@@ -226,6 +262,7 @@ function useCore() {
     return {
         authenticated, sessionToken, user,
         loginForm, loginError, loggingIn,
+        showChangePassword, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
         login, logout, restoreSession,
         api, showConfirm, executeConfirm, confirmPrompt,
         showToast, toast,
