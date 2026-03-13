@@ -6,6 +6,7 @@ const { log, logError } = require('../services/logger');
 const auth = require('../middleware/auth');
 const { hash: hashToken, generateSalt } = require('../services/hashing');
 const { broadcast } = require('../services/events');
+const { requireByName } = require('../services/actors');
 
 const router = Router();
 
@@ -55,7 +56,10 @@ router.post('/agent/login', async (req, res) => {
 
         // Look up agent and verify passphrase
         const agentResult = await pool.query(
-            "SELECT agent, token_hash, token_salt, status, passphrase_rotated_at FROM agents WHERE agent = $1",
+            `SELECT ac.id AS actor_id, ac.name AS agent, a.token_hash, a.token_salt, a.status, a.passphrase_rotated_at
+             FROM agents a
+             JOIN actors ac ON ac.id = a.actor_id
+             WHERE ac.name = $1`,
             [agent]
         );
 
@@ -76,14 +80,14 @@ router.post('/agent/login', async (req, res) => {
         const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
         await pool.query(
-            'INSERT INTO agent_sessions (agent, token_hash, token_salt, expires_at, subsystem) VALUES ($1, $2, $3, $4, $5)',
-            [agent, sessionHash, sessionSalt, expiresAt, subsystem || null]
+            'INSERT INTO agent_sessions (actor_id, token_hash, token_salt, expires_at, subsystem) VALUES ($1, $2, $3, $4, $5)',
+            [row.actor_id, sessionHash, sessionSalt, expiresAt, subsystem || null]
         );
 
         // Update last_seen
         await pool.query(
-            'UPDATE agents SET last_seen = NOW() WHERE agent = $1',
-            [agent]
+            'UPDATE agents SET last_seen = NOW() WHERE actor_id = $1',
+            [row.actor_id]
         );
 
         // Check if passphrase rotation is due
@@ -123,8 +127,8 @@ router.post('/agent/logout', async (req, res) => {
 
         // Find and delete the session matching this token
         const sessions = await pool.query(
-            'SELECT id, token_hash, token_salt FROM agent_sessions WHERE agent = $1',
-            [agent]
+            'SELECT id, token_hash, token_salt FROM agent_sessions WHERE actor_id = $1',
+            [req.actorId]
         );
 
         let deleted = false;
@@ -170,8 +174,8 @@ router.post('/agent/rotate', async (req, res) => {
 
         // Verify current passphrase before allowing rotation
         const agentRow = await pool.query(
-            'SELECT token_hash, token_salt FROM agents WHERE agent = $1',
-            [agent]
+            'SELECT token_hash, token_salt FROM agents WHERE actor_id = $1',
+            [req.actorId]
         );
         const currentHash = hashToken(current_passphrase, agentRow.rows[0].token_salt);
         if (currentHash !== agentRow.rows[0].token_hash) {
@@ -186,12 +190,12 @@ router.post('/agent/rotate', async (req, res) => {
         const hash = hashToken(passphrase, salt);
 
         await pool.query(
-            'UPDATE agents SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE agent = $3',
-            [hash, salt, agent]
+            'UPDATE agents SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE actor_id = $3',
+            [hash, salt, req.actorId]
         );
 
         // Invalidate all existing sessions for this agent
-        await pool.query('DELETE FROM agent_sessions WHERE agent = $1', [agent]);
+        await pool.query('DELETE FROM agent_sessions WHERE actor_id = $1', [req.actorId]);
 
         // Clear all cached sessions for this agent
         for (const [key, value] of auth.sessionCache.entries()) {
@@ -228,9 +232,10 @@ router.post('/agent/heartbeat', async (req, res) => {
             });
         }
 
+        const actor = await requireByName(agent);
         const result = await pool.query(
-            'UPDATE agents SET last_seen = NOW() WHERE agent = $1 RETURNING last_seen',
-            [agent]
+            'UPDATE agents SET last_seen = NOW() WHERE actor_id = $1 RETURNING last_seen',
+            [actor.id]
         );
 
         if (result.rows.length === 0) {
@@ -264,6 +269,8 @@ router.post('/agent/status', async (req, res) => {
             });
         }
 
+        const actor = await requireByName(agent);
+
         // Single query: join agents with per-sender unread counts for
         // both chat and mail, so the caller sees everything at once.
         const result = await pool.query(
@@ -280,27 +287,30 @@ router.post('/agent/status', async (req, res) => {
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
             LEFT JOIN (
-                SELECT from_agent, COUNT(*) AS unread_count
-                FROM chat_messages
-                WHERE to_agent = $1 AND acked_at IS NULL AND channel IS NULL
-                GROUP BY from_agent
+                SELECT fa.name AS from_agent, COUNT(*) AS unread_count
+                FROM chat_messages cm
+                JOIN actors fa ON fa.id = cm.from_actor_id
+                WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.channel IS NULL
+                GROUP BY fa.name
             ) c ON c.from_agent = a.agent
             LEFT JOIN (
-                SELECT from_agent, COUNT(*) AS unread_count
-                FROM mail
-                WHERE to_agent = $1 AND acked_at IS NULL
-                GROUP BY from_agent
+                SELECT fa.name AS from_agent, COUNT(*) AS unread_count
+                FROM mail ml
+                JOIN actors fa ON fa.id = ml.from_actor_id
+                WHERE ml.to_actor_id = $1 AND ml.acked_at IS NULL AND ml.deleted_at IS NULL
+                GROUP BY fa.name
             ) m ON m.from_agent = a.agent
             ORDER BY a.agent`,
-            [agent]
+            [actor.id]
         );
 
         // Get active subsystems per agent from non-expired sessions
         const sessionsResult = await pool.query(
-            `SELECT agent, subsystem
-            FROM agent_sessions
-            WHERE expires_at > NOW() AND subsystem IS NOT NULL
-            ORDER BY agent, subsystem`
+            `SELECT ac.name AS agent, s.subsystem
+            FROM agent_sessions s
+            JOIN actors ac ON ac.id = s.actor_id
+            WHERE s.expires_at > NOW() AND s.subsystem IS NOT NULL
+            ORDER BY ac.name, s.subsystem`
         );
 
         const subsystemsByAgent = {};
@@ -362,8 +372,8 @@ router.post('/agent/expertise', async (req, res) => {
         const json = JSON.stringify(cleaned);
 
         await pool.query(
-            'UPDATE agents SET expertise = $1 WHERE agent = $2',
-            [json, agent]
+            'UPDATE agents SET expertise = $1 WHERE actor_id = $2',
+            [json, req.actorId]
         );
 
         logAgent('expertise_update', { agent, expertise: cleaned });
@@ -412,10 +422,10 @@ router.post('/agent/profile', async (req, res) => {
             sets.push(`model = $${idx++}`);
             vals.push(model);
         }
-        vals.push(agent);
+        vals.push(req.actorId);
 
         await pool.query(
-            `UPDATE agents SET ${sets.join(', ')} WHERE agent = $${idx}`,
+            `UPDATE agents SET ${sets.join(', ')} WHERE actor_id = $${idx}`,
             vals
         );
 
@@ -447,8 +457,8 @@ router.post('/agent/activity/start', async (req, res) => {
         }
 
         await pool.query(
-            'UPDATE agents SET active_since = NOW() WHERE agent = $1',
-            [agent]
+            'UPDATE agents SET active_since = NOW() WHERE actor_id = $1',
+            [req.actorId]
         );
 
         logAgent('activity_start', { agent });
@@ -474,8 +484,8 @@ router.post('/agent/activity/stop', async (req, res) => {
         }
 
         await pool.query(
-            'UPDATE agents SET active_since = NULL WHERE agent = $1',
-            [agent]
+            'UPDATE agents SET active_since = NULL WHERE actor_id = $1',
+            [req.actorId]
         );
 
         logAgent('activity_stop', { agent });
@@ -501,8 +511,8 @@ router.post('/agent/instructions/read', async (req, res) => {
         }
 
         const result = await pool.query(
-            'SELECT startup_instructions FROM agents WHERE agent = $1',
-            [agent]
+            'SELECT startup_instructions FROM agents WHERE actor_id = $1',
+            [req.actorId]
         );
 
         res.json({
@@ -536,8 +546,8 @@ router.post('/agent/instructions/save', async (req, res) => {
         }
 
         await pool.query(
-            'UPDATE agents SET startup_instructions = $1 WHERE agent = $2',
-            [content, agent]
+            'UPDATE agents SET startup_instructions = $1 WHERE actor_id = $2',
+            [content, req.actorId]
         );
 
         res.json({

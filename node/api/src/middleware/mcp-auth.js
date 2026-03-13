@@ -3,24 +3,25 @@
 //   1. HMAC OAuth tokens — format "agent:hmac_hex", issued by /oauth/token.
 //      Deterministic and never expire. Verified by recomputing HMAC. Fast path.
 //   2. API keys from agent_api_keys table (for Claude Code direct auth)
-// Sets req.mcpAgent and req.mcpPermissions for downstream handlers.
+// Sets req.mcpAgent, req.mcpActorId, and req.mcpPermissions for downstream handlers.
 
 const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
 const { hash } = require('../services/hashing');
 const { broadcast } = require('../services/events');
+const { resolveByName } = require('../services/actors');
 
 // Opportunistic heartbeat — update last_seen on every authenticated MCP request.
 // Also refreshes active_since if already set, so the activity spinner stays alive
 // as long as the agent is making tool calls (without requiring explicit re-calls).
 // Re-broadcasts the agent_activity event so the admin UI keeps the spinner visible.
-function heartbeat(agent) {
-    pool.query('UPDATE agents SET last_seen = NOW() WHERE agent = $1', [agent]).catch(() => {});
-    pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1 AND active_since IS NOT NULL', [agent])
+function heartbeat(actorId, agentName) {
+    pool.query('UPDATE agents SET last_seen = NOW() WHERE actor_id = $1', [actorId]).catch(() => {});
+    pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1 AND active_since IS NOT NULL', [actorId])
         .then((result) => {
             if (result.rowCount > 0) {
-                broadcast('agent_activity', { agent, active: true });
+                broadcast('agent_activity', { agent: agentName, active: true });
             }
         })
         .catch(() => {});
@@ -33,11 +34,11 @@ function getResourceMetadataUrl(req) {
     return `${req.protocol}://${req.get('host')}/.well-known/oauth-protected-resource`;
 }
 
-// Fetch permissions for an agent from DB
-async function getPermissions(agent) {
+// Fetch permissions for an actor by actor_id
+async function getPermissions(actorId) {
     const result = await pool.query(
-        'SELECT p.name FROM agent_permissions ap JOIN permissions p ON p.id = ap.permission_id WHERE ap.agent = $1',
-        [agent]
+        'SELECT p.name FROM agent_permissions ap JOIN permissions p ON p.id = ap.permission_id WHERE ap.actor_id = $1',
+        [actorId]
     );
     return result.rows.map(r => r.name);
 }
@@ -61,10 +62,13 @@ function tryHmacAuth(token) {
 }
 
 // Try to authenticate with an API key from agent_api_keys.
-// Returns { agent, permissions } on success, null on failure.
+// Returns { agent, actorId, permissions } on success, null on failure.
 async function tryApiKeyAuth(token) {
     const keys = await pool.query(
-        'SELECT ak.agent, ak.key_hash, ak.key_salt FROM agent_api_keys ak WHERE ak.revoked_at IS NULL'
+        `SELECT ac.name AS agent, ak.actor_id, ak.key_hash, ak.key_salt
+         FROM agent_api_keys ak
+         JOIN actors ac ON ac.id = ak.actor_id
+         WHERE ak.revoked_at IS NULL`
     );
 
     for (const row of keys.rows) {
@@ -72,12 +76,12 @@ async function tryApiKeyAuth(token) {
         if (computed === row.key_hash) {
             // Update last_used_at
             pool.query(
-                'UPDATE agent_api_keys SET last_used_at = NOW() WHERE agent = $1 AND key_salt = $2',
-                [row.agent, row.key_salt]
+                'UPDATE agent_api_keys SET last_used_at = NOW() WHERE actor_id = $1 AND key_salt = $2',
+                [row.actor_id, row.key_salt]
             ).catch(() => {});
 
-            const permissions = await getPermissions(row.agent);
-            return { agent: row.agent, permissions };
+            const permissions = await getPermissions(row.actor_id);
+            return { agent: row.agent, actorId: row.actor_id, permissions };
         }
     }
 
@@ -100,9 +104,14 @@ async function mcpAuth(req, res, next) {
     // Try HMAC OAuth token first (fast path — no DB lookup)
     const hmacAgent = tryHmacAuth(token);
     if (hmacAgent) {
+        const actor = await resolveByName(hmacAgent);
+        if (!actor) {
+            return res.status(401).json({ error: 'invalid_token', error_description: 'Agent not found in actors' });
+        }
         req.mcpAgent = hmacAgent;
-        req.mcpPermissions = await getPermissions(hmacAgent);
-        heartbeat(hmacAgent);
+        req.mcpActorId = actor.id;
+        req.mcpPermissions = await getPermissions(actor.id);
+        heartbeat(actor.id, hmacAgent);
         return next();
     }
 
@@ -111,8 +120,9 @@ async function mcpAuth(req, res, next) {
         const result = await tryApiKeyAuth(token);
         if (result) {
             req.mcpAgent = result.agent;
+            req.mcpActorId = result.actorId;
             req.mcpPermissions = result.permissions;
-            heartbeat(result.agent);
+            heartbeat(result.actorId, result.agent);
             return next();
         }
     } catch (err) {

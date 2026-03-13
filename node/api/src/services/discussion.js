@@ -5,6 +5,7 @@ const pool = require('../db');
 const { log } = require('./logger');
 const config = require('./config');
 const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent, notifySystem } = require('./system-notify');
+const { resolveByName, resolveMultipleByName, requireByName } = require('./actors');
 
 function logDiscussion(action, details) {
     log('discussion', action, details);
@@ -26,7 +27,10 @@ async function evaluateReadiness(discussionId) {
 
     const d = discussion.rows[0];
     const participants = await pool.query(
-        'SELECT agent, status, role FROM discussion_participants WHERE discussion_id = $1',
+        `SELECT ac.name AS agent, dp.status, dp.role
+         FROM discussion_participants dp
+         JOIN actors ac ON ac.id = dp.actor_id
+         WHERE dp.discussion_id = $1`,
         [discussionId]
     );
 
@@ -48,9 +52,10 @@ async function evaluateReadiness(discussionId) {
         if (allRequiredJoined) {
             for (const p of optional) {
                 if (p.status !== 'joined') {
+                    const pActor = await resolveByName(p.agent);
                     await pool.query(
-                        'UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND agent = $3',
-                        ['timed_out', discussionId, p.agent]
+                        'UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND actor_id = $3',
+                        ['timed_out', discussionId, pActor.id]
                     );
                 }
             }
@@ -60,8 +65,6 @@ async function evaluateReadiness(discussionId) {
         } else {
             const timeoutOutcome = await computeOutcome(discussionId, 'timed_out');
             await pool.query('UPDATE discussions SET status = $1, outcome = $2 WHERE id = $3', ['timed_out', timeoutOutcome, discussionId]);
-            // Mark remaining participants as 'left' so they aren't blocked
-            // from creating new discussions by the conflict check
             await pool.query(
                 `UPDATE discussion_participants SET status = 'left'
                  WHERE discussion_id = $1 AND status IN ('invited', 'joined', 'deferred')`,
@@ -73,9 +76,13 @@ async function evaluateReadiness(discussionId) {
 }
 
 async function requireJoined(discussionId, agent) {
+    const actor = await resolveByName(agent);
+    if (!actor) {
+        return { ok: false, code: 'NOT_PARTICIPANT', message: 'Agent is not a participant in this discussion' };
+    }
     const result = await pool.query(
-        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-        [discussionId, agent]
+        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+        [discussionId, actor.id]
     );
     if (result.rows.length === 0) {
         return { ok: false, code: 'NOT_PARTICIPANT', message: 'Agent is not a participant in this discussion' };
@@ -113,7 +120,7 @@ async function evaluateVote(voteId) {
     }
 
     const participants = await pool.query(
-        'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
+        'SELECT actor_id FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
         [v.discussion_id, 'joined']
     );
     const participantCount = participants.rows.length;
@@ -142,8 +149,6 @@ async function evaluateVote(voteId) {
                 'UPDATE discussions SET status = $1, concluded_at = NOW(), outcome = $2 WHERE id = $3',
                 ['concluded', voteOutcome, v.discussion_id]
             );
-            // Mark all joined/invited/deferred participants as 'left' so they aren't
-            // blocked from creating new discussions by the conflict check
             await pool.query(
                 `UPDATE discussion_participants SET status = 'left'
                  WHERE discussion_id = $1 AND status IN ('invited', 'joined', 'deferred')`,
@@ -155,20 +160,16 @@ async function evaluateVote(voteId) {
 }
 
 // Derive the outcome of a finished discussion from its general vote history.
-// Called when a discussion transitions to concluded, cancelled, or timed_out.
 async function computeOutcome(discussionId, newStatus) {
-    // Cancelled and timed_out discussions never reached a result
     if (newStatus === 'cancelled' || newStatus === 'timed_out') {
         return 'abandoned';
     }
 
-    // For concluded discussions, examine general vote results
     const votes = await pool.query(
         "SELECT v.id, v.threshold FROM discussion_votes v WHERE v.discussion_id = $1 AND v.type = 'general' AND v.status = 'closed'",
         [discussionId]
     );
 
-    // No general votes — agents discussed and concluded without formal decisions
     if (votes.rows.length === 0) {
         return 'consensus';
     }
@@ -222,14 +223,23 @@ async function discussionCreate(topic, createdBy, participants, optionalParticip
         throw Object.assign(new Error('Agents cannot be both required and optional: ' + overlap.join(', ')), { statusCode: 400 });
     }
 
+    // Resolve all participant names to actor IDs
+    const actorMap = await resolveMultipleByName(allParticipants);
+    for (const name of allParticipants) {
+        if (!actorMap.has(name)) {
+            throw Object.assign(new Error(`Agent "${name}" is not registered`), { statusCode: 404 });
+        }
+    }
+    const creatorActor = actorMap.get(createdBy);
+
     // Reject if creator is already in an active or waiting discussion
     const existing = await pool.query(
         `SELECT d.id, d.topic, d.status FROM discussions d
          JOIN discussion_participants dp ON dp.discussion_id = d.id
-         WHERE dp.agent = $1 AND dp.status IN ('invited', 'joined', 'deferred')
+         WHERE dp.actor_id = $1 AND dp.status IN ('invited', 'joined', 'deferred')
          AND d.status IN ('waiting', 'active')
          ORDER BY d.id DESC LIMIT 1`,
-        [createdBy]
+        [creatorActor.id]
     );
     if (existing.rows.length > 0) {
         const d = existing.rows[0];
@@ -269,33 +279,36 @@ async function discussionCreate(topic, createdBy, participants, optionalParticip
         const timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
 
         const result = await client.query(
-            'INSERT INTO discussions (topic, created_by, status, channel, mode, context, timeout_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at',
-            [topic, createdBy, 'waiting', channel || null, discussionMode, contextText, timeoutAt]
+            'INSERT INTO discussions (topic, created_by_actor_id, status, channel, mode, context, timeout_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at',
+            [topic, creatorActor.id, 'waiting', channel || null, discussionMode, contextText, timeoutAt]
         );
         const discussionId = result.rows[0].id;
 
         // Look up which agents are virtual (auto-join them)
+        const actorIds = allParticipants.map(n => actorMap.get(n).id);
         const virtualCheck = await client.query(
-            'SELECT agent FROM agents WHERE agent = ANY($1) AND virtual = TRUE',
-            [allParticipants]
+            'SELECT actor_id FROM agents WHERE actor_id = ANY($1) AND virtual = TRUE',
+            [actorIds]
         );
-        const virtualAgents = new Set(virtualCheck.rows.map(r => r.agent));
+        const virtualActorIds = new Set(virtualCheck.rows.map(r => r.actor_id));
 
         for (const agent of participants) {
+            const actorId = actorMap.get(agent).id;
             const isCreator = agent === createdBy;
-            const isVirtual = virtualAgents.has(agent);
+            const isVirtual = virtualActorIds.has(actorId);
             const shouldJoin = isCreator || isVirtual;
             await client.query(
-                'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
-                [discussionId, agent, shouldJoin ? 'joined' : 'invited', 'required', shouldJoin ? new Date() : null]
+                'INSERT INTO discussion_participants (discussion_id, actor_id, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
+                [discussionId, actorId, shouldJoin ? 'joined' : 'invited', 'required', shouldJoin ? new Date() : null]
             );
         }
 
         for (const agent of optionalList) {
-            const isVirtual = virtualAgents.has(agent);
+            const actorId = actorMap.get(agent).id;
+            const isVirtual = virtualActorIds.has(actorId);
             await client.query(
-                'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
-                [discussionId, agent, isVirtual ? 'joined' : 'invited', 'optional', isVirtual ? new Date() : null]
+                'INSERT INTO discussion_participants (discussion_id, actor_id, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
+                [discussionId, actorId, isVirtual ? 'joined' : 'invited', 'optional', isVirtual ? new Date() : null]
             );
         }
 
@@ -334,11 +347,11 @@ async function discussionCreate(topic, createdBy, participants, optionalParticip
         const participantList = participants.map(a => ({
             agent: a,
             role: 'required',
-            status: (a === createdBy || virtualAgents.has(a)) ? 'joined' : 'invited'
+            status: (a === createdBy || virtualActorIds.has(actorMap.get(a).id)) ? 'joined' : 'invited'
         })).concat(optionalList.map(a => ({
             agent: a,
             role: 'optional',
-            status: virtualAgents.has(a) ? 'joined' : 'invited'
+            status: virtualActorIds.has(actorMap.get(a).id) ? 'joined' : 'invited'
         })));
 
         return { discussion, participants: participantList };
@@ -356,9 +369,13 @@ async function discussionList(status, agent) {
     const conditions = [];
 
     if (agent) {
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return { discussions: [] };
+        }
         query += ' JOIN discussion_participants dp ON d.id = dp.discussion_id';
-        params.push(agent);
-        conditions.push(`dp.agent = $${params.length}`);
+        params.push(actor.id);
+        conditions.push(`dp.actor_id = $${params.length}`);
     }
 
     if (status) {
@@ -373,6 +390,14 @@ async function discussionList(status, agent) {
     query += ' ORDER BY d.created_at DESC';
 
     const result = await pool.query(query, params);
+
+    // Resolve created_by_actor_id to name for each discussion
+    for (const row of result.rows) {
+        const { resolveById } = require('./actors');
+        const actor = await resolveById(row.created_by_actor_id);
+        row.created_by = actor ? actor.name : null;
+    }
+
     logDiscussion('list', { status, agent, count: result.rows.length });
     return { discussions: result.rows };
 }
@@ -392,7 +417,10 @@ async function discussionStatus(discussionId) {
     }
 
     const participants = await pool.query(
-        'SELECT agent, status, role, invited_at, joined_at, deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1',
+        `SELECT ac.name AS agent, dp.status, dp.role, dp.invited_at, dp.joined_at, dp.deferred_at, dp.defer_count
+         FROM discussion_participants dp
+         JOIN actors ac ON ac.id = dp.actor_id
+         WHERE dp.discussion_id = $1`,
         [discussionId]
     );
 
@@ -408,8 +436,18 @@ async function discussionStatus(discussionId) {
     }
 
     const updatedDiscussion = await pool.query('SELECT * FROM discussions WHERE id = $1', [discussionId]);
+
+    // Resolve created_by_actor_id to name
+    const { resolveById } = require('./actors');
+    const creatorActor = await resolveById(updatedDiscussion.rows[0].created_by_actor_id);
+    updatedDiscussion.rows[0].created_by = creatorActor ? creatorActor.name : null;
+
+    // Resolve proposed_by_actor_id to name on votes
     const updatedVotes = await pool.query(
-        'SELECT * FROM discussion_votes WHERE discussion_id = $1 ORDER BY created_at DESC',
+        `SELECT v.*, ac.name AS proposed_by
+         FROM discussion_votes v
+         JOIN actors ac ON ac.id = v.proposed_by_actor_id
+         WHERE v.discussion_id = $1 ORDER BY v.created_at DESC`,
         [discussionId]
     );
 
@@ -427,18 +465,23 @@ async function discussionPending(agent, discussionId) {
         throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
     }
 
+    const actor = await requireByName(agent);
+
     const invited = await pool.query(
-        'SELECT d.* FROM discussions d JOIN discussion_participants dp ON d.id = dp.discussion_id WHERE dp.agent = $1 AND dp.status = $2 AND d.status IN ($3, $4)',
-        [agent, 'invited', 'waiting', 'active']
+        `SELECT d.* FROM discussions d
+         JOIN discussion_participants dp ON d.id = dp.discussion_id
+         WHERE dp.actor_id = $1 AND dp.status = $2 AND d.status IN ($3, $4)`,
+        [actor.id, 'invited', 'waiting', 'active']
     );
 
-    // Discussions this agent has deferred (still waiting or active)
     const deferred = await pool.query(
-        'SELECT d.* FROM discussions d JOIN discussion_participants dp ON d.id = dp.discussion_id WHERE dp.agent = $1 AND dp.status = $2 AND d.status IN ($3, $4)',
-        [agent, 'deferred', 'waiting', 'active']
+        `SELECT d.* FROM discussions d
+         JOIN discussion_participants dp ON d.id = dp.discussion_id
+         WHERE dp.actor_id = $1 AND dp.status = $2 AND d.status IN ($3, $4)`,
+        [actor.id, 'deferred', 'waiting', 'active']
     );
 
-    const voteParams = [agent, 'joined', 'open'];
+    const voteParams = [actor.id, 'joined', 'open'];
     let modeFilter = `AND d.mode = 'async'`;
     if (discussionId) {
         modeFilter = `AND (d.mode = 'async' OR d.id = $4)`;
@@ -450,13 +493,13 @@ async function discussionPending(agent, discussionId) {
          FROM discussion_votes v
          JOIN discussions d ON v.discussion_id = d.id
          JOIN discussion_participants dp ON d.id = dp.discussion_id
-         WHERE dp.agent = $1
+         WHERE dp.actor_id = $1
          AND dp.status = $2
          AND v.status = $3
          AND d.status = 'active'
          ${modeFilter}
          AND NOT EXISTS (
-             SELECT 1 FROM discussion_ballots b WHERE b.vote_id = v.id AND b.agent = $1
+             SELECT 1 FROM discussion_ballots b WHERE b.vote_id = v.id AND b.actor_id = $1
          )
          ORDER BY v.created_at DESC`,
         voteParams
@@ -482,7 +525,7 @@ async function discussionConclude(discussionId, agent, { cancel = false } = {}) 
     }
 
     const discussion = await pool.query(
-        'SELECT status, created_by, topic FROM discussions WHERE id = $1',
+        'SELECT status, created_by_actor_id, topic FROM discussions WHERE id = $1',
         [discussionId]
     );
     if (discussion.rows.length === 0) {
@@ -491,19 +534,18 @@ async function discussionConclude(discussionId, agent, { cancel = false } = {}) 
 
     const dStatus = discussion.rows[0].status;
     if (dStatus === 'waiting') {
-        if (discussion.rows[0].created_by !== agent) {
+        // Check if agent is the creator
+        const agentActor = await requireByName(agent);
+        if (discussion.rows[0].created_by_actor_id !== agentActor.id) {
             throw Object.assign(new Error('Only the creator can cancel a waiting discussion'), { statusCode: 403 });
         }
     } else if (dStatus !== 'active') {
         throw Object.assign(new Error('Discussion is not active'), { statusCode: 400 });
     }
 
-    // waiting discussions are always cancelled; active ones can be concluded or cancelled
     const newStatus = (dStatus === 'waiting' || cancel) ? 'cancelled' : 'concluded';
     const outcome = await computeOutcome(discussionId, newStatus);
     await pool.query('UPDATE discussions SET status = $1, concluded_at = NOW(), outcome = $2 WHERE id = $3', [newStatus, outcome, discussionId]);
-    // Mark all joined/invited/deferred participants as 'left' so they aren't
-    // blocked from creating new discussions by the conflict check
     await pool.query(
         `UPDATE discussion_participants SET status = 'left'
          WHERE discussion_id = $1 AND status IN ('invited', 'joined', 'deferred')`,
@@ -513,9 +555,12 @@ async function discussionConclude(discussionId, agent, { cancel = false } = {}) 
     logDiscussion(newStatus === 'cancelled' ? 'cancel' : 'conclude', { discussion_id: discussionId, agent });
 
     // Notify other participants (fire-and-forget)
+    const agentActor = await requireByName(agent);
     const participantRows = await pool.query(
-        'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND agent != $2',
-        [discussionId, agent]
+        `SELECT ac.name AS agent FROM discussion_participants dp
+         JOIN actors ac ON ac.id = dp.actor_id
+         WHERE dp.discussion_id = $1 AND dp.actor_id != $2`,
+        [discussionId, agentActor.id]
     );
     const topic = discussion.rows[0].topic;
     if (participantRows.rows.length > 0) {
@@ -554,9 +599,11 @@ async function discussionJoin(discussionId, agent) {
         throw Object.assign(new Error('Discussion is ' + dStatus + ' and not accepting joins'), { statusCode: 400 });
     }
 
+    const actor = await requireByName(agent);
+
     const existing = await pool.query(
-        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-        [discussionId, agent]
+        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+        [discussionId, actor.id]
     );
 
     if (existing.rows.length > 0) {
@@ -564,13 +611,13 @@ async function discussionJoin(discussionId, agent) {
             return { discussion_id: discussionId, agent, status: 'joined', discussion_status: dStatus, message: 'Already joined' };
         }
         await pool.query(
-            'UPDATE discussion_participants SET status = $1, joined_at = NOW() WHERE discussion_id = $2 AND agent = $3',
-            ['joined', discussionId, agent]
+            'UPDATE discussion_participants SET status = $1, joined_at = NOW() WHERE discussion_id = $2 AND actor_id = $3',
+            ['joined', discussionId, actor.id]
         );
     } else {
         await pool.query(
-            'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, NOW())',
-            [discussionId, agent, 'joined', 'required']
+            'INSERT INTO discussion_participants (discussion_id, actor_id, status, role, joined_at) VALUES ($1, $2, $3, $4, NOW())',
+            [discussionId, actor.id, 'joined', 'required']
         );
     }
 
@@ -600,16 +647,16 @@ async function discussionDefer(discussionId, agent) {
         throw Object.assign(new Error('Discussion not found'), { statusCode: 404 });
     }
 
-    // Can only defer discussions that are still waiting or active
     const dStatus = discussion.rows[0].status;
     if (dStatus !== 'waiting' && dStatus !== 'active') {
         throw Object.assign(new Error('Discussion is ' + dStatus + ' and not accepting deferrals'), { statusCode: 400 });
     }
 
-    // Check participant exists and is in a deferrable state
+    const actor = await requireByName(agent);
+
     const existing = await pool.query(
-        'SELECT status, defer_count FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-        [discussionId, agent]
+        'SELECT status, defer_count FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+        [discussionId, actor.id]
     );
     if (existing.rows.length === 0) {
         throw Object.assign(new Error('Agent is not a participant in this discussion'), { statusCode: 404 });
@@ -620,7 +667,6 @@ async function discussionDefer(discussionId, agent) {
         throw Object.assign(new Error('Can only defer from invited or deferred status, current status: ' + pStatus), { statusCode: 400 });
     }
 
-    // Check defer count against max
     const maxDefers = parseInt(config.get('max_defer_count'));
     const currentCount = existing.rows[0].defer_count || 0;
     if (currentCount >= maxDefers) {
@@ -630,13 +676,11 @@ async function discussionDefer(discussionId, agent) {
         );
     }
 
-    // Update participant status to deferred
     await pool.query(
-        'UPDATE discussion_participants SET status = $1, deferred_at = NOW(), defer_count = defer_count + 1 WHERE discussion_id = $2 AND agent = $3',
-        ['deferred', discussionId, agent]
+        'UPDATE discussion_participants SET status = $1, deferred_at = NOW(), defer_count = defer_count + 1 WHERE discussion_id = $2 AND actor_id = $3',
+        ['deferred', discussionId, actor.id]
     );
 
-    // Extend the discussion timeout
     const deferTimeout = parseInt(config.get('discussion_defer_timeout'));
     const newTimeoutAt = new Date(Date.now() + deferTimeout * 60 * 1000);
     await pool.query(
@@ -644,10 +688,9 @@ async function discussionDefer(discussionId, agent) {
         [newTimeoutAt, discussionId]
     );
 
-    // Fetch updated participant row for response
     const updated = await pool.query(
-        'SELECT deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-        [discussionId, agent]
+        'SELECT deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+        [discussionId, actor.id]
     );
 
     logDiscussion('defer', { discussion_id: discussionId, agent, defer_count: updated.rows[0].defer_count, timeout_at: newTimeoutAt });
@@ -666,9 +709,11 @@ async function discussionLeave(discussionId, agent) {
         throw Object.assign(new Error('Required fields: discussion_id, agent'), { statusCode: 400 });
     }
 
+    const actor = await requireByName(agent);
+
     const existing = await pool.query(
-        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-        [discussionId, agent]
+        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+        [discussionId, actor.id]
     );
 
     if (existing.rows.length === 0) {
@@ -676,8 +721,8 @@ async function discussionLeave(discussionId, agent) {
     }
 
     await pool.query(
-        'UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND agent = $3',
-        ['left', discussionId, agent]
+        'UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND actor_id = $3',
+        ['left', discussionId, actor.id]
     );
 
     logDiscussion('leave', { discussion_id: discussionId, agent });
@@ -716,9 +761,11 @@ async function votePropose(discussionId, proposedBy, question, type, threshold, 
         throw Object.assign(new Error('Threshold must be "unanimous" or "majority"'), { statusCode: 400 });
     }
 
+    const proposerActor = await requireByName(proposedBy);
+
     const result = await pool.query(
-        'INSERT INTO discussion_votes (discussion_id, proposed_by, question, type, threshold, closes_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at',
-        [discussionId, proposedBy, question, voteType, voteThreshold, closesAt || null]
+        'INSERT INTO discussion_votes (discussion_id, proposed_by_actor_id, question, type, threshold, closes_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at',
+        [discussionId, proposerActor.id, question, voteType, voteThreshold, closesAt || null]
     );
 
     logDiscussion('vote_propose', { discussion_id: discussionId, vote_id: result.rows[0].id, proposed_by: proposedBy, question, type: voteType });
@@ -772,17 +819,19 @@ async function voteCast(voteId, agent, choice, reason) {
         throw Object.assign(new Error(check.message), { statusCode: 403, code: check.code });
     }
 
+    const actor = await requireByName(agent);
+
     const existing = await pool.query(
-        'SELECT 1 FROM discussion_ballots WHERE vote_id = $1 AND agent = $2',
-        [voteId, agent]
+        'SELECT 1 FROM discussion_ballots WHERE vote_id = $1 AND actor_id = $2',
+        [voteId, actor.id]
     );
     if (existing.rows.length > 0) {
         throw Object.assign(new Error('Agent has already voted'), { statusCode: 400, code: 'ALREADY_VOTED' });
     }
 
     await pool.query(
-        'INSERT INTO discussion_ballots (vote_id, agent, choice, reason) VALUES ($1, $2, $3, $4)',
-        [voteId, agent, choice, reason || null]
+        'INSERT INTO discussion_ballots (vote_id, actor_id, choice, reason) VALUES ($1, $2, $3, $4)',
+        [voteId, actor.id, choice, reason || null]
     );
 
     await evaluateVote(voteId);
@@ -798,7 +847,7 @@ async function voteCast(voteId, agent, choice, reason) {
 
     getDiscussionChannel(discussionId).then(async (ch) => {
         const participants = await pool.query(
-            'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
+            'SELECT actor_id FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
             [discussionId, 'joined']
         );
         const totalJoined = participants.rows.length;
@@ -839,9 +888,19 @@ async function voteStatus(voteId) {
         await evaluateVote(voteId);
     }
 
-    const updated = await pool.query('SELECT * FROM discussion_votes WHERE id = $1', [voteId]);
+    // Return vote with proposed_by name
+    const updated = await pool.query(
+        `SELECT v.*, ac.name AS proposed_by
+         FROM discussion_votes v
+         JOIN actors ac ON ac.id = v.proposed_by_actor_id
+         WHERE v.id = $1`,
+        [voteId]
+    );
     const ballots = await pool.query(
-        'SELECT agent, choice, reason, cast_at FROM discussion_ballots WHERE vote_id = $1 ORDER BY cast_at ASC',
+        `SELECT ac.name AS agent, b.choice, b.reason, b.cast_at
+         FROM discussion_ballots b
+         JOIN actors ac ON ac.id = b.actor_id
+         WHERE b.vote_id = $1 ORDER BY b.cast_at ASC`,
         [voteId]
     );
 

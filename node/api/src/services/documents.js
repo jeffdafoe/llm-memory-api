@@ -3,6 +3,7 @@
 
 const pool = require('../db');
 const { ingestContent } = require('./memory');
+const { resolveByName } = require('./actors');
 
 function titleToSlug(title) {
     return title
@@ -40,25 +41,41 @@ async function saveNote(namespace, title, content, slug, createdBy) {
         [namespace, resolvedSlug]
     );
 
+    // Resolve createdBy name to actor_id (only needed for inserts)
+    let createdByActorId = null;
+    if (createdBy) {
+        const actor = await resolveByName(createdBy);
+        if (actor) createdByActorId = actor.id;
+    }
+
     let result;
     if (existing.rows.length > 0) {
         // Update existing row — also clears deleted_at if it was soft-deleted.
-        // Don't overwrite created_by on updates — preserve original author.
+        // Don't overwrite created_by_actor_id on updates — preserve original author.
         result = await pool.query(`
             UPDATE documents
             SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW()
             WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
-            RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
         `, [title, content, namespace, resolvedSlug]);
     } else {
         result = await pool.query(`
-            INSERT INTO documents (namespace, slug, title, content, created_by)
+            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id)
             VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, namespace, slug, title, created_by, created_at, updated_at
-        `, [namespace, resolvedSlug, title, content, createdBy || null]);
+            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
+        `, [namespace, resolvedSlug, title, content, createdByActorId]);
     }
 
     const doc = result.rows[0];
+
+    // Resolve created_by_actor_id to name for API response
+    if (doc.created_by_actor_id) {
+        const { resolveById } = require('./actors');
+        const actor = await resolveById(doc.created_by_actor_id);
+        doc.created_by = actor ? actor.name : null;
+    } else {
+        doc.created_by = null;
+    }
 
     // Auto-index into vector DB (fire-and-forget — don't fail the save if indexing fails)
     ingestContent(namespace, resolvedSlug, content).catch(err => {
@@ -76,23 +93,25 @@ async function listNotes(namespace, limit, offset, prefix) {
     if (prefix) {
         // Filter by slug prefix — like listing a directory (e.g., "tasks/pending/")
         sql = `
-            SELECT id, slug, title,
-                   LEFT(content, 200) AS snippet,
-                   created_by, created_at, updated_at
-            FROM documents
-            WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($4) AND deleted_at IS NULL
-            ORDER BY updated_at DESC, slug ASC
+            SELECT d.id, d.slug, d.title,
+                   LEFT(d.content, 200) AS snippet,
+                   ac.name AS created_by, d.created_at, d.updated_at
+            FROM documents d
+            LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
+            WHERE d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4) AND d.deleted_at IS NULL
+            ORDER BY d.updated_at DESC, d.slug ASC
             LIMIT $2 OFFSET $3
         `;
         params = [namespace, maxResults, skip, prefix + '%'];
     } else {
         sql = `
-            SELECT id, slug, title,
-                   LEFT(content, 200) AS snippet,
-                   created_by, created_at, updated_at
-            FROM documents
-            WHERE namespace = $1 AND deleted_at IS NULL
-            ORDER BY updated_at DESC
+            SELECT d.id, d.slug, d.title,
+                   LEFT(d.content, 200) AS snippet,
+                   ac.name AS created_by, d.created_at, d.updated_at
+            FROM documents d
+            LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
+            WHERE d.namespace = $1 AND d.deleted_at IS NULL
+            ORDER BY d.updated_at DESC
             LIMIT $2 OFFSET $3
         `;
         params = [namespace, maxResults, skip];
@@ -104,9 +123,11 @@ async function listNotes(namespace, limit, offset, prefix) {
 
 async function readNote(namespace, slug) {
     const result = await pool.query(`
-        SELECT id, namespace, slug, title, content, created_by, created_at, updated_at
-        FROM documents
-        WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL
+        SELECT d.id, d.namespace, d.slug, d.title, d.content,
+               ac.name AS created_by, d.created_at, d.updated_at
+        FROM documents d
+        LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
+        WHERE d.namespace = $1 AND LOWER(d.slug) = LOWER($2) AND d.deleted_at IS NULL
     `, [namespace, slug]);
 
     if (result.rows.length === 0) {
@@ -137,10 +158,10 @@ async function deleteNote(namespace, slug) {
 async function restoreNote(namespace, slug) {
     // Clear the deleted_at flag to restore the note and its vector chunks
     const result = await pool.query(`
-        UPDATE documents
+        UPDATE documents d
         SET deleted_at = NULL
-        WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NOT NULL
-        RETURNING id, namespace, slug, title
+        WHERE d.namespace = $1 AND LOWER(d.slug) = LOWER($2) AND d.deleted_at IS NOT NULL
+        RETURNING d.id, d.namespace, d.slug, d.title
     `, [namespace, slug]);
 
     if (result.rows.length === 0) {
@@ -195,11 +216,20 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
 
     // Save the updated content
     const result = await pool.query(`
-        UPDATE documents
+        UPDATE documents d
         SET content = $1, updated_at = NOW()
-        WHERE namespace = $2 AND LOWER(slug) = LOWER($3)
-        RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+        WHERE d.namespace = $2 AND LOWER(d.slug) = LOWER($3)
+        RETURNING d.id, d.namespace, d.slug, d.title, d.created_by_actor_id, d.created_at, d.updated_at
     `, [updatedContent, namespace, slug]);
+
+    // Resolve created_by_actor_id to name
+    if (result.rows[0] && result.rows[0].created_by_actor_id) {
+        const { resolveById } = require('./actors');
+        const actor = await resolveById(result.rows[0].created_by_actor_id);
+        result.rows[0].created_by = actor ? actor.name : null;
+    } else if (result.rows[0]) {
+        result.rows[0].created_by = null;
+    }
 
     // Re-index into vector DB (fire-and-forget)
     ingestContent(namespace, slug, updatedContent).catch(err => {
@@ -318,7 +348,7 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         UPDATE documents
         SET slug = $1, namespace = $2, updated_at = NOW()
         WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
-        RETURNING id, namespace, slug, title, created_by, created_at, updated_at
+        RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
     `, [newSlug, targetNamespace, namespace, slug]);
 
     // Update vector chunks to match the new slug/namespace
@@ -327,7 +357,18 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         [newSlug, targetNamespace, namespace, slug]
     );
 
-    return result.rows[0];
+    const doc = result.rows[0];
+
+    // Resolve created_by_actor_id to name for API response
+    if (doc.created_by_actor_id) {
+        const { resolveById } = require('./actors');
+        const actor = await resolveById(doc.created_by_actor_id);
+        doc.created_by = actor ? actor.name : null;
+    } else {
+        doc.created_by = null;
+    }
+
+    return doc;
 }
 
 module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, titleToSlug };

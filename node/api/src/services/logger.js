@@ -47,12 +47,22 @@ function logError(subsystem, action, opts) {
     log(subsystem, action, { agent, context, contextId, error: message });
 
     // Fire-and-forget insert into error_log table
+    // Resolve agent name to actor_id if provided
     const pool = require('../db');
-    pool.query(
-        `INSERT INTO error_log (subsystem, action, agent, context, context_id, error_message, error_detail)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [subsystem, action, agent || null, context || null, contextId || null, message, detail || null]
-    ).catch(err => {
+    const { resolveByName } = require('./actors');
+    const doInsert = async () => {
+        let actorId = null;
+        if (agent) {
+            const actor = await resolveByName(agent);
+            if (actor) actorId = actor.id;
+        }
+        await pool.query(
+            `INSERT INTO error_log (subsystem, action, actor_id, context, context_id, error_message, error_detail)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [subsystem, action, actorId, context || null, contextId || null, message, detail || null]
+        );
+    };
+    doInsert().catch(err => {
         console.error('Failed to write to error_log table:', err.message);
     });
 }
@@ -61,16 +71,17 @@ function logError(subsystem, action, opts) {
 // Supports since_id for incremental polling and limit for initial load.
 async function getErrorLogEntries(sinceId, limit) {
     const pool = require('../db');
-    const cols = 'id, created_at, subsystem, action, agent, context, context_id, error_message, error_detail';
+    const cols = `e.id, e.created_at, e.subsystem, e.action, ac.name AS agent,
+                  e.context, e.context_id, e.error_message, e.error_detail`;
     if (sinceId) {
         const result = await pool.query(
-            `SELECT ${cols} FROM error_log WHERE id > $1 ORDER BY id ASC LIMIT 500`,
+            `SELECT ${cols} FROM error_log e LEFT JOIN actors ac ON ac.id = e.actor_id WHERE e.id > $1 ORDER BY e.id ASC LIMIT 500`,
             [sinceId]
         );
         return result.rows;
     }
     const result = await pool.query(
-        `SELECT ${cols} FROM error_log ORDER BY id DESC LIMIT $1`,
+        `SELECT ${cols} FROM error_log e LEFT JOIN actors ac ON ac.id = e.actor_id ORDER BY e.id DESC LIMIT $1`,
         [limit || 100]
     );
     return result.rows.reverse();

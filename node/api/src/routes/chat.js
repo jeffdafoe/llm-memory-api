@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const pool = require('../db');
 const { log, logError } = require('../services/logger');
+const { requireByName, resolveByName } = require('../services/actors');
 
 const router = Router();
 
@@ -56,9 +57,12 @@ router.post('/chat/send', async (req, res) => {
         const recipientSet = new Set();
 
         if (discussion_id) {
+            const fromActor = await requireByName(from_agent);
             const participants = await pool.query(
-                'SELECT agent FROM discussion_participants WHERE discussion_id = $1 AND status = $2 AND agent != $3',
-                [discussion_id, 'joined', from_agent]
+                `SELECT ac.name AS agent FROM discussion_participants dp
+                 JOIN actors ac ON ac.id = dp.actor_id
+                 WHERE dp.discussion_id = $1 AND dp.status = $2 AND dp.actor_id != $3`,
+                [discussion_id, 'joined', fromActor.id]
             );
             for (const row of participants.rows) {
                 discussionParticipants.add(row.agent);
@@ -67,9 +71,12 @@ router.post('/chat/send', async (req, res) => {
         }
 
         if (to_agents && to_agents.length === 1 && to_agents[0] === '*') {
+            const fromActor = await requireByName(from_agent);
             const known = await pool.query(
-                'SELECT agent FROM agents WHERE agent != $1',
-                [from_agent]
+                `SELECT ac.name AS agent FROM agents a
+                 JOIN actors ac ON ac.id = a.actor_id
+                 WHERE a.actor_id != $1`,
+                [fromActor.id]
             );
             for (const row of known.rows) {
                 recipientSet.add(row.agent);
@@ -95,14 +102,17 @@ router.post('/chat/send', async (req, res) => {
             });
         }
 
-        // Validate all recipients exist
+        // Validate all recipients exist and resolve actor_ids
+        const fromActor = await requireByName(from_agent);
+        const recipientActors = {};
         for (const agent of recipients) {
-            const exists = await pool.query('SELECT 1 FROM agents WHERE agent = $1', [agent]);
-            if (exists.rows.length === 0) {
+            const actor = await resolveByName(agent);
+            if (!actor) {
                 return res.status(404).json({
                     error: { code: 'NOT_FOUND', message: `Agent "${agent}" is not registered` }
                 });
             }
+            recipientActors[agent] = actor;
         }
 
         // Insert a message for each recipient
@@ -114,8 +124,8 @@ router.post('/chat/send', async (req, res) => {
                 msgText = `[Forwarded from discussion #${discussion_id}] ${message}`;
             }
             const result = await pool.query(
-                'INSERT INTO chat_messages (from_agent, to_agent, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-                [from_agent, recipient, msgText, ch.value]
+                'INSERT INTO chat_messages (from_actor_id, to_actor_id, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+                [fromActor.id, recipientActors[recipient].id, msgText, ch.value]
             );
             results.push({ id: result.rows[0].id, agent: recipient, sent_at: result.rows[0].sent_at });
         }
@@ -173,27 +183,33 @@ router.post('/chat/receive', async (req, res) => {
         }
 
         // Build query dynamically — optional channel, after_id, and from_agent filters
-        let query = 'SELECT id, from_agent, to_agent, message, sent_at FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL';
-        const params = [agent];
+        const actor = await requireByName(agent);
+        let query = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.message, cm.sent_at
+                      FROM chat_messages cm
+                      JOIN actors fa ON fa.id = cm.from_actor_id
+                      JOIN actors ta ON ta.id = cm.to_actor_id
+                      WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL`;
+        const params = [actor.id];
 
         if (ch.value === null) {
-            query += ' AND channel IS NULL';
+            query += ' AND cm.channel IS NULL';
         } else {
             params.push(ch.value);
-            query += ` AND channel = $${params.length}`;
+            query += ` AND cm.channel = $${params.length}`;
         }
 
         if (from_agent) {
-            params.push(from_agent);
-            query += ` AND from_agent = $${params.length}`;
+            const fromActor = await requireByName(from_agent);
+            params.push(fromActor.id);
+            query += ` AND cm.from_actor_id = $${params.length}`;
         }
 
         if (after_id !== undefined) {
             params.push(after_id);
-            query += ` AND id > $${params.length}`;
+            query += ` AND cm.id > $${params.length}`;
         }
 
-        query += ' ORDER BY id ASC';
+        query += ' ORDER BY cm.id ASC';
 
         const result = await pool.query(query, params);
 
@@ -232,9 +248,10 @@ router.post('/chat/ack', async (req, res) => {
             });
         }
 
+        const actor = await requireByName(agent);
         const result = await pool.query(
-            'UPDATE chat_messages SET acked_at = NOW() WHERE id = ANY($1) AND to_agent = $2 AND acked_at IS NULL RETURNING id',
-            [ids, agent]
+            'UPDATE chat_messages SET acked_at = NOW() WHERE id = ANY($1) AND to_actor_id = $2 AND acked_at IS NULL RETURNING id',
+            [ids, actor.id]
         );
 
         logChat('ack', { agent, requested_ids: ids, acked_ids: result.rows.map(r => r.id) });
@@ -277,33 +294,34 @@ router.post('/chat/status', async (req, res) => {
             });
         }
 
+        const actor = await requireByName(agent);
         let channelFilter;
         let params;
         if (ch.value === null) {
             channelFilter = 'AND channel IS NULL';
-            params = [agent];
+            params = [actor.id];
         } else {
             channelFilter = 'AND channel = $2';
-            params = [agent, ch.value];
+            params = [actor.id, ch.value];
         }
 
         const pending = await pool.query(
-            `SELECT COUNT(*) as count FROM chat_messages WHERE to_agent = $1 AND acked_at IS NULL ${channelFilter}`,
+            `SELECT COUNT(*) as count FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NULL ${channelFilter}`,
             params
         );
 
         const latest = await pool.query(
-            `SELECT MAX(id) as max_id FROM chat_messages WHERE to_agent = $1 ${channelFilter}`,
+            `SELECT MAX(id) as max_id FROM chat_messages WHERE to_actor_id = $1 ${channelFilter}`,
             params
         );
 
         const lastActivity = await pool.query(
-            `SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_agent = $1 ${channelFilter}`,
+            `SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_actor_id = $1 ${channelFilter}`,
             params
         );
 
         const lastAcked = await pool.query(
-            `SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_agent = $1 AND acked_at IS NOT NULL ${channelFilter}`,
+            `SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NOT NULL ${channelFilter}`,
             params
         );
 
