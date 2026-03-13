@@ -189,11 +189,6 @@ function useActorsConfig({ api, showToast, showConfirm }) {
         return availableNamespaces.value.filter(ns => !existing.has(ns));
     });
 
-    // Check if an actor is an agent (for showing implicit own-namespace note)
-    function isAgent(actor) {
-        return actor && actor.type === 'agent';
-    }
-
     function closeDialogs() {
         selectedActorConfig.value = null;
     }
@@ -208,7 +203,6 @@ function useActorsConfig({ api, showToast, showConfirm }) {
         loadActorsConfig, openActorConfig, closeActorConfig,
         addPermissionRow, removePermissionRow, savePermissions,
         addVisibilityGrant, removeVisibilityGrant, saveVisibility,
-        isAgent,
         closeDialogs: closeDialogs
     };
 }

@@ -889,8 +889,8 @@
                                 Full access to all namespaces (wildcard)
                             </label>
 
-                            <p v-if="isAgent(selectedActorConfig)" class="muted" style="font-size: 0.85em; margin-bottom: 0.5rem;">
-                                Agents always have implicit full access to their own namespace ({{ selectedActorConfig.name }}).
+                            <p class="muted" style="font-size: 0.85em; margin-bottom: 0.5rem;">
+                                All actors have implicit full access to their own namespace ({{ selectedActorConfig.name }}).
                             </p>
 
                             <table v-if="!actorHasWildcardPerm" class="actor-perm-table">
