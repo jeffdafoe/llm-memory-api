@@ -69,6 +69,11 @@ server {
         proxy_read_timeout 86400s;
     }
 
+    # Root URL → admin dashboard
+    location = / {
+        return 302 /admin/;
+    }
+
     # All other requests — no rate limit
     location / {
         proxy_pass http://127.0.0.1:{{ memory_api_port }};
