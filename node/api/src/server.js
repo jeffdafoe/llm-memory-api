@@ -50,6 +50,8 @@ app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
 app.use('/v1', adminRoutes);
 
+app.get('/', (req, res) => res.redirect('/admin/'));
+
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
