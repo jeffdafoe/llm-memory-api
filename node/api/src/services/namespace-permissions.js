@@ -101,4 +101,17 @@ function clearCache(actorId) {
     }
 }
 
-module.exports = { hasAccess, requireAccess, getReadableNamespaces, clearCache };
+// Reserved namespace sentinels — cannot be used as actual content namespaces.
+// '/' is the wildcard permission grant, '*' is the wildcard search qualifier.
+const RESERVED_NAMESPACES = ['/', '*'];
+
+function validateNamespace(namespace) {
+    if (RESERVED_NAMESPACES.includes(namespace)) {
+        throw Object.assign(
+            new Error(`"${namespace}" is a reserved namespace and cannot be used for content`),
+            { statusCode: 400 }
+        );
+    }
+}
+
+module.exports = { hasAccess, requireAccess, getReadableNamespaces, clearCache, validateNamespace };

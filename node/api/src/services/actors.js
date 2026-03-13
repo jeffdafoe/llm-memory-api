@@ -9,15 +9,25 @@ const nameCache = new Map(); // name -> { actor, expires }
 const idCache = new Map();   // id -> { actor, expires }
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function resolveByName(name) {
-    const cached = nameCache.get(name);
+async function resolveByName(name, type) {
+    const cacheKey = type ? `${name}:${type}` : name;
+    const cached = nameCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) return cached.actor;
 
-    const result = await pool.query('SELECT id, name, type FROM actors WHERE name = $1', [name]);
+    let result;
+    if (type) {
+        result = await pool.query('SELECT id, name, type FROM actors WHERE name = $1 AND type = $2', [name, type]);
+    } else {
+        result = await pool.query('SELECT id, name, type FROM actors WHERE name = $1', [name]);
+    }
     if (result.rows.length === 0) return null;
 
     const actor = result.rows[0];
     cacheActor(actor);
+    // Also cache under the typed key so future typed lookups hit cache
+    if (type) {
+        nameCache.set(cacheKey, { actor, expires: Date.now() + CACHE_TTL_MS });
+    }
     return actor;
 }
 

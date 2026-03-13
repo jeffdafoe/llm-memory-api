@@ -43,7 +43,7 @@ async function ingestContent(namespace, sourceFile, content) {
     return { chunks_created: chunks.length, source_file: sourceFile, namespace };
 }
 
-async function searchMemory(query, namespace, limit) {
+async function searchMemory(query, namespace, limit, readableNamespaces) {
     const maxResults = limit || 5;
     const embeddings = await embed(query);
     const queryVector = pgvector.toSql(embeddings[0]);
@@ -67,6 +67,16 @@ async function searchMemory(query, namespace, limit) {
         )`;
 
     if (!namespace || namespace === '*') {
+        // When readableNamespaces is provided, filter at query level instead of post-filtering.
+        // This ensures LIMIT returns the correct number of results.
+        let nsFilter = '';
+        let nsParam = [];
+        if (readableNamespaces) {
+            const nsParamIdx = 3 + queryWords.length;
+            nsFilter = `AND mc.namespace = ANY($${nsParamIdx})`;
+            nsParam = [readableNamespaces];
+        }
+
         const filenameClauses = queryWords.map((_, i) => `source_file ILIKE $${i + 3}`);
         const boostExpression = filenameClauses.length > 0
             ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
@@ -75,11 +85,11 @@ async function searchMemory(query, namespace, limit) {
             SELECT source_file, heading, chunk_text, namespace,
                    (1 - (embedding <=> $1)) + ${boostExpression} AS similarity
             FROM memory_chunks mc
-            WHERE 1=1 ${softDeleteFilter}
+            WHERE 1=1 ${nsFilter} ${softDeleteFilter}
             ORDER BY similarity DESC
             LIMIT $2
         `;
-        params = [queryVector, maxResults, ...queryWords.map(w => `%${w}%`)];
+        params = [queryVector, maxResults, ...queryWords.map(w => `%${w}%`), ...nsParam];
     } else {
         const filenameClauses = queryWords.map((_, i) => `source_file ILIKE $${i + 4}`);
         const boostExpression = filenameClauses.length > 0
