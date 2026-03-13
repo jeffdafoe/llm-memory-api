@@ -4,7 +4,8 @@ const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
 const { log, logError } = require('../services/logger');
 const auth = require('../middleware/auth');
-const { hash: hashToken, generateSalt } = require('../services/hashing');
+const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
+const { SESSION_KIND } = require('../constants');
 const { broadcast } = require('../services/events');
 const { requireByName } = require('../services/actors');
 
@@ -54,18 +55,29 @@ router.post('/agent/login', async (req, res) => {
             });
         }
 
-        // Look up actor and verify passphrase (credentials on actors table)
+        // Look up actor and verify passphrase. JOIN agent_configuration to
+        // enforce that this actor actually has agent capability — token_hash
+        // alone isn't sufficient (a web-only user could theoretically have one).
         const actorResult = await pool.query(
-            `SELECT id AS actor_id, name AS agent, token_hash, token_salt, status, passphrase_rotated_at
-             FROM actors
-             WHERE name = $1`,
+            `SELECT a.id AS actor_id, a.name AS agent, a.token_hash, a.token_salt, a.status, a.passphrase_rotated_at
+             FROM actors a
+             JOIN agent_configuration agc ON agc.actor_id = a.id
+             WHERE a.name = $1 AND a.token_hash IS NOT NULL`,
             [agent]
         );
 
         const row = actorResult.rows[0];
-        const hash = hashToken(passphrase, row ? row.token_salt : DUMMY_SALT);
 
-        if (!row || row.status !== 'active' || hash !== row.token_hash) {
+        // Compute hash even when row is missing (timing-safe rejection)
+        if (!row) {
+            hashToken(passphrase, DUMMY_SALT);
+            logAgent('login-failed', { agent });
+            return res.status(403).json({
+                error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
+            });
+        }
+
+        if (row.status !== 'active' || !verify(passphrase, row.token_salt, row.token_hash)) {
             logAgent('login-failed', { agent });
             return res.status(403).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
@@ -80,7 +92,7 @@ router.post('/agent/login', async (req, res) => {
 
         await pool.query(
             'INSERT INTO sessions (actor_id, token_hash, token_salt, kind, expires_at, subsystem) VALUES ($1, $2, $3, $4, $5, $6)',
-            [row.actor_id, sessionHash, sessionSalt, 'api', expiresAt, subsystem || null]
+            [row.actor_id, sessionHash, sessionSalt, SESSION_KIND.API, expiresAt, subsystem || null]
         );
 
         // Update last_seen
@@ -127,13 +139,12 @@ router.post('/agent/logout', async (req, res) => {
         // Find and delete the session matching this token
         const sessions = await pool.query(
             'SELECT id, token_hash, token_salt FROM sessions WHERE actor_id = $1 AND kind = $2',
-            [req.actorId, 'api']
+            [req.actorId, SESSION_KIND.API]
         );
 
         let deleted = false;
         for (const row of sessions.rows) {
-            const hash = hashToken(token, row.token_salt);
-            if (hash === row.token_hash) {
+            if (verify(token, row.token_salt, row.token_hash)) {
                 await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
                 deleted = true;
                 break;
@@ -176,8 +187,7 @@ router.post('/agent/rotate', async (req, res) => {
             'SELECT token_hash, token_salt FROM actors WHERE id = $1',
             [req.actorId]
         );
-        const currentHash = hashToken(current_passphrase, actorRow.rows[0].token_salt);
-        if (currentHash !== actorRow.rows[0].token_hash) {
+        if (!verify(current_passphrase, actorRow.rows[0].token_salt, actorRow.rows[0].token_hash)) {
             return res.status(403).json({
                 error: { code: 'INVALID_PASSPHRASE', message: 'Current passphrase does not match' }
             });
@@ -194,7 +204,7 @@ router.post('/agent/rotate', async (req, res) => {
         );
 
         // Invalidate all existing sessions for this agent
-        await pool.query('DELETE FROM sessions WHERE actor_id = $1 AND kind = $2', [req.actorId, 'api']);
+        await pool.query('DELETE FROM sessions WHERE actor_id = $1 AND kind = $2', [req.actorId, SESSION_KIND.API]);
 
         // Clear all cached sessions for this agent
         for (const [key, value] of auth.sessionCache.entries()) {
@@ -308,8 +318,9 @@ router.post('/agent/status', async (req, res) => {
             `SELECT ac.name AS agent, s.subsystem
             FROM sessions s
             JOIN actors ac ON ac.id = s.actor_id
-            WHERE s.kind = 'api' AND s.expires_at > NOW() AND s.subsystem IS NOT NULL
-            ORDER BY ac.name, s.subsystem`
+            WHERE s.kind = $1 AND s.expires_at > NOW() AND s.subsystem IS NOT NULL
+            ORDER BY ac.name, s.subsystem`,
+            [SESSION_KIND.API]
         );
 
         const subsystemsByAgent = {};
