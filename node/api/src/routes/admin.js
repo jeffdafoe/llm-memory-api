@@ -15,6 +15,7 @@ const { formatPricing } = require('../services/provider');
 const { requireByName, resolveByName, resolveById } = require('../services/actors');
 const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
+const { getVisibleActorIds, canSee } = require('../services/actor-visibility');
 
 const router = Router();
 
@@ -27,6 +28,23 @@ function generateSessionToken() {
 
 function logAdmin(action, details) {
     log('admin', action, details);
+}
+
+// Check if the authenticated user can see a specific agent (by name).
+// Returns the resolved actor, or sends 404 and returns null.
+// Hidden actors are indistinguishable from nonexistent ones (no 403).
+async function requireVisibility(req, res, agentName) {
+    const actor = await resolveByName(agentName);
+    if (!actor) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
+        return null;
+    }
+    const allowed = await canSee(req.actorId, actor.id);
+    if (!allowed) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
+        return null;
+    }
+    return actor;
 }
 
 // Middleware: require authenticated user (not agent) for all admin routes except login
@@ -143,58 +161,76 @@ router.post('/admin/logout', async (req, res) => {
 // POST /admin/dashboard — combined summary data
 router.post('/admin/dashboard', async (req, res) => {
     try {
-        const agents = await pool.query(
-            `SELECT agent, status, last_seen, registered_at, provider, model, virtual, active_since
-             FROM agent_status
-             ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`
-        );
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        const hasFilter = visibleIds !== null;
+        const idsArray = hasFilter ? Array.from(visibleIds) : [];
 
-        const discussions = await pool.query(
-            `SELECT d.id, d.topic, d.status, d.outcome, ac.name AS created_by, d.created_at,
+        let agentsSql = `SELECT agent, status, last_seen, registered_at, provider, model, virtual, active_since
+             FROM agent_status`;
+        const agentsParams = [];
+        if (hasFilter) {
+            agentsSql += ' WHERE actor_id = ANY($1)';
+            agentsParams.push(idsArray);
+        }
+        agentsSql += ` ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`;
+        const agents = await pool.query(agentsSql, agentsParams);
+
+        let discussionsSql = `
+            SELECT d.id, d.topic, d.status, d.outcome, ac.name AS created_by, d.created_at,
                     COUNT(dp.actor_id) AS participant_count
              FROM discussions d
              LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
-             LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
-             GROUP BY d.id, ac.name
-             ORDER BY
-                 CASE d.status WHEN 'active' THEN 0 ELSE 1 END,
-                 d.created_at DESC
-             LIMIT 10`
-        );
+             LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id`;
+        const discussionsParams = [];
+        if (hasFilter) {
+            discussionsSql += ` WHERE NOT EXISTS (
+                SELECT 1 FROM discussion_participants dp2
+                WHERE dp2.discussion_id = d.id AND dp2.actor_id != ALL($1))`;
+            discussionsParams.push(idsArray);
+        }
+        discussionsSql += ` GROUP BY d.id, ac.name
+             ORDER BY CASE d.status WHEN 'active' THEN 0 ELSE 1 END, d.created_at DESC
+             LIMIT 10`;
+        const discussions = await pool.query(discussionsSql, discussionsParams);
 
-        const chat = await pool.query(
-            `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+        let chatSql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
              FROM chat_messages cm
              JOIN actors fa ON fa.id = cm.from_actor_id
              JOIN actors ta ON ta.id = cm.to_actor_id
              WHERE fa.name != 'system'
-               AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')
-             ORDER BY
-                 CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END,
-                 cm.sent_at DESC
-             LIMIT 15`
-        );
+               AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
+        const chatParams = [];
+        if (hasFilter) {
+            chatSql += ' AND cm.from_actor_id = ANY($1) AND cm.to_actor_id = ANY($1)';
+            chatParams.push(idsArray);
+        }
+        chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cm.sent_at DESC LIMIT 15`;
+        const chat = await pool.query(chatSql, chatParams);
 
-        const mail = await pool.query(
-            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
+        let mailSql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
              FROM mail m
              JOIN actors fa ON fa.id = m.from_actor_id
-             JOIN actors ta ON ta.id = m.to_actor_id
-             ORDER BY
-                 CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END,
-                 m.sent_at DESC
-             LIMIT 15`
-        );
+             JOIN actors ta ON ta.id = m.to_actor_id`;
+        const mailParams = [];
+        if (hasFilter) {
+            mailSql += ' WHERE m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+            mailParams.push(idsArray);
+        }
+        mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
+        const mail = await pool.query(mailSql, mailParams);
 
-        const systemMessages = await pool.query(
-            `SELECT cm.id, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+        let sysMsgSql = `SELECT cm.id, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
              FROM chat_messages cm
              JOIN actors fa ON fa.id = cm.from_actor_id
              JOIN actors ta ON ta.id = cm.to_actor_id
-             WHERE fa.name = 'system'
-             ORDER BY cm.sent_at DESC
-             LIMIT 15`
-        );
+             WHERE fa.name = 'system'`;
+        const sysMsgParams = [];
+        if (hasFilter) {
+            sysMsgSql += ' AND cm.to_actor_id = ANY($1)';
+            sysMsgParams.push(idsArray);
+        }
+        sysMsgSql += ' ORDER BY cm.sent_at DESC LIMIT 15';
+        const systemMessages = await pool.query(sysMsgSql, sysMsgParams);
 
         res.json({
             agents: agents.rows,
@@ -242,12 +278,17 @@ router.post('/admin/error-log', async (req, res) => {
 // POST /admin/agents — list all agents
 router.post('/admin/agents', async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT agent, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, active_since,
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        let sql = `SELECT agent, actor_id, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, active_since,
                     cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature
-             FROM agent_status
-             ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`
-        );
+             FROM agent_status`;
+        const params = [];
+        if (visibleIds !== null) {
+            sql += ' WHERE actor_id = ANY($1)';
+            params.push(Array.from(visibleIds));
+        }
+        sql += ` ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`;
+        const result = await pool.query(sql, params);
         res.json({ agents: result.rows });
     } catch (err) {
         console.error('Admin agents error:', err.message);
@@ -266,12 +307,8 @@ router.post('/admin/agents/instructions/read', async (req, res) => {
         });
     }
     try {
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
+        const actor = await requireVisibility(req, res, agent);
+        if (!actor) return;
         const result = await pool.query(
             'SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1',
             [actor.id]
@@ -299,12 +336,8 @@ router.post('/admin/agents/instructions/save', async (req, res) => {
         });
     }
     try {
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
+        const actor = await requireVisibility(req, res, agent);
+        if (!actor) return;
         const result = await pool.query(
             'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id',
             [content, actor.id]
@@ -338,12 +371,8 @@ router.post('/admin/agents/expertise/save', async (req, res) => {
             .map(e => e.trim().toLowerCase());
         const json = JSON.stringify(cleaned);
 
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
+        const actor = await requireVisibility(req, res, agent);
+        if (!actor) return;
         const result = await pool.query(
             'UPDATE actors SET expertise = $1 WHERE id = $2 RETURNING id',
             [json, actor.id]
@@ -378,12 +407,8 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
         const salt = generateSalt();
         const hash = hashToken(passphrase, salt);
 
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
+        const actor = await requireVisibility(req, res, agent);
+        if (!actor) return;
 
         const result = await pool.query(
             'UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3 RETURNING id',
@@ -424,6 +449,9 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
 router.post('/admin/discussions', async (req, res) => {
     const { status } = req.body;
     try {
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        const hasFilter = visibleIds !== null;
+
         let sql = `
             SELECT d.id, d.topic, d.status, d.mode, d.outcome, ac.name AS created_by, d.created_at, d.concluded_at,
                    COUNT(dp.actor_id) AS participant_count
@@ -431,10 +459,20 @@ router.post('/admin/discussions', async (req, res) => {
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
             LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
         `;
+        const conditions = [];
         const params = [];
         if (status) {
-            sql += ' WHERE d.status = $1';
             params.push(status);
+            conditions.push('d.status = $' + params.length);
+        }
+        if (hasFilter) {
+            params.push(Array.from(visibleIds));
+            conditions.push(`NOT EXISTS (
+                SELECT 1 FROM discussion_participants dp2
+                WHERE dp2.discussion_id = d.id AND dp2.actor_id != ALL($${params.length}))`);
+        }
+        if (conditions.length > 0) {
+            sql += ' WHERE ' + conditions.join(' AND ');
         }
         sql += ' GROUP BY d.id, ac.name ORDER BY d.created_at DESC';
 
@@ -457,6 +495,21 @@ router.post('/admin/discussions/detail', async (req, res) => {
         });
     }
     try {
+        // Check visibility: ALL participants must be visible to the viewer
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        if (visibleIds !== null) {
+            const hiddenCheck = await pool.query(
+                `SELECT 1 FROM discussion_participants
+                 WHERE discussion_id = $1 AND actor_id != ALL($2) LIMIT 1`,
+                [discussion_id, Array.from(visibleIds)]
+            );
+            if (hiddenCheck.rows.length > 0) {
+                return res.status(404).json({
+                    error: { code: 'NOT_FOUND', message: 'Discussion not found' }
+                });
+            }
+        }
+
         const discussion = await pool.query(
             `SELECT d.*, ac.name AS created_by
              FROM discussions d
@@ -506,14 +559,25 @@ router.post('/admin/discussions/detail', async (req, res) => {
 router.post('/admin/chat', async (req, res) => {
     const { limit = 50, channel } = req.body;
     try {
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        const hasFilter = visibleIds !== null;
+
         let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
                    FROM chat_messages cm
                    JOIN actors fa ON fa.id = cm.from_actor_id
                    JOIN actors ta ON ta.id = cm.to_actor_id`;
+        const conditions = [];
         const params = [];
         if (channel) {
-            sql += ' WHERE cm.channel = $1';
             params.push(channel);
+            conditions.push('cm.channel = $' + params.length);
+        }
+        if (hasFilter) {
+            params.push(Array.from(visibleIds));
+            conditions.push('cm.from_actor_id = ANY($' + params.length + ') AND cm.to_actor_id = ANY($' + params.length + ')');
+        }
+        if (conditions.length > 0) {
+            sql += ' WHERE ' + conditions.join(' AND ');
         }
         sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
         params.push(limit);
@@ -532,14 +596,22 @@ router.post('/admin/chat', async (req, res) => {
 router.post('/admin/mail', async (req, res) => {
     const { limit = 50 } = req.body;
     try {
-        const result = await pool.query(
-            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at, m.deleted_at
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        const hasFilter = visibleIds !== null;
+
+        let sql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at, m.deleted_at
              FROM mail m
              JOIN actors fa ON fa.id = m.from_actor_id
-             JOIN actors ta ON ta.id = m.to_actor_id
-             ORDER BY m.sent_at DESC LIMIT $1`,
-            [limit]
-        );
+             JOIN actors ta ON ta.id = m.to_actor_id`;
+        const params = [];
+        if (hasFilter) {
+            params.push(Array.from(visibleIds));
+            sql += ' WHERE m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+        }
+        sql += ` ORDER BY m.sent_at DESC LIMIT $${params.length + 1}`;
+        params.push(limit);
+
+        const result = await pool.query(sql, params);
         res.json({ messages: result.rows });
     } catch (err) {
         console.error('Admin mail error:', err.message);
@@ -560,13 +632,9 @@ router.post('/admin/mail/send', async (req, res) => {
     }
 
     try {
-        // Verify recipient agent exists
-        const toActor = await resolveByName(to);
-        if (!toActor) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: `Agent "${to}" not found` }
-            });
-        }
+        // Verify recipient agent exists and is visible to the sender
+        const toActor = await requireVisibility(req, res, to);
+        if (!toActor) return;
 
         const from = req.authenticatedUser.username;
         const fromActor = await requireByName(from);
@@ -1256,10 +1324,8 @@ router.post('/admin/agents/read', async (req, res) => {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
     try {
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
-        }
+        const actor = await requireVisibility(req, res, agent);
+        if (!actor) return;
         const result = await pool.query(
             `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
                     agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
@@ -1311,12 +1377,8 @@ router.post('/admin/agents/update', async (req, res) => {
     }
 
     try {
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
+        const actor = await requireVisibility(req, res, agent);
+        if (!actor) return;
         const existing = await pool.query('SELECT actor_id, virtual FROM agent_configuration WHERE actor_id = $1', [actor.id]);
         if (existing.rows.length === 0) {
             return res.status(404).json({
@@ -1412,10 +1474,8 @@ router.post('/admin/agents/usage', async (req, res) => {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
     try {
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
-        }
+        const actor = await requireVisibility(req, res, agent);
+        if (!actor) return;
         const result = await pool.query(
             `SELECT id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context, created_at
              FROM virtual_agent_usage
