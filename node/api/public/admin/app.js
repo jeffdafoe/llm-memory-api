@@ -34,7 +34,7 @@ createApp({
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
-        const actorsConfigModule = useActorsConfig(deps);
+        const actorsConfigModule = useActorsConfig({ ...deps, agentsModule });
         const dashboardModule = useDashboard(deps);
 
         // View loading — route data fetches to the right module

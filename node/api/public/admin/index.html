@@ -345,9 +345,6 @@
 
                     <!-- Agents sub-tab -->
                     <div v-if="agentSubTab === 'list'">
-                        <div class="mail-toolbar">
-                            <button class="inline-button" @click="startCreateAgent"><i class="icon-plus"></i> Create Agent</button>
-                        </div>
                         <div class="table-wrap">
                             <table class="fixed-table">
                                 <colgroup>
@@ -624,6 +621,9 @@
 
                     <!-- Actors sub-tab -->
                     <div v-if="configSubTab === 'actors'">
+                        <div style="margin-bottom: 0.75rem;">
+                            <button class="inline-button" @click="startCreateActor"><i class="icon-plus"></i> Add Actor</button>
+                        </div>
                         <table>
                             <thead>
                                 <tr>
@@ -992,6 +992,116 @@
                     </article>
                 </dialog>
 
+                <!-- Create Actor dialog -->
+                <dialog :open="actorCreating" @close="actorCreating = false">
+                    <article v-if="actorCreating" class="create-agent-dialog">
+                        <header>
+                            <button aria-label="Close" rel="prev" @click="actorCreating = false"></button>
+                        </header>
+                        <div class="dialog-body">
+                            <h3>Add Actor</h3>
+                            <label>
+                                Name
+                                <input type="text" v-model="newActorName" placeholder="e.g. research" autofocus>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" v-model="newActorVirtual">
+                                Virtual agent (API-backed, auto-responds)
+                            </label>
+                            <div class="form-row-inline">
+                                <label>
+                                    Provider
+                                    <select v-model="newActorProvider" @change="onNewActorProviderChange">
+                                        <option value="">None</option>
+                                        <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    Model
+                                    <select v-model="newActorModel">
+                                        <option value="">None</option>
+                                        <option v-for="m in modelsForProvider(newActorProvider)" :key="m.id" :value="m.id">
+                                            {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
+                                        </option>
+                                    </select>
+                                </label>
+                            </div>
+                            <small v-if="modelDeprecation(newActorProvider, newActorModel)" style="color: var(--del-color, #c62828); display: block; margin: -0.5em 0 0.5em;">
+                                &#9888; {{ modelDeprecation(newActorProvider, newActorModel) }}
+                            </small>
+                            <div v-if="newActorVirtual">
+                                <label>
+                                    Personality (human-facing description)
+                                    <input type="text" v-model="newActorPersonality" placeholder="e.g. Contrarian. Challenges everything.">
+                                </label>
+                                <label>
+                                    API Key
+                                    <input type="password" v-model="newActorApiKey" placeholder="Provider API key (encrypted at rest)">
+                                </label>
+                                <!-- Dynamic capability settings from provider registry -->
+                                <div v-if="newActorProvider && newActorModel && Object.keys(capabilitiesFor(newActorProvider, newActorModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
+                                    <small class="muted"><strong>Configuration</strong></small>
+                                    <div style="margin-top: 0.3em;">
+                                        <template v-for="(cap, key) in capabilitiesFor(newActorProvider, newActorModel)" :key="key">
+                                            <div v-if="capabilityVisible(cap, newActorConfig)" style="margin-bottom: 0.4em;">
+                                                <label v-if="cap.type === 'boolean'" class="checkbox-label" :title="'Default: ' + (cap.default ? 'on' : 'off')">
+                                                    <input type="checkbox" v-model="newActorConfig[key]"> {{ cap.label }}
+                                                    <br><small class="muted">{{ cap.description }}</small>
+                                                </label>
+                                                <label v-else-if="cap.type === 'select'" :title="'Default: ' + (cap.default || 'none')">
+                                                    <small>{{ cap.label }}</small>
+                                                    <select v-model="newActorConfig[key]" style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                                        <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
+                                                    </select>
+                                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                                </label>
+                                                <label v-else :title="'Default: ' + cap.default">
+                                                    <small>{{ cap.label }}</small>
+                                                    <input type="number" v-model.number="newActorConfig[key]"
+                                                        :min="cap.min" :max="cap.max" :step="cap.step || 1"
+                                                        :placeholder="String(cap.default)"
+                                                        style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                                </label>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            <hr style="margin: 1rem 0;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" v-model="newActorUiAccess">
+                                UI Access (admin dashboard login)
+                            </label>
+                            <label v-if="newActorUiAccess">
+                                Password
+                                <input type="password" v-model="newActorPassword" placeholder="Minimum 4 characters">
+                            </label>
+                            <hr style="margin: 1rem 0;">
+                            <label v-if="!newActorVirtual">
+                                Welcome template
+                                <select v-model="newActorTemplateId">
+                                    <option :value="null">None</option>
+                                    <option v-for="t in welcomeTemplates.filter(t => t.kind === 'welcome')" :key="t.id" :value="t.id">{{ t.name }}</option>
+                                </select>
+                            </label>
+                            <div v-if="newActorPassphrase && !newActorVirtual" class="passphrase-bar passphrase-result">
+                                Passphrase: <code>{{ newActorPassphrase }}</code>
+                                <span class="muted">(save this — it won't be shown again)</span>
+                            </div>
+                            <div v-if="newActorPassphrase && newActorVirtual" class="passphrase-bar passphrase-result">
+                                Virtual agent created.
+                            </div>
+                            <div class="dialog-actions">
+                                <button @click="createActor" :disabled="newActorCreating || !newActorName || newActorPassphrase">
+                                    {{ newActorCreating ? 'Creating...' : 'Create' }}
+                                </button>
+                                <button class="secondary" @click="actorCreating = false">{{ newActorPassphrase ? 'Done' : 'Cancel' }}</button>
+                            </div>
+                        </div>
+                    </article>
+                </dialog>
+
                 <!-- Discussion detail modal -->
                 <dialog :open="selectedDiscussion !== null" @close="selectedDiscussion = null">
                     <article v-if="selectedDiscussion">
@@ -1289,105 +1399,6 @@
                     </article>
                 </dialog>
 
-                <!-- Create Agent modal -->
-                <dialog :open="agentCreating" @close="agentCreating = false">
-                    <article v-if="agentCreating" class="create-agent-dialog">
-                        <header>
-                            <button aria-label="Close" rel="prev" @click="agentCreating = false"></button>
-                        </header>
-                        <div class="dialog-body">
-                            <h3>Create Agent</h3>
-                            <label>
-                                Agent name
-                                <input type="text" v-model="newAgentName" placeholder="e.g. research" autofocus>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" v-model="newAgentVirtual">
-                                Virtual agent (API-backed, auto-responds)
-                            </label>
-                            <div class="form-row-inline">
-                                <label>
-                                    Provider
-                                    <select v-model="newAgentProvider" @change="onNewProviderChange">
-                                        <option value="">None</option>
-                                        <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
-                                    </select>
-                                </label>
-                                <label>
-                                    Model
-                                    <select v-model="newAgentModel">
-                                        <option value="">None</option>
-                                        <option v-for="m in modelsForProvider(newAgentProvider)" :key="m.id" :value="m.id">
-                                            {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
-                                        </option>
-                                    </select>
-                                </label>
-                            </div>
-                            <small v-if="modelDeprecation(newAgentProvider, newAgentModel)" style="color: var(--del-color, #c62828); display: block; margin: -0.5em 0 0.5em;">
-                                &#9888; {{ modelDeprecation(newAgentProvider, newAgentModel) }}
-                            </small>
-                            <div v-if="newAgentVirtual">
-                                <label>
-                                    Personality (human-facing description)
-                                    <input type="text" v-model="newAgentPersonality" placeholder="e.g. Contrarian. Challenges everything.">
-                                </label>
-                                <label>
-                                    API Key
-                                    <input type="password" v-model="newAgentApiKey" placeholder="Provider API key (encrypted at rest)">
-                                </label>
-                                <!-- Dynamic capability settings from provider registry (starts empty, only non-default overrides are sent) -->
-                                <div v-if="newAgentProvider && newAgentModel && Object.keys(capabilitiesFor(newAgentProvider, newAgentModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
-                                    <small class="muted"><strong>Configuration</strong></small>
-                                    <div style="margin-top: 0.3em;">
-                                        <template v-for="(cap, key) in capabilitiesFor(newAgentProvider, newAgentModel)" :key="key">
-                                            <div v-if="capabilityVisible(cap, newAgentConfig)" style="margin-bottom: 0.4em;">
-                                                <label v-if="cap.type === 'boolean'" class="checkbox-label" :title="'Default: ' + (cap.default ? 'on' : 'off')">
-                                                    <input type="checkbox" v-model="newAgentConfig[key]"> {{ cap.label }}
-                                                    <br><small class="muted">{{ cap.description }}</small>
-                                                </label>
-                                                <label v-else-if="cap.type === 'select'" :title="'Default: ' + (cap.default || 'none')">
-                                                    <small>{{ cap.label }}</small>
-                                                    <select v-model="newAgentConfig[key]" style="padding: 0.2em 0.4em; font-size: 0.9em;">
-                                                        <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
-                                                    </select>
-                                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
-                                                </label>
-                                                <label v-else :title="'Default: ' + cap.default">
-                                                    <small>{{ cap.label }}</small>
-                                                    <input type="number" v-model.number="newAgentConfig[key]"
-                                                        :min="cap.min" :max="cap.max" :step="cap.step || 1"
-                                                        :placeholder="String(cap.default)"
-                                                        style="padding: 0.2em 0.4em; font-size: 0.9em;">
-                                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
-                                                </label>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </div>
-                            </div>
-                            <label v-if="!newAgentVirtual">
-                                Welcome template
-                                <select v-model="newAgentTemplateId">
-                                    <option :value="null">None</option>
-                                    <option v-for="t in welcomeTemplates.filter(t => t.kind === 'welcome')" :key="t.id" :value="t.id">{{ t.name }}</option>
-                                </select>
-                            </label>
-                            <div v-if="newAgentPassphrase && !newAgentVirtual" class="passphrase-bar passphrase-result">
-                                Passphrase: <code>{{ newAgentPassphrase }}</code>
-                                <span class="muted">(save this — it won't be shown again)</span>
-                            </div>
-                            <div v-if="newAgentPassphrase && newAgentVirtual" class="passphrase-bar passphrase-result">
-                                Virtual agent created.
-                            </div>
-                            <div class="dialog-actions">
-                                <button @click="createAgent" :disabled="newAgentCreating || !newAgentName || newAgentPassphrase">
-                                    {{ newAgentCreating ? 'Creating...' : 'Create' }}
-                                </button>
-                                <button class="secondary" @click="agentCreating = false">{{ newAgentPassphrase ? 'Done' : 'Cancel' }}</button>
-                            </div>
-                        </div>
-                    </article>
-                </dialog>
 
                 <!-- Change password dialog -->
                 <dialog :open="showChangePassword" @close="showChangePassword = false">
