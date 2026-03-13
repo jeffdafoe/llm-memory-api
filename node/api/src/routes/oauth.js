@@ -41,9 +41,13 @@ function getBaseUrl(req) {
 // Validate a client_id + client_secret pair against agent_api_keys.
 // Returns the agent name on success, null on failure.
 async function validateClientCredentials(clientId, clientSecret) {
+    const { resolveByName } = require('../services/actors');
+    const actor = await resolveByName(clientId);
+    if (!actor) return null;
+
     const result = await pool.query(
-        'SELECT id, key_hash, key_salt FROM agent_api_keys WHERE agent = $1 AND revoked_at IS NULL',
-        [clientId]
+        'SELECT id, key_hash, key_salt FROM agent_api_keys WHERE actor_id = $1 AND revoked_at IS NULL',
+        [actor.id]
     );
 
     for (const row of result.rows) {
@@ -117,10 +121,15 @@ router.get('/authorize', async (req, res) => {
     }
 
     // Verify the agent exists and is active
-    const agentResult = await pool.query(
-        'SELECT agent, status FROM agents WHERE agent = $1',
-        [client_id]
-    );
+    const { resolveByName } = require('../services/actors');
+    const actor = await resolveByName(client_id);
+    let agentResult = { rows: [] };
+    if (actor) {
+        agentResult = await pool.query(
+            'SELECT ac.name AS agent, a.status FROM agents a JOIN actors ac ON ac.id = a.actor_id WHERE a.actor_id = $1',
+            [actor.id]
+        );
+    }
 
     if (agentResult.rows.length === 0 || agentResult.rows[0].status !== 'active') {
         return res.status(400).json({

@@ -1,5 +1,6 @@
 const pool = require('../db');
 const { sendSystemMessage } = require('./system-notify');
+const { resolveByName } = require('./actors');
 
 // Handler map: "source:error_code" → async function(agent, context) → handler_action string
 // Each handler receives the reporting agent and the context payload.
@@ -42,11 +43,17 @@ async function handleError(agent, source, errorCode, context) {
         status = 'unhandled';
     }
 
+    let actorId = null;
+    if (agent) {
+        const actor = await resolveByName(agent);
+        if (actor) actorId = actor.id;
+    }
+
     const result = await pool.query(
-        `INSERT INTO system_errors (agent, source, error_code, context, status, handler_action, resolved_at)
+        `INSERT INTO system_errors (actor_id, source, error_code, context, status, handler_action, resolved_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id, status, handler_action, reported_at`,
-        [agent, source, errorCode, context ? JSON.stringify(context) : null, status, handlerAction, resolvedAt]
+        [actorId, source, errorCode, context ? JSON.stringify(context) : null, status, handlerAction, resolvedAt]
     );
 
     return result.rows[0];

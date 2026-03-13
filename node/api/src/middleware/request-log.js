@@ -45,12 +45,12 @@ function requestLog(req, res, next) {
         const duration = Date.now() - start;
         const status = res.statusCode;
 
-        // Pull agent from whichever auth middleware ran
-        let agent = null;
-        if (req.authenticatedAgent) {
-            agent = req.authenticatedAgent;
-        } else if (req.mcpAgent) {
-            agent = req.mcpAgent;
+        // Pull actor_id from whichever auth middleware ran
+        let actorId = null;
+        if (req.actorId) {
+            actorId = req.actorId;
+        } else if (req.mcpActorId) {
+            actorId = req.mcpActorId;
         } else if (req.authenticatedUser) {
             // Skip admin requests — they clutter the log with dashboard polling
             originalEnd.apply(res, args);
@@ -70,9 +70,9 @@ function requestLog(req, res, next) {
 
         // Fire-and-forget insert
         pool.query(
-            `INSERT INTO request_log (method, path, status, duration_ms, agent, ip, request_length, response_length)
+            `INSERT INTO request_log (method, path, status, duration_ms, actor_id, ip, request_length, response_length)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [req.method, displayPath, status, duration, agent, ip, requestLength, responseLength]
+            [req.method, displayPath, status, duration, actorId, ip, requestLength, responseLength]
         ).catch(() => {});
 
         originalEnd.apply(res, args);
@@ -84,16 +84,18 @@ function requestLog(req, res, next) {
 // Query entries from DB. Supports since_id for incremental polling and limit for initial load.
 // Aliases duration_ms → duration and timestamp → timestamp for frontend compatibility.
 async function getEntries(sinceId, limit) {
-    const cols = 'id, timestamp, method, path, status, duration_ms AS duration, agent, ip, request_length, response_length';
+    const cols = `r.id, r.timestamp, r.method, r.path, r.status,
+                  r.duration_ms AS duration, ac.name AS agent, r.ip,
+                  r.request_length, r.response_length`;
     if (sinceId) {
         const result = await pool.query(
-            `SELECT ${cols} FROM request_log WHERE id > $1 ORDER BY id ASC LIMIT 500`,
+            `SELECT ${cols} FROM request_log r LEFT JOIN actors ac ON ac.id = r.actor_id WHERE r.id > $1 ORDER BY r.id ASC LIMIT 500`,
             [sinceId]
         );
         return result.rows;
     }
     const result = await pool.query(
-        `SELECT ${cols} FROM request_log ORDER BY id DESC LIMIT $1`,
+        `SELECT ${cols} FROM request_log r LEFT JOIN actors ac ON ac.id = r.actor_id ORDER BY r.id DESC LIMIT $1`,
         [limit || 100]
     );
     // Reverse so oldest-first (consistent with incremental polling order)

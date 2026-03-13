@@ -4,6 +4,7 @@ const { log, logError } = require('../services/logger');
 const config = require('../services/config');
 const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent } = require('../services/system-notify');
 const discussionService = require('../services/discussion');
+const { requireByName, resolveById } = require('../services/actors');
 
 const router = Router();
 
@@ -21,9 +22,10 @@ async function getDiscussionChannel(discussionId) {
 
 // Check if an agent is a joined participant in a discussion
 async function requireJoined(discussionId, agent) {
+    const actor = await requireByName(agent);
     const result = await pool.query(
-        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-        [discussionId, agent]
+        'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+        [discussionId, actor.id]
     );
     if (result.rows.length === 0) {
         return { ok: false, code: 'NOT_PARTICIPANT', message: 'Agent is not a participant in this discussion' };
@@ -77,13 +79,14 @@ router.post('/discussion/create', async (req, res) => {
 
         // Reject if creator is already in an active or waiting discussion.
         // Run evaluateReadiness first so timed-out discussions don't falsely block.
+        const creatorActor = await requireByName(created_by);
         const existing = await pool.query(
             `SELECT d.id, d.topic, d.status FROM discussions d
              JOIN discussion_participants dp ON dp.discussion_id = d.id
-             WHERE dp.agent = $1 AND dp.status IN ('invited', 'joined', 'deferred')
+             WHERE dp.actor_id = $1 AND dp.status IN ('invited', 'joined', 'deferred')
              AND d.status IN ('waiting', 'active')
              ORDER BY d.id DESC LIMIT 1`,
-            [created_by]
+            [creatorActor.id]
         );
         if (existing.rows.length > 0) {
             const d = existing.rows[0];
@@ -142,23 +145,25 @@ router.post('/discussion/create', async (req, res) => {
             const timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
 
             const result = await client.query(
-                'INSERT INTO discussions (topic, created_by, status, channel, mode, context, timeout_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at',
-                [topic, created_by, 'waiting', channel || null, discussionMode, contextText, timeoutAt]
+                'INSERT INTO discussions (topic, created_by_actor_id, status, channel, mode, context, timeout_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at',
+                [topic, creatorActor.id, 'waiting', channel || null, discussionMode, contextText, timeoutAt]
             );
             const discussionId = result.rows[0].id;
 
             for (const agent of participants) {
                 const isCreator = agent === created_by;
+                const pActor = isCreator ? creatorActor : await requireByName(agent);
                 await client.query(
-                    'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
-                    [discussionId, agent, isCreator ? 'joined' : 'invited', 'required', isCreator ? new Date() : null]
+                    'INSERT INTO discussion_participants (discussion_id, actor_id, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
+                    [discussionId, pActor.id, isCreator ? 'joined' : 'invited', 'required', isCreator ? new Date() : null]
                 );
             }
 
             for (const agent of optionalList) {
+                const pActor = await requireByName(agent);
                 await client.query(
-                    'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
-                    [discussionId, agent, 'invited', 'optional', null]
+                    'INSERT INTO discussion_participants (discussion_id, actor_id, status, role, joined_at) VALUES ($1, $2, $3, $4, $5)',
+                    [discussionId, pActor.id, 'invited', 'optional', null]
                 );
             }
 
@@ -225,14 +230,16 @@ router.post('/discussion/list', async (req, res) => {
     try {
         const { status, agent } = req.body;
 
-        let query = 'SELECT d.* FROM discussions d';
+        let query = `SELECT d.*, ac.name AS created_by FROM discussions d
+                     JOIN actors ac ON ac.id = d.created_by_actor_id`;
         const params = [];
         const conditions = [];
 
         if (agent) {
+            const agentActor = await requireByName(agent);
             query += ' JOIN discussion_participants dp ON d.id = dp.discussion_id';
-            params.push(agent);
-            conditions.push(`dp.agent = $${params.length}`);
+            params.push(agentActor.id);
+            conditions.push(`dp.actor_id = $${params.length}`);
         }
 
         if (status) {
@@ -285,12 +292,18 @@ router.post('/discussion/status', async (req, res) => {
         }
 
         const participants = await pool.query(
-            'SELECT agent, status, role, invited_at, joined_at, deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1',
+            `SELECT ac.name AS agent, dp.status, dp.role, dp.invited_at, dp.joined_at, dp.deferred_at, dp.defer_count
+             FROM discussion_participants dp
+             JOIN actors ac ON ac.id = dp.actor_id
+             WHERE dp.discussion_id = $1`,
             [discussion_id]
         );
 
         const votes = await pool.query(
-            'SELECT * FROM discussion_votes WHERE discussion_id = $1 ORDER BY created_at DESC',
+            `SELECT v.*, ac.name AS proposed_by
+             FROM discussion_votes v
+             JOIN actors ac ON ac.id = v.proposed_by_actor_id
+             WHERE v.discussion_id = $1 ORDER BY v.created_at DESC`,
             [discussion_id]
         );
 
@@ -303,11 +316,16 @@ router.post('/discussion/status', async (req, res) => {
 
         // Re-fetch after evaluation in case anything changed
         const updatedDiscussion = await pool.query(
-            'SELECT * FROM discussions WHERE id = $1',
+            `SELECT d.*, ac.name AS created_by FROM discussions d
+             JOIN actors ac ON ac.id = d.created_by_actor_id
+             WHERE d.id = $1`,
             [discussion_id]
         );
         const updatedVotes = await pool.query(
-            'SELECT * FROM discussion_votes WHERE discussion_id = $1 ORDER BY created_at DESC',
+            `SELECT v.*, ac.name AS proposed_by
+             FROM discussion_votes v
+             JOIN actors ac ON ac.id = v.proposed_by_actor_id
+             WHERE v.discussion_id = $1 ORDER BY v.created_at DESC`,
             [discussion_id]
         );
 
@@ -344,16 +362,24 @@ router.post('/discussion/pending', async (req, res) => {
             });
         }
 
+        const agentActor = await requireByName(agent);
+
         // Discussions where agent is invited but hasn't joined (waiting or active)
         const invited = await pool.query(
-            'SELECT d.* FROM discussions d JOIN discussion_participants dp ON d.id = dp.discussion_id WHERE dp.agent = $1 AND dp.status = $2 AND d.status IN ($3, $4)',
-            [agent, 'invited', 'waiting', 'active']
+            `SELECT d.*, ac.name AS created_by FROM discussions d
+             JOIN actors ac ON ac.id = d.created_by_actor_id
+             JOIN discussion_participants dp ON d.id = dp.discussion_id
+             WHERE dp.actor_id = $1 AND dp.status = $2 AND d.status IN ($3, $4)`,
+            [agentActor.id, 'invited', 'waiting', 'active']
         );
 
         // Discussions this agent has deferred (still waiting or active)
         const deferred = await pool.query(
-            'SELECT d.* FROM discussions d JOIN discussion_participants dp ON d.id = dp.discussion_id WHERE dp.agent = $1 AND dp.status = $2 AND d.status IN ($3, $4)',
-            [agent, 'deferred', 'waiting', 'active']
+            `SELECT d.*, ac.name AS created_by FROM discussions d
+             JOIN actors ac ON ac.id = d.created_by_actor_id
+             JOIN discussion_participants dp ON d.id = dp.discussion_id
+             WHERE dp.actor_id = $1 AND dp.status = $2 AND d.status IN ($3, $4)`,
+            [agentActor.id, 'deferred', 'waiting', 'active']
         );
 
         // Open votes where agent hasn't voted yet — async discussions only.
@@ -362,7 +388,7 @@ router.post('/discussion/pending', async (req, res) => {
         // directly on realtime topics instead of launching the discussion protocol.
         // When discussion_id is provided (transport polling its own discussion),
         // include that discussion's votes regardless of mode.
-        const voteParams = [agent, 'joined', 'open'];
+        const voteParams = [agentActor.id, 'joined', 'open'];
         let modeFilter = `AND d.mode = 'async'`;
         if (discussion_id) {
             modeFilter = `AND (d.mode = 'async' OR d.id = $4)`;
@@ -370,17 +396,18 @@ router.post('/discussion/pending', async (req, res) => {
         }
 
         const openVotes = await pool.query(
-            `SELECT v.*, d.topic as discussion_topic, d.mode as discussion_mode
+            `SELECT v.*, pac.name AS proposed_by, d.topic as discussion_topic, d.mode as discussion_mode
              FROM discussion_votes v
+             JOIN actors pac ON pac.id = v.proposed_by_actor_id
              JOIN discussions d ON v.discussion_id = d.id
              JOIN discussion_participants dp ON d.id = dp.discussion_id
-             WHERE dp.agent = $1
+             WHERE dp.actor_id = $1
              AND dp.status = $2
              AND v.status = $3
              AND d.status = 'active'
              ${modeFilter}
              AND NOT EXISTS (
-                 SELECT 1 FROM discussion_ballots b WHERE b.vote_id = v.id AND b.agent = $1
+                 SELECT 1 FROM discussion_ballots b WHERE b.vote_id = v.id AND b.actor_id = $1
              )
              ORDER BY v.created_at DESC`,
             voteParams
@@ -493,9 +520,10 @@ router.post('/discussion/join', async (req, res) => {
             });
         }
 
+        const agentActor = await requireByName(agent);
         const existing = await pool.query(
-            'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-            [discussion_id, agent]
+            'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+            [discussion_id, agentActor.id]
         );
 
         if (existing.rows.length > 0) {
@@ -504,13 +532,13 @@ router.post('/discussion/join', async (req, res) => {
             }
             // Allow timed_out, invited, or left agents to (re)join
             await pool.query(
-                'UPDATE discussion_participants SET status = $1, joined_at = NOW() WHERE discussion_id = $2 AND agent = $3',
-                ['joined', discussion_id, agent]
+                'UPDATE discussion_participants SET status = $1, joined_at = NOW() WHERE discussion_id = $2 AND actor_id = $3',
+                ['joined', discussion_id, agentActor.id]
             );
         } else {
             await pool.query(
-                'INSERT INTO discussion_participants (discussion_id, agent, status, role, joined_at) VALUES ($1, $2, $3, $4, NOW())',
-                [discussion_id, agent, 'joined', 'required']
+                'INSERT INTO discussion_participants (discussion_id, actor_id, status, role, joined_at) VALUES ($1, $2, $3, $4, NOW())',
+                [discussion_id, agentActor.id, 'joined', 'required']
             );
         }
 
@@ -576,9 +604,10 @@ router.post('/discussion/defer', async (req, res) => {
         }
 
         // Check participant exists and is in a deferrable state
+        const agentActor = await requireByName(agent);
         const existing = await pool.query(
-            'SELECT status, defer_count FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-            [discussion_id, agent]
+            'SELECT status, defer_count FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+            [discussion_id, agentActor.id]
         );
         if (existing.rows.length === 0) {
             return res.status(404).json({
@@ -604,8 +633,8 @@ router.post('/discussion/defer', async (req, res) => {
 
         // Update participant status to deferred
         await pool.query(
-            'UPDATE discussion_participants SET status = $1, deferred_at = NOW(), defer_count = defer_count + 1 WHERE discussion_id = $2 AND agent = $3',
-            ['deferred', discussion_id, agent]
+            'UPDATE discussion_participants SET status = $1, deferred_at = NOW(), defer_count = defer_count + 1 WHERE discussion_id = $2 AND actor_id = $3',
+            ['deferred', discussion_id, agentActor.id]
         );
 
         // Extend the discussion timeout
@@ -618,8 +647,8 @@ router.post('/discussion/defer', async (req, res) => {
 
         // Fetch updated participant row for response
         const updated = await pool.query(
-            'SELECT deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-            [discussion_id, agent]
+            'SELECT deferred_at, defer_count FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+            [discussion_id, agentActor.id]
         );
 
         logDiscussion('defer', { discussion_id, agent, defer_count: updated.rows[0].defer_count, timeout_at: newTimeoutAt });
@@ -657,9 +686,10 @@ router.post('/discussion/leave', async (req, res) => {
             });
         }
 
+        const agentActor = await requireByName(agent);
         const existing = await pool.query(
-            'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND agent = $2',
-            [discussion_id, agent]
+            'SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+            [discussion_id, agentActor.id]
         );
 
         if (existing.rows.length === 0) {
@@ -669,8 +699,8 @@ router.post('/discussion/leave', async (req, res) => {
         }
 
         await pool.query(
-            'UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND agent = $3',
-            ['left', discussion_id, agent]
+            'UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND actor_id = $3',
+            ['left', discussion_id, agentActor.id]
         );
 
         logDiscussion('leave', { discussion_id, agent });
@@ -737,9 +767,10 @@ router.post('/discussion/vote/propose', async (req, res) => {
             });
         }
 
+        const proposerActor = await requireByName(proposed_by);
         const result = await pool.query(
-            'INSERT INTO discussion_votes (discussion_id, proposed_by, question, type, threshold, closes_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at',
-            [discussion_id, proposed_by, question, voteType, voteThreshold, closes_at || null]
+            'INSERT INTO discussion_votes (discussion_id, proposed_by_actor_id, question, type, threshold, closes_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at',
+            [discussion_id, proposerActor.id, question, voteType, voteThreshold, closes_at || null]
         );
 
         logDiscussion('vote_propose', { discussion_id, vote_id: result.rows[0].id, proposed_by, question, type: voteType });
@@ -820,12 +851,18 @@ router.post('/discussion/vote/status', async (req, res) => {
         }
 
         const updated = await pool.query(
-            'SELECT * FROM discussion_votes WHERE id = $1',
+            `SELECT v.*, ac.name AS proposed_by
+             FROM discussion_votes v
+             JOIN actors ac ON ac.id = v.proposed_by_actor_id
+             WHERE v.id = $1`,
             [vote_id]
         );
 
         const ballots = await pool.query(
-            'SELECT agent, choice, reason, cast_at FROM discussion_ballots WHERE vote_id = $1 ORDER BY cast_at ASC',
+            `SELECT ac.name AS agent, b.choice, b.reason, b.cast_at
+             FROM discussion_ballots b
+             JOIN actors ac ON ac.id = b.actor_id
+             WHERE b.vote_id = $1 ORDER BY b.cast_at ASC`,
             [vote_id]
         );
 

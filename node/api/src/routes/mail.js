@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const pool = require('../db');
 const { log, logError } = require('../services/logger');
+const { requireByName } = require('../services/actors');
 
 const router = Router();
 
@@ -26,16 +27,12 @@ router.post('/mail/send', async (req, res) => {
             });
         }
 
-        const exists = await pool.query('SELECT 1 FROM agents WHERE agent = $1', [to_agent]);
-        if (exists.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: `Agent "${to_agent}" is not registered` }
-            });
-        }
+        const toActor = await requireByName(to_agent);
+        const fromActor = await requireByName(from_agent);
 
         const result = await pool.query(
-            'INSERT INTO mail (to_agent, from_agent, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-            [to_agent, from_agent, subject, body]
+            'INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+            [toActor.id, fromActor.id, subject, body]
         );
 
         logMail('send', { from_agent, to_agent, mail_id: result.rows[0].id, subject });
@@ -73,9 +70,15 @@ router.post('/mail/receive', async (req, res) => {
             });
         }
 
+        const actor = await requireByName(agent);
         const result = await pool.query(
-            'SELECT id, from_agent, to_agent, subject, body, sent_at FROM mail WHERE to_agent = $1 AND acked_at IS NULL AND deleted_at IS NULL ORDER BY sent_at ASC',
-            [agent]
+            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at
+             FROM mail m
+             JOIN actors fa ON fa.id = m.from_actor_id
+             JOIN actors ta ON ta.id = m.to_actor_id
+             WHERE m.to_actor_id = $1 AND m.acked_at IS NULL AND m.deleted_at IS NULL
+             ORDER BY m.sent_at ASC`,
+            [actor.id]
         );
 
         logMail('receive', { agent, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
@@ -127,10 +130,11 @@ router.post('/mail/edit', async (req, res) => {
             values.push(body);
         }
 
-        values.push(id, from_agent);
+        const fromActor = await requireByName(from_agent);
+        values.push(id, fromActor.id);
 
         const result = await pool.query(
-            `UPDATE mail SET ${setClauses.join(', ')} WHERE id = $${paramIndex++} AND from_agent = $${paramIndex++} AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, to_agent, subject, sent_at`,
+            `UPDATE mail SET ${setClauses.join(', ')} WHERE id = $${paramIndex++} AND from_actor_id = $${paramIndex++} AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, subject, sent_at`,
             values
         );
 
@@ -142,7 +146,13 @@ router.post('/mail/edit', async (req, res) => {
 
         logMail('edit', { from_agent, mail_id: id, fields: [subject ? 'subject' : null, body ? 'body' : null].filter(Boolean) });
 
-        res.json(result.rows[0]);
+        // Resolve to_agent name for response
+        const mailRow = await pool.query(
+            'SELECT ta.name AS to_agent FROM mail m JOIN actors ta ON ta.id = m.to_actor_id WHERE m.id = $1',
+            [id]
+        );
+
+        res.json({ ...result.rows[0], to_agent: mailRow.rows[0].to_agent });
     } catch (err) {
         logError('mail', 'edit', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         res.status(500).json({
@@ -170,9 +180,10 @@ router.post('/mail/unsend', async (req, res) => {
             });
         }
 
+        const fromActor = await requireByName(from_agent);
         const result = await pool.query(
-            'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND from_agent = $2 AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, to_agent, subject',
-            [id, from_agent]
+            'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND from_actor_id = $2 AND acked_at IS NULL AND deleted_at IS NULL RETURNING id, subject',
+            [id, fromActor.id]
         );
 
         if (result.rows.length === 0) {
@@ -181,9 +192,15 @@ router.post('/mail/unsend', async (req, res) => {
             });
         }
 
-        logMail('unsend', { from_agent, mail_id: id, to_agent: result.rows[0].to_agent, subject: result.rows[0].subject });
+        // Resolve to_agent name for response
+        const mailRow = await pool.query(
+            'SELECT ta.name AS to_agent FROM mail m JOIN actors ta ON ta.id = m.to_actor_id WHERE m.id = $1',
+            [id]
+        );
 
-        res.json(result.rows[0]);
+        logMail('unsend', { from_agent, mail_id: id, to_agent: mailRow.rows[0].to_agent, subject: result.rows[0].subject });
+
+        res.json({ ...result.rows[0], to_agent: mailRow.rows[0].to_agent });
     } catch (err) {
         logError('mail', 'unsend', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         res.status(500).json({
@@ -213,9 +230,10 @@ router.post('/mail/ack', async (req, res) => {
             });
         }
 
+        const actor = await requireByName(agent);
         const result = await pool.query(
-            'UPDATE mail SET acked_at = NOW() WHERE id = ANY($1) AND to_agent = $2 AND acked_at IS NULL RETURNING id',
-            [ids, agent]
+            'UPDATE mail SET acked_at = NOW() WHERE id = ANY($1) AND to_actor_id = $2 AND acked_at IS NULL RETURNING id',
+            [ids, actor.id]
         );
 
         logMail('ack', { agent, requested_ids: ids, acked_ids: result.rows.map(r => r.id) });

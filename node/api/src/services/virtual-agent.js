@@ -12,6 +12,7 @@ const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
 const { saveNote } = require('./documents');
 const config = require('./config');
+const { requireByName } = require('./actors');
 
 const MIN_ACTIVITY_MS = 3000;
 
@@ -93,8 +94,8 @@ async function isOverCostLimit(agent) {
             COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost ELSE 0 END), 0) AS cost_today,
             COALESCE(SUM(cost), 0) AS cost_monthly
          FROM virtual_agent_usage
-         WHERE agent = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
-        [agent.agent]
+         WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
+        [agent.actor_id]
     );
 
     const costToday = parseFloat(result.rows[0].cost_today);
@@ -118,10 +119,11 @@ async function isOverCostLimit(agent) {
 async function recordUsage(agentName, provider, model, usage, context) {
     const cost = calculateCost(provider, model, usage);
 
+    const actor = await requireByName(agentName);
     await pool.query(
-        `INSERT INTO virtual_agent_usage (agent, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context)
+        `INSERT INTO virtual_agent_usage (actor_id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [agentName, provider, model, usage.input_tokens || 0, usage.output_tokens || 0,
+        [actor.id, provider, model, usage.input_tokens || 0, usage.output_tokens || 0,
          usage.cache_creation_input_tokens || 0, usage.cache_read_input_tokens || 0,
          cost, context || null]
     );
@@ -254,14 +256,15 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
 // stays visible for at least MIN_ACTIVITY_MS even if the call is fast.
 async function withActivityIndicator(agentName, fn) {
     const start = Date.now();
-    await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE agent = $1', [agentName]);
+    const actor = await requireByName(agentName);
+    await pool.query('UPDATE agents SET active_since = NOW(), last_seen = NOW() WHERE actor_id = $1', [actor.id]);
     broadcast('agent_activity', { agent: agentName, active: true });
     try {
         return await fn();
     } finally {
         const remaining = Math.max(0, MIN_ACTIVITY_MS - (Date.now() - start));
         setTimeout(() => {
-            pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE agent = $1', [agentName]).catch(() => {});
+            pool.query('UPDATE agents SET active_since = NULL, last_seen = NOW() WHERE actor_id = $1', [actor.id]).catch(() => {});
             broadcast('agent_activity', { agent: agentName, active: false });
         }, remaining);
     }
@@ -270,7 +273,12 @@ async function withActivityIndicator(agentName, fn) {
 // Load an agent row with virtual-agent fields.
 async function loadAgent(agentName) {
     const result = await pool.query(
-        'SELECT agent, virtual, provider, model, api_key, configuration, startup_instructions, personality, expertise, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature FROM agents WHERE agent = $1',
+        `SELECT ac.id AS actor_id, ac.name AS agent, a.virtual, a.provider, a.model, a.api_key, a.configuration,
+                a.startup_instructions, a.personality, a.expertise, a.cost_budget_daily, a.cost_budget_monthly,
+                a.cache_prompts, a.learning_enabled, a.max_tokens, a.temperature
+         FROM agents a
+         JOIN actors ac ON ac.id = a.actor_id
+         WHERE ac.name = $1`,
         [agentName]
     );
     if (result.rows.length === 0) return null;
@@ -283,7 +291,10 @@ async function loadDiscussion(discussionId) {
     if (disc.rows.length === 0) return null;
 
     const parts = await pool.query(
-        'SELECT agent, status, role FROM discussion_participants WHERE discussion_id = $1',
+        `SELECT ac.name AS agent, dp.status, dp.role
+         FROM discussion_participants dp
+         JOIN actors ac ON ac.id = dp.actor_id
+         WHERE dp.discussion_id = $1`,
         [discussionId]
     );
 
@@ -293,9 +304,12 @@ async function loadDiscussion(discussionId) {
 // Get recent chat history for a discussion channel, excluding system-to-system triggers.
 async function loadChatHistory(channel, limit) {
     const result = await pool.query(
-        `SELECT from_agent, to_agent, message, sent_at FROM chat_messages
-         WHERE channel = $1 AND NOT (from_agent = 'system' AND to_agent = 'system')
-         ORDER BY id DESC LIMIT $2`,
+        `SELECT fa.name AS from_agent, ta.name AS to_agent, cm.message, cm.sent_at
+         FROM chat_messages cm
+         JOIN actors fa ON fa.id = cm.from_actor_id
+         JOIN actors ta ON ta.id = cm.to_actor_id
+         WHERE cm.channel = $1 AND NOT (fa.name = 'system' AND ta.name = 'system')
+         ORDER BY cm.id DESC LIMIT $2`,
         [channel, limit || 50]
     );
     return result.rows.reverse();
@@ -308,13 +322,19 @@ async function loadDirectChatHistory(agent1, agent2) {
     const hours = parseInt(config.get('virtual_agent_chat_history_hours')) || 4;
     const maxMessages = 50;
 
+    const actor1 = await requireByName(agent1);
+    const actor2 = await requireByName(agent2);
+
     const result = await pool.query(
-        `SELECT from_agent, to_agent, message, sent_at FROM chat_messages
-         WHERE channel IS NULL
-         AND ((from_agent = $1 AND to_agent = $2) OR (from_agent = $2 AND to_agent = $1))
-         AND sent_at >= NOW() - INTERVAL '1 hour' * $3
-         ORDER BY id DESC LIMIT $4`,
-        [agent1, agent2, hours, maxMessages]
+        `SELECT fa.name AS from_agent, ta.name AS to_agent, cm.message, cm.sent_at
+         FROM chat_messages cm
+         JOIN actors fa ON fa.id = cm.from_actor_id
+         JOIN actors ta ON ta.id = cm.to_actor_id
+         WHERE cm.channel IS NULL
+         AND ((cm.from_actor_id = $1 AND cm.to_actor_id = $2) OR (cm.from_actor_id = $2 AND cm.to_actor_id = $1))
+         AND cm.sent_at >= NOW() - INTERVAL '1 hour' * $3
+         ORDER BY cm.id DESC LIMIT $4`,
+        [actor1.id, actor2.id, hours, maxMessages]
     );
     return result.rows.reverse();
 }
@@ -504,10 +524,12 @@ function parseVoteResponse(response) {
 
 // Cast a vote for a virtual agent.
 async function castVote(voteId, agentName, choice, reason) {
+    const actor = await requireByName(agentName);
+
     // Check if already voted
     const existing = await pool.query(
-        'SELECT 1 FROM discussion_ballots WHERE vote_id = $1 AND agent = $2',
-        [voteId, agentName]
+        'SELECT 1 FROM discussion_ballots WHERE vote_id = $1 AND actor_id = $2',
+        [voteId, actor.id]
     );
     if (existing.rows.length > 0) {
         logVA('already-voted', { voteId, agent: agentName });
@@ -515,8 +537,8 @@ async function castVote(voteId, agentName, choice, reason) {
     }
 
     await pool.query(
-        'INSERT INTO discussion_ballots (vote_id, agent, choice, reason) VALUES ($1, $2, $3, $4)',
-        [voteId, agentName, choice, reason]
+        'INSERT INTO discussion_ballots (vote_id, actor_id, choice, reason) VALUES ($1, $2, $3, $4)',
+        [voteId, actor.id, choice, reason]
     );
 
     // Evaluate vote (may auto-close/auto-conclude)
@@ -739,8 +761,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Ack the incoming message (virtual agent "read" it)
         if (messageId) {
             await pool.query(
-                'UPDATE chat_messages SET acked_at = NOW() WHERE id = $1 AND to_agent = $2 AND acked_at IS NULL',
-                [messageId, agent.agent]
+                'UPDATE chat_messages SET acked_at = NOW() WHERE id = $1 AND to_actor_id = $2 AND acked_at IS NULL',
+                [messageId, agent.actor_id]
             );
         }
 
@@ -778,8 +800,15 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         return;
     }
 
-    // Load the incoming mail
-    const mailResult = await pool.query('SELECT * FROM mail WHERE id = $1', [mailId]);
+    // Load the incoming mail — JOIN with actors to get from/to names
+    const mailResult = await pool.query(
+        `SELECT m.*, fa.name AS from_agent, ta.name AS to_agent
+         FROM mail m
+         JOIN actors fa ON fa.id = m.from_actor_id
+         JOIN actors ta ON ta.id = m.to_actor_id
+         WHERE m.id = $1`,
+        [mailId]
+    );
     if (mailResult.rows.length === 0) return;
     const mail = mailResult.rows[0];
 
@@ -825,8 +854,8 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 
         // Ack the incoming mail (virtual agent "read" it)
         await pool.query(
-            'UPDATE mail SET acked_at = NOW() WHERE id = $1 AND to_agent = $2 AND acked_at IS NULL',
-            [mailId, agent.agent]
+            'UPDATE mail SET acked_at = NOW() WHERE id = $1 AND to_actor_id = $2 AND acked_at IS NULL',
+            [mailId, agent.actor_id]
         );
 
         // Send reply mail

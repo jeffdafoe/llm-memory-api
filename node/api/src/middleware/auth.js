@@ -2,13 +2,13 @@ const pool = require('../db');
 const { hash: hashToken } = require('../services/hashing');
 
 // Cache session tokens in memory to avoid DB lookup on every request
-// Key: bearer token, Value: { agent, expires }
+// Key: bearer token, Value: { agent, actorId, expires }
 const sessionCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Opportunistic heartbeat — update last_seen on every authenticated agent request
-function heartbeat(agent) {
-    pool.query('UPDATE agents SET last_seen = NOW() WHERE agent = $1', [agent]).catch(() => {});
+function heartbeat(actorId) {
+    pool.query('UPDATE agents SET last_seen = NOW() WHERE actor_id = $1', [actorId]).catch(() => {});
 }
 
 // Routes that don't require authentication
@@ -42,15 +42,20 @@ async function auth(req, res, next) {
             req.authenticatedUser = cached.user;
         } else {
             req.authenticatedAgent = cached.agent;
-            heartbeat(cached.agent);
+            req.actorId = cached.actorId;
+            heartbeat(cached.actorId);
         }
         return next();
     }
 
     // Cache miss — check active agent sessions in database
+    // After MEM-050: agent_sessions has actor_id, join with actors for name
     try {
         const result = await pool.query(
-            "SELECT id, agent, token_hash, token_salt, expires_at FROM agent_sessions WHERE expires_at > NOW()"
+            `SELECT s.id, ac.name AS agent, s.actor_id, s.token_hash, s.token_salt, s.expires_at
+             FROM agent_sessions s
+             JOIN actors ac ON ac.id = s.actor_id
+             WHERE s.expires_at > NOW()`
         );
 
         for (const row of result.rows) {
@@ -59,6 +64,7 @@ async function auth(req, res, next) {
                 sessionCache.set(token, {
                     type: 'agent',
                     agent: row.agent,
+                    actorId: row.actor_id,
                     expires: Math.min(
                         Date.now() + CACHE_TTL_MS,
                         new Date(row.expires_at).getTime()
@@ -66,7 +72,8 @@ async function auth(req, res, next) {
                 });
                 req.authMethod = 'session';
                 req.authenticatedAgent = row.agent;
-                heartbeat(row.agent);
+                req.actorId = row.actor_id;
+                heartbeat(row.actor_id);
                 return next();
             }
         }

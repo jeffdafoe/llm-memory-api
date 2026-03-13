@@ -22,6 +22,7 @@ const {
     votePropose, voteCast, voteStatus
 } = require('../services/discussion');
 const { broadcast } = require('../services/events');
+const { requireByName, resolveByName } = require('../services/actors');
 
 const router = Router();
 
@@ -595,10 +596,10 @@ const TOOL_HANDLERS = {
     },
 
     // --- Documents ---
-    async save_note(args, agent, namespace) {
+    async save_note(args, agent, namespace, actorId) {
         const doc = await saveNote(args.namespace || namespace, args.title, args.content, args.slug, agent);
         // Refresh activity indicator
-        pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent])
+        pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
             .catch(() => {});
         return `Saved: ${doc.namespace}/${doc.slug}`;
@@ -655,10 +656,10 @@ const TOOL_HANDLERS = {
     },
 
     // --- Instructions ---
-    async read_instructions(args, agent, namespace) {
+    async read_instructions(args, agent, namespace, actorId) {
         const result = await pool.query(
-            'SELECT startup_instructions FROM agents WHERE agent = $1',
-            [agent]
+            'SELECT startup_instructions FROM agents WHERE actor_id = $1',
+            [actorId]
         );
         if (result.rows.length === 0) {
             throw new Error('Agent not found');
@@ -666,13 +667,13 @@ const TOOL_HANDLERS = {
         return result.rows[0].startup_instructions || '(no instructions set)';
     },
 
-    async save_instructions(args, agent, namespace) {
+    async save_instructions(args, agent, namespace, actorId) {
         if (!args.content) {
             throw Object.assign(new Error('Required field: content'), { statusCode: 400 });
         }
         await pool.query(
-            'UPDATE agents SET startup_instructions = $1 WHERE agent = $2',
-            [args.content, agent]
+            'UPDATE agents SET startup_instructions = $1 WHERE actor_id = $2',
+            [args.content, actorId]
         );
         return `Instructions saved (${args.content.length} characters)`;
     },
@@ -723,10 +724,10 @@ const TOOL_HANDLERS = {
     },
 
     // --- Mail ---
-    async mail_send(args, agent, namespace) {
+    async mail_send(args, agent, namespace, actorId) {
         const data = await mailSend(args.to, validateIdentity(args.from, agent, 'from'), args.subject, args.body);
         // Refresh activity indicator
-        pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent])
+        pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
             .catch(() => {});
         return `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")`;
@@ -760,7 +761,7 @@ const TOOL_HANDLERS = {
     },
 
     // --- Agent ---
-    async agent_status(args, agent, namespace) {
+    async agent_status(args, agent, namespace, actorId) {
         const queryAgent = validateIdentity(args.agent, agent, 'agent');
         const result = await pool.query(
             `SELECT
@@ -776,19 +777,19 @@ const TOOL_HANDLERS = {
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
             LEFT JOIN (
-                SELECT from_agent, COUNT(*) AS unread_count
-                FROM chat_messages
-                WHERE to_agent = $1 AND acked_at IS NULL AND channel IS NULL
-                GROUP BY from_agent
-            ) c ON c.from_agent = a.agent
+                SELECT cm.from_actor_id, COUNT(*) AS unread_count
+                FROM chat_messages cm
+                WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.channel IS NULL
+                GROUP BY cm.from_actor_id
+            ) c ON c.from_actor_id = a.actor_id
             LEFT JOIN (
-                SELECT from_agent, COUNT(*) AS unread_count
-                FROM mail
-                WHERE to_agent = $1 AND acked_at IS NULL
-                GROUP BY from_agent
-            ) m ON m.from_agent = a.agent
+                SELECT ml.from_actor_id, COUNT(*) AS unread_count
+                FROM mail ml
+                WHERE ml.to_actor_id = $1 AND ml.acked_at IS NULL
+                GROUP BY ml.from_actor_id
+            ) m ON m.from_actor_id = a.actor_id
             ORDER BY a.agent`,
-            [queryAgent]
+            [actorId]
         );
 
         const lines = result.rows.map(a => {
@@ -817,7 +818,7 @@ const TOOL_HANDLERS = {
         return lines.join('\n') || 'No agents registered.';
     },
 
-    async update_expertise(args, agent, namespace) {
+    async update_expertise(args, agent, namespace, actorId) {
         if (!Array.isArray(args.expertise)) {
             throw Object.assign(new Error('expertise must be an array of strings'), { statusCode: 400 });
         }
@@ -827,11 +828,11 @@ const TOOL_HANDLERS = {
             .map(e => e.trim().toLowerCase());
 
         const json = JSON.stringify(cleaned);
-        await pool.query('UPDATE agents SET expertise = $1 WHERE agent = $2', [json, agent]);
+        await pool.query('UPDATE agents SET expertise = $1 WHERE actor_id = $2', [json, actorId]);
         return `Expertise updated for ${agent}: ${cleaned.join(', ') || '(none)'}`;
     },
 
-    async update_profile(args, agent, namespace) {
+    async update_profile(args, agent, namespace, actorId) {
         if (args.provider === undefined && args.model === undefined) {
             throw Object.assign(new Error('At least one field required: provider, model'), { statusCode: 400 });
         }
@@ -848,9 +849,9 @@ const TOOL_HANDLERS = {
             sets.push(`model = $${idx++}`);
             vals.push(args.model);
         }
-        vals.push(agent);
+        vals.push(actorId);
 
-        await pool.query(`UPDATE agents SET ${sets.join(', ')} WHERE agent = $${idx}`, vals);
+        await pool.query(`UPDATE agents SET ${sets.join(', ')} WHERE actor_id = $${idx}`, vals);
 
         const parts = [];
         if (args.provider !== undefined) {
@@ -863,14 +864,14 @@ const TOOL_HANDLERS = {
     },
 
     // --- Activity ---
-    async activity_start(args, agent, namespace) {
-        await pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [agent]);
+    async activity_start(args, agent, namespace, actorId) {
+        await pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [actorId]);
         broadcast('agent_activity', { agent, active: true });
         return `Activity started for ${agent}.`;
     },
 
-    async activity_stop(args, agent, namespace) {
-        await pool.query('UPDATE agents SET active_since = NULL WHERE agent = $1', [agent]);
+    async activity_stop(args, agent, namespace, actorId) {
+        await pool.query('UPDATE agents SET active_since = NULL WHERE actor_id = $1', [actorId]);
         broadcast('agent_activity', { agent, active: false });
         return `Activity stopped for ${agent}.`;
     },
@@ -1016,7 +1017,7 @@ async function createMcpServer(req) {
     // This way Claude gets instructions on connect — no tool call needed.
     let instructions = 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.';
     try {
-        const result = await pool.query('SELECT startup_instructions FROM agents WHERE agent = $1', [agent]);
+        const result = await pool.query('SELECT startup_instructions FROM agents WHERE actor_id = $1', [req.mcpActorId]);
         if (result.rows.length > 0 && result.rows[0].startup_instructions) {
             instructions = result.rows[0].startup_instructions;
         }
@@ -1068,7 +1069,7 @@ async function createMcpServer(req) {
         }
 
         try {
-            const result = await handler(args || {}, agent, defaultNamespace);
+            const result = await handler(args || {}, agent, defaultNamespace, req.mcpActorId);
             return { content: [{ type: 'text', text: result }] };
         } catch (err) {
             logError('mcp', `tool-${name}`, { agent, message: err.message, detail: err.stack });
@@ -1140,8 +1141,8 @@ router.post('/mcp', mcpAuth, async (req, res) => {
             // Persist session to DB (replace any stale row)
             pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId])
                 .then(() => pool.query(
-                    'INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)',
-                    [sessionId, req.mcpAgent, TOOLS_HASH]
+                    'INSERT INTO mcp_sessions (session_id, actor_id, tools_hash) VALUES ($1, $2, $3)',
+                    [sessionId, req.mcpActorId, TOOLS_HASH]
                 )).catch(() => {});
 
             await session.transport.handleRequest(req, res, req.body);
@@ -1180,14 +1181,14 @@ router.post('/mcp', mcpAuth, async (req, res) => {
 
         // Persist to DB for rehydration after restart
         pool.query(
-            'INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)',
-            [newSessionId, req.mcpAgent, TOOLS_HASH]
+            'INSERT INTO mcp_sessions (session_id, actor_id, tools_hash) VALUES ($1, $2, $3)',
+            [newSessionId, req.mcpActorId, TOOLS_HASH]
         ).catch(err => logError('mcp', 'session-persist', { agent: req.mcpAgent, message: err.message, detail: err.stack }));
 
         // Activate the activity spinner on new MCP session.
         // Agents that don't explicitly call activity_start (e.g. ChatGPT, third-party clients)
         // still show as active when they connect.
-        pool.query('UPDATE agents SET active_since = NOW() WHERE agent = $1', [req.mcpAgent])
+        pool.query('UPDATE agents SET active_since = NOW() WHERE actor_id = $1', [req.mcpActorId])
             .then(() => broadcast('agent_activity', { agent: req.mcpAgent, active: true }))
             .catch(() => {});
     }
@@ -1211,9 +1212,9 @@ router.get('/mcp', mcpAuth, async (req, res) => {
             await rehydrateSession(sessionId, req);
 
             pool.query(`
-                INSERT INTO mcp_sessions (session_id, agent, tools_hash) VALUES ($1, $2, $3)
+                INSERT INTO mcp_sessions (session_id, actor_id, tools_hash) VALUES ($1, $2, $3)
                 ON CONFLICT (session_id) DO UPDATE SET tools_hash = $3
-            `, [sessionId, req.mcpAgent, TOOLS_HASH]).catch(() => {});
+            `, [sessionId, req.mcpActorId, TOOLS_HASH]).catch(() => {});
         } catch (err) {
             logError('mcp', 'session-rehydrate-sse', { agent: req.mcpAgent, message: err.message, detail: err.stack });
             return res.status(500).json({

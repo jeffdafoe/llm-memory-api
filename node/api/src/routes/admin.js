@@ -12,6 +12,7 @@ const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
+const { requireByName, resolveByName, resolveById } = require('../services/actors');
 
 const router = Router();
 
@@ -125,11 +126,12 @@ router.post('/admin/dashboard', async (req, res) => {
         );
 
         const discussions = await pool.query(
-            `SELECT d.id, d.topic, d.status, d.outcome, d.created_by, d.created_at,
-                    COUNT(dp.agent) AS participant_count
+            `SELECT d.id, d.topic, d.status, d.outcome, ac.name AS created_by, d.created_at,
+                    COUNT(dp.actor_id) AS participant_count
              FROM discussions d
+             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
              LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
-             GROUP BY d.id
+             GROUP BY d.id, ac.name
              ORDER BY
                  CASE d.status WHEN 'active' THEN 0 ELSE 1 END,
                  d.created_at DESC
@@ -137,30 +139,36 @@ router.post('/admin/dashboard', async (req, res) => {
         );
 
         const chat = await pool.query(
-            `SELECT id, from_agent, to_agent, channel, message, sent_at, acked_at
-             FROM chat_messages
-             WHERE from_agent != 'system'
-               AND (channel IS NULL OR NOT channel LIKE 'discussion-%')
+            `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+             FROM chat_messages cm
+             JOIN actors fa ON fa.id = cm.from_actor_id
+             JOIN actors ta ON ta.id = cm.to_actor_id
+             WHERE fa.name != 'system'
+               AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')
              ORDER BY
-                 CASE WHEN acked_at IS NULL THEN 0 ELSE 1 END,
-                 sent_at DESC
+                 CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END,
+                 cm.sent_at DESC
              LIMIT 15`
         );
 
         const mail = await pool.query(
-            `SELECT id, from_agent, to_agent, subject, body, sent_at, acked_at
-             FROM mail
+            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
+             FROM mail m
+             JOIN actors fa ON fa.id = m.from_actor_id
+             JOIN actors ta ON ta.id = m.to_actor_id
              ORDER BY
-                 CASE WHEN acked_at IS NULL THEN 0 ELSE 1 END,
-                 sent_at DESC
+                 CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END,
+                 m.sent_at DESC
              LIMIT 15`
         );
 
         const systemMessages = await pool.query(
-            `SELECT id, to_agent, channel, message, sent_at, acked_at
-             FROM chat_messages
-             WHERE from_agent = 'system'
-             ORDER BY sent_at DESC
+            `SELECT cm.id, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+             FROM chat_messages cm
+             JOIN actors fa ON fa.id = cm.from_actor_id
+             JOIN actors ta ON ta.id = cm.to_actor_id
+             WHERE fa.name = 'system'
+             ORDER BY cm.sent_at DESC
              LIMIT 15`
         );
 
@@ -234,9 +242,15 @@ router.post('/admin/agents/instructions/read', async (req, res) => {
         });
     }
     try {
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
         const result = await pool.query(
-            'SELECT startup_instructions FROM agents WHERE agent = $1',
-            [agent]
+            'SELECT startup_instructions FROM agents WHERE actor_id = $1',
+            [actor.id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({
@@ -261,9 +275,15 @@ router.post('/admin/agents/instructions/save', async (req, res) => {
         });
     }
     try {
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
         const result = await pool.query(
-            'UPDATE agents SET startup_instructions = $1 WHERE agent = $2 RETURNING agent',
-            [content, agent]
+            'UPDATE agents SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id',
+            [content, actor.id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({
@@ -294,9 +314,15 @@ router.post('/admin/agents/expertise/save', async (req, res) => {
             .map(e => e.trim().toLowerCase());
         const json = JSON.stringify(cleaned);
 
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
         const result = await pool.query(
-            'UPDATE agents SET expertise = $1 WHERE agent = $2 RETURNING agent',
-            [json, agent]
+            'UPDATE agents SET expertise = $1 WHERE actor_id = $2 RETURNING actor_id',
+            [json, actor.id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({
@@ -328,9 +354,16 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
         const salt = generateSalt();
         const hash = hashToken(passphrase, salt);
 
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+
         const result = await pool.query(
-            'UPDATE agents SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE agent = $3 RETURNING agent',
-            [hash, salt, agent]
+            'UPDATE agents SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE actor_id = $3 RETURNING actor_id',
+            [hash, salt, actor.id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({
@@ -339,7 +372,7 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
         }
 
         // Invalidate all sessions
-        await pool.query('DELETE FROM agent_sessions WHERE agent = $1', [agent]);
+        await pool.query('DELETE FROM agent_sessions WHERE actor_id = $1', [actor.id]);
 
         // Clear cached sessions
         for (const [key, value] of auth.sessionCache.entries()) {
@@ -368,9 +401,10 @@ router.post('/admin/discussions', async (req, res) => {
     const { status } = req.body;
     try {
         let sql = `
-            SELECT d.id, d.topic, d.status, d.mode, d.outcome, d.created_by, d.created_at, d.concluded_at,
-                   COUNT(dp.agent) AS participant_count
+            SELECT d.id, d.topic, d.status, d.mode, d.outcome, ac.name AS created_by, d.created_at, d.concluded_at,
+                   COUNT(dp.actor_id) AS participant_count
             FROM discussions d
+            LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
             LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
         `;
         const params = [];
@@ -378,7 +412,7 @@ router.post('/admin/discussions', async (req, res) => {
             sql += ' WHERE d.status = $1';
             params.push(status);
         }
-        sql += ' GROUP BY d.id ORDER BY d.created_at DESC';
+        sql += ' GROUP BY d.id, ac.name ORDER BY d.created_at DESC';
 
         const result = await pool.query(sql, params);
         res.json({ discussions: result.rows });
@@ -400,7 +434,10 @@ router.post('/admin/discussions/detail', async (req, res) => {
     }
     try {
         const discussion = await pool.query(
-            'SELECT * FROM discussions WHERE id = $1',
+            `SELECT d.*, ac.name AS created_by
+             FROM discussions d
+             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
+             WHERE d.id = $1`,
             [discussion_id]
         );
         if (discussion.rows.length === 0) {
@@ -409,15 +446,22 @@ router.post('/admin/discussions/detail', async (req, res) => {
             });
         }
         const participants = await pool.query(
-            'SELECT * FROM discussion_participants WHERE discussion_id = $1 ORDER BY agent',
+            `SELECT dp.*, ac.name AS agent
+             FROM discussion_participants dp
+             JOIN actors ac ON ac.id = dp.actor_id
+             WHERE dp.discussion_id = $1
+             ORDER BY ac.name`,
             [discussion_id]
         );
         const votes = await pool.query(
-            `SELECT v.*, json_agg(json_build_object('agent', b.agent, 'choice', b.choice, 'reason', b.reason, 'cast_at', b.cast_at)) AS ballots
+            `SELECT v.*, pac.name AS proposed_by,
+                    json_agg(json_build_object('agent', bac.name, 'choice', b.choice, 'reason', b.reason, 'cast_at', b.cast_at)) AS ballots
              FROM discussion_votes v
+             LEFT JOIN actors pac ON pac.id = v.proposed_by_actor_id
              LEFT JOIN discussion_ballots b ON b.vote_id = v.id
+             LEFT JOIN actors bac ON bac.id = b.actor_id
              WHERE v.discussion_id = $1
-             GROUP BY v.id
+             GROUP BY v.id, pac.name
              ORDER BY v.id`,
             [discussion_id]
         );
@@ -438,13 +482,16 @@ router.post('/admin/discussions/detail', async (req, res) => {
 router.post('/admin/chat', async (req, res) => {
     const { limit = 50, channel } = req.body;
     try {
-        let sql = 'SELECT * FROM chat_messages';
+        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+                   FROM chat_messages cm
+                   JOIN actors fa ON fa.id = cm.from_actor_id
+                   JOIN actors ta ON ta.id = cm.to_actor_id`;
         const params = [];
         if (channel) {
-            sql += ' WHERE channel = $1';
+            sql += ' WHERE cm.channel = $1';
             params.push(channel);
         }
-        sql += ` ORDER BY sent_at DESC LIMIT $${params.length + 1}`;
+        sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
         params.push(limit);
 
         const result = await pool.query(sql, params);
@@ -462,7 +509,11 @@ router.post('/admin/mail', async (req, res) => {
     const { limit = 50 } = req.body;
     try {
         const result = await pool.query(
-            'SELECT * FROM mail ORDER BY sent_at DESC LIMIT $1',
+            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at, m.deleted_at
+             FROM mail m
+             JOIN actors fa ON fa.id = m.from_actor_id
+             JOIN actors ta ON ta.id = m.to_actor_id
+             ORDER BY m.sent_at DESC LIMIT $1`,
             [limit]
         );
         res.json({ messages: result.rows });
@@ -486,20 +537,18 @@ router.post('/admin/mail/send', async (req, res) => {
 
     try {
         // Verify recipient agent exists
-        const agentCheck = await pool.query(
-            'SELECT agent FROM agents WHERE agent = $1',
-            [to]
-        );
-        if (agentCheck.rows.length === 0) {
+        const toActor = await resolveByName(to);
+        if (!toActor) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: `Agent "${to}" not found` }
             });
         }
 
         const from = req.authenticatedUser.username;
+        const fromActor = await requireByName(from);
         const result = await pool.query(
-            'INSERT INTO mail (to_agent, from_agent, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-            [to, from, subject, body]
+            'INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+            [toActor.id, fromActor.id, subject, body]
         );
 
         logAdmin('mail_send', { from, to, mail_id: result.rows[0].id, subject, user_id: req.authenticatedUser.id });
@@ -1013,15 +1062,18 @@ router.post('/admin/agents/create', async (req, res) => {
     }
 
     try {
-        // Check if agent already exists
-        const existing = await pool.query(
-            'SELECT agent, status FROM agents WHERE agent = $1',
-            [agent]
-        );
-        if (existing.rows.length > 0) {
-            return res.status(409).json({
-                error: { code: 'ALREADY_EXISTS', message: 'Agent already exists' }
-            });
+        // Check if agent already exists (by actor name)
+        const existingActor = await resolveByName(agent);
+        if (existingActor) {
+            const existing = await pool.query(
+                'SELECT actor_id FROM agents WHERE actor_id = $1',
+                [existingActor.id]
+            );
+            if (existing.rows.length > 0) {
+                return res.status(409).json({
+                    error: { code: 'ALREADY_EXISTS', message: 'Agent already exists' }
+                });
+            }
         }
 
         // Generate passphrase and hash it
@@ -1030,11 +1082,23 @@ router.post('/admin/agents/create', async (req, res) => {
         const salt = generateSalt();
         const hash = hashToken(passphrase, salt);
 
+        // Create actor if it doesn't exist
+        let actorId;
+        if (existingActor) {
+            actorId = existingActor.id;
+        } else {
+            const actorResult = await pool.query(
+                "INSERT INTO actors (name, type) VALUES ($1, 'agent') RETURNING id",
+                [agent]
+            );
+            actorId = actorResult.rows[0].id;
+        }
+
         // Create agent as active (skip pending/ack dance — admin is creating it)
         await pool.query(
-            `INSERT INTO agents (agent, token_hash, token_salt, status, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
+            `INSERT INTO agents (actor_id, token_hash, token_salt, status, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-            [agent, hash, salt, 'active', provider || null, model || null,
+            [actorId, hash, salt, 'active', provider || null, model || null,
              isVirtual === true, personality || null,
              parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
              parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
@@ -1058,8 +1122,8 @@ router.post('/admin/agents/create', async (req, res) => {
 
                 // Copy template body to startup_instructions (persistent)
                 await pool.query(
-                    'UPDATE agents SET startup_instructions = $1 WHERE agent = $2',
-                    [mailBody, agent]
+                    'UPDATE agents SET startup_instructions = $1 WHERE actor_id = $2',
+                    [mailBody, actorId]
                 );
 
                 // Also send as welcome mail (fallback / immediate context)
@@ -1097,12 +1161,18 @@ router.post('/admin/agents/read', async (req, res) => {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
     try {
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
+        }
         const result = await pool.query(
-            `SELECT agent, provider, model, virtual, personality, configuration, expertise,
-                    cache_prompts, learning_enabled, max_tokens, temperature,
-                    cost_budget_daily, cost_budget_monthly, api_key IS NOT NULL AS has_api_key
-             FROM agents WHERE agent = $1`,
-            [agent]
+            `SELECT ac.name AS agent, a.provider, a.model, a.virtual, a.personality, a.configuration, a.expertise,
+                    a.cache_prompts, a.learning_enabled, a.max_tokens, a.temperature,
+                    a.cost_budget_daily, a.cost_budget_monthly, a.api_key IS NOT NULL AS has_api_key
+             FROM agents a
+             JOIN actors ac ON ac.id = a.actor_id
+             WHERE a.actor_id = $1`,
+            [actor.id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
@@ -1115,8 +1185,8 @@ router.post('/admin/agents/read', async (req, res) => {
                 COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost ELSE 0 END), 0) AS cost_today,
                 COALESCE(SUM(cost), 0) AS cost_monthly
              FROM virtual_agent_usage
-             WHERE agent = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
-            [agent]
+             WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
+            [actor.id]
         );
         row.cost_today = parseFloat(costResult.rows[0].cost_today);
         row.cost_monthly = parseFloat(costResult.rows[0].cost_monthly);
@@ -1146,7 +1216,13 @@ router.post('/admin/agents/update', async (req, res) => {
     }
 
     try {
-        const existing = await pool.query('SELECT agent, virtual FROM agents WHERE agent = $1', [agent]);
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Agent not found' }
+            });
+        }
+        const existing = await pool.query('SELECT actor_id, virtual FROM agents WHERE actor_id = $1', [actor.id]);
         if (existing.rows.length === 0) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Agent not found' }
@@ -1214,9 +1290,9 @@ router.post('/admin/agents/update', async (req, res) => {
             });
         }
 
-        params.push(agent);
+        params.push(actor.id);
         await pool.query(
-            `UPDATE agents SET ${updates.join(', ')} WHERE agent = $${idx}`,
+            `UPDATE agents SET ${updates.join(', ')} WHERE actor_id = $${idx}`,
             params
         );
 
@@ -1241,13 +1317,17 @@ router.post('/admin/agents/usage', async (req, res) => {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
     try {
+        const actor = await resolveByName(agent);
+        if (!actor) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
+        }
         const result = await pool.query(
             `SELECT id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context, created_at
              FROM virtual_agent_usage
-             WHERE agent = $1
+             WHERE actor_id = $1
              ORDER BY created_at DESC
              LIMIT $2`,
-            [agent, Math.min(parseInt(limit) || 50, 200)]
+            [actor.id, Math.min(parseInt(limit) || 50, 200)]
         );
         res.json({ usage: result.rows });
     } catch (err) {
