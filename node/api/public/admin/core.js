@@ -154,10 +154,10 @@ function useCore() {
         if (saved) {
             try {
                 const session = JSON.parse(saved);
-                if (new Date(session.expires) > new Date()) {
+                if (new Date(session.expires) > new Date() && session.permissions) {
                     sessionToken.value = session.token;
                     user.value = session.user;
-                    permissions.value = session.permissions || {};
+                    permissions.value = session.permissions;
                     authenticated.value = true;
                     return true;
                 } else {
