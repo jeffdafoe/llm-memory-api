@@ -855,8 +855,7 @@
                             <div v-if="notesEditing" class="notes-editor">
                                 <textarea v-model="notesEditContent" class="notes-edit-textarea"></textarea>
                             </div>
-                            <div v-else class="notes-body">
-                                <pre class="notes-pre">{{ selectedNote.content }}</pre>
+                            <div v-else class="notes-body notes-markdown" v-html="renderedNoteContent">
                             </div>
                         </div>
                     </div>

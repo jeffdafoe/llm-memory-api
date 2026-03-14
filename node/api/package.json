@@ -11,9 +11,11 @@
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
         "@picocss/pico": "^2.1.1",
+        "dompurify": "^3.3.3",
         "eff-diceware-passphrase": "^3.0.0",
         "express": "^4.21.0",
         "lucide-static": "^0.577.0",
+        "marked": "^17.0.4",
         "pg": "^8.13.0",
         "pgvector": "^0.2.0",
         "vue": "^3.5.30",
