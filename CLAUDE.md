@@ -50,8 +50,6 @@ When a session starts from a continuation summary, treat operational details in 
 
 ## VPS
 
-- SSH: `ssh claude@165.245.142.212 'command'`
-- Sudo: `echo ***REDACTED*** | sudo -S command 2>/dev/null`
-- Database: PostgreSQL 17, database `memory_api`, user `memory_api`
+- Credentials stored in remote note: `read_note(namespace="work", slug="instructions/credentials/vps")`
 - Service: `memory-api.service` (runs as `memory-api` system user)
 - Cron: daily DB cleanup at 3:15 AM (`/var/www/memory-api/scripts/db-cleanup.sh`)
