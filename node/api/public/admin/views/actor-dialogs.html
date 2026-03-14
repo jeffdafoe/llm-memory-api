@@ -1,0 +1,294 @@
+<div>
+<dialog :open="selectedActorConfig !== null" @close="closeActorConfig()">
+    <article v-if="selectedActorConfig" class="actor-config-dialog">
+        <header>
+            <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
+            <h3>{{ selectedActorConfig.name }} <span v-if="selectedActorConfig.is_agent" class="badge badge-type-agent">agent</span> <span v-if="selectedActorConfig.is_user" class="badge badge-type-user">user</span></h3>
+        </header>
+        <div class="dialog-body" v-if="!actorConfigLoading">
+
+            <!-- Namespace Permissions -->
+            <h4><i class="icon-shield"></i> Namespace Permissions</h4>
+
+            <label class="checkbox-label">
+                <input type="checkbox" v-model="actorHasWildcardPerm">
+                Full access to all namespaces
+            </label>
+
+            <p class="muted" style="font-size: 0.85em; margin-bottom: 0.5rem;">
+                All actors have implicit full access to their own namespace ({{ selectedActorConfig.name }}).
+            </p>
+
+            <table v-if="!actorHasWildcardPerm" class="actor-perm-table">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th style="width: 4em; text-align: center;">Read</th>
+                        <th style="width: 4em; text-align: center;">Write</th>
+                        <th style="width: 5em; text-align: center;">Delete</th>
+                        <th style="width: 3em;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(perm, idx) in actorPermissions" :key="perm.namespace">
+                        <td class="log-mono">{{ perm.namespace }}</td>
+                        <td style="text-align: center;"><input type="checkbox" v-model="perm.can_read"></td>
+                        <td style="text-align: center;"><input type="checkbox" v-model="perm.can_write"></td>
+                        <td style="text-align: center;"><input type="checkbox" v-model="perm.can_delete"></td>
+                        <td><button class="inline-button compact danger" @click="removePermissionRow(idx)" title="Remove">&times;</button></td>
+                    </tr>
+                    <tr v-if="actorPermissions.length === 0">
+                        <td colspan="5" class="muted">No namespace permissions configured.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div v-if="!actorHasWildcardPerm" class="add-row" style="margin-top: 0.5rem;">
+                <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                    <input type="text" v-model="newNamespaceInput" list="ns-suggestions" placeholder="Namespace..." style="margin-bottom: 0; flex: 1;" @keyup.enter="addPermissionRow">
+                    <datalist id="ns-suggestions">
+                        <option v-for="ns in availableNamespacesFiltered" :key="ns" :value="ns"></option>
+                    </datalist>
+                    <button class="inline-button" @click="addPermissionRow">Add</button>
+                </div>
+            </div>
+
+            <!-- Actor Visibility -->
+            <hr style="margin: 1.5rem 0;">
+            <h4><i class="icon-eye"></i> Actor Visibility</h4>
+
+            <label class="checkbox-label">
+                <input type="checkbox" v-model="actorHasWildcardVis">
+                Can see all actors
+            </label>
+
+            <p class="muted" style="font-size: 0.85em; margin-bottom: 0.5rem;">
+                Every actor can always see themselves (implicit).
+            </p>
+
+            <div v-if="!actorHasWildcardVis">
+                <table class="actor-perm-table">
+                    <thead>
+                        <tr>
+                            <th>Actor</th>
+                            <th style="width: 5em;">Type</th>
+                            <th style="width: 3em;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(grant, idx) in actorVisibilityGrants" :key="grant.target_actor_id">
+                            <td>{{ grant.target_name }}</td>
+                            <td><span v-if="grant.target_is_agent" class="badge badge-type-agent">agent</span> <span v-if="grant.target_is_user" class="badge badge-type-user">user</span></td>
+                            <td><button class="inline-button compact danger" @click="removeVisibilityGrant(idx)" title="Remove">&times;</button></td>
+                        </tr>
+                        <tr v-if="actorVisibilityGrants.length === 0">
+                            <td colspan="3" class="muted">No visibility grants — can only see self.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="add-row" style="margin-top: 0.5rem;">
+                    <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                        <select v-model="newVisibilityTarget" style="margin-bottom: 0; flex: 1;">
+                            <option value="">Select actor...</option>
+                            <option v-for="a in availableVisibilityTargets" :key="a.id" :value="a.id">{{ a.name }} ({{ [a.is_agent ? 'agent' : '', a.is_user ? 'user' : ''].filter(Boolean).join(', ') }})</option>
+                        </select>
+                        <button class="inline-button" @click="addVisibilityGrant">Add</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save permissions + visibility -->
+            <div style="margin-top: 1.5rem;">
+                <button @click="saveActorConfig" :disabled="actorConfigSaving">
+                    {{ actorConfigSaving ? 'Saving...' : 'Save' }}
+                </button>
+            </div>
+
+            <hr style="margin: 1.5rem 0;">
+
+            <!-- UI Access -->
+            <h4>UI Access</h4>
+            <p v-if="selectedActorConfig.is_user" class="muted" style="margin-bottom: 0.5rem;">This actor has UI login access.</p>
+            <p v-else class="muted" style="margin-bottom: 0.5rem;">This actor does not have UI login access. Set a password to enable it.</p>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <input type="password" v-model="actorPasswordInput" :placeholder="selectedActorConfig.is_user ? 'New password' : 'Set password'" style="flex: 1; max-width: 20em;">
+                <button class="inline-button" @click="setActorPassword" :disabled="actorPasswordSaving || !actorPasswordInput">
+                    {{ actorPasswordSaving ? 'Saving...' : (selectedActorConfig.is_user ? 'Change Password' : 'Set Password') }}
+                </button>
+                <button v-if="selectedActorConfig.is_user" class="inline-button" @click="clearActorPassword" :disabled="actorPasswordSaving" style="color: var(--error-color, #e74c3c);">
+                    Remove UI Access
+                </button>
+            </div>
+
+            <!-- Admin Permissions (only for UI users) -->
+            <template v-if="selectedActorConfig.is_user">
+                <hr style="margin: 1.5rem 0;">
+                <h4>Admin Permissions</h4>
+                <p class="muted" style="margin-bottom: 0.5rem;">Controls what this user can access in the admin dashboard.</p>
+
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                    <input type="checkbox" v-model="actorHasWildcardAdmin">
+                    Full access (all resources, all actions)
+                </label>
+
+                <div v-if="!actorHasWildcardAdmin">
+                    <table class="compact-table" style="margin-bottom: 0;">
+                        <thead>
+                            <tr>
+                                <th>Resource</th>
+                                <th style="text-align: center;">Read</th>
+                                <th style="text-align: center;">Write</th>
+                                <th style="text-align: center;">Delete</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(row, idx) in actorAdminPerms" :key="row.resource">
+                                <td>{{ row.label }}</td>
+                                <td style="text-align: center;">
+                                    <input v-if="row.actions.includes('read')" type="checkbox"
+                                        :checked="adminPermChecked(idx, 'read')"
+                                        @change="toggleAdminPerm(idx, 'read')">
+                                    <span v-else class="muted">—</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <input v-if="row.actions.includes('write')" type="checkbox"
+                                        :checked="adminPermChecked(idx, 'write')"
+                                        @change="toggleAdminPerm(idx, 'write')">
+                                    <span v-else class="muted">—</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <input v-if="row.actions.includes('delete')" type="checkbox"
+                                        :checked="adminPermChecked(idx, 'delete')"
+                                        @change="toggleAdminPerm(idx, 'delete')">
+                                    <span v-else class="muted">—</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    <button @click="saveActorConfig" :disabled="actorConfigSaving">
+                        {{ actorConfigSaving ? 'Saving...' : 'Save All' }}
+                    </button>
+                </div>
+            </template>
+
+        </div>
+        <div v-else class="dialog-body">
+            <p class="muted">Loading...</p>
+        </div>
+    </article>
+</dialog>
+
+<!-- Create Actor dialog -->
+<dialog :open="actorCreating" @close="actorCreating = false">
+    <article v-if="actorCreating" class="create-agent-dialog">
+        <header>
+            <button aria-label="Close" rel="prev" @click="actorCreating = false"></button>
+        </header>
+        <div class="dialog-body">
+            <h3>Add Actor</h3>
+            <label>
+                Name
+                <input type="text" v-model="newActorName" placeholder="e.g. research" autofocus>
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" v-model="newActorVirtual">
+                Virtual agent (API-backed, auto-responds)
+            </label>
+            <div class="form-row-inline">
+                <label>
+                    Provider
+                    <select v-model="newActorProvider" @change="onNewActorProviderChange">
+                        <option value="">None</option>
+                        <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
+                    </select>
+                </label>
+                <label>
+                    Model
+                    <select v-model="newActorModel">
+                        <option value="">None</option>
+                        <option v-for="m in modelsForProvider(newActorProvider)" :key="m.id" :value="m.id">
+                            {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
+                        </option>
+                    </select>
+                </label>
+            </div>
+            <small v-if="modelDeprecation(newActorProvider, newActorModel)" style="color: var(--del-color, #c62828); display: block; margin: -0.5em 0 0.5em;">
+                &#9888; {{ modelDeprecation(newActorProvider, newActorModel) }}
+            </small>
+            <div v-if="newActorVirtual">
+                <label>
+                    Personality (human-facing description)
+                    <input type="text" v-model="newActorPersonality" placeholder="e.g. Contrarian. Challenges everything.">
+                </label>
+                <label>
+                    API Key
+                    <input type="password" v-model="newActorApiKey" placeholder="Provider API key (encrypted at rest)">
+                </label>
+                <!-- Dynamic capability settings from provider registry -->
+                <div v-if="newActorProvider && newActorModel && Object.keys(capabilitiesFor(newActorProvider, newActorModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
+                    <small class="muted"><strong>Configuration</strong></small>
+                    <div style="margin-top: 0.3em;">
+                        <template v-for="(cap, key) in capabilitiesFor(newActorProvider, newActorModel)" :key="key">
+                            <div v-if="capabilityVisible(cap, newActorConfig)" style="margin-bottom: 0.4em;">
+                                <label v-if="cap.type === 'boolean'" class="checkbox-label" :title="'Default: ' + (cap.default ? 'on' : 'off')">
+                                    <input type="checkbox" v-model="newActorConfig[key]"> {{ cap.label }}
+                                    <br><small class="muted">{{ cap.description }}</small>
+                                </label>
+                                <label v-else-if="cap.type === 'select'" :title="'Default: ' + (cap.default || 'none')">
+                                    <small>{{ cap.label }}</small>
+                                    <select v-model="newActorConfig[key]" style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                        <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
+                                    </select>
+                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                </label>
+                                <label v-else :title="'Default: ' + cap.default">
+                                    <small>{{ cap.label }}</small>
+                                    <input type="number" v-model.number="newActorConfig[key]"
+                                        :min="cap.min" :max="cap.max" :step="cap.step || 1"
+                                        :placeholder="String(cap.default)"
+                                        style="padding: 0.2em 0.4em; font-size: 0.9em;">
+                                    <small class="muted" style="display: block;">{{ cap.description }}</small>
+                                </label>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+            <hr style="margin: 1rem 0;">
+            <label class="checkbox-label">
+                <input type="checkbox" v-model="newActorUiAccess">
+                UI Access (admin dashboard login)
+            </label>
+            <label v-if="newActorUiAccess">
+                Password
+                <input type="password" v-model="newActorPassword" placeholder="Minimum 4 characters">
+            </label>
+            <hr style="margin: 1rem 0;">
+            <label v-if="!newActorVirtual">
+                Welcome template
+                <select v-model="newActorTemplateId">
+                    <option :value="null">None</option>
+                    <option v-for="t in welcomeTemplates.filter(t => t.kind === 'welcome')" :key="t.id" :value="t.id">{{ t.name }}</option>
+                </select>
+            </label>
+            <div v-if="newActorPassphrase && !newActorVirtual" class="passphrase-bar passphrase-result">
+                Passphrase: <code>{{ newActorPassphrase }}</code>
+                <span class="muted">(save this — it won't be shown again)</span>
+            </div>
+            <div v-if="newActorPassphrase && newActorVirtual" class="passphrase-bar passphrase-result">
+                Virtual agent created.
+            </div>
+            <div class="dialog-actions">
+                <button @click="createActor" :disabled="newActorCreating || !newActorName || newActorPassphrase">
+                    {{ newActorCreating ? 'Creating...' : 'Create' }}
+                </button>
+                <button class="secondary" @click="actorCreating = false">{{ newActorPassphrase ? 'Done' : 'Cancel' }}</button>
+            </div>
+        </div>
+    </article>
+</dialog>
+</div>

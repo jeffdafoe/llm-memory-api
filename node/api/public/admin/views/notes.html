@@ -1,0 +1,77 @@
+<div class="notes-layout">
+    <div class="notes-sidebar">
+        <div class="notes-search">
+            <form @submit.prevent="searchNotes">
+                <input type="text" v-model="notesSearchQuery" placeholder="Search notes..." class="notes-search-input">
+            </form>
+        </div>
+        <div class="notes-toolbar-row">
+            <button v-if="canDo('notes', 'write')" class="inline-button danger" @click="reindexNotes" :disabled="notesReindexing">{{ notesReindexing ? 'Reindexing...' : 'Reindex Vectors' }}</button>
+        </div>
+        <div v-if="notesSearchResults" class="notes-search-results">
+            <div class="notes-search-header">
+                <strong>Search Results</strong>
+                <a href="#" @click.prevent="notesSearchResults = null; notesSearchQuery = ''">Clear</a>
+            </div>
+            <div v-if="notesSearchResults.length === 0" class="muted">No results.</div>
+            <div v-for="r in notesSearchResults" :key="r.source_file" class="search-result-item" @click="openNoteFromSearch(r)">
+                <div class="search-result-source">[{{ r.namespace }}] {{ r.source_file }}</div>
+                <div class="search-result-heading">{{ r.heading || '(no heading)' }}</div>
+                <div class="search-result-similarity">{{ (r.similarity * 100).toFixed(0) }}%</div>
+            </div>
+        </div>
+        <div v-else>
+            <div v-for="ns in notesNamespaces" :key="ns.namespace" class="tree-namespace">
+                <div class="tree-namespace-header" @click="toggleNamespace(ns.namespace)">
+                    <i :class="expandedNamespaces[ns.namespace] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
+                    <i class="icon-folder"></i>
+                    <strong>{{ ns.namespace }}</strong>
+                    <span class="tree-count">({{ ns.count }})</span>
+                </div>
+                <div v-if="expandedNamespaces[ns.namespace]" class="tree-children">
+                    <template v-for="node in notesTrees[ns.namespace]" :key="node.path">
+                        <div v-if="node.type === 'folder'" class="tree-folder">
+                            <div class="tree-folder-header" @click="toggleFolder(ns.namespace, node.path)" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
+                                <i :class="expandedFolders[ns.namespace + '/' + node.path] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
+                                <i class="icon-folder"></i>
+                                {{ node.name }}
+                            </div>
+                        </div>
+                        <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
+                            <i class="icon-file-text"></i>
+                            <span class="tree-file-name">{{ node.name }}</span>
+                            <span v-if="node.updated_at" class="tree-file-time">{{ timeAgo(node.updated_at) }}</span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="notes-content">
+        <div v-if="!selectedNote" class="notes-empty">
+            <p class="muted">Select a note from the tree to view it.</p>
+        </div>
+        <div v-else>
+            <div class="notes-toolbar">
+                <div class="notes-title-bar">
+                    <h4 v-if="!notesEditing">{{ selectedNote.title }}</h4>
+                    <input v-else type="text" v-model="notesEditTitle" class="notes-edit-title" placeholder="Title">
+                    <div v-if="!notesEditing" class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</div>
+                    <div v-else class="notes-meta notes-slug-edit">[{{ selectedNote.namespace }}] <input type="text" v-model="notesEditSlug" class="notes-edit-slug" placeholder="slug" spellcheck="false"></div>
+                    <div class="notes-meta" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
+                </div>
+                <div class="notes-actions">
+                    <button v-if="!notesEditing && canDo('notes', 'write')" class="inline-button" @click="startEditNote">Edit</button>
+                    <button v-if="notesEditing" class="inline-button" @click="saveEditedNote" :disabled="notesSaving">{{ notesSaving ? 'Saving...' : 'Save' }}</button>
+                    <button v-if="notesEditing" class="inline-button secondary" @click="cancelEditNote">Cancel</button>
+                    <button v-if="!notesEditing && canDo('notes', 'delete')" class="inline-button danger" @click="confirmDeleteNote">Delete</button>
+                </div>
+            </div>
+            <div v-if="notesEditing" class="notes-editor">
+                <textarea v-model="notesEditContent" class="notes-edit-textarea"></textarea>
+            </div>
+            <div v-else class="notes-body notes-markdown" v-html="renderedNoteContent">
+            </div>
+        </div>
+    </div>
+</div>

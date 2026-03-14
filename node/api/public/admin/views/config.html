@@ -1,0 +1,255 @@
+<div>
+    <div class="sub-tabs">
+        <a v-if="canDo('actors', 'read')" href="#" :class="{ active: configSubTab === 'actors' }" @click.prevent="configSubTab = 'actors'">Actors</a>
+        <a v-if="canDo('config', 'read')" href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
+        <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
+        <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
+        <a v-if="canDo('templates', 'read')" href="#" :class="{ active: configSubTab === 'templates' }" @click.prevent="configSubTab = 'templates'; loadTemplates()">Templates</a>
+    </div>
+
+    <!-- Actors sub-tab -->
+    <div v-if="configSubTab === 'actors'">
+        <div style="margin-bottom: 0.75rem;">
+            <button v-if="canDo('actors', 'write')" class="inline-button" @click="startCreateActor"><i class="icon-plus"></i> Add Actor</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="openActorConfig(actor)">
+                    <td>{{ actor.name }}</td>
+                    <td><span v-if="actor.is_agent" class="badge badge-type-agent">agent</span> <span v-if="actor.is_user" class="badge badge-type-user">user</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- System sub-tab -->
+    <div v-if="configSubTab === 'system'">
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                    <th style="width: 6em;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="entry in configEntries" :key="entry.key">
+                    <td><span class="log-mono">{{ entry.key }}</span><br v-if="entry.description"><small v-if="entry.description" class="muted">{{ entry.description }}</small></td>
+                    <td v-if="configEditKey === entry.key">
+                        <input type="text" v-model="configEditValue" class="config-edit-input" @keyup.enter="saveConfig" @keyup.escape="cancelEditConfig">
+                    </td>
+                    <td v-else class="log-mono config-value-cell">{{ entry.value || '(empty)' }}</td>
+                    <td>
+                        <template v-if="configEditKey === entry.key">
+                            <button class="inline-button compact" @click="saveConfig" :disabled="configSaving">Save</button>
+                            <button class="inline-button compact secondary" @click="cancelEditConfig">Cancel</button>
+                        </template>
+                        <button v-else class="inline-button compact secondary" @click="startEditConfig(entry)">Edit</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- API Log sub-tab -->
+    <div v-if="configSubTab === 'apilog'" class="apilog-page">
+    <div class="apilog-toolbar">
+        <div class="apilog-filters">
+            <select v-model="apiLogFilterAgent" class="apilog-filter-select">
+                <option value="">All agents</option>
+                <option v-for="a in apiLogAgents" :key="a" :value="a">{{ a }}</option>
+            </select>
+            <select v-model="apiLogFilterStatus" class="apilog-filter-select">
+                <option value="">All statuses</option>
+                <option value="ok">2xx OK</option>
+                <option value="redirect">3xx Redirect</option>
+                <option value="client">4xx Client Error</option>
+                <option value="server">5xx Server Error</option>
+            </select>
+            <input type="text" v-model="apiLogFilterPath" placeholder="Filter path..." class="apilog-filter-input">
+        </div>
+        <div class="apilog-controls">
+            <span class="apilog-count">{{ apiLogFiltered.length }} entries</span>
+            <button class="inline-button" @click="apiLogPaused = !apiLogPaused">
+                {{ apiLogPaused ? 'Resume' : 'Pause' }}
+            </button>
+            <button class="inline-button secondary" @click="apiLogEntries = []; apiLogLastId = 0; pollApiLog()">Clear</button>
+        </div>
+    </div>
+    <div class="apilog-scroll">
+        <table class="fixed-table">
+            <colgroup>
+                <col style="width: 9em;">
+                <col style="width: 5em;">
+                <col>
+                <col style="width: 4.5em;">
+                <col style="width: 5em;">
+                <col style="width: 4em;">
+                <col style="width: 10em;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="nowrap">Agent</th>
+                    <th class="nowrap">Method</th>
+                    <th>Path</th>
+                    <th class="nowrap">Status</th>
+                    <th class="time-cell nowrap">Size</th>
+                    <th class="time-cell nowrap">ms</th>
+                    <th class="time-cell nowrap">Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="entry in apiLogFiltered" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
+                    <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                    <td class="log-mono">{{ entry.method }}</td>
+                    <td class="message-cell log-mono">{{ entry.path }}</td>
+                    <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '...' }}</td>
+                    <td class="log-mono time-cell">{{ formatBytes(entry.response_length) }}</td>
+                    <td class="log-mono time-cell">{{ entry.duration !== null ? entry.duration : '' }}</td>
+                    <td class="log-mono time-cell nowrap">{{ formatTime(entry.timestamp) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    </div>
+
+    <!-- Error Log sub-tab -->
+    <div v-if="configSubTab === 'errorlog'" class="apilog-page">
+    <div class="apilog-toolbar">
+        <div class="apilog-filters">
+            <select v-model="errorLogFilterAgent" class="apilog-filter-select">
+                <option value="">All agents</option>
+                <option v-for="a in errorLogAgents" :key="a" :value="a">{{ a }}</option>
+            </select>
+            <select v-model="errorLogFilterSubsystem" class="apilog-filter-select">
+                <option value="">All subsystems</option>
+                <option v-for="s in errorLogSubsystems" :key="s" :value="s">{{ s }}</option>
+            </select>
+        </div>
+        <div class="apilog-controls">
+            <span class="apilog-count">{{ errorLogFiltered.length }} errors</span>
+            <button class="inline-button" @click="errorLogPaused = !errorLogPaused">
+                {{ errorLogPaused ? 'Resume' : 'Pause' }}
+            </button>
+            <button class="inline-button secondary" @click="errorLogEntries = []; errorLogLastId = 0; pollErrorLog()">Clear</button>
+        </div>
+    </div>
+    <div class="apilog-scroll">
+        <table class="fixed-table">
+            <colgroup>
+                <col style="width: 9em;">
+                <col style="width: 7em;">
+                <col style="width: 8em;">
+                <col>
+                <col style="width: 10em;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="nowrap">Agent</th>
+                    <th class="nowrap">Subsystem</th>
+                    <th class="nowrap">Action</th>
+                    <th>Error</th>
+                    <th class="time-cell nowrap">Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template v-for="entry in errorLogFiltered" :key="entry.id">
+                    <tr class="status-row-server" style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
+                        <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                        <td class="log-mono nowrap">{{ entry.subsystem }}</td>
+                        <td class="log-mono nowrap">{{ entry.action }}</td>
+                        <td class="message-cell log-mono">{{ entry.error_message }}</td>
+                        <td class="log-mono time-cell nowrap">{{ formatTime(entry.created_at) }}</td>
+                    </tr>
+                    <tr v-if="errorLogExpandedId === entry.id && entry.error_detail">
+                        <td colspan="5" class="error-detail-cell">
+                            <pre class="error-detail-pre">{{ entry.error_detail }}</pre>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+    </div>
+
+    <!-- Templates sub-tab -->
+    <div v-if="configSubTab === 'templates'">
+        <div class="mail-toolbar">
+            <button v-if="!templateEditing" class="inline-button" @click="startNewTemplate"><i class="icon-plus"></i> New Template</button>
+        </div>
+
+        <div v-if="templateEditing" class="compose-form">
+            <div class="form-row">
+                <label>
+                    Name
+                    <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    Kind
+                    <select v-model="templateEditKind">
+                        <option value="welcome">welcome</option>
+                    </select>
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    Description (optional)
+                    <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    Content
+                    <textarea v-model="templateEditContent" rows="12" placeholder="Use {agent} as a placeholder for the agent's name. Welcome templates can use YAML frontmatter for subject: ---&#10;subject: Welcome, {agent}&#10;---"></textarea>
+                </label>
+            </div>
+            <div class="dialog-actions">
+                <button @click="saveTemplate" :disabled="templateSaving || !templateEditName || !templateEditContent">
+                    {{ templateSaving ? 'Saving...' : (templateEditId ? 'Update' : 'Create') }}
+                </button>
+                <button class="secondary" @click="templateEditing = false">Cancel</button>
+            </div>
+        </div>
+
+        <div v-if="!templateEditing" class="table-wrap">
+            <table class="fixed-table">
+                <colgroup>
+                    <col style="width: 12em;">
+                    <col style="width: 8em;">
+                    <col>
+                    <col class="col-time">
+                    <col style="width: 5em;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Kind</th>
+                        <th>Description</th>
+                        <th class="time-cell">Updated</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="t in welcomeTemplates" :key="t.id">
+                        <td><a href="#" @click.prevent="editTemplate(t)">{{ t.name }}</a></td>
+                        <td>{{ t.kind }}</td>
+                        <td class="muted message-cell">{{ t.description || '—' }}</td>
+                        <td class="time-cell">{{ formatDate(t.updated_at) }}</td>
+                        <td><button class="inline-button" @click="confirmDeleteTemplate(t)" title="Delete"><i class="icon-trash-2"></i></button></td>
+                    </tr>
+                    <tr v-if="welcomeTemplates.length === 0">
+                        <td colspan="5" class="muted">No templates yet.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
