@@ -423,12 +423,12 @@ function createCall(model, apiKey, configuration) {
 
         // Service tier: "flex" gives half-price processing at higher latency.
         // Only send if explicitly set — omitting lets OpenAI use the default ("auto").
-        const serviceTier = conf.service_tier || 'auto';
-        if (serviceTier && serviceTier !== 'auto') {
-            body.service_tier = serviceTier;
+        const requestedServiceTier = conf.service_tier || 'auto';
+        if (requestedServiceTier && requestedServiceTier !== 'auto') {
+            body.service_tier = requestedServiceTier;
         }
 
-        logProvider('api-call', { provider: 'openai', model, reasoning, serviceTier });
+        logProvider('api-call', { provider: 'openai', model, reasoning, serviceTier: requestedServiceTier });
 
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -453,28 +453,36 @@ function createCall(model, apiKey, configuration) {
 
         // Extract token counts. OpenAI includes cached tokens within prompt_tokens,
         // so we subtract them to get the uncached count for accurate cost tracking.
-        const promptTokens = data.usage?.prompt_tokens || 0;
-        const completionTokens = data.usage?.completion_tokens || 0;
-        const cachedTokens = data.usage?.prompt_tokens_details?.cached_tokens || 0;
+        // Clamp cached to never exceed prompt to avoid negative values from bad data.
+        const promptTokens = data.usage?.prompt_tokens ?? 0;
+        const completionTokens = data.usage?.completion_tokens ?? 0;
+        const rawCachedTokens = data.usage?.prompt_tokens_details?.cached_tokens ?? 0;
+        const cachedTokens = Math.max(0, Math.min(rawCachedTokens, promptTokens));
+        const uncachedInput = Math.max(0, promptTokens - cachedTokens);
+
+        // Use the tier OpenAI actually applied, not just what we requested.
+        // "auto" requests may resolve to a specific tier; flex requests confirm flex.
+        const appliedServiceTier = data.service_tier ?? requestedServiceTier;
 
         // Store input_tokens as uncached only (matching Anthropic convention where
         // input_tokens and cache tokens are separate). This keeps the DB columns
         // consistent across providers.
         const usage = {
-            input_tokens: promptTokens - cachedTokens,
+            input_tokens: uncachedInput,
             output_tokens: completionTokens,
             cache_read_input_tokens: cachedTokens
         };
 
-        // Compute cost provider-side, accounting for service tier and caching.
-        const cost = computeCost(model, serviceTier, promptTokens, cachedTokens, completionTokens);
+        // Compute cost provider-side, accounting for actual service tier and caching.
+        const cost = computeCost(model, appliedServiceTier, promptTokens, cachedTokens, completionTokens);
         if (cost != null) {
             usage.cost = cost;
         }
 
         logProvider('api-response', {
-            provider: 'openai', model, serviceTier,
-            input: usage.input_tokens, cached: cachedTokens,
+            provider: 'openai', model,
+            serviceTier: appliedServiceTier,
+            input: uncachedInput, cached: cachedTokens,
             output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown'
         });
 
