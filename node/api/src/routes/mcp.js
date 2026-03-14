@@ -833,7 +833,7 @@ const TOOL_HANDLERS = {
             LEFT JOIN (
                 SELECT cm.from_actor_id, COUNT(*) AS unread_count
                 FROM chat_messages cm
-                WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.channel IS NULL
+                WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL AND cm.channel IS NULL
                 GROUP BY cm.from_actor_id
             ) c ON c.from_actor_id = a.actor_id
             LEFT JOIN (

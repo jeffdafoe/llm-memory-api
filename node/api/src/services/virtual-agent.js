@@ -308,7 +308,7 @@ async function loadChatHistory(channel, limit) {
          FROM chat_messages cm
          JOIN actors fa ON fa.id = cm.from_actor_id
          JOIN actors ta ON ta.id = cm.to_actor_id
-         WHERE cm.channel = $1 AND NOT (fa.name = 'system' AND ta.name = 'system')
+         WHERE cm.channel = $1 AND cm.deleted_at IS NULL AND NOT (fa.name = 'system' AND ta.name = 'system')
          ORDER BY cm.id DESC LIMIT $2`,
         [channel, limit || 50]
     );
@@ -330,7 +330,7 @@ async function loadDirectChatHistory(agent1, agent2) {
          FROM chat_messages cm
          JOIN actors fa ON fa.id = cm.from_actor_id
          JOIN actors ta ON ta.id = cm.to_actor_id
-         WHERE cm.channel IS NULL
+         WHERE cm.channel IS NULL AND cm.deleted_at IS NULL
          AND ((cm.from_actor_id = $1 AND cm.to_actor_id = $2) OR (cm.from_actor_id = $2 AND cm.to_actor_id = $1))
          AND cm.sent_at >= NOW() - INTERVAL '1 hour' * $3
          ORDER BY cm.id DESC LIMIT $4`,

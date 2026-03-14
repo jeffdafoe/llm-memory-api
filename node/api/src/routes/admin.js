@@ -244,6 +244,7 @@ router.post('/admin/dashboard', async (req, res) => {
              JOIN actors fa ON fa.id = cm.from_actor_id
              JOIN actors ta ON ta.id = cm.to_actor_id
              WHERE fa.name != 'system'
+               AND cm.deleted_at IS NULL
                AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
         const chatParams = [];
         if (hasFilter) {
@@ -256,10 +257,11 @@ router.post('/admin/dashboard', async (req, res) => {
         let mailSql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
              FROM mail m
              JOIN actors fa ON fa.id = m.from_actor_id
-             JOIN actors ta ON ta.id = m.to_actor_id`;
+             JOIN actors ta ON ta.id = m.to_actor_id
+             WHERE m.deleted_at IS NULL`;
         const mailParams = [];
         if (hasFilter) {
-            mailSql += ' WHERE m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+            mailSql += ' AND m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
             mailParams.push(idsArray);
         }
         mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
@@ -269,7 +271,7 @@ router.post('/admin/dashboard', async (req, res) => {
              FROM chat_messages cm
              JOIN actors fa ON fa.id = cm.from_actor_id
              JOIN actors ta ON ta.id = cm.to_actor_id
-             WHERE fa.name = 'system'`;
+             WHERE fa.name = 'system' AND cm.deleted_at IS NULL`;
         const sysMsgParams = [];
         if (hasFilter) {
             sysMsgSql += ' AND cm.to_actor_id = ANY($1)';
@@ -631,7 +633,7 @@ router.post('/admin/chat', async (req, res) => {
                    FROM chat_messages cm
                    JOIN actors fa ON fa.id = cm.from_actor_id
                    JOIN actors ta ON ta.id = cm.to_actor_id`;
-        const conditions = [];
+        const conditions = ['cm.deleted_at IS NULL'];
         const params = [];
         if (channel) {
             params.push(channel);
@@ -641,9 +643,7 @@ router.post('/admin/chat', async (req, res) => {
             params.push(Array.from(visibleIds));
             conditions.push('cm.from_actor_id = ANY($' + params.length + ') AND cm.to_actor_id = ANY($' + params.length + ')');
         }
-        if (conditions.length > 0) {
-            sql += ' WHERE ' + conditions.join(' AND ');
-        }
+        sql += ' WHERE ' + conditions.join(' AND ');
         sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
         params.push(limit);
 
@@ -695,10 +695,17 @@ router.post('/admin/mail/delete', async (req, res) => {
         });
     }
     try {
-        const result = await pool.query(
-            'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id',
-            [id]
-        );
+        // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        let sql = 'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
+        const params = [id];
+        if (visibleIds !== null) {
+            const idsArray = Array.from(visibleIds);
+            params.push(idsArray);
+            sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+        }
+        sql += ' RETURNING id';
+        const result = await pool.query(sql, params);
         if (result.rows.length === 0) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Mail not found or already deleted' }
@@ -710,6 +717,41 @@ router.post('/admin/mail/delete', async (req, res) => {
         console.error('Admin mail delete error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Failed to delete mail' }
+        });
+    }
+});
+
+// POST /admin/chat/delete — soft-delete a chat message
+router.post('/admin/chat/delete', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
+        });
+    }
+    try {
+        // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+        const visibleIds = await getVisibleActorIds(req.actorId);
+        let sql = 'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
+        const params = [id];
+        if (visibleIds !== null) {
+            const idsArray = Array.from(visibleIds);
+            params.push(idsArray);
+            sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+        }
+        sql += ' RETURNING id';
+        const result = await pool.query(sql, params);
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Chat message not found or already deleted' }
+            });
+        }
+        logAdmin('chat_delete', { chat_id: id, user_id: req.authenticatedUser.id });
+        res.json({ id, message: 'Chat message deleted' });
+    } catch (err) {
+        console.error('Admin chat delete error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to delete chat message' }
         });
     }
 });
