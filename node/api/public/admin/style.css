@@ -829,6 +829,7 @@ h4 i {
     gap: 1rem;
     height: calc(100vh - 6rem);
     overflow: hidden;
+    padding: 0 var(--pico-spacing);
 }
 
 .notes-sidebar {
