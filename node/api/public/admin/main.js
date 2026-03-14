@@ -44,14 +44,14 @@ createApp({
 
         const agentsModule = useAgents(deps);
         const discussionsModule = useDiscussions(deps);
-        const chatModule = useChat(deps);
-        const mailModule = useMail(deps);
+        const dashboardModule = useDashboard(deps);
+        const chatModule = useChat({ ...deps, dashboard: dashboardModule.dashboard });
+        const mailModule = useMail({ ...deps, dashboard: dashboardModule.dashboard });
         const notesModule = useNotes(deps);
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
         const actorsConfigModule = useActorsConfig({ ...deps, agentsModule });
-        const dashboardModule = useDashboard(deps);
 
         // View loading — route data fetches to the right module
         function loadCurrentView() {

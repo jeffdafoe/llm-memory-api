@@ -1,7 +1,7 @@
 // mail.js — Mail view (list, detail, compose)
 import { ref } from 'vue';
 
-function useMail({ api, showToast }) {
+function useMail({ api, showToast, dashboard }) {
     const mailMessages = ref([]);
     const selectedMail = ref(null);
     const mailComposing = ref(false);
@@ -57,6 +57,10 @@ function useMail({ api, showToast }) {
         try {
             await api('/admin/mail/delete', { id: msg.id });
             mailMessages.value = mailMessages.value.filter(m => m.id !== msg.id);
+            // Also remove from dashboard view so the row disappears there too
+            if (dashboard && dashboard.value && dashboard.value.mail) {
+                dashboard.value.mail = dashboard.value.mail.filter(m => m.id !== msg.id);
+            }
             selectedMail.value = null;
             showToast('Mail deleted');
         } catch (err) {

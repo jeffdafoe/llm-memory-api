@@ -188,7 +188,7 @@ router.post('/chat/receive', async (req, res) => {
                       FROM chat_messages cm
                       JOIN actors fa ON fa.id = cm.from_actor_id
                       JOIN actors ta ON ta.id = cm.to_actor_id
-                      WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL`;
+                      WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL`;
         const params = [actor.id];
 
         if (ch.value === null) {
@@ -306,22 +306,22 @@ router.post('/chat/status', async (req, res) => {
         }
 
         const pending = await pool.query(
-            `SELECT COUNT(*) as count FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NULL ${channelFilter}`,
+            `SELECT COUNT(*) as count FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NULL AND deleted_at IS NULL ${channelFilter}`,
             params
         );
 
         const latest = await pool.query(
-            `SELECT MAX(id) as max_id FROM chat_messages WHERE to_actor_id = $1 ${channelFilter}`,
+            `SELECT MAX(id) as max_id FROM chat_messages WHERE to_actor_id = $1 AND deleted_at IS NULL ${channelFilter}`,
             params
         );
 
         const lastActivity = await pool.query(
-            `SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_actor_id = $1 ${channelFilter}`,
+            `SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_actor_id = $1 AND deleted_at IS NULL ${channelFilter}`,
             params
         );
 
         const lastAcked = await pool.query(
-            `SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NOT NULL ${channelFilter}`,
+            `SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NOT NULL AND deleted_at IS NULL ${channelFilter}`,
             params
         );
 

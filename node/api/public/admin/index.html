@@ -1181,6 +1181,9 @@
                             </p>
                             <div class="mail-body">{{ selectedMessage.message }}</div>
                         </div>
+                        <footer style="text-align: right;">
+                            <button class="inline-button secondary" @click="deleteChat(selectedMessage)"><i class="icon-trash-2"></i> Delete</button>
+                        </footer>
                     </article>
                 </dialog>
 
