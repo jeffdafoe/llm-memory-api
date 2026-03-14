@@ -841,6 +841,7 @@ h4 i {
 .notes-content {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     min-width: 0;
 }
 
@@ -1002,8 +1003,16 @@ h4 i {
     gap: 1rem;
 }
 
+.notes-title-bar {
+    min-width: 0;
+    overflow: hidden;
+}
+
 .notes-title-bar h4 {
     margin-bottom: 0.1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .notes-meta {
@@ -1015,6 +1024,7 @@ h4 i {
     display: flex;
     gap: 0.5rem;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .notes-actions .inline-button {
