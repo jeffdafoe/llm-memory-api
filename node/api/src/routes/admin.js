@@ -16,6 +16,7 @@ const { requireByName, resolveByName, resolveById } = require('../services/actor
 const { requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
+const { requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
 
 const router = Router();
 
@@ -113,10 +114,13 @@ router.post('/admin/login', async (req, res) => {
 
         logAdmin('login', { username, user_id: row.id });
 
+        const permissions = await getPermissionMap(row.id);
+
         res.json({
             session_token: sessionToken,
             expires_at: expiresAt.toISOString(),
-            user: { id: row.id, username: row.username }
+            user: { id: row.id, username: row.username },
+            permissions
         });
     } catch (err) {
         console.error('Admin login error:', err.message);
@@ -205,7 +209,7 @@ router.post('/admin/change-password', async (req, res) => {
 });
 
 // POST /admin/dashboard — combined summary data
-router.post('/admin/dashboard', async (req, res) => {
+router.post('/admin/dashboard', requirePerm('dashboard', 'read'), async (req, res) => {
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
         const hasFilter = visibleIds !== null;
@@ -296,7 +300,7 @@ router.post('/admin/dashboard', async (req, res) => {
 });
 
 // POST /admin/api-log — recent API requests from request_log table
-router.post('/admin/api-log', async (req, res) => {
+router.post('/admin/api-log', requirePerm('logs', 'read'), async (req, res) => {
     const { since_id, limit } = req.body;
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
@@ -311,7 +315,7 @@ router.post('/admin/api-log', async (req, res) => {
 });
 
 // POST /admin/error-log — recent errors from error_log table
-router.post('/admin/error-log', async (req, res) => {
+router.post('/admin/error-log', requirePerm('logs', 'read'), async (req, res) => {
     const { since_id, limit } = req.body;
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
@@ -326,7 +330,7 @@ router.post('/admin/error-log', async (req, res) => {
 });
 
 // POST /admin/agents — list all agents
-router.post('/admin/agents', async (req, res) => {
+router.post('/admin/agents', requirePerm('agents', 'read'), async (req, res) => {
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
         let sql = `SELECT agent, actor_id, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, active_since,
@@ -366,7 +370,7 @@ router.post('/admin/agents', async (req, res) => {
 });
 
 // POST /admin/agents/instructions/read — read an agent's startup instructions
-router.post('/admin/agents/instructions/read', async (req, res) => {
+router.post('/admin/agents/instructions/read', requirePerm('agents', 'read'), async (req, res) => {
     const { agent } = req.body;
     if (!agent) {
         return res.status(400).json({
@@ -395,7 +399,7 @@ router.post('/admin/agents/instructions/read', async (req, res) => {
 });
 
 // POST /admin/agents/instructions/save — save an agent's startup instructions
-router.post('/admin/agents/instructions/save', async (req, res) => {
+router.post('/admin/agents/instructions/save', requirePerm('agents', 'write'), async (req, res) => {
     const { agent, content } = req.body;
     if (!agent || content === undefined) {
         return res.status(400).json({
@@ -425,7 +429,7 @@ router.post('/admin/agents/instructions/save', async (req, res) => {
 });
 
 // POST /admin/agents/expertise/save — update an agent's expertise list
-router.post('/admin/agents/expertise/save', async (req, res) => {
+router.post('/admin/agents/expertise/save', requirePerm('agents', 'write'), async (req, res) => {
     const { agent, expertise } = req.body;
     if (!agent || !Array.isArray(expertise)) {
         return res.status(400).json({
@@ -460,7 +464,7 @@ router.post('/admin/agents/expertise/save', async (req, res) => {
 });
 
 // POST /admin/agents/reset-passphrase — generate new passphrase, invalidate all sessions
-router.post('/admin/agents/reset-passphrase', async (req, res) => {
+router.post('/admin/agents/reset-passphrase', requirePerm('agents', 'write'), async (req, res) => {
     const { agent } = req.body;
     if (!agent) {
         return res.status(400).json({
@@ -513,7 +517,7 @@ router.post('/admin/agents/reset-passphrase', async (req, res) => {
 });
 
 // POST /admin/discussions — list discussions with optional status filter
-router.post('/admin/discussions', async (req, res) => {
+router.post('/admin/discussions', requirePerm('comms', 'read'), async (req, res) => {
     const { status } = req.body;
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
@@ -554,7 +558,7 @@ router.post('/admin/discussions', async (req, res) => {
 });
 
 // POST /admin/discussions/detail — get full discussion details
-router.post('/admin/discussions/detail', async (req, res) => {
+router.post('/admin/discussions/detail', requirePerm('comms', 'read'), async (req, res) => {
     const { discussion_id } = req.body;
     if (!discussion_id) {
         return res.status(400).json({
@@ -623,7 +627,7 @@ router.post('/admin/discussions/detail', async (req, res) => {
 });
 
 // POST /admin/chat — list recent chat messages
-router.post('/admin/chat', async (req, res) => {
+router.post('/admin/chat', requirePerm('comms', 'read'), async (req, res) => {
     const { limit = 50, channel } = req.body;
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
@@ -658,7 +662,7 @@ router.post('/admin/chat', async (req, res) => {
 });
 
 // POST /admin/mail — list mail
-router.post('/admin/mail', async (req, res) => {
+router.post('/admin/mail', requirePerm('comms', 'read'), async (req, res) => {
     const { limit = 50 } = req.body;
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
@@ -687,7 +691,7 @@ router.post('/admin/mail', async (req, res) => {
 });
 
 // POST /admin/mail/delete — soft-delete a mail message
-router.post('/admin/mail/delete', async (req, res) => {
+router.post('/admin/mail/delete', requirePerm('comms', 'delete'), async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
@@ -722,7 +726,7 @@ router.post('/admin/mail/delete', async (req, res) => {
 });
 
 // POST /admin/chat/delete — soft-delete a chat message
-router.post('/admin/chat/delete', async (req, res) => {
+router.post('/admin/chat/delete', requirePerm('comms', 'delete'), async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
@@ -757,7 +761,7 @@ router.post('/admin/chat/delete', async (req, res) => {
 });
 
 // POST /admin/mail/send — send mail to an agent from the admin dashboard
-router.post('/admin/mail/send', async (req, res) => {
+router.post('/admin/mail/send', requirePerm('comms', 'write'), async (req, res) => {
     const { to, subject, body } = req.body;
 
     if (!to || !subject || !body) {
@@ -794,7 +798,7 @@ router.post('/admin/mail/send', async (req, res) => {
 });
 
 // POST /admin/providers/registry — get provider/model registry for admin UI
-router.post('/admin/providers/registry', async (req, res) => {
+router.post('/admin/providers/registry', requirePerm('config', 'read'), async (req, res) => {
     try {
         const { getRegistry } = require('../services/provider');
         res.json(getRegistry());
@@ -807,7 +811,7 @@ router.post('/admin/providers/registry', async (req, res) => {
 });
 
 // POST /admin/providers/defaults — get default configuration for a provider+model
-router.post('/admin/providers/defaults', async (req, res) => {
+router.post('/admin/providers/defaults', requirePerm('config', 'read'), async (req, res) => {
     try {
         const { provider, model } = req.body;
         if (!provider || !model) {
@@ -827,7 +831,7 @@ router.post('/admin/providers/defaults', async (req, res) => {
 });
 
 // POST /admin/config/list — list all config key/value pairs
-router.post('/admin/config/list', async (req, res) => {
+router.post('/admin/config/list', requirePerm('config', 'read'), async (req, res) => {
     try {
         const result = await pool.query('SELECT key, value, description FROM config ORDER BY key');
         res.json({ config: result.rows });
@@ -840,7 +844,7 @@ router.post('/admin/config/list', async (req, res) => {
 });
 
 // POST /admin/config/update — update a config value by key
-router.post('/admin/config/update', async (req, res) => {
+router.post('/admin/config/update', requirePerm('config', 'write'), async (req, res) => {
     const { key, value } = req.body;
     if (!key) {
         return res.status(400).json({
@@ -868,7 +872,7 @@ router.post('/admin/config/update', async (req, res) => {
 });
 
 // POST /admin/notes/list — list notes in a namespace
-router.post('/admin/notes/list', async (req, res) => {
+router.post('/admin/notes/list', requirePerm('notes', 'read'), async (req, res) => {
     const { namespace, limit, offset, prefix } = req.body;
     if (!namespace) {
         return res.status(400).json({
@@ -890,7 +894,7 @@ router.post('/admin/notes/list', async (req, res) => {
 });
 
 // POST /admin/notes/read — read a single note
-router.post('/admin/notes/read', async (req, res) => {
+router.post('/admin/notes/read', requirePerm('notes', 'read'), async (req, res) => {
     const { namespace, slug } = req.body;
     if (!namespace || !slug) {
         return res.status(400).json({
@@ -917,7 +921,7 @@ router.post('/admin/notes/read', async (req, res) => {
 });
 
 // POST /admin/notes/save — save (update) a note
-router.post('/admin/notes/save', async (req, res) => {
+router.post('/admin/notes/save', requirePerm('notes', 'write'), async (req, res) => {
     const { namespace, slug, title, content } = req.body;
     if (!namespace || !slug || !title || content === undefined) {
         return res.status(400).json({
@@ -944,7 +948,7 @@ router.post('/admin/notes/save', async (req, res) => {
 });
 
 // POST /admin/notes/delete — delete a note
-router.post('/admin/notes/delete', async (req, res) => {
+router.post('/admin/notes/delete', requirePerm('notes', 'delete'), async (req, res) => {
     const { namespace, slug } = req.body;
     if (!namespace || !slug) {
         return res.status(400).json({
@@ -976,7 +980,7 @@ router.post('/admin/notes/delete', async (req, res) => {
 });
 
 // POST /admin/notes/move — rename a note's slug (and optionally namespace)
-router.post('/admin/notes/move', async (req, res) => {
+router.post('/admin/notes/move', requirePerm('notes', 'write'), async (req, res) => {
     const { namespace, slug, new_slug, new_namespace } = req.body;
     if (!namespace || !slug || !new_slug) {
         return res.status(400).json({
@@ -1017,7 +1021,7 @@ router.post('/admin/notes/move', async (req, res) => {
 });
 
 // POST /admin/notes/search — semantic search across notes
-router.post('/admin/notes/search', async (req, res) => {
+router.post('/admin/notes/search', requirePerm('notes', 'read'), async (req, res) => {
     const { query, namespace, limit } = req.body;
     if (!query) {
         return res.status(400).json({
@@ -1051,7 +1055,7 @@ router.post('/admin/notes/search', async (req, res) => {
 });
 
 // POST /admin/notes/namespaces — get list of namespaces with note counts
-router.post('/admin/notes/namespaces', async (req, res) => {
+router.post('/admin/notes/namespaces', requirePerm('notes', 'read'), async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
@@ -1075,7 +1079,7 @@ router.post('/admin/notes/namespaces', async (req, res) => {
 let reindexState = null; // { running, current, total, chunks_created, errors, result }
 
 // POST /admin/notes/reindex — kick off background reindex, return immediately.
-router.post('/admin/notes/reindex', async (req, res) => {
+router.post('/admin/notes/reindex', requirePerm('notes', 'write'), async (req, res) => {
     if (reindexState && reindexState.running) {
         return res.status(409).json({
             error: { code: 'CONFLICT', message: 'Reindex already in progress' }
@@ -1128,7 +1132,7 @@ router.post('/admin/notes/reindex', async (req, res) => {
 });
 
 // POST /admin/notes/reindex-status — poll for reindex progress.
-router.post('/admin/notes/reindex-status', (req, res) => {
+router.post('/admin/notes/reindex-status', requirePerm('notes', 'read'), (req, res) => {
     if (!reindexState) {
         return res.json({ running: false });
     }
@@ -1143,7 +1147,7 @@ router.post('/admin/notes/reindex-status', (req, res) => {
 });
 
 // POST /admin/notes/reindex-clear — dismiss completed reindex result.
-router.post('/admin/notes/reindex-clear', (req, res) => {
+router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, res) => {
     if (reindexState && !reindexState.running) {
         reindexState = null;
     }
@@ -1172,7 +1176,7 @@ function parseTemplateFrontmatter(content = '') {
 }
 
 // POST /admin/templates/list — list all templates, optionally filtered by kind
-router.post('/admin/templates/list', async (req, res) => {
+router.post('/admin/templates/list', requirePerm('templates', 'read'), async (req, res) => {
     const { kind } = req.body;
     if (kind && !TEMPLATE_KINDS.has(kind)) {
         return res.status(400).json({
@@ -1198,7 +1202,7 @@ router.post('/admin/templates/list', async (req, res) => {
 });
 
 // POST /admin/templates/read — read a single template
-router.post('/admin/templates/read', async (req, res) => {
+router.post('/admin/templates/read', requirePerm('templates', 'read'), async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
@@ -1225,7 +1229,7 @@ router.post('/admin/templates/read', async (req, res) => {
 });
 
 // POST /admin/templates/save — create or update a template
-router.post('/admin/templates/save', async (req, res) => {
+router.post('/admin/templates/save', requirePerm('templates', 'write'), async (req, res) => {
     const { id, name, kind, description, content } = req.body;
     if (!name || !content) {
         return res.status(400).json({
@@ -1287,7 +1291,7 @@ router.post('/admin/templates/save', async (req, res) => {
 });
 
 // POST /admin/templates/delete — delete a template
-router.post('/admin/templates/delete', async (req, res) => {
+router.post('/admin/templates/delete', requirePerm('templates', 'delete'), async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
@@ -1329,7 +1333,7 @@ function parseCostBudget(value, fieldName) {
 // ---- Actor Creation ----
 
 // POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
-router.post('/admin/actors/create', async (req, res) => {
+router.post('/admin/actors/create', requirePerm('actors', 'write'), async (req, res) => {
     const { name, provider, model, welcome_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
@@ -1486,7 +1490,7 @@ router.post('/admin/actors/create', async (req, res) => {
 });
 
 // POST /admin/agents/read — get full agent detail (includes configuration JSON)
-router.post('/admin/agents/read', async (req, res) => {
+router.post('/admin/agents/read', requirePerm('agents', 'read'), async (req, res) => {
     const { agent } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
@@ -1541,7 +1545,7 @@ router.post('/admin/agents/read', async (req, res) => {
 });
 
 // POST /admin/agents/update — update virtual agent config
-router.post('/admin/agents/update', async (req, res) => {
+router.post('/admin/agents/update', requirePerm('agents', 'write'), async (req, res) => {
     const { agent, personality, api_key, configuration, provider, model,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
@@ -1644,7 +1648,7 @@ router.post('/admin/agents/update', async (req, res) => {
 });
 
 // POST /admin/agents/usage — get usage history for an agent
-router.post('/admin/agents/usage', async (req, res) => {
+router.post('/admin/agents/usage', requirePerm('agents', 'read'), async (req, res) => {
     const { agent, limit } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
@@ -1680,7 +1684,7 @@ function parseActorId(raw, res) {
 }
 
 // POST /admin/actors/list — list all actors (for the Actors config tab)
-router.post('/admin/actors/list', async (req, res) => {
+router.post('/admin/actors/list', requirePerm('actors', 'read'), async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT a.id, a.name, a.created_at,
@@ -1698,7 +1702,7 @@ router.post('/admin/actors/list', async (req, res) => {
 });
 
 // POST /admin/actors/permissions/read — get namespace permissions for one actor
-router.post('/admin/actors/permissions/read', async (req, res) => {
+router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     try {
@@ -1720,7 +1724,7 @@ router.post('/admin/actors/permissions/read', async (req, res) => {
 
 // POST /admin/actors/permissions/save — full replace of namespace permissions for one actor
 // Body: { actor_id, permissions: [{ namespace, can_read, can_write, can_delete }] }
-router.post('/admin/actors/permissions/save', async (req, res) => {
+router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { permissions } = req.body;
@@ -1785,7 +1789,7 @@ router.post('/admin/actors/permissions/save', async (req, res) => {
 });
 
 // POST /admin/actors/visibility/read — get visibility grants for one actor
-router.post('/admin/actors/visibility/read', async (req, res) => {
+router.post('/admin/actors/visibility/read', requirePerm('actors', 'read'), async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     try {
@@ -1817,7 +1821,7 @@ router.post('/admin/actors/visibility/read', async (req, res) => {
 
 // POST /admin/actors/visibility/save — full replace of visibility grants for one actor
 // Body: { actor_id, wildcard: bool, grants: [actor_id, ...] }
-router.post('/admin/actors/visibility/save', async (req, res) => {
+router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { wildcard, grants } = req.body;
@@ -1879,7 +1883,7 @@ router.post('/admin/actors/visibility/save', async (req, res) => {
 
 // POST /admin/actors/password — set or clear an actor's UI password
 // Pass { actor_id, password: "string" } to set/change, or { actor_id, password: null } to clear
-router.post('/admin/actors/password', async (req, res) => {
+router.post('/admin/actors/password', requirePerm('actors', 'write'), async (req, res) => {
     const { actor_id, password } = req.body;
     const actorId = parseActorId(actor_id, res);
     if (!actorId) return;
@@ -1920,7 +1924,7 @@ router.post('/admin/actors/password', async (req, res) => {
 });
 
 // POST /admin/actors/namespaces — get distinct namespaces from documents (for dropdown)
-router.post('/admin/actors/namespaces', async (req, res) => {
+router.post('/admin/actors/namespaces', requirePerm('actors', 'read'), async (req, res) => {
     try {
         const result = await pool.query(
             "SELECT DISTINCT namespace FROM documents WHERE namespace != '/' ORDER BY namespace"
@@ -1929,6 +1933,97 @@ router.post('/admin/actors/namespaces', async (req, res) => {
     } catch (err) {
         console.error('Admin namespaces error:', err.message);
         res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch namespaces' } });
+    }
+});
+
+// Admin permission allowlist — server-side authority for valid resource/action pairs
+const ADMIN_PERM_ALLOWLIST = {
+    dashboard: ['read'],
+    agents: ['read', 'write'],
+    comms: ['read', 'write', 'delete'],
+    notes: ['read', 'write', 'delete'],
+    config: ['read', 'write'],
+    actors: ['read', 'write'],
+    templates: ['read', 'write', 'delete'],
+    logs: ['read']
+};
+
+function isValidAdminPerm(resource, action) {
+    if (resource === '*' && action === '*') return true;
+    const allowed = ADMIN_PERM_ALLOWLIST[resource];
+    return allowed && allowed.includes(action);
+}
+
+// POST /admin/actors/admin-permissions/read — get admin permissions for an actor
+router.post('/admin/actors/admin-permissions/read', requirePerm('actors', 'read'), async (req, res) => {
+    const actorId = parseInt(req.body.actor_id);
+    if (!Number.isInteger(actorId) || actorId <= 0) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
+    }
+    try {
+        const result = await pool.query(
+            'SELECT resource, action FROM admin_permissions WHERE actor_id = $1 ORDER BY resource, action',
+            [actorId]
+        );
+        res.json({ permissions: result.rows });
+    } catch (err) {
+        console.error('Admin permissions read error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to read admin permissions' } });
+    }
+});
+
+// POST /admin/actors/admin-permissions/save — replace all admin permissions for an actor
+router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write'), async (req, res) => {
+    const actorId = parseInt(req.body.actor_id);
+    const { permissions } = req.body;
+    if (!Number.isInteger(actorId) || actorId <= 0 || !Array.isArray(permissions)) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required fields: actor_id (positive integer), permissions[]' } });
+    }
+
+    // Validate actor exists
+    const actorCheck = await pool.query('SELECT id FROM actors WHERE id = $1', [actorId]);
+    if (actorCheck.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+    }
+
+    // Validate and dedupe permissions against allowlist
+    const validated = [];
+    const seen = new Set();
+    for (const perm of permissions) {
+        const resource = String(perm.resource || '').trim();
+        const action = String(perm.action || '').trim();
+        if (!resource || !action) continue;
+        if (!isValidAdminPerm(resource, action)) continue;
+        const key = resource + ':' + action;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        validated.push({ resource, action });
+    }
+
+    try {
+        // Delete existing permissions
+        await pool.query('DELETE FROM admin_permissions WHERE actor_id = $1', [actorId]);
+
+        // Insert validated permissions
+        for (const perm of validated) {
+            await pool.query(
+                'INSERT INTO admin_permissions (actor_id, resource, action) VALUES ($1, $2, $3)',
+                [actorId, perm.resource, perm.action]
+            );
+        }
+
+        clearAdminPermissionsCache(actorId);
+        logAdmin('admin_permissions_save', { actor_id: actorId, count: validated.length, user_id: req.authenticatedUser.id });
+
+        // If editing own permissions, return updated map so frontend can refresh
+        const response = { message: 'Admin permissions saved', count: validated.length };
+        if (actorId === req.actorId) {
+            response.updated_permissions = await getPermissionMap(actorId);
+        }
+        res.json(response);
+    } catch (err) {
+        console.error('Admin permissions save error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save admin permissions' } });
     }
 });
 

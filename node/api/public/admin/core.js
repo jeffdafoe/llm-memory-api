@@ -7,6 +7,7 @@ function useCore() {
     const authenticated = ref(false);
     const sessionToken = ref(null);
     const user = ref(null);
+    const permissions = ref({});
     const loginForm = ref({ username: '', password: '' });
     const loginError = ref('');
     const loggingIn = ref(false);
@@ -46,11 +47,16 @@ function useCore() {
             headers,
             body: JSON.stringify(body)
         });
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
             authenticated.value = false;
             sessionToken.value = null;
+            permissions.value = {};
             localStorage.removeItem('admin_session');
             throw new Error('Session expired');
+        }
+        if (response.status === 403) {
+            const data = await response.json();
+            throw new Error(data.error?.message || 'Insufficient permissions');
         }
         const data = await response.json();
         if (!response.ok) {
@@ -76,10 +82,12 @@ function useCore() {
             }
             sessionToken.value = data.session_token;
             user.value = data.user;
+            permissions.value = data.permissions || {};
             authenticated.value = true;
             localStorage.setItem('admin_session', JSON.stringify({
                 token: data.session_token,
                 user: data.user,
+                permissions: data.permissions || {},
                 expires: data.expires_at
             }));
             loginForm.value = { username: '', password: '' };
@@ -101,6 +109,7 @@ function useCore() {
         authenticated.value = false;
         sessionToken.value = null;
         user.value = null;
+        permissions.value = {};
         localStorage.removeItem('admin_session');
     }
 
@@ -148,6 +157,7 @@ function useCore() {
                 if (new Date(session.expires) > new Date()) {
                     sessionToken.value = session.token;
                     user.value = session.user;
+                    permissions.value = session.permissions || {};
                     authenticated.value = true;
                     return true;
                 } else {
@@ -201,6 +211,34 @@ function useCore() {
         if (!dateStr) return '';
         const d = new Date(dateStr);
         return d.toLocaleTimeString();
+    }
+
+    // Admin permissions helper — mirrors the backend action hierarchy.
+    // permissions map: { resource: [action, ...], ... }
+    // canDo('notes', 'read') → true if actor has read, write, or delete on notes (or wildcard).
+    const ACTION_RANK = { read: 1, write: 2, delete: 3 };
+
+    function canDo(resource, action) {
+        const perms = permissions.value;
+        if (!perms) return false;
+
+        // Global wildcard
+        if (perms['*'] && perms['*'].includes('*')) return true;
+
+        const requiredRank = ACTION_RANK[action];
+        if (!requiredRank) return false;
+
+        // Check grants on specific resource
+        const grants = perms[resource];
+        if (grants) {
+            for (const g of grants) {
+                if (g === '*') return true;
+                const grantedRank = ACTION_RANK[g];
+                if (grantedRank && grantedRank >= requiredRank) return true;
+            }
+        }
+
+        return false;
     }
 
     // Discussion display helpers
@@ -259,7 +297,7 @@ function useCore() {
     }
 
     return {
-        authenticated, sessionToken, user,
+        authenticated, sessionToken, user, permissions, canDo,
         loginForm, loginError, loggingIn,
         showChangePassword, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
         login, logout, restoreSession,

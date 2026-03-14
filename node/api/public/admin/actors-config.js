@@ -1,7 +1,7 @@
 // actors-config.js — Actor permissions, visibility, and creation management (Configuration > Actors tab)
 import { ref, computed } from 'vue';
 
-function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
+function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, permissions }) {
     const actorsConfigList = ref([]);
     const actorsConfigLoading = ref(false);
 
@@ -26,6 +26,22 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
 
     // Available actors (for visibility dropdown)
     const newVisibilityTarget = ref('');
+
+    // Admin permissions state
+    const actorAdminPerms = ref([]);
+    const actorHasWildcardAdmin = ref(false);
+
+    // Known admin resources and their possible actions
+    const adminResources = [
+        { id: 'dashboard', label: 'Dashboard', actions: ['read'] },
+        { id: 'agents', label: 'Agents', actions: ['read', 'write'] },
+        { id: 'comms', label: 'Communications', actions: ['read', 'write', 'delete'] },
+        { id: 'notes', label: 'Notes', actions: ['read', 'write', 'delete'] },
+        { id: 'config', label: 'Configuration', actions: ['read', 'write'] },
+        { id: 'actors', label: 'Actors', actions: ['read', 'write'] },
+        { id: 'templates', label: 'Templates', actions: ['read', 'write', 'delete'] },
+        { id: 'logs', label: 'Logs', actions: ['read'] }
+    ];
 
     // UI Access (password) state
     const actorPasswordInput = ref('');
@@ -64,12 +80,14 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
         try {
-            // Load permissions, visibility, and available namespaces in parallel
-            const [permData, visData, nsData] = await Promise.all([
+            // Load permissions, visibility, namespaces, and admin perms in parallel
+            const promises = [
                 api('/admin/actors/permissions/read', { actor_id: actor.id }),
                 api('/admin/actors/visibility/read', { actor_id: actor.id }),
-                api('/admin/actors/namespaces')
-            ]);
+                api('/admin/actors/namespaces'),
+                actor.is_user ? api('/admin/actors/admin-permissions/read', { actor_id: actor.id }) : Promise.resolve(null)
+            ];
+            const [permData, visData, nsData, adminPermData] = await Promise.all(promises);
 
             // Permissions: separate wildcard from specific
             const wildPerm = permData.permissions.find(p => p.namespace === '/');
@@ -87,6 +105,28 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
 
             // Available namespaces
             availableNamespaces.value = nsData.namespaces;
+
+            // Admin permissions (only for UI users)
+            if (adminPermData) {
+                const hasWild = adminPermData.permissions.some(p => p.resource === '*' && p.action === '*');
+                actorHasWildcardAdmin.value = hasWild;
+                // Build a map of resource -> highest action granted
+                const permMap = {};
+                for (const p of adminPermData.permissions) {
+                    if (p.resource === '*') continue;
+                    if (!permMap[p.resource]) permMap[p.resource] = new Set();
+                    permMap[p.resource].add(p.action);
+                }
+                actorAdminPerms.value = adminResources.map(r => ({
+                    resource: r.id,
+                    label: r.label,
+                    actions: r.actions,
+                    granted: permMap[r.id] ? Array.from(permMap[r.id]) : []
+                }));
+            } else {
+                actorHasWildcardAdmin.value = false;
+                actorAdminPerms.value = [];
+            }
         } catch (err) {
             console.error('Failed to load actor config:', err);
             showToast('Failed to load actor config', 'error');
@@ -104,6 +144,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
         actorPasswordInput.value = '';
+        actorAdminPerms.value = [];
+        actorHasWildcardAdmin.value = false;
     }
 
     // ─── Permissions ───
@@ -165,13 +207,13 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         if (!selectedActorConfig.value) return;
         actorConfigSaving.value = true;
         try {
-            // Build permissions list
-            const permissions = [];
+            // Build namespace permissions list
+            const nsPerms = [];
             if (actorHasWildcardPerm.value) {
-                permissions.push({ namespace: '/', can_read: true, can_write: true, can_delete: true });
+                nsPerms.push({ namespace: '/', can_read: true, can_write: true, can_delete: true });
             }
             for (const p of actorPermissions.value) {
-                permissions.push({
+                nsPerms.push({
                     namespace: p.namespace,
                     can_read: !!p.can_read,
                     can_write: !!p.can_write,
@@ -179,18 +221,54 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
                 });
             }
 
-            // Save permissions and visibility in parallel
-            await Promise.all([
+            // Build admin permissions list (only for UI users)
+            const savePromises = [
                 api('/admin/actors/permissions/save', {
                     actor_id: selectedActorConfig.value.id,
-                    permissions
+                    permissions: nsPerms
                 }),
                 api('/admin/actors/visibility/save', {
                     actor_id: selectedActorConfig.value.id,
                     wildcard: actorHasWildcardVis.value,
                     grants: actorVisibilityGrants.value.map(g => g.target_actor_id)
                 })
-            ]);
+            ];
+
+            if (selectedActorConfig.value.is_user) {
+                const adminPerms = [];
+                if (actorHasWildcardAdmin.value) {
+                    adminPerms.push({ resource: '*', action: '*' });
+                } else {
+                    for (const row of actorAdminPerms.value) {
+                        for (const action of row.granted) {
+                            adminPerms.push({ resource: row.resource, action });
+                        }
+                    }
+                }
+                savePromises.push(api('/admin/actors/admin-permissions/save', {
+                    actor_id: selectedActorConfig.value.id,
+                    permissions: adminPerms
+                }));
+            }
+
+            const results = await Promise.all(savePromises);
+
+            // If we edited our own admin permissions, refresh the client-side permission cache
+            if (selectedActorConfig.value.is_user && user && user.value && selectedActorConfig.value.id === user.value.id) {
+                const adminPermResult = results[results.length - 1];
+                if (adminPermResult && adminPermResult.updated_permissions) {
+                    permissions.value = adminPermResult.updated_permissions;
+                    // Update localStorage too
+                    const saved = localStorage.getItem('admin_session');
+                    if (saved) {
+                        try {
+                            const session = JSON.parse(saved);
+                            session.permissions = adminPermResult.updated_permissions;
+                            localStorage.setItem('admin_session', JSON.stringify(session));
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+            }
             showToast('Actor configuration saved', 'success');
         } catch (err) {
             console.error('Failed to save actor config:', err);
@@ -213,6 +291,37 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         const existing = new Set(actorPermissions.value.map(p => p.namespace));
         return availableNamespaces.value.filter(ns => !existing.has(ns));
     });
+
+    // ─── Admin Permissions ───
+
+    function toggleAdminPerm(resourceIndex, action) {
+        const row = actorAdminPerms.value[resourceIndex];
+        if (!row) return;
+        const has = row.granted.includes(action);
+        if (has) {
+            // Remove this action and any lower-ranked actions that become orphaned
+            const rank = { read: 1, write: 2, delete: 3 };
+            const removedRank = rank[action];
+            row.granted = row.granted.filter(a => rank[a] < removedRank);
+        } else {
+            // Add this action and any implied lower actions
+            const rank = { read: 1, write: 2, delete: 3 };
+            const addedRank = rank[action];
+            const newGranted = new Set(row.granted);
+            for (const [a, r] of Object.entries(rank)) {
+                if (r <= addedRank && row.actions.includes(a)) {
+                    newGranted.add(a);
+                }
+            }
+            row.granted = Array.from(newGranted);
+        }
+    }
+
+    function adminPermChecked(resourceIndex, action) {
+        const row = actorAdminPerms.value[resourceIndex];
+        if (!row) return false;
+        return row.granted.includes(action);
+    }
 
     // ─── UI Access (Password) ───
 
@@ -355,6 +464,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
         addPermissionRow, removePermissionRow,
         addVisibilityGrant, removeVisibilityGrant,
         saveActorConfig,
+        // Admin Permissions
+        actorAdminPerms, actorHasWildcardAdmin, adminResources,
+        toggleAdminPerm, adminPermChecked,
         // UI Access
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Create actor
