@@ -828,6 +828,7 @@ h4 i {
     display: flex;
     gap: 1rem;
     height: calc(100vh - 6rem);
+    overflow: hidden;
 }
 
 .notes-sidebar {
@@ -995,28 +996,41 @@ h4 i {
     opacity: 0.7;
 }
 
-.notes-actions-bar {
+.notes-toolbar {
     display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.notes-actions-bar .inline-button {
-    margin: 0;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    gap: 1rem;
 }
 
 .notes-title-bar {
-    margin-bottom: 1rem;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .notes-title-bar h4 {
     margin: 0 0 0.1rem 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .notes-meta {
     font-size: 0.8em;
     color: var(--pico-muted-color);
+}
+
+.notes-actions {
+    display: flex;
+    gap: 0.5rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.notes-actions .inline-button {
+    margin: 0;
 }
 
 .inline-button.secondary {
@@ -1049,7 +1063,8 @@ h4 i {
 }
 
 .notes-body {
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .notes-markdown {
