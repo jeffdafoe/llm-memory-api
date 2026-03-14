@@ -120,18 +120,27 @@ function calculateCost(providerName, modelId, usage) {
 }
 
 // Format pricing as a human-readable string for the admin UI.
-function formatPricing(providerName, modelId) {
+// Optional config parameter lets us apply tier multipliers (e.g. flex = half price).
+function formatPricing(providerName, modelId, config) {
     const pricing = getModelPricing(providerName, modelId);
     if (!pricing) return 'No pricing data';
 
-    const parts = [];
-    if (pricing.input != null) parts.push('$' + pricing.input + ' in');
-    if (pricing.output != null) parts.push('$' + pricing.output + ' out');
-    if (pricing.cache_write != null) parts.push('$' + pricing.cache_write + ' cache write');
-    if (pricing.cache_read != null) parts.push('$' + pricing.cache_read + ' cache read');
-    if (pricing.request != null) parts.push('$' + pricing.request + '/1K requests');
+    // Apply tier multiplier if the agent's config specifies one
+    const isFlex = config && config.service_tier === 'flex';
+    const m = isFlex ? 0.5 : 1.0;
 
-    return parts.join(' / ') + ' per 1M tokens';
+    const parts = [];
+    if (pricing.input != null) parts.push('$' + (pricing.input * m) + ' in');
+    if (pricing.output != null) parts.push('$' + (pricing.output * m) + ' out');
+    if (pricing.cache_write != null) parts.push('$' + (pricing.cache_write * m) + ' cache write');
+    if (pricing.cache_read != null) parts.push('$' + (pricing.cache_read * m) + ' cache read');
+    if (pricing.request != null) parts.push('$' + (pricing.request * m) + '/1K requests');
+
+    let result = parts.join(' / ') + ' per 1M tokens';
+    if (isFlex) {
+        result += ' (flex tier)';
+    }
+    return result;
 }
 
 // Get the configVersion for a specific provider + model.

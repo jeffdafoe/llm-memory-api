@@ -1433,9 +1433,13 @@ router.post('/admin/agents/read', async (req, res) => {
         row.cost_today = parseFloat(costResult.rows[0].cost_today);
         row.cost_monthly = parseFloat(costResult.rows[0].cost_monthly);
 
-        // Add pricing info string for display
+        // Add pricing info string for display, accounting for agent's service tier
         if (row.provider && row.model) {
-            row.pricing_info = formatPricing(row.provider, row.model);
+            let agentConfig = {};
+            if (row.configuration) {
+                try { agentConfig = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+            }
+            row.pricing_info = formatPricing(row.provider, row.model, agentConfig);
         }
 
         res.json(row);
