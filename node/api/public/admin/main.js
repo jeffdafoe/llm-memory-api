@@ -1,5 +1,21 @@
-// app.js — Thin shell that composes all feature modules
-// Vue globals (ref, computed, etc.) are destructured in core.js
+// main.js — Entry point for the admin dashboard (replaces app.js + CDN scripts)
+import '@picocss/pico/css/pico.min.css';
+import 'lucide-static/font/lucide.css';
+import './style.css';
+
+import { createApp, ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useCore } from './core.js';
+import { createEventsModule } from './events.js';
+import { useAgents } from './agents.js';
+import { useDiscussions } from './discussions.js';
+import { useChat } from './chat.js';
+import { useMail } from './mail.js';
+import { useNotes } from './notes.js';
+import { useApiLog } from './apilog.js';
+import { useErrorLog } from './errorlog.js';
+import { useConfig } from './config.js';
+import { useActorsConfig } from './actors-config.js';
+import { useDashboard } from './dashboard.js';
 
 createApp({
     setup() {

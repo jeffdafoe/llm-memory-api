@@ -1,4 +1,5 @@
 // dashboard.js — Dashboard view with live discussion polling
+import { ref, nextTick } from 'vue';
 
 function useDashboard({ api, authenticated, onEvent }) {
     const dashboard = ref(null);
@@ -120,4 +121,4 @@ function useDashboard({ api, authenticated, onEvent }) {
     };
 }
 
-window.useDashboard = useDashboard;
+export { useDashboard };

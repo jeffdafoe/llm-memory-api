@@ -1,4 +1,5 @@
 // chat.js — Chat messages view
+import { ref } from 'vue';
 
 function useChat({ api }) {
     const chatMessages = ref([]);
@@ -23,4 +24,4 @@ function useChat({ api }) {
     };
 }
 
-window.useChat = useChat;
+export { useChat };

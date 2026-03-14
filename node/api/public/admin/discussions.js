@@ -1,4 +1,5 @@
 // discussions.js — Discussions list, detail, chat transcript
+import { ref } from 'vue';
 
 function useDiscussions({ api }) {
     const discussions = ref([]);
@@ -50,4 +51,4 @@ function useDiscussions({ api }) {
     };
 }
 
-window.useDiscussions = useDiscussions;
+export { useDiscussions };

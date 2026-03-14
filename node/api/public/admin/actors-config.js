@@ -1,4 +1,5 @@
 // actors-config.js — Actor permissions, visibility, and creation management (Configuration > Actors tab)
+import { ref, computed } from 'vue';
 
 function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
     const actorsConfigList = ref([]);
@@ -366,4 +367,4 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule }) {
     };
 }
 
-window.useActorsConfig = useActorsConfig;
+export { useActorsConfig };

@@ -1,4 +1,5 @@
 // apilog.js — API request log with polling and filtering
+import { ref, computed } from 'vue';
 
 function useApiLog({ api, authenticated }) {
     const apiLogEntries = ref([]);
@@ -86,4 +87,4 @@ function useApiLog({ api, authenticated }) {
     };
 }
 
-window.useApiLog = useApiLog;
+export { useApiLog };

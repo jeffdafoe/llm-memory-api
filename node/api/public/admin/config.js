@@ -1,4 +1,5 @@
 // config.js — System configuration viewer/editor
+import { ref } from 'vue';
 
 function useConfig({ api, showToast }) {
     const configEntries = ref([]);
@@ -54,4 +55,4 @@ function useConfig({ api, showToast }) {
     };
 }
 
-window.useConfig = useConfig;
+export { useConfig };

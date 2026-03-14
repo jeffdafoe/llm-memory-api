@@ -1,4 +1,5 @@
 // agents.js — Agents list, detail, welcome templates, provider registry
+import { ref } from 'vue';
 
 function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
@@ -540,4 +541,4 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     };
 }
 
-window.useAgents = useAgents;
+export { useAgents };

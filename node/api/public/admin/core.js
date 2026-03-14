@@ -1,6 +1,5 @@
 // core.js — Shared utilities: API helper, auth, formatting, confirm/toast
-// Destructure Vue once here — all other modules use these globals
-const { ref, computed, watch, nextTick, onMounted, onUnmounted, createApp } = Vue;
+import { ref, computed } from 'vue';
 
 const API_BASE = '/v1';
 
@@ -271,4 +270,4 @@ function useCore() {
     };
 }
 
-window.useCore = useCore;
+export { useCore };

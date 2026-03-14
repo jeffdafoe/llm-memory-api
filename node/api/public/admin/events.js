@@ -123,3 +123,5 @@ function createEventsModule() {
 
     return { connect, disconnect, onEvent };
 }
+
+export { createEventsModule };

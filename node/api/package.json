@@ -5,18 +5,25 @@
     "main": "src/server.js",
     "scripts": {
         "start": "node src/server.js",
-        "dev": "node --watch src/server.js"
+        "dev": "node --watch src/server.js",
+        "build:admin": "vite build"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
+        "@picocss/pico": "^2.1.1",
         "eff-diceware-passphrase": "^3.0.0",
         "express": "^4.21.0",
+        "lucide-static": "^0.577.0",
         "pg": "^8.13.0",
         "pgvector": "^0.2.0",
+        "vue": "^3.5.30",
         "ws": "^8.19.0"
     },
     "engines": {
         "node": ">=20"
     },
-    "private": true
+    "private": true,
+    "devDependencies": {
+        "vite": "^5.4.21"
+    }
 }

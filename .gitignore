@@ -2,3 +2,4 @@ node_modules/
 infrastructure/local-secrets.yml
 .env
 .idea/
+node/api/public/admin/dist/

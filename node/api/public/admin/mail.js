@@ -1,4 +1,5 @@
 // mail.js — Mail view (list, detail, compose)
+import { ref } from 'vue';
 
 function useMail({ api, showToast }) {
     const mailMessages = ref([]);
@@ -64,4 +65,4 @@ function useMail({ api, showToast }) {
     };
 }
 
-window.useMail = useMail;
+export { useMail };
