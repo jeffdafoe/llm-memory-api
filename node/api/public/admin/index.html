@@ -8,7 +8,7 @@
 <body>
     <div id="app">
         <!-- Login screen -->
-        <main v-if="!authenticated" class="container">
+        <main v-if="!authenticated" class="container" style="min-height: 100vh;">
             <article class="login-card">
                 <h2>Memory API Admin</h2>
                 <form @submit.prevent="login">
