@@ -328,7 +328,7 @@ router.post('/admin/agents', async (req, res) => {
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
         let sql = `SELECT agent, actor_id, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, active_since,
-                    cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature
+                    cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration
              FROM agent_status`;
         const params = [];
         if (visibleIds !== null) {
@@ -337,6 +337,19 @@ router.post('/admin/agents', async (req, res) => {
         }
         sql += ` ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`;
         const result = await pool.query(sql, params);
+
+        // Compute pricing_info for each agent via provider formatPricing
+        for (const row of result.rows) {
+            if (row.provider && row.model) {
+                let config = {};
+                if (row.configuration) {
+                    try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+                }
+                row.pricing_info = formatPricing(row.provider, row.model, config);
+            }
+            delete row.configuration;
+        }
+
         res.json({ agents: result.rows });
     } catch (err) {
         console.error('Admin agents error:', err.message);
