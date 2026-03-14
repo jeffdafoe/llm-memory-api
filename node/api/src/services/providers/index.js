@@ -77,9 +77,17 @@ function getModelPricing(providerName, modelId) {
 }
 
 // Calculate cost in dollars for a single API call.
-// usage: { input_tokens, output_tokens, cache_creation_input_tokens?, cache_read_input_tokens? }
-// Throws if pricing data is missing (fail closed — unknown cost must not bypass budgets).
+// If the provider already computed cost (usage.cost), use that directly.
+// Otherwise fall back to the static formula using model pricing data.
+// usage: { input_tokens, output_tokens, cache_creation_input_tokens?, cache_read_input_tokens?, cost? }
 function calculateCost(providerName, modelId, usage) {
+    // Provider-computed cost takes precedence — the provider knows its own
+    // pricing quirks (service tiers, caching discounts, per-request fees, etc.)
+    if (usage.cost != null) {
+        return usage.cost;
+    }
+
+    // Fallback: static formula from model pricing registry
     const pricing = getModelPricing(providerName, modelId);
     if (!pricing) {
         throw new Error(`No pricing data for ${providerName}/${modelId} — cannot calculate cost`);

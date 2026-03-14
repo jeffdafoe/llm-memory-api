@@ -1302,7 +1302,7 @@
                                                 <td>{{ formatDate(u.created_at) }}</td>
                                                 <td>{{ u.model }}</td>
                                                 <td>{{ u.context || '-' }}</td>
-                                                <td>{{ (u.input_tokens + u.output_tokens).toLocaleString() }}</td>
+                                                <td>{{ (u.input_tokens + (u.cache_read_tokens || 0) + u.output_tokens).toLocaleString() }}</td>
                                                 <td>${{ Number(u.cost).toFixed(4) }}</td>
                                             </tr>
                                         </tbody>
