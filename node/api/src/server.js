@@ -21,11 +21,12 @@ const app = express();
 const port = process.env.PORT || 3100;
 
 app.use(express.json({ limit: '5mb' }));
-app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin'), {
+app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin', 'dist'), {
     setHeaders: (res, filePath) => {
-        // No caching for HTML/JS/CSS — ensures deploys take effect immediately
-        if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+        if (filePath.endsWith('.html')) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (filePath.includes('assets')) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
     }
 }));

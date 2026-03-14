@@ -1,4 +1,5 @@
 // errorlog.js — Error log viewer with polling and filtering
+import { ref, computed } from 'vue';
 
 function useErrorLog({ api, authenticated }) {
     const errorLogEntries = ref([]);
@@ -89,4 +90,4 @@ function useErrorLog({ api, authenticated }) {
     };
 }
 
-window.useErrorLog = useErrorLog;
+export { useErrorLog };

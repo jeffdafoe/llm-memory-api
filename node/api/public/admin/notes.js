@@ -1,4 +1,5 @@
 // notes.js — Notes browser (tree view, editor, search, reindex)
+import { ref, computed } from 'vue';
 
 function useNotes({ api, showToast, showConfirm }) {
     const notesNamespaces = ref([]);
@@ -264,4 +265,4 @@ function useNotes({ api, showToast, showConfirm }) {
     };
 }
 
-window.useNotes = useNotes;
+export { useNotes };

@@ -28,6 +28,17 @@
     mode: "0755"
   when: repo_root != project_root
 
+- name: Install build dependencies in repo
+  npm:
+    path: "{{ repo_root }}/node/api"
+  when: repo_root != project_root
+
+- name: Build admin dashboard
+  command: npx vite build
+  args:
+    chdir: "{{ repo_root }}/node/api"
+  when: repo_root != project_root
+
 - name: Deploy application code
   synchronize:
     src: "{{ repo_root }}/node/api/"
