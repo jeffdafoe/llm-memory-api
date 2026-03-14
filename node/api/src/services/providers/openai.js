@@ -482,4 +482,28 @@ function createCall(model, apiKey, configuration) {
     };
 }
 
-module.exports = { name: 'openai', label: 'OpenAI', models, createCall };
+// ── Pricing display ─────────────────────────────────────────────────────────
+// Returns a human-readable pricing string for the admin UI.
+// Accounts for service tier (flex = half price on all rates).
+
+function formatPricing(modelId, config) {
+    const modelEntry = models[modelId];
+    if (!modelEntry || !modelEntry.pricing) return 'No pricing data';
+
+    const pricing = modelEntry.pricing;
+    const isFlex = config && config.service_tier === 'flex';
+    const m = isFlex ? 0.5 : 1.0;
+
+    const parts = [];
+    if (pricing.input != null) parts.push('$' + (pricing.input * m) + ' in');
+    if (pricing.output != null) parts.push('$' + (pricing.output * m) + ' out');
+    if (pricing.cache_read != null) parts.push('$' + (pricing.cache_read * m) + ' cached');
+
+    let result = parts.join(' / ') + ' per 1M tokens';
+    if (isFlex) {
+        result += ' (flex tier)';
+    }
+    return result;
+}
+
+module.exports = { name: 'openai', label: 'OpenAI', models, createCall, formatPricing };
