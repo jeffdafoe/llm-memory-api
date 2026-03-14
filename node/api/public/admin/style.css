@@ -1001,16 +1001,19 @@ h4 i {
     align-items: flex-start;
     margin-bottom: 1rem;
     gap: 1rem;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .notes-title-bar {
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
+    max-width: calc(100% - 12rem);
     overflow: hidden;
 }
 
 .notes-title-bar h4 {
-    margin-bottom: 0.1rem;
+    margin: 0 0 0.1rem 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
