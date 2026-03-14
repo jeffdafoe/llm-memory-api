@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memory API Admin</title>
-  <script type="module" crossorigin src="/admin/assets/index-DtzzZskV.js"></script>
-  <link rel="stylesheet" crossorigin href="/admin/assets/index-DD1qj3BZ.css">
+  <script type="module" crossorigin src="/admin/assets/index-BTlcnpHP.js"></script>
+  <link rel="stylesheet" crossorigin href="/admin/assets/index-C-96epJH.css">
 </head>
 <body>
     <div id="app">
@@ -840,20 +840,18 @@
                             <p class="muted">Select a note from the tree to view it.</p>
                         </div>
                         <div v-else>
-                            <div class="notes-toolbar">
-                                <div class="notes-title-bar">
-                                    <h4 v-if="!notesEditing">{{ selectedNote.title }}</h4>
-                                    <input v-else type="text" v-model="notesEditTitle" class="notes-edit-title" placeholder="Title">
-                                    <div v-if="!notesEditing" class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</div>
-                                    <div v-else class="notes-meta notes-slug-edit">[{{ selectedNote.namespace }}] <input type="text" v-model="notesEditSlug" class="notes-edit-slug" placeholder="slug" spellcheck="false"></div>
-                                    <div class="notes-meta" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
-                                </div>
-                                <div class="notes-actions">
-                                    <button v-if="!notesEditing && canDo('notes', 'write')" class="inline-button" @click="startEditNote">Edit</button>
-                                    <button v-if="notesEditing" class="inline-button" @click="saveEditedNote" :disabled="notesSaving">{{ notesSaving ? 'Saving...' : 'Save' }}</button>
-                                    <button v-if="notesEditing" class="inline-button secondary" @click="cancelEditNote">Cancel</button>
-                                    <button v-if="!notesEditing && canDo('notes', 'delete')" class="inline-button danger" @click="confirmDeleteNote">Delete</button>
-                                </div>
+                            <div class="notes-actions-bar">
+                                <button v-if="!notesEditing && canDo('notes', 'write')" class="inline-button" @click="startEditNote">Edit</button>
+                                <button v-if="notesEditing" class="inline-button" @click="saveEditedNote" :disabled="notesSaving">{{ notesSaving ? 'Saving...' : 'Save' }}</button>
+                                <button v-if="notesEditing" class="inline-button secondary" @click="cancelEditNote">Cancel</button>
+                                <button v-if="!notesEditing && canDo('notes', 'delete')" class="inline-button danger" @click="confirmDeleteNote">Delete</button>
+                            </div>
+                            <div class="notes-title-bar">
+                                <h4 v-if="!notesEditing">{{ selectedNote.title }}</h4>
+                                <input v-else type="text" v-model="notesEditTitle" class="notes-edit-title" placeholder="Title">
+                                <div v-if="!notesEditing" class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</div>
+                                <div v-else class="notes-meta notes-slug-edit">[{{ selectedNote.namespace }}] <input type="text" v-model="notesEditSlug" class="notes-edit-slug" placeholder="slug" spellcheck="false"></div>
+                                <div class="notes-meta" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
                             </div>
                             <div v-if="notesEditing" class="notes-editor">
                                 <textarea v-model="notesEditContent" class="notes-edit-textarea"></textarea>
