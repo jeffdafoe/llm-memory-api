@@ -10,6 +10,7 @@ function useApiLog({ api, authenticated }) {
     const apiLogFilterStatus = ref('');
     const apiLogFilterPath = ref('');
     let apiLogTimer = null;
+    let apiLogPolling = false;
 
     const API_LOG_POLL_MS = 2000;
     const API_LOG_MAX_ENTRIES = 500;
@@ -46,7 +47,8 @@ function useApiLog({ api, authenticated }) {
     });
 
     async function pollApiLog() {
-        if (apiLogPaused.value) return;
+        if (apiLogPaused.value || apiLogPolling) return;
+        apiLogPolling = true;
         try {
             const data = await api('/admin/api-log', { since_id: apiLogLastId.value, limit: 200 });
             if (data.entries.length > 0) {
@@ -58,10 +60,12 @@ function useApiLog({ api, authenticated }) {
             }
         } catch (err) {
             console.error('Failed to poll API log:', err);
+        } finally {
+            apiLogPolling = false;
         }
     }
 
-    function startApiLogPolling(currentView) {
+    function startApiLogPolling() {
         if (apiLogTimer) return;
         pollApiLog();
         apiLogTimer = setInterval(() => {

@@ -18,6 +18,8 @@ function useDashboard({ api, authenticated, onEvent }) {
         }
     }
 
+    let livePolling = false;
+
     async function loadLiveDiscussions() {
         if (!dashboard.value) return;
 
@@ -28,52 +30,60 @@ function useDashboard({ api, authenticated, onEvent }) {
             return;
         }
 
-        const results = [];
-        for (const d of active) {
+        const results = await Promise.all(active.map(async d => {
             try {
-                const detail = await api('/admin/discussions/detail', { discussion_id: d.id });
-                const chat = await api('/admin/chat', { channel: 'discussion-' + d.id, limit: 500 });
-                results.push({
+                const [detail, chat] = await Promise.all([
+                    api('/admin/discussions/detail', { discussion_id: d.id }),
+                    api('/admin/chat', { channel: 'discussion-' + d.id, limit: 500 })
+                ]);
+                return {
                     discussion: detail.discussion,
                     participants: detail.participants,
                     votes: detail.votes,
                     chat: chat.messages.reverse()
-                });
+                };
             } catch (err) {
                 console.error('Failed to load live discussion ' + d.id + ':', err);
+                return null;
             }
-        }
+        }));
 
-        liveDiscussions.value = results;
+        liveDiscussions.value = results.filter(Boolean);
         scrollLiveChats(true);
         startLivePolling();
     }
 
     async function refreshLiveChats() {
-        const stillActive = [];
-        for (const live of liveDiscussions.value) {
-            try {
-                // Re-check discussion status — remove concluded/timed-out discussions
-                const detail = await api('/admin/discussions/detail', { discussion_id: live.discussion.id });
-                if (detail.discussion.status !== 'active') {
-                    continue;
+        if (livePolling) return; // Guard against overlapping polls
+        livePolling = true;
+        try {
+            const results = await Promise.all(liveDiscussions.value.map(async live => {
+                try {
+                    const [detail, chat] = await Promise.all([
+                        api('/admin/discussions/detail', { discussion_id: live.discussion.id }),
+                        api('/admin/chat', { channel: 'discussion-' + live.discussion.id, limit: 500 })
+                    ]);
+                    if (detail.discussion.status !== 'active') return null;
+                    return {
+                        discussion: detail.discussion,
+                        participants: detail.participants,
+                        votes: detail.votes,
+                        chat: chat.messages.reverse()
+                    };
+                } catch (err) {
+                    console.error('Failed to refresh live chat:', err);
+                    return live; // Keep on error
                 }
-                live.discussion = detail.discussion;
-                live.participants = detail.participants;
-                live.votes = detail.votes;
-                const chat = await api('/admin/chat', { channel: 'discussion-' + live.discussion.id, limit: 500 });
-                live.chat = chat.messages.reverse();
-                stillActive.push(live);
-            } catch (err) {
-                console.error('Failed to refresh live chat:', err);
-                stillActive.push(live);
+            }));
+            const stillActive = results.filter(Boolean);
+            liveDiscussions.value = stillActive;
+            if (stillActive.length === 0) {
+                stopLivePolling();
             }
+            scrollLiveChats();
+        } finally {
+            livePolling = false;
         }
-        liveDiscussions.value = stillActive;
-        if (stillActive.length === 0) {
-            stopLivePolling();
-        }
-        scrollLiveChats();
     }
 
     function scrollLiveChats(force) {

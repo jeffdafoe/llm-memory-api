@@ -9,6 +9,7 @@ function useErrorLog({ api, authenticated }) {
     const errorLogFilterSubsystem = ref('');
     const errorLogExpandedId = ref(null);
     let errorLogTimer = null;
+    let errorLogPolling = false;
 
     const ERROR_LOG_POLL_MS = 3000;
     const ERROR_LOG_MAX_ENTRIES = 500;
@@ -49,7 +50,8 @@ function useErrorLog({ api, authenticated }) {
     }
 
     async function pollErrorLog() {
-        if (errorLogPaused.value) return;
+        if (errorLogPaused.value || errorLogPolling) return;
+        errorLogPolling = true;
         try {
             const data = await api('/admin/error-log', { since_id: errorLogLastId.value, limit: 200 });
             if (data.entries.length > 0) {
@@ -61,6 +63,8 @@ function useErrorLog({ api, authenticated }) {
             }
         } catch (err) {
             console.error('Failed to poll error log:', err);
+        } finally {
+            errorLogPolling = false;
         }
     }
 
