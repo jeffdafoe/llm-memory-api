@@ -122,7 +122,8 @@ createApp({
             chatModule.closeDialogs();
             mailModule.closeDialogs();
             actorsConfigModule.closeDialogs();
-            core.confirmPrompt.value = null;
+            core.cancelConfirm();
+            core.showChangePassword.value = false;
         }
 
         // Auto-refresh polling
@@ -172,14 +173,17 @@ createApp({
             }
         });
 
-        // Lifecycle
+        // Lifecycle — store handler refs for proper cleanup
+        function handleKeydown(e) {
+            if (e.key === 'Escape') closeAllDialogs();
+        }
+        function handleDialogClick(e) {
+            if (e.target.tagName === 'DIALOG') closeAllDialogs();
+        }
+
         onMounted(() => {
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') closeAllDialogs();
-            });
-            document.addEventListener('click', (e) => {
-                if (e.target.tagName === 'DIALOG') closeAllDialogs();
-            });
+            document.addEventListener('keydown', handleKeydown);
+            document.addEventListener('click', handleDialogClick);
             document.addEventListener('visibilitychange', handleVisibility);
 
             if (core.restoreSession()) {
@@ -195,7 +199,10 @@ createApp({
             dashboardModule.stopLivePolling();
             apiLogModule.stopApiLogPolling();
             errorLogModule.stopErrorLogPolling();
+            notesModule.stopReindexPolling();
             eventsModule.disconnect();
+            document.removeEventListener('keydown', handleKeydown);
+            document.removeEventListener('click', handleDialogClick);
             document.removeEventListener('visibilitychange', handleVisibility);
         });
 
@@ -216,6 +223,7 @@ createApp({
                 dashboardModule.stopLivePolling();
                 apiLogModule.stopApiLogPolling();
                 errorLogModule.stopErrorLogPolling();
+                notesModule.stopReindexPolling();
                 eventsModule.disconnect();
             });
         }

@@ -16,12 +16,32 @@ function useCore() {
     const confirmPrompt = ref(null);
 
     function showConfirm(message, action) {
-        confirmPrompt.value = { message, action };
+        // Two calling conventions:
+        // 1. showConfirm('msg', callback) — callback-style, runs callback on confirm
+        // 2. const ok = await showConfirm('msg') — promise-style, resolves true/false
+        if (typeof action === 'function') {
+            confirmPrompt.value = { message, action };
+            return;
+        }
+        return new Promise(resolve => {
+            confirmPrompt.value = {
+                message,
+                action: () => resolve(true),
+                cancel: () => resolve(false)
+            };
+        });
     }
 
     function executeConfirm() {
         if (confirmPrompt.value && confirmPrompt.value.action) {
             confirmPrompt.value.action();
+        }
+        confirmPrompt.value = null;
+    }
+
+    function cancelConfirm() {
+        if (confirmPrompt.value && confirmPrompt.value.cancel) {
+            confirmPrompt.value.cancel();
         }
         confirmPrompt.value = null;
     }
@@ -301,7 +321,7 @@ function useCore() {
         loginForm, loginError, loggingIn,
         showChangePassword, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
         login, logout, restoreSession,
-        api, showConfirm, executeConfirm, confirmPrompt,
+        api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatTime,
         statusIcon, outcomeIcon, agentColor, shortAgentName, voteQuestion

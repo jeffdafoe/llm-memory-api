@@ -126,16 +126,16 @@
 </dialog>
 
 <!-- Reusable confirm dialog -->
-<dialog :open="confirmPrompt !== null" @close="confirmPrompt = null">
+<dialog :open="confirmPrompt !== null" @close="cancelConfirm">
     <article v-if="confirmPrompt" class="confirm-dialog">
         <header>
-            <button aria-label="Close" rel="prev" @click="confirmPrompt = null"></button>
+            <button aria-label="Close" rel="prev" @click="cancelConfirm"></button>
         </header>
         <div class="dialog-body">
             <p>{{ confirmPrompt.message }}</p>
             <div class="button-row">
                 <button @click="executeConfirm">Confirm</button>
-                <button class="secondary" @click="confirmPrompt = null">Cancel</button>
+                <button class="secondary" @click="cancelConfirm">Cancel</button>
             </div>
         </div>
     </article>

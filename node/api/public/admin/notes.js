@@ -98,9 +98,14 @@ function useNotes({ api, showToast, showConfirm }) {
         try {
             const data = await api('/admin/notes/namespaces');
             notesNamespaces.value = data.namespaces;
-            for (const ns of data.namespaces) {
-                const notesData = await api('/admin/notes/list', { namespace: ns.namespace, limit: 500 });
-                notesTreesRaw.value[ns.namespace] = buildTree(notesData.notes);
+            const results = await Promise.all(
+                data.namespaces.map(ns =>
+                    api('/admin/notes/list', { namespace: ns.namespace, limit: 500 })
+                        .then(notesData => ({ namespace: ns.namespace, notes: notesData.notes }))
+                )
+            );
+            for (const { namespace, notes } of results) {
+                notesTreesRaw.value[namespace] = buildTree(notes);
             }
         } catch (err) {
             console.error('Failed to load notes:', err);
@@ -268,7 +273,7 @@ function useNotes({ api, showToast, showConfirm }) {
         loadNotes, toggleNamespace, toggleFolder,
         openNote, openNoteFromSearch,
         startEditNote, cancelEditNote, saveEditedNote, confirmDeleteNote,
-        searchNotes, reindexNotes, pollReindexStatus
+        searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling
     };
 }
 
