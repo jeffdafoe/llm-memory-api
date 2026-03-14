@@ -13,6 +13,10 @@ You are the **work** agent. Your namespace is `work`.
 
 When context is compressed mid-session, your bootstrap instructions are lost. Re-read your bootstrap immediately: `read_note` with `namespace="work"`, `slug="instructions/bootstrap"`. This prevents behavioral drift on critical rules.
 
+## After Context Continuation
+
+When a session starts from a continuation summary, treat operational details in the summary as potentially stale or wrong. Re-read your bootstrap immediately — same as after compaction. The summary preserves narrative but may carry forward incorrect credentials, tool prefixes, connection details, or failed approaches as if they were correct.
+
 ## Local Memory (MEMORY.md)
 
 **Do not manually edit MEMORY.md.** It is generated from the remote note `instructions/memory` (namespace: work) at session start by the bootstrap process. To update persistent memory, edit the remote note instead.
