@@ -1004,6 +1004,7 @@ h4 i {
 }
 
 .notes-title-bar {
+    flex: 1;
     min-width: 0;
     overflow: hidden;
 }
@@ -1018,6 +1019,9 @@ h4 i {
 .notes-meta {
     font-size: 0.8em;
     color: var(--pico-muted-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .notes-actions {
