@@ -343,7 +343,11 @@ router.post('/admin/agents', async (req, res) => {
             if (row.provider && row.model) {
                 let config = {};
                 if (row.configuration) {
-                    try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+                    if (typeof row.configuration === 'object') {
+                        config = row.configuration;
+                    } else {
+                        try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+                    }
                 }
                 row.pricing_info = formatPricing(row.provider, row.model, config);
             }
@@ -1450,7 +1454,11 @@ router.post('/admin/agents/read', async (req, res) => {
         if (row.provider && row.model) {
             let agentConfig = {};
             if (row.configuration) {
-                try { agentConfig = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+                if (typeof row.configuration === 'object') {
+                    agentConfig = row.configuration;
+                } else {
+                    try { agentConfig = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+                }
             }
             row.pricing_info = formatPricing(row.provider, row.model, agentConfig);
         }

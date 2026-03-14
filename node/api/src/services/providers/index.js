@@ -83,8 +83,12 @@ function getModelPricing(providerName, modelId) {
 function calculateCost(providerName, modelId, usage) {
     // Provider-computed cost takes precedence — the provider knows its own
     // pricing quirks (service tiers, caching discounts, per-request fees, etc.)
+    // Validate before trusting: must be a finite non-negative number.
     if (usage.cost != null) {
-        return usage.cost;
+        const providerCost = Number(usage.cost);
+        if (Number.isFinite(providerCost) && providerCost >= 0) {
+            return providerCost;
+        }
     }
 
     // Fallback: static formula from model pricing registry
