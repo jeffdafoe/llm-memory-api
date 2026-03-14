@@ -686,6 +686,34 @@ router.post('/admin/mail', async (req, res) => {
     }
 });
 
+// POST /admin/mail/delete — soft-delete a mail message
+router.post('/admin/mail/delete', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
+        });
+    }
+    try {
+        const result = await pool.query(
+            'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id',
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'Mail not found or already deleted' }
+            });
+        }
+        logAdmin('mail_delete', { mail_id: id, user_id: req.authenticatedUser.id });
+        res.json({ id, message: 'Mail deleted' });
+    } catch (err) {
+        console.error('Admin mail delete error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to delete mail' }
+        });
+    }
+});
+
 // POST /admin/mail/send — send mail to an agent from the admin dashboard
 router.post('/admin/mail/send', async (req, res) => {
     const { to, subject, body } = req.body;

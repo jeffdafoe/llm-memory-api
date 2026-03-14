@@ -1196,6 +1196,9 @@
                             <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
                             <div class="mail-body">{{ selectedMail.body }}</div>
                         </div>
+                        <footer style="text-align: right;">
+                            <button class="inline-button secondary" @click="deleteMail(selectedMail)"><i class="icon-trash-2"></i> Delete</button>
+                        </footer>
                     </article>
                 </dialog>
 

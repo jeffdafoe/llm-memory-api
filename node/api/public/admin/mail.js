@@ -53,6 +53,18 @@ function useMail({ api, showToast }) {
         }
     }
 
+    async function deleteMail(msg) {
+        try {
+            await api('/admin/mail/delete', { id: msg.id });
+            mailMessages.value = mailMessages.value.filter(m => m.id !== msg.id);
+            selectedMail.value = null;
+            showToast('Mail deleted');
+        } catch (err) {
+            console.error('Failed to delete mail:', err);
+            showToast('Failed to delete: ' + err.message, 'error');
+        }
+    }
+
     function closeDialogs() {
         selectedMail.value = null;
     }
@@ -60,7 +72,7 @@ function useMail({ api, showToast }) {
     return {
         mailMessages, selectedMail,
         mailComposing, mailTo, mailSubject, mailBody, mailSending,
-        loadMail, viewMail, startComposeMail, cancelComposeMail, sendMail,
+        loadMail, viewMail, startComposeMail, cancelComposeMail, sendMail, deleteMail,
         closeDialogs
     };
 }
