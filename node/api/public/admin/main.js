@@ -51,7 +51,26 @@ createApp({
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
-        const actorsConfigModule = useActorsConfig({ ...deps, agentsModule });
+        const actorsConfigModule = useActorsConfig({ ...deps, agentsModule, user: core.user, permissions: core.permissions });
+
+        // Navigate to the first permitted view (used on login/restore)
+        function navigateToFirstPermitted() {
+            const viewPerms = [
+                ['dashboard', 'dashboard'],
+                ['agents', 'agents'],
+                ['comms', 'comms'],
+                ['notes', 'notes'],
+                ['config', 'config']
+            ];
+            for (const [view, resource] of viewPerms) {
+                if (core.canDo(resource, 'read')) {
+                    currentView.value = view;
+                    return;
+                }
+            }
+            // No permissions at all — stay on dashboard (will show empty)
+            currentView.value = 'dashboard';
+        }
 
         // View loading — route data fetches to the right module
         function loadCurrentView() {
@@ -172,6 +191,7 @@ createApp({
         // Login/logout wrappers that hook into polling
         function login() {
             core.login(() => {
+                navigateToFirstPermitted();
                 loadCurrentView();
                 startPolling();
                 notesModule.pollReindexStatus();

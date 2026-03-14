@@ -35,11 +35,11 @@
                     <li><strong>Memory API Admin — {{ viewTitle }}</strong></li>
                 </ul>
                 <ul>
-                    <li><a href="#" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">Dashboard</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'comms' }" @click.prevent="currentView = 'comms'">Communications</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">Notes</a></li>
-                    <li><a href="#" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">Configuration</a></li>
+                    <li v-if="canDo('dashboard', 'read')"><a href="#" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">Dashboard</a></li>
+                    <li v-if="canDo('agents', 'read')"><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
+                    <li v-if="canDo('comms', 'read')"><a href="#" :class="{ active: currentView === 'comms' }" @click.prevent="currentView = 'comms'">Communications</a></li>
+                    <li v-if="canDo('notes', 'read')"><a href="#" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">Notes</a></li>
+                    <li v-if="canDo('config', 'read')"><a href="#" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">Configuration</a></li>
                     <li><a href="#" @click.prevent="showChangePassword = true" title="Change password"><i class="icon-key-round"></i></a></li>
                     <li><a href="#" @click.prevent="logout">Logout</a></li>
                 </ul>
@@ -390,7 +390,7 @@
                     <!-- Mail sub-tab -->
                     <div v-if="commSubTab === 'mail'">
                         <div class="mail-toolbar">
-                            <button v-if="!mailComposing" class="inline-button" @click="startComposeMail"><i class="icon-edit"></i> Compose</button>
+                            <button v-if="!mailComposing && canDo('comms', 'write')" class="inline-button" @click="startComposeMail"><i class="icon-edit"></i> Compose</button>
                         </div>
                         <div v-if="mailComposing" class="mail-compose">
                             <div class="mail-compose-row">
@@ -529,17 +529,17 @@
                 <!-- Configuration view (with sub-tabs) -->
                 <div v-if="currentView === 'config'">
                     <div class="sub-tabs">
-                        <a href="#" :class="{ active: configSubTab === 'actors' }" @click.prevent="configSubTab = 'actors'">Actors</a>
-                        <a href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
-                        <a href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
-                        <a href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
-                        <a href="#" :class="{ active: configSubTab === 'templates' }" @click.prevent="configSubTab = 'templates'; loadTemplates()">Templates</a>
+                        <a v-if="canDo('actors', 'read')" href="#" :class="{ active: configSubTab === 'actors' }" @click.prevent="configSubTab = 'actors'">Actors</a>
+                        <a v-if="canDo('config', 'read')" href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
+                        <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
+                        <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
+                        <a v-if="canDo('templates', 'read')" href="#" :class="{ active: configSubTab === 'templates' }" @click.prevent="configSubTab = 'templates'; loadTemplates()">Templates</a>
                     </div>
 
                     <!-- Actors sub-tab -->
                     <div v-if="configSubTab === 'actors'">
                         <div style="margin-bottom: 0.75rem;">
-                            <button class="inline-button" @click="startCreateActor"><i class="icon-plus"></i> Add Actor</button>
+                            <button v-if="canDo('actors', 'write')" class="inline-button" @click="startCreateActor"><i class="icon-plus"></i> Add Actor</button>
                         </div>
                         <table>
                             <thead>
@@ -792,7 +792,7 @@
                             </form>
                         </div>
                         <div class="notes-toolbar-row">
-                            <button class="inline-button danger" @click="reindexNotes" :disabled="notesReindexing">{{ notesReindexing ? 'Reindexing...' : 'Reindex Vectors' }}</button>
+                            <button v-if="canDo('notes', 'write')" class="inline-button danger" @click="reindexNotes" :disabled="notesReindexing">{{ notesReindexing ? 'Reindexing...' : 'Reindex Vectors' }}</button>
                         </div>
                         <div v-if="notesSearchResults" class="notes-search-results">
                             <div class="notes-search-header">
@@ -847,10 +847,10 @@
                                     <div class="notes-meta" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
                                 </div>
                                 <div class="notes-actions">
-                                    <button v-if="!notesEditing" class="inline-button" @click="startEditNote">Edit</button>
+                                    <button v-if="!notesEditing && canDo('notes', 'write')" class="inline-button" @click="startEditNote">Edit</button>
                                     <button v-if="notesEditing" class="inline-button" @click="saveEditedNote" :disabled="notesSaving">{{ notesSaving ? 'Saving...' : 'Save' }}</button>
                                     <button v-if="notesEditing" class="inline-button secondary" @click="cancelEditNote">Cancel</button>
-                                    <button v-if="!notesEditing" class="inline-button danger" @click="confirmDeleteNote">Delete</button>
+                                    <button v-if="!notesEditing && canDo('notes', 'delete')" class="inline-button danger" @click="confirmDeleteNote">Delete</button>
                                 </div>
                             </div>
                             <div v-if="notesEditing" class="notes-editor">
@@ -986,6 +986,60 @@
                                     Remove UI Access
                                 </button>
                             </div>
+
+                            <!-- Admin Permissions (only for UI users) -->
+                            <template v-if="selectedActorConfig.is_user">
+                                <hr style="margin: 1.5rem 0;">
+                                <h4>Admin Permissions</h4>
+                                <p class="muted" style="margin-bottom: 0.5rem;">Controls what this user can access in the admin dashboard.</p>
+
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                                    <input type="checkbox" v-model="actorHasWildcardAdmin">
+                                    Full access (all resources, all actions)
+                                </label>
+
+                                <div v-if="!actorHasWildcardAdmin">
+                                    <table class="compact-table" style="margin-bottom: 0;">
+                                        <thead>
+                                            <tr>
+                                                <th>Resource</th>
+                                                <th style="text-align: center;">Read</th>
+                                                <th style="text-align: center;">Write</th>
+                                                <th style="text-align: center;">Delete</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(row, idx) in actorAdminPerms" :key="row.resource">
+                                                <td>{{ row.label }}</td>
+                                                <td style="text-align: center;">
+                                                    <input v-if="row.actions.includes('read')" type="checkbox"
+                                                        :checked="adminPermChecked(idx, 'read')"
+                                                        @change="toggleAdminPerm(idx, 'read')">
+                                                    <span v-else class="muted">—</span>
+                                                </td>
+                                                <td style="text-align: center;">
+                                                    <input v-if="row.actions.includes('write')" type="checkbox"
+                                                        :checked="adminPermChecked(idx, 'write')"
+                                                        @change="toggleAdminPerm(idx, 'write')">
+                                                    <span v-else class="muted">—</span>
+                                                </td>
+                                                <td style="text-align: center;">
+                                                    <input v-if="row.actions.includes('delete')" type="checkbox"
+                                                        :checked="adminPermChecked(idx, 'delete')"
+                                                        @change="toggleAdminPerm(idx, 'delete')">
+                                                    <span v-else class="muted">—</span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div style="margin-top: 1rem;">
+                                    <button @click="saveActorConfig" :disabled="actorConfigSaving">
+                                        {{ actorConfigSaving ? 'Saving...' : 'Save All' }}
+                                    </button>
+                                </div>
+                            </template>
 
                         </div>
                         <div v-else class="dialog-body">
@@ -1182,7 +1236,7 @@
                             <div class="mail-body">{{ selectedMessage.message }}</div>
                         </div>
                         <footer style="text-align: right;">
-                            <button class="inline-button secondary" @click="deleteChat(selectedMessage)"><i class="icon-trash-2"></i> Delete</button>
+                            <button v-if="canDo('comms', 'delete')" class="inline-button secondary" @click="deleteChat(selectedMessage)"><i class="icon-trash-2"></i> Delete</button>
                         </footer>
                     </article>
                 </dialog>
@@ -1200,7 +1254,7 @@
                             <div class="mail-body">{{ selectedMail.body }}</div>
                         </div>
                         <footer style="text-align: right;">
-                            <button class="inline-button secondary" @click="deleteMail(selectedMail)"><i class="icon-trash-2"></i> Delete</button>
+                            <button v-if="canDo('comms', 'delete')" class="inline-button secondary" @click="deleteMail(selectedMail)"><i class="icon-trash-2"></i> Delete</button>
                         </footer>
                     </article>
                 </dialog>
@@ -1209,7 +1263,7 @@
                 <dialog :open="selectedAgent !== null" @close="selectedAgent = null">
                     <article v-if="selectedAgent" class="agent-detail-dialog">
                         <header>
-                            <button v-if="!agentPassphraseConfirming && !agentNewPassphrase" class="passphrase-reset-btn" @click="agentPassphraseConfirming = true" title="Reset Passphrase"><i class="icon-key"></i></button>
+                            <button v-if="!agentPassphraseConfirming && !agentNewPassphrase && canDo('agents', 'write')" class="passphrase-reset-btn" @click="agentPassphraseConfirming = true" title="Reset Passphrase"><i class="icon-key"></i></button>
                             <button aria-label="Close" rel="prev" @click="selectedAgent = null"></button>
                         </header>
                         <div class="dialog-body">
@@ -1227,7 +1281,7 @@
                             <p>
                                 <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
                                 <span v-if="!agentProfileEditing && (selectedAgent.provider || selectedAgent.model)" class="muted" style="margin-left: 0.5em;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
-                                <button v-if="!agentProfileEditing" class="inline-button compact" @click="startEditProfile" title="Edit provider/model"><i class="icon-edit"></i></button>
+                                <button v-if="!agentProfileEditing && canDo('agents', 'write')" class="inline-button compact" @click="startEditProfile" title="Edit provider/model"><i class="icon-edit"></i></button>
                             </p>
                             <div v-if="agentProfileEditing" style="margin-bottom: 1rem;">
                                 <div class="form-row-inline" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
