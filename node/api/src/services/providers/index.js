@@ -120,27 +120,28 @@ function calculateCost(providerName, modelId, usage) {
 }
 
 // Format pricing as a human-readable string for the admin UI.
-// Optional config parameter lets us apply tier multipliers (e.g. flex = half price).
+// Delegates to the provider's formatPricing if it defines one,
+// otherwise falls back to a generic format from the static pricing object.
 function formatPricing(providerName, modelId, config) {
+    const mod = resolveProvider(providerName);
+
+    // Provider-specific formatting — the provider knows its own pricing dimensions
+    if (mod && mod.formatPricing) {
+        return mod.formatPricing(modelId, config);
+    }
+
+    // Generic fallback from static pricing data
     const pricing = getModelPricing(providerName, modelId);
     if (!pricing) return 'No pricing data';
 
-    // Apply tier multiplier if the agent's config specifies one
-    const isFlex = config && config.service_tier === 'flex';
-    const m = isFlex ? 0.5 : 1.0;
-
     const parts = [];
-    if (pricing.input != null) parts.push('$' + (pricing.input * m) + ' in');
-    if (pricing.output != null) parts.push('$' + (pricing.output * m) + ' out');
-    if (pricing.cache_write != null) parts.push('$' + (pricing.cache_write * m) + ' cache write');
-    if (pricing.cache_read != null) parts.push('$' + (pricing.cache_read * m) + ' cache read');
-    if (pricing.request != null) parts.push('$' + (pricing.request * m) + '/1K requests');
+    if (pricing.input != null) parts.push('$' + pricing.input + ' in');
+    if (pricing.output != null) parts.push('$' + pricing.output + ' out');
+    if (pricing.cache_write != null) parts.push('$' + pricing.cache_write + ' cache write');
+    if (pricing.cache_read != null) parts.push('$' + pricing.cache_read + ' cache read');
+    if (pricing.request != null) parts.push('$' + pricing.request + '/1K requests');
 
-    let result = parts.join(' / ') + ' per 1M tokens';
-    if (isFlex) {
-        result += ' (flex tier)';
-    }
-    return result;
+    return parts.join(' / ') + ' per 1M tokens';
 }
 
 // Get the configVersion for a specific provider + model.
