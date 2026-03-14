@@ -3,7 +3,7 @@ import '@picocss/pico/css/pico.min.css';
 import 'lucide-static/font/lucide.css';
 import './style.css';
 
-import { createApp, ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { createApp, ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
 import { useCore } from './core.js';
 import { createEventsModule } from './events.js';
 import { useAgents } from './agents.js';
@@ -17,7 +17,18 @@ import { useConfig } from './config.js';
 import { useActorsConfig } from './actors-config.js';
 import { useDashboard } from './dashboard.js';
 
+// View components
+import DashboardView from './views/DashboardView.js';
+import AgentsView from './views/AgentsView.js';
+import CommsView from './views/CommsView.js';
+import ConfigView from './views/ConfigView.js';
+import NotesView from './views/NotesView.js';
+import ActorDialogs from './views/ActorDialogs.js';
+import AgentDialog from './views/AgentDialog.js';
+import MiscDialogs from './views/MiscDialogs.js';
+
 createApp({
+    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs },
     setup() {
         const currentView = ref('dashboard');
 
@@ -210,7 +221,7 @@ createApp({
         }
 
         // Flatten everything into the template namespace
-        return {
+        const appState = {
             currentView,
             viewTitle,
             configSubTab,
@@ -240,5 +251,10 @@ createApp({
             // Dashboard
             ...dashboardModule,
         };
+
+        // Provide to child view components
+        provide('app', appState);
+
+        return appState;
     }
 }).mount('#app');

@@ -1,0 +1,44 @@
+<div>
+    <div class="table-wrap">
+        <table class="fixed-table">
+                <colgroup>
+                    <col class="col-activity">
+                    <col style="width: 10em;">
+                    <col style="width: 10em;">
+                    <col>
+                    <col class="col-time">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="col-activity"></th>
+                        <th>Agent</th>
+                        <th>Personality</th>
+                        <th>Provider / Model</th>
+                        <th class="time-cell">Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                        <td class="icon-cell">
+                            <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
+                            <span v-else :class="'status-dot status-dot-' + agent.status" :title="agent.status"></span>
+                        </td>
+                        <td class="nowrap" :title="agent.agent">
+                            {{ shortAgentName(agent.agent) }}
+                            <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
+                        </td>
+                        <td class="muted truncate" style="font-style: italic;">{{ agent.personality || '' }}</td>
+                        <td class="muted">
+                            {{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}
+                            <br v-if="agent.pricing_info"><small v-if="agent.pricing_info" style="opacity: 0.7;">{{ agent.pricing_info }}</small>
+                        </td>
+                        <td class="time-cell">
+                            {{ formatDate(agent.last_seen) }}
+                            <br><small class="muted" style="opacity: 0.7;">reg. {{ formatDate(agent.registered_at) }}</small>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

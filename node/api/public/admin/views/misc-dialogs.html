@@ -1,0 +1,143 @@
+<div>
+<!-- Discussion detail modal -->
+<dialog :open="selectedDiscussion !== null" @close="selectedDiscussion = null">
+    <article v-if="selectedDiscussion">
+        <header>
+            <button aria-label="Close" rel="prev" @click="selectedDiscussion = null"></button>
+        </header>
+        <div class="dialog-body">
+            <h3>Discussion #{{ selectedDiscussion.discussion.id }}: {{ selectedDiscussion.discussion.topic }}</h3>
+            <div class="grid">
+                <div>
+                    <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
+                    <strong>Outcome:</strong> <i v-if="selectedDiscussion.discussion.outcome" :class="'outcome-' + selectedDiscussion.discussion.outcome + ' ' + outcomeIcon(selectedDiscussion.discussion.outcome)" :title="selectedDiscussion.discussion.outcome"></i> {{ selectedDiscussion.discussion.outcome || '—' }}<br>
+                    <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
+                    <strong>Created by:</strong> {{ selectedDiscussion.discussion.created_by }}<br>
+                    <strong>Created:</strong> {{ formatDate(selectedDiscussion.discussion.created_at) }}
+                </div>
+                <div>
+                    <strong>Participants:</strong>
+                    <ul>
+                        <li v-for="p in selectedDiscussion.participants" :key="p.agent" :title="p.agent">
+                            {{ shortAgentName(p.agent) }} ({{ p.status }})
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div v-if="selectedDiscussion.votes.length > 0">
+                <h4>Votes</h4>
+                <div v-for="v in selectedDiscussion.votes" :key="v.id" class="vote-card">
+                    <strong>Vote #{{ v.id }}:</strong> {{ v.question }}<br>
+                    <strong>Status:</strong> {{ v.status }} | <strong>Type:</strong> {{ v.type }}<br>
+                    <div v-if="v.ballots && v.ballots[0]">
+                        <strong>Ballots:</strong>
+                        <ul>
+                            <li v-for="b in v.ballots" :key="b.agent" :title="b.agent">
+                                {{ shortAgentName(b.agent) }}: choice {{ b.choice }}
+                                <span v-if="b.reason"> — {{ b.reason }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h4>
+                    Chat Transcript
+                    <button v-if="!discussionChat" class="inline-button" @click="loadDiscussionChat(selectedDiscussion.discussion.id)">Load</button>
+                </h4>
+                <div v-if="discussionChat">
+                    <div v-if="discussionChat.length === 0"><em>No messages found for this discussion.</em></div>
+                    <div v-else class="chat-transcript">
+                        <div v-for="msg in discussionChat" :key="msg.id" class="chat-bubble" :class="'chat-from-' + msg.from_agent">
+                            <div class="chat-meta">
+                                <strong :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</strong>
+                                <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
+                            </div>
+                            <div class="chat-text">{{ msg.message }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </article>
+</dialog>
+
+<!-- Chat message modal -->
+<dialog :open="selectedMessage !== null" @close="selectedMessage = null">
+    <article v-if="selectedMessage">
+        <header>
+            <button aria-label="Close" rel="prev" @click="selectedMessage = null"></button>
+        </header>
+        <div class="dialog-body">
+            <h3>Chat Message</h3>
+            <p><strong>From:</strong> {{ selectedMessage.from_agent }} <strong>To:</strong> {{ selectedMessage.to_agent }}</p>
+            <p><strong>Date:</strong> {{ formatDate(selectedMessage.sent_at) }}
+                <span v-if="selectedMessage.channel"> | <strong>Channel:</strong> {{ selectedMessage.channel }}</span>
+            </p>
+            <div class="mail-body">{{ selectedMessage.message }}</div>
+        </div>
+        <footer style="text-align: right;">
+            <button v-if="canDo('comms', 'delete')" class="inline-button secondary" @click="deleteChat(selectedMessage)"><i class="icon-trash-2"></i> Delete</button>
+        </footer>
+    </article>
+</dialog>
+
+<!-- Mail modal -->
+<dialog :open="selectedMail !== null" @close="selectedMail = null">
+    <article v-if="selectedMail">
+        <header>
+            <button aria-label="Close" rel="prev" @click="selectedMail = null"></button>
+        </header>
+        <div class="dialog-body">
+            <h3>{{ selectedMail.subject }}</h3>
+            <p><strong>From:</strong> {{ selectedMail.from_agent }} <strong>To:</strong> {{ selectedMail.to_agent }}</p>
+            <p><strong>Date:</strong> {{ formatDate(selectedMail.sent_at) }}</p>
+            <div class="mail-body">{{ selectedMail.body }}</div>
+        </div>
+        <footer style="text-align: right;">
+            <button v-if="canDo('comms', 'delete')" class="inline-button secondary" @click="deleteMail(selectedMail)"><i class="icon-trash-2"></i> Delete</button>
+        </footer>
+    </article>
+</dialog>
+<!-- Change password dialog -->
+<dialog :open="showChangePassword" @close="showChangePassword = false">
+    <article v-if="showChangePassword" class="confirm-dialog">
+        <header>
+            <button aria-label="Close" rel="prev" @click="showChangePassword = false"></button>
+            <h3>Change Password</h3>
+        </header>
+        <div class="dialog-body">
+            <label>Current password
+                <input type="password" v-model="changePasswordForm.current" placeholder="Current password">
+            </label>
+            <label>New password
+                <input type="password" v-model="changePasswordForm.newPassword" placeholder="New password">
+            </label>
+            <label>Confirm new password
+                <input type="password" v-model="changePasswordForm.confirm" placeholder="Confirm new password">
+            </label>
+            <p v-if="changePasswordError" class="error-text">{{ changePasswordError }}</p>
+            <div class="button-row">
+                <button @click="changePassword" :disabled="changePasswordSaving">{{ changePasswordSaving ? 'Saving...' : 'Change Password' }}</button>
+                <button class="secondary" @click="showChangePassword = false">Cancel</button>
+            </div>
+        </div>
+    </article>
+</dialog>
+
+<!-- Reusable confirm dialog -->
+<dialog :open="confirmPrompt !== null" @close="confirmPrompt = null">
+    <article v-if="confirmPrompt" class="confirm-dialog">
+        <header>
+            <button aria-label="Close" rel="prev" @click="confirmPrompt = null"></button>
+        </header>
+        <div class="dialog-body">
+            <p>{{ confirmPrompt.message }}</p>
+            <div class="button-row">
+                <button @click="executeConfirm">Confirm</button>
+                <button class="secondary" @click="confirmPrompt = null">Cancel</button>
+            </div>
+        </div>
+    </article>
+</dialog>
+</div>
