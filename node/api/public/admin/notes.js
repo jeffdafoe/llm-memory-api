@@ -1,5 +1,7 @@
 // notes.js — Notes browser (tree view, editor, search, reindex)
 import { ref, computed } from 'vue';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 function useNotes({ api, showToast, showConfirm }) {
     const notesNamespaces = ref([]);
@@ -85,6 +87,11 @@ function useNotes({ api, showToast, showConfirm }) {
             result[ns.namespace] = visibleTree(ns.namespace);
         }
         return result;
+    });
+
+    const renderedNoteContent = computed(() => {
+        if (!selectedNote.value || !selectedNote.value.content) return '';
+        return DOMPurify.sanitize(marked.parse(selectedNote.value.content));
     });
 
     async function loadNotes() {
@@ -255,7 +262,7 @@ function useNotes({ api, showToast, showConfirm }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
+        selectedNote, renderedNoteContent, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
         loadNotes, toggleNamespace, toggleFolder,
