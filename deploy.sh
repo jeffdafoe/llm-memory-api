@@ -17,6 +17,38 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Ensure PostgreSQL is running (fix missing conf.d, stale PID, etc.)
+if ! pg_lsclusters -h | grep -q 'online'; then
+    echo -e "\033[1;33mPostgreSQL is not running — attempting recovery...\033[0m"
+    # Fix missing conf.d directory (required by postgresql.conf include_dir)
+    PG_CONF_DIR=$(pg_lsclusters -h | awk '{print "/etc/postgresql/" $1 "/" $2}')
+    if [ -n "$PG_CONF_DIR" ] && [ ! -d "$PG_CONF_DIR/conf.d" ]; then
+        echo "  Creating missing $PG_CONF_DIR/conf.d"
+        mkdir -p "$PG_CONF_DIR/conf.d"
+        chown postgres:postgres "$PG_CONF_DIR/conf.d"
+    fi
+    # Remove stale PID file if present
+    PG_DATA=$(pg_lsclusters -h | awk '{print $6}')
+    if [ -n "$PG_DATA" ] && [ -f "$PG_DATA/postmaster.pid" ]; then
+        if ! pgrep -F "$PG_DATA/postmaster.pid" >/dev/null 2>&1; then
+            echo "  Removing stale PID file"
+            rm -f "$PG_DATA/postmaster.pid"
+        fi
+    fi
+    # Start PostgreSQL
+    PG_VER=$(pg_lsclusters -h | awk '{print $1}')
+    PG_NAME=$(pg_lsclusters -h | awk '{print $2}')
+    pg_ctlcluster "$PG_VER" "$PG_NAME" start
+    sleep 2
+    if pg_lsclusters -h | grep -q 'online'; then
+        echo -e "\033[1;32m  PostgreSQL recovered.\033[0m"
+    else
+        echo -e "\033[1;31m  PostgreSQL failed to start. Check logs.\033[0m"
+        tail -20 /var/log/postgresql/postgresql-*-*.log
+        exit 1
+    fi
+fi
+
 # Pull latest if git repo exists
 echo -e "\033[1m[1/3] Updating code...\033[0m"
 cd /opt/llm-memory-api
