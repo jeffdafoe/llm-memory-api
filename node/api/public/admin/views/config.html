@@ -12,20 +12,58 @@
         <div style="margin-bottom: 0.75rem;">
             <button v-if="canDo('actors', 'write')" class="inline-button" @click="startCreateActor"><i class="icon-plus"></i> Add Actor</button>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="openActorConfig(actor)">
-                    <td>{{ actor.name }}</td>
-                    <td><span v-if="actor.is_agent" class="badge badge-type-agent">agent</span> <span v-if="actor.is_user" class="badge badge-type-user">user</span></td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="table-wrap">
+            <table class="fixed-table">
+                <colgroup>
+                    <col class="col-activity">
+                    <col style="width: 10em;">
+                    <col style="width: 6em;">
+                    <col style="width: 10em;">
+                    <col>
+                    <col class="col-time">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="col-activity"></th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Personality</th>
+                        <th>Provider / Model</th>
+                        <th class="time-cell">Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="openActorConfig(actor)">
+                        <td class="icon-cell">
+                            <template v-if="actor.is_agent">
+                                <i v-if="actor.active_since" class="icon-loader activity-spinner" title="Active"></i>
+                                <span v-else :class="'status-dot status-dot-' + actor.status" :title="actor.status"></span>
+                            </template>
+                        </td>
+                        <td class="nowrap" :title="actor.name">
+                            {{ shortAgentName(actor.name) }}
+                            <i v-if="actor.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
+                        </td>
+                        <td>
+                            <span v-if="actor.is_agent" class="badge badge-type-agent">agent</span>
+                            <span v-if="actor.is_user" class="badge badge-type-user">user</span>
+                        </td>
+                        <td class="muted truncate" style="font-style: italic;">{{ actor.personality || '' }}</td>
+                        <td class="muted">
+                            {{ [actor.provider, actor.model].filter(Boolean).join(' / ') || '—' }}
+                            <br v-if="actor.pricing_info"><small v-if="actor.pricing_info" style="opacity: 0.7;">{{ actor.pricing_info }}</small>
+                        </td>
+                        <td class="time-cell">
+                            <template v-if="actor.is_agent">
+                                {{ formatDate(actor.last_seen) }}
+                                <br><small class="muted" style="opacity: 0.7;">reg. {{ formatDate(actor.registered_at) }}</small>
+                            </template>
+                            <template v-else>—</template>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- System sub-tab -->

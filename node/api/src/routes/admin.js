@@ -1689,11 +1689,32 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), async (req, res
         const result = await pool.query(
             `SELECT a.id, a.name, a.created_at,
                     (ac.actor_id IS NOT NULL) AS is_agent,
-                    (a.password_hash IS NOT NULL) AS is_user
+                    (a.password_hash IS NOT NULL) AS is_user,
+                    s.status, s.last_seen, s.registered_at,
+                    s.provider, s.model, s.virtual, s.personality,
+                    s.active_since, s.configuration
              FROM actors a
              LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
+             LEFT JOIN agent_status s ON s.actor_id = a.id
              ORDER BY a.name`
         );
+
+        // Compute pricing_info for agents that have provider+model
+        for (const row of result.rows) {
+            if (row.provider && row.model) {
+                let config = {};
+                if (row.configuration) {
+                    if (typeof row.configuration === 'object') {
+                        config = row.configuration;
+                    } else {
+                        try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+                    }
+                }
+                row.pricing_info = formatPricing(row.provider, row.model, config);
+            }
+            delete row.configuration;
+        }
+
         res.json({ actors: result.rows });
     } catch (err) {
         console.error('Admin actors list error:', err.message);
