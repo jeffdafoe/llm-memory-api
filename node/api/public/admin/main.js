@@ -35,6 +35,34 @@ createApp({
         const configSubTab = ref('actors');
         const commSubTab = ref('mail');
 
+        // ─── Hash-based tab persistence ───
+        const validViews = new Set(['dashboard', 'agents', 'comms', 'notes', 'config']);
+        const validConfigSubs = new Set(['actors', 'system', 'apilog', 'errorlog', 'templates']);
+        const validCommSubs = new Set(['mail', 'chat', 'discussions']);
+        let suppressHashUpdate = false;
+
+        function readHash() {
+            const hash = location.hash.replace(/^#\/?/, '');
+            if (!hash) return;
+            const [view, sub] = hash.split('/');
+            if (!validViews.has(view)) return;
+            suppressHashUpdate = true;
+            currentView.value = view;
+            if (view === 'config' && sub && validConfigSubs.has(sub)) configSubTab.value = sub;
+            if (view === 'comms' && sub && validCommSubs.has(sub)) commSubTab.value = sub;
+            suppressHashUpdate = false;
+        }
+
+        function writeHash() {
+            if (suppressHashUpdate) return;
+            let hash = currentView.value;
+            if (currentView.value === 'config') hash += '/' + configSubTab.value;
+            if (currentView.value === 'comms') hash += '/' + commSubTab.value;
+            if (location.hash !== '#' + hash) {
+                history.replaceState(null, '', '#' + hash);
+            }
+        }
+
         const viewTitles = {
             dashboard: 'Dashboard',
             agents: 'Agents',
@@ -160,14 +188,17 @@ createApp({
             }
         }
 
-        // Watch view changes
+        // Watch view changes — also update URL hash
         watch(currentView, () => {
+            writeHash();
             loadCurrentView();
         });
         watch(commSubTab, () => {
+            writeHash();
             if (currentView.value === 'comms') loadCurrentView();
         });
         watch(configSubTab, (tab) => {
+            writeHash();
             if (currentView.value === 'config' && tab === 'actors') {
                 actorsConfigModule.loadActorsConfig();
             }
@@ -181,12 +212,19 @@ createApp({
             if (e.target.tagName === 'DIALOG') closeAllDialogs();
         }
 
+        function handleHashChange() {
+            readHash();
+            if (core.authenticated.value) loadCurrentView();
+        }
+
         onMounted(() => {
             document.addEventListener('keydown', handleKeydown);
             document.addEventListener('click', handleDialogClick);
             document.addEventListener('visibilitychange', handleVisibility);
+            window.addEventListener('hashchange', handleHashChange);
 
             if (core.restoreSession()) {
+                readHash();
                 loadCurrentView();
                 startPolling();
                 notesModule.pollReindexStatus();
@@ -204,6 +242,7 @@ createApp({
             document.removeEventListener('keydown', handleKeydown);
             document.removeEventListener('click', handleDialogClick);
             document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('hashchange', handleHashChange);
         });
 
         // Login/logout wrappers that hook into polling
