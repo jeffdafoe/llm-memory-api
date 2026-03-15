@@ -8,9 +8,12 @@
 <body>
     <div id="app">
         <!-- Login screen -->
-        <main v-if="!authenticated" class="container" style="min-height: 100vh;">
-            <article class="login-card">
-                <h2>Memory API Admin</h2>
+        <main v-if="!authenticated" class="login-page">
+            <div class="login-card">
+                <div class="login-brand">
+                    <span class="login-brand-accent">LLM</span> Memory
+                </div>
+                <div class="login-subtitle">Admin Dashboard</div>
                 <form @submit.prevent="login">
                     <label>
                         Username
@@ -21,11 +24,11 @@
                         <input type="password" v-model="loginForm.password" required>
                     </label>
                     <p v-if="loginError" class="error">{{ loginError }}</p>
-                    <button type="submit" :disabled="loggingIn">
+                    <button type="submit" class="login-btn" :disabled="loggingIn">
                         {{ loggingIn ? 'Logging in...' : 'Log in' }}
                     </button>
                 </form>
-            </article>
+            </div>
         </main>
 
         <!-- App shell -->
