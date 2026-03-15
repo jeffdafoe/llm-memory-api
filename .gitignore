@@ -2,4 +2,8 @@ node_modules/
 infrastructure/local-secrets.yml
 .env
 .idea/
+.claude/
+.discuss.json
+.mcp.json
 node/api/public/admin/dist/
+node/api/preview-server.js
