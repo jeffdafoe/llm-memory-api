@@ -50,32 +50,33 @@
   notify: Reload postgresql
 
 - name: Create database user
-  shell: |
-    sudo -u postgres psql -c "CREATE USER {{ database_user }} WITH PASSWORD '{{ database_password }}';" || true
-  changed_when: false
-
-- name: Set database user password
-  shell: |
-    sudo -u postgres psql -c "ALTER USER {{ database_user }} WITH PASSWORD '{{ database_password }}';"
-  changed_when: false
+  become_user: postgres
+  postgresql_user:
+    name: "{{ database_user }}"
+    password: "{{ database_password }}"
+    state: present
   no_log: true
 
 - name: Create database
-  shell: |
-    sudo -u postgres psql -c "CREATE DATABASE {{ database_name }} OWNER {{ database_user }};" || true
-  changed_when: false
+  become_user: postgres
+  postgresql_db:
+    name: "{{ database_name }}"
+    owner: "{{ database_user }}"
+    state: present
 
 - name: Enable pgvector extension
-  shell: |
-    sudo -u postgres psql -d {{ database_name }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
-  changed_when: false
+  become_user: postgres
+  postgresql_ext:
+    name: vector
+    db: "{{ database_name }}"
+    state: present
 
 - name: Create migrations_applied table
-  shell: |
-    sudo -u postgres psql -d {{ database_name }} -c "
+  become_user: postgres
+  postgresql_query:
+    db: "{{ database_name }}"
+    query: |
       CREATE TABLE IF NOT EXISTS migrations_applied (
         migration_id VARCHAR(50) PRIMARY KEY,
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    "
-  changed_when: false
