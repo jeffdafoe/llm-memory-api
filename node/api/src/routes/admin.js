@@ -1525,8 +1525,16 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), async (req, res
         }
         const row = result.rows[0];
 
-        // Use client timezone for "today" boundary if provided, fall back to UTC
-        const tz = timezone || 'UTC';
+        // Validate client timezone — untrusted input, fall back to UTC
+        let tz = 'UTC';
+        if (typeof timezone === 'string' && timezone) {
+            try {
+                Intl.DateTimeFormat(undefined, { timeZone: timezone });
+                tz = timezone;
+            } catch (e) {
+                // Invalid timezone string, use UTC
+            }
+        }
         const costResult = await pool.query(
             `SELECT
                 COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE $2) AT TIME ZONE $2 THEN cost ELSE 0 END), 0) AS cost_today,
