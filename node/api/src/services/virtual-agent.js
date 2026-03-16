@@ -792,6 +792,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
 // Handle a mail sent to a virtual agent.
 // Called fire-and-forget from mailSend when a non-virtual agent mails a virtual one.
 async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
+    logVA('direct-mail-entry', { agent: virtualAgentName, from: fromAgent, mailId });
     const agent = await loadAgent(virtualAgentName);
     if (!agent || !agent.virtual) return;
 
