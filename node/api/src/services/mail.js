@@ -36,8 +36,12 @@ async function mailSend(toAgent, fromAgent, subject, body) {
                 if (!recipientRow.rows[0] || !recipientRow.rows[0].virtual) return;
                 if (senderRow.rows[0] && senderRow.rows[0].virtual) return;
                 const { handleDirectMail } = require('./virtual-agent');
-                handleDirectMail(toAgent, fromAgent, result.rows[0].id).catch(() => {});
-            } catch (e) { /* ignore */ }
+                handleDirectMail(toAgent, fromAgent, result.rows[0].id).catch(err => {
+                    logMail('virtual-agent-trigger-error', { to_agent: toAgent, from_agent: fromAgent, error: err.message });
+                });
+            } catch (e) {
+                logMail('virtual-agent-trigger-error', { to_agent: toAgent, from_agent: fromAgent, error: e.message });
+            }
         })();
     }
 
