@@ -17,9 +17,13 @@
     - role: ../roles/common
     - role: ../roles/nodejs
     - role: ../roles/postgresql
+    - role: ../roles/certbot
     - role: ../roles/nginx
     - role: ../roles/memory-api
 
   tasks:
     - name: Run pending migrations
       include_tasks: ../tasks/run-migrations.yml
+
+    - name: Create admin user
+      include_tasks: ../tasks/create-admin.yml

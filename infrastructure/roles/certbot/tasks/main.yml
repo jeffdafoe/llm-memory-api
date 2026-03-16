@@ -1,0 +1,47 @@
+---
+- name: Install certbot
+  apt:
+    name:
+      - certbot
+      - python3-certbot-nginx
+    state: present
+
+- name: Check if SSL certificate exists
+  stat:
+    path: "/etc/letsencrypt/live/{{ server_name }}/fullchain.pem"
+  register: ssl_cert
+
+- name: Stop nginx for initial cert generation
+  service:
+    name: nginx
+    state: stopped
+  when: not ssl_cert.stat.exists
+  ignore_errors: yes
+
+- name: Generate SSL certificate
+  command: >
+    certbot certonly --standalone
+    --non-interactive --agree-tos
+    --email {{ certbot_email }}
+    -d {{ server_name }}
+  when: not ssl_cert.stat.exists
+
+- name: Ensure Let's Encrypt SSL options file exists
+  command: >
+    curl -sSL https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf
+    -o /etc/letsencrypt/options-ssl-nginx.conf
+  args:
+    creates: /etc/letsencrypt/options-ssl-nginx.conf
+
+- name: Ensure DH parameters file exists
+  command: openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+  args:
+    creates: /etc/letsencrypt/ssl-dhparams.pem
+
+- name: Configure certbot auto-renewal timer
+  cron:
+    name: "certbot renewal"
+    minute: "0"
+    hour: "4"
+    day: "*/7"
+    job: "certbot renew --quiet --deploy-hook 'systemctl reload nginx'"

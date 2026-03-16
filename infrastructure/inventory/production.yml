@@ -5,7 +5,7 @@ all:
       ansible_python_interpreter: /usr/bin/python3
   vars:
     deploy_environment: production
-    server_name: memory.jeffdafoe.com
+    # server_name is prompted during install and stored in local-secrets.yml
     app_user: memory-api
     database_name: memory_api
     database_user: memory_api
