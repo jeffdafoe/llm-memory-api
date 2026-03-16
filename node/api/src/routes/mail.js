@@ -22,7 +22,7 @@ router.post('/mail/send', async (req, res) => {
         logError('mail', 'send', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         const status = err.statusCode || 500;
         res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -45,7 +45,7 @@ router.post('/mail/receive', async (req, res) => {
         logError('mail', 'receive', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         const status = err.statusCode || 500;
         res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -68,7 +68,7 @@ router.post('/mail/edit', async (req, res) => {
         logError('mail', 'edit', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         const status = err.statusCode || 500;
         res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -91,7 +91,7 @@ router.post('/mail/unsend', async (req, res) => {
         logError('mail', 'unsend', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         const status = err.statusCode || 500;
         res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -117,7 +117,7 @@ router.post('/mail/ack', async (req, res) => {
         logError('mail', 'ack', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         const status = err.statusCode || 500;
         res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });

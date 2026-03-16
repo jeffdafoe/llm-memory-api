@@ -33,7 +33,7 @@ router.post('/memory/ingest', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('memory', 'ingest', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 400 ? 'BAD_REQUEST' : status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -63,7 +63,7 @@ router.post('/memory/ingest/status', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('memory', 'ingest-status', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -94,7 +94,7 @@ router.post('/memory/search', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('memory', 'search', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -118,7 +118,7 @@ router.post('/memory/cleanup', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('memory', 'cleanup', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -142,7 +142,7 @@ router.post('/memory/delete', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('memory', 'delete', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });

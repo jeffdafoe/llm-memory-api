@@ -221,7 +221,7 @@ router.post('/discussion/create', async (req, res) => {
     } catch (err) {
         logError('discussion', 'create', { agent: req.authenticatedAgent || req.body.created_by, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -268,7 +268,7 @@ router.post('/discussion/list', async (req, res) => {
     } catch (err) {
         logError('discussion', 'list', { message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -360,7 +360,7 @@ router.post('/discussion/status', async (req, res) => {
     } catch (err) {
         logError('discussion', 'status', { message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -444,7 +444,7 @@ router.post('/discussion/pending', async (req, res) => {
     } catch (err) {
         logError('discussion', 'pending', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -467,7 +467,7 @@ router.post('/discussion/conclude', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('discussion', 'conclude', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: err.code || 'INTERNAL_ERROR', message: err.message }
+            error: { code: err.code || 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -497,7 +497,7 @@ router.post('/discussion/cancel', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('discussion', 'cancel', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: err.code || 'INTERNAL_ERROR', message: err.message }
+            error: { code: err.code || 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -583,7 +583,7 @@ router.post('/discussion/join', async (req, res) => {
     } catch (err) {
         logError('discussion', 'join', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -684,7 +684,7 @@ router.post('/discussion/defer', async (req, res) => {
     } catch (err) {
         logError('discussion', 'defer', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -736,7 +736,7 @@ router.post('/discussion/leave', async (req, res) => {
     } catch (err) {
         logError('discussion', 'leave', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -818,7 +818,7 @@ router.post('/discussion/vote/propose', async (req, res) => {
     } catch (err) {
         logError('discussion', 'vote-propose', { agent: req.authenticatedAgent || req.body.proposed_by, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -841,7 +841,7 @@ router.post('/discussion/vote/cast', async (req, res) => {
         const status = err.statusCode || 500;
         if (status >= 500) logError('discussion', 'vote-cast', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(status).json({
-            error: { code: err.code || 'INTERNAL_ERROR', message: err.message }
+            error: { code: err.code || 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
         });
     }
 });
@@ -910,7 +910,7 @@ router.post('/discussion/vote/status', async (req, res) => {
     } catch (err) {
         logError('discussion', 'vote-status', { message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });

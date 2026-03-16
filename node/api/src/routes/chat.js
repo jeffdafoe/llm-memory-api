@@ -140,7 +140,7 @@ router.post('/chat/send', async (req, res) => {
     } catch (err) {
         logError('chat', 'send', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -222,7 +222,7 @@ router.post('/chat/receive', async (req, res) => {
     } catch (err) {
         logError('chat', 'receive', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -264,7 +264,7 @@ router.post('/chat/ack', async (req, res) => {
     } catch (err) {
         logError('chat', 'ack', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -337,7 +337,7 @@ router.post('/chat/status', async (req, res) => {
     } catch (err) {
         logError('chat', 'status', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
