@@ -830,11 +830,22 @@ router.post('/admin/providers/defaults', requirePerm('config', 'read'), async (r
     }
 });
 
+// Config keys whose values must never be sent to the client
+const SECRET_CONFIG_KEYS = new Set([
+    'mcp_oauth_bearer_secret',
+    'virtual_agent_encryption_key',
+]);
+
 // POST /admin/config/list — list all config key/value pairs
 router.post('/admin/config/list', requirePerm('config', 'read'), async (req, res) => {
     try {
         const result = await pool.query('SELECT key, value, description FROM config ORDER BY key');
-        res.json({ config: result.rows });
+        const redacted = result.rows.map(row =>
+            SECRET_CONFIG_KEYS.has(row.key)
+                ? { ...row, value: '••••••••' }
+                : row
+        );
+        res.json({ config: redacted });
     } catch (err) {
         console.error('Admin config list error:', err.message);
         res.status(500).json({

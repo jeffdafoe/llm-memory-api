@@ -230,13 +230,20 @@ router.post('/discussion/list', async (req, res) => {
     try {
         const { status, agent } = req.body;
 
+        // For agent sessions, always scope to discussions the authenticated agent participates in.
+        // The 'agent' body param is ignored for agent sessions — identity comes from auth.
+        let scopedAgent = agent;
+        if (req.authenticatedAgent) {
+            scopedAgent = req.authenticatedAgent;
+        }
+
         let query = `SELECT d.*, ac.name AS created_by FROM discussions d
                      JOIN actors ac ON ac.id = d.created_by_actor_id`;
         const params = [];
         const conditions = [];
 
-        if (agent) {
-            const agentActor = await requireByName(agent);
+        if (scopedAgent) {
+            const agentActor = await requireByName(scopedAgent);
             query += ' JOIN discussion_participants dp ON d.id = dp.discussion_id';
             params.push(agentActor.id);
             conditions.push(`dp.actor_id = $${params.length}`);
@@ -255,7 +262,7 @@ router.post('/discussion/list', async (req, res) => {
 
         const result = await pool.query(query, params);
 
-        logDiscussion('list', { status, agent, count: result.rows.length });
+        logDiscussion('list', { status, agent: scopedAgent, count: result.rows.length });
 
         res.json({ discussions: result.rows });
     } catch (err) {
@@ -284,6 +291,20 @@ router.post('/discussion/status', async (req, res) => {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Discussion not found' }
             });
+        }
+
+        // For agent sessions, require the agent to be a participant
+        if (req.authenticatedAgent) {
+            const actor = await requireByName(req.authenticatedAgent);
+            const participation = await pool.query(
+                'SELECT 1 FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+                [discussion_id, actor.id]
+            );
+            if (participation.rows.length === 0) {
+                return res.status(403).json({
+                    error: { code: 'FORBIDDEN', message: 'Not a participant in this discussion' }
+                });
+            }
         }
 
         // Evaluate readiness if still waiting
@@ -843,6 +864,20 @@ router.post('/discussion/vote/status', async (req, res) => {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Vote not found' }
             });
+        }
+
+        // For agent sessions, require the agent to be a participant in the discussion
+        if (req.authenticatedAgent) {
+            const actor = await requireByName(req.authenticatedAgent);
+            const participation = await pool.query(
+                'SELECT 1 FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2',
+                [vote.rows[0].discussion_id, actor.id]
+            );
+            if (participation.rows.length === 0) {
+                return res.status(403).json({
+                    error: { code: 'FORBIDDEN', message: 'Not a participant in this discussion' }
+                });
+            }
         }
 
         // Evaluate in case it should close

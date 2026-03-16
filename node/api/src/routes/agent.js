@@ -233,7 +233,8 @@ router.post('/agent/rotate', async (req, res) => {
 // API call, so this is mainly a fallback for idle agents.
 router.post('/agent/heartbeat', async (req, res) => {
     try {
-        const { agent } = req.body;
+        // Use authenticated identity — ignore req.body.agent for agent sessions
+        const agent = req.authenticatedAgent || req.body.agent;
 
         if (!agent) {
             return res.status(400).json({
@@ -241,10 +242,10 @@ router.post('/agent/heartbeat', async (req, res) => {
             });
         }
 
-        const actor = await requireByName(agent);
+        const actorId = req.actorId || (await requireByName(agent)).id;
         const result = await pool.query(
             'UPDATE actors SET last_seen = NOW() WHERE id = $1 RETURNING last_seen',
-            [actor.id]
+            [actorId]
         );
 
         if (result.rows.length === 0) {
@@ -270,7 +271,8 @@ router.post('/agent/heartbeat', async (req, res) => {
 // Unread chat only counts the default channel (NULL) — not discussion channels.
 router.post('/agent/status', async (req, res) => {
     try {
-        const { agent } = req.body;
+        // Use authenticated identity — ignore req.body.agent for agent sessions
+        const agent = req.authenticatedAgent || req.body.agent;
 
         if (!agent) {
             return res.status(400).json({
