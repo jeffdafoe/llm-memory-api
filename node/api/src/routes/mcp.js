@@ -12,7 +12,7 @@ const pool = require('../db');
 const { logError } = require('../services/logger');
 
 // Services
-const { searchMemory, ingestContent, deleteMemory } = require('../services/memory');
+const { searchMemory, deleteMemory } = require('../services/memory');
 const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend } = require('../services/mail');
@@ -48,19 +48,6 @@ const TOOLS = [
                 limit: { type: 'number', description: 'Max results (default: 5)' }
             },
             required: ['query']
-        }
-    },
-    {
-        name: 'ingest',
-        description: 'Ingest markdown content into the vector database for semantic search.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                content: { type: 'string', description: 'Markdown content to ingest' },
-                source_file: { type: 'string', description: 'Name to store as (used as identifier for updates/deletes)' },
-                namespace: { type: 'string', description: 'Namespace (default: agent namespace)' }
-            },
-            required: ['content', 'source_file']
         }
     },
     {
@@ -516,7 +503,6 @@ const TOOLS = [
 // Permission required for each tool
 const TOOL_PERMISSIONS = {
     search: 'mcp_search',
-    ingest: 'mcp_ingest',
     delete: 'mcp_delete_memory',
     save_note: 'mcp_save_note',
     list_notes: 'mcp_list_notes',
@@ -594,14 +580,6 @@ const TOOL_HANDLERS = {
             return `[${r.namespace}] ${r.source_file} — ${r.heading || '(no heading)'} (${(r.similarity * 100).toFixed(1)}%)\n${r.chunk_text}`;
         });
         return lines.join('\n\n---\n\n') || 'No results found.';
-    },
-
-    async ingest(args, agent, namespace, actorId) {
-        const targetNs = args.namespace || namespace;
-        validateNamespace(targetNs);
-        await requireAccess(actorId, agent, 'agent', targetNs, 'write');
-        const data = await ingestContent(targetNs, args.source_file, args.content);
-        return `Ingested ${data.chunks_created} chunks from ${data.source_file} into namespace "${data.namespace}"`;
     },
 
     async delete(args, agent, namespace, actorId) {
