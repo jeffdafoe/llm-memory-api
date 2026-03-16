@@ -61,14 +61,12 @@ function recordCall(agentName) {
     callHistory[agentName].push(Date.now());
 }
 
-// Check if an agent has exceeded its daily or monthly cost limit.
-// Uses rolling windows — no reset logic needed.
-// Returns { limited: true, reason: '...' } or { limited: false }.
-async function isOverCostLimit(agent) {
+// Resolve effective cost limits for an agent.
+// Agent-specific columns override config defaults. null = unlimited.
+function resolveEffectiveLimits(agent) {
     const defaultDailyRaw = config.get('virtual_agent_default_daily_budget');
     const defaultMonthlyRaw = config.get('virtual_agent_default_monthly_budget');
 
-    // Resolve limits: agent column overrides config default. null = unlimited (no enforcement).
     let dailyLimit = null;
     if (agent.cost_budget_daily != null) {
         dailyLimit = parseFloat(agent.cost_budget_daily);
@@ -82,6 +80,15 @@ async function isOverCostLimit(agent) {
     } else if (defaultMonthlyRaw != null) {
         monthlyLimit = parseFloat(defaultMonthlyRaw);
     }
+
+    return { dailyLimit, monthlyLimit };
+}
+
+// Check if an agent has exceeded its daily or monthly cost limit.
+// Uses rolling windows — no reset logic needed.
+// Returns { limited: true, reason: '...' } or { limited: false }.
+async function isOverCostLimit(agent) {
+    const { dailyLimit, monthlyLimit } = resolveEffectiveLimits(agent);
 
     // If both limits are null/unset, no enforcement needed
     if (dailyLimit == null && monthlyLimit == null) {
@@ -896,4 +903,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits };
