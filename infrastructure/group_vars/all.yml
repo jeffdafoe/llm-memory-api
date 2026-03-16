@@ -13,5 +13,5 @@ repo_root: /opt/llm-memory-api
 project_root: /var/www/memory-api
 git_repository: "https://github.com/jeffdafoe/llm-memory-api.git"
 
-# SSL
-certbot_email: jeffdafoe@outlook.com
+# SSL — certbot_email and server_name are prompted during install
+# and stored in local-secrets.yml (gitignored)

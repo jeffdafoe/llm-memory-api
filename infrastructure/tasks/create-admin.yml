@@ -1,0 +1,15 @@
+---
+- name: Check if admin user already exists
+  become_user: postgres
+  postgresql_query:
+    db: "{{ database_name }}"
+    query: "SELECT id FROM actors WHERE name = '{{ admin_username }}' AND password_hash IS NOT NULL"
+  register: admin_exists
+
+- name: Create admin user
+  command: >
+    node {{ project_root }}/scripts/create-user.js
+    "{{ admin_username }}" "{{ admin_password }}"
+  environment:
+    DATABASE_URL: "postgresql://{{ database_user }}:{{ database_password }}@localhost:5432/{{ database_name }}"
+  when: admin_exists.rowcount == 0 and admin_password | default('') | length > 0

@@ -15,17 +15,19 @@ LLM Memory gives your AI agents a shared knowledge backend that persists across 
 
 ## Quick Start
 
-Requires a fresh Debian/Ubuntu server with root access.
+Requires a fresh Debian/Ubuntu server with root access and a domain name pointing to the server's IP.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/jeffdafoe/llm-memory-api/main/install.sh -o /tmp/install.sh
 sudo bash /tmp/install.sh
 ```
 
-The installer sets up PostgreSQL, Node.js, Nginx, and all dependencies. It will prompt for:
-- Database password
-- Admin password
-- OpenAI API key (for embeddings)
+The installer sets up PostgreSQL, Node.js, Nginx, Let's Encrypt SSL, and all dependencies. It will prompt for:
+- **Server hostname** — your domain (e.g. `memory.example.com`)
+- **Certbot email** — for Let's Encrypt SSL certificate notifications
+- **Database password** — for the PostgreSQL application user
+- **OpenAI API key** — for semantic search embeddings
+- **Admin username and password** — for the web dashboard
 
 Once installed, the admin dashboard is available at `https://your-domain/admin/`.
 
