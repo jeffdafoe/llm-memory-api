@@ -7,7 +7,7 @@ const auth = require('../middleware/auth');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
 const { SESSION_KIND } = require('../constants');
 const { broadcast } = require('../services/events');
-const { requireByName } = require('../services/actors');
+// actors service no longer needed — all routes use req.actorId from auth middleware
 
 const router = Router();
 
@@ -231,21 +231,19 @@ router.post('/agent/rotate', async (req, res) => {
 // Explicit heartbeat — MCP servers call this on a 2-minute interval.
 // The opportunistic heartbeat middleware also updates last_seen on every
 // API call, so this is mainly a fallback for idle agents.
+// Agent session required — admins cannot heartbeat on behalf of agents.
 router.post('/agent/heartbeat', async (req, res) => {
     try {
-        // Use authenticated identity — ignore req.body.agent for agent sessions
-        const agent = req.authenticatedAgent || req.body.agent;
-
+        const agent = req.authenticatedAgent;
         if (!agent) {
-            return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
+            return res.status(401).json({
+                error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
             });
         }
 
-        const actorId = req.actorId || (await requireByName(agent)).id;
         const result = await pool.query(
             'UPDATE actors SET last_seen = NOW() WHERE id = $1 RETURNING last_seen',
-            [actorId]
+            [req.actorId]
         );
 
         if (result.rows.length === 0) {
@@ -269,18 +267,12 @@ router.post('/agent/heartbeat', async (req, res) => {
 // Returns all registered agents with online/offline status and per-agent
 // unread counts (chat + mail) relative to the querying agent.
 // Unread chat only counts the default channel (NULL) — not discussion channels.
+// Unread counts use the authenticated caller's identity — agents see their own
+// unread counts, admin users see zero (they don't have agent inboxes).
 router.post('/agent/status', async (req, res) => {
     try {
-        // Use authenticated identity — ignore req.body.agent for agent sessions
-        const agent = req.authenticatedAgent || req.body.agent;
-
-        if (!agent) {
-            return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
-            });
-        }
-
-        const actor = await requireByName(agent);
+        // Use authenticated identity only — never trust req.body.agent
+        const actorId = req.actorId;
 
         // Single query: join agent_status view with per-sender unread counts for
         // both chat and mail, so the caller sees everything at once.
@@ -312,7 +304,7 @@ router.post('/agent/status', async (req, res) => {
                 GROUP BY fa.name
             ) m ON m.from_agent = a.agent
             ORDER BY a.agent`,
-            [actor.id]
+            [actorId]
         );
 
         // Get active subsystems per agent from non-expired sessions
@@ -350,7 +342,7 @@ router.post('/agent/status', async (req, res) => {
 
         res.json({ agents });
     } catch (err) {
-        logError('agent', 'status', { agent: req.body.agent, message: err.message, detail: err.stack });
+        logError('agent', 'status', { actorId: req.actorId, message: err.message, detail: err.stack });
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
