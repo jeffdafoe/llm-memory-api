@@ -124,7 +124,7 @@ router.post('/agent/login', async (req, res) => {
     } catch (err) {
         logError('agent', 'login', { agent: req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -163,7 +163,7 @@ router.post('/agent/logout', async (req, res) => {
     } catch (err) {
         logError('agent', 'logout', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -223,7 +223,7 @@ router.post('/agent/rotate', async (req, res) => {
     } catch (err) {
         logError('agent', 'rotate', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -261,7 +261,7 @@ router.post('/agent/heartbeat', async (req, res) => {
     } catch (err) {
         logError('agent', 'heartbeat', { agent: req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -352,7 +352,7 @@ router.post('/agent/status', async (req, res) => {
     } catch (err) {
         logError('agent', 'status', { agent: req.body.agent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -398,7 +398,7 @@ router.post('/agent/expertise', async (req, res) => {
     } catch (err) {
         logError('agent', 'expertise', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -452,7 +452,7 @@ router.post('/agent/profile', async (req, res) => {
     } catch (err) {
         logError('agent', 'profile', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -479,7 +479,7 @@ router.post('/agent/activity/start', async (req, res) => {
     } catch (err) {
         logError('agent', 'activity-start', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -506,7 +506,7 @@ router.post('/agent/activity/stop', async (req, res) => {
     } catch (err) {
         logError('agent', 'activity-stop', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -534,7 +534,7 @@ router.post('/agent/instructions/read', async (req, res) => {
     } catch (err) {
         logError('agent', 'instructions-read', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
@@ -570,7 +570,7 @@ router.post('/agent/instructions/save', async (req, res) => {
     } catch (err) {
         logError('agent', 'instructions-save', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });

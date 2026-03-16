@@ -49,7 +49,7 @@ router.post('/system/error/report', async (req, res) => {
     } catch (err) {
         logError('system', 'error-report', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
         res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+            error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
     }
 });
