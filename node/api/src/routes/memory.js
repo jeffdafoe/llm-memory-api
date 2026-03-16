@@ -42,12 +42,28 @@ router.post('/memory/ingest/status', async (req, res) => {
     const { namespace } = req.body;
 
     try {
-        const result = await ingestStatus(namespace);
-        res.json(result);
+        const actor = getActor(req);
+
+        if (namespace) {
+            // Specific namespace — require read access
+            validateNamespace(namespace);
+            await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
+            const result = await ingestStatus(namespace);
+            res.json(result);
+        } else {
+            // No namespace — filter to readable namespaces only
+            const readable = await getReadableNamespaces(actor.actorId, actor.actorType);
+            const allStatus = await ingestStatus(null);
+            const filtered = {
+                files: (allStatus.files || []).filter(f => readable.includes(f.namespace))
+            };
+            res.json(filtered);
+        }
     } catch (err) {
-        logError('memory', 'ingest-status', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(500).json({
-            error: { code: 'INTERNAL_ERROR', message: err.message }
+        const status = err.statusCode || 500;
+        if (status >= 500) logError('memory', 'ingest-status', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
+        res.status(status).json({
+            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: err.message }
         });
     }
 });
