@@ -100,6 +100,10 @@ router.get('/.well-known/oauth-authorization-server', (req, res) => {
 // back with a code, since the client credentials (configured in claude.ai
 // connector settings) already prove identity. No login page needed.
 router.get('/authorize', async (req, res) => {
+    // TEMPORARY: log all params claude.ai sends during OAuth flow
+    // Remove after confirming PKCE/client_secret behavior — see security finding #1
+    console.log('[oauth-debug] /authorize query params:', JSON.stringify(req.query));
+
     const {
         response_type, client_id, redirect_uri, state,
         code_challenge, code_challenge_method
@@ -159,6 +163,13 @@ router.get('/authorize', async (req, res) => {
 // client_credentials: client_id + client_secret → token directly
 // authorization_code: code + code_verifier → token (with PKCE validation)
 router.post('/oauth/token', express.urlencoded({ extended: false }), async (req, res) => {
+    // TEMPORARY: log all params claude.ai sends during OAuth flow
+    // Remove after confirming PKCE/client_secret behavior — see security finding #1
+    const safeBody = { ...req.body };
+    if (safeBody.client_secret) safeBody.client_secret = '***REDACTED***';
+    if (safeBody.code) safeBody.code = safeBody.code.substring(0, 8) + '...';
+    console.log('[oauth-debug] /oauth/token body:', JSON.stringify(safeBody));
+
     const { grant_type } = req.body;
 
     if (grant_type === 'client_credentials') {
