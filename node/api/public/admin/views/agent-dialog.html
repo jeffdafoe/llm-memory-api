@@ -65,14 +65,14 @@
                 <!-- Display mode -->
                 <div v-if="!costBudgetEditing" style="margin-top: 0.3em; font-size: 0.9em;">
                     <div style="margin-bottom: 0.3em;">
-                        <span>Today: <strong>${{ (selectedAgent.cost_today || 0).toFixed(4) }}</strong></span>
+                        <span>Today: <strong>${{ (selectedAgent.cost_today ?? 0).toFixed(4) }}</strong></span>
                         <span class="muted"> / {{ selectedAgent.effective_daily_limit != null ? (selectedAgent.cost_budget_daily != null ? '$' + Number(selectedAgent.effective_daily_limit).toFixed(2) : 'default ($' + Number(selectedAgent.effective_daily_limit).toFixed(2) + ')') : 'unlimited' }}</span>
-                        <meter :value="selectedAgent.cost_today || 0" :max="selectedAgent.effective_daily_limit || 1" style="width: 100%; margin-top: 0.2em;"></meter>
+                        <meter :value="selectedAgent.cost_today ?? 0" :max="selectedAgent.effective_daily_limit ?? 1" style="width: 100%; margin-top: 0.2em;"></meter>
                     </div>
                     <div>
-                        <span>30-day: <strong>${{ (selectedAgent.cost_monthly || 0).toFixed(4) }}</strong></span>
+                        <span>30-day: <strong>${{ (selectedAgent.cost_monthly ?? 0).toFixed(4) }}</strong></span>
                         <span class="muted"> / {{ selectedAgent.effective_monthly_limit != null ? (selectedAgent.cost_budget_monthly != null ? '$' + Number(selectedAgent.effective_monthly_limit).toFixed(2) : 'default ($' + Number(selectedAgent.effective_monthly_limit).toFixed(2) + ')') : 'unlimited' }}</span>
-                        <meter :value="selectedAgent.cost_monthly || 0" :max="selectedAgent.effective_monthly_limit || 10" style="width: 100%; margin-top: 0.2em;"></meter>
+                        <meter :value="selectedAgent.cost_monthly ?? 0" :max="selectedAgent.effective_monthly_limit ?? 10" style="width: 100%; margin-top: 0.2em;"></meter>
                     </div>
                     <small v-if="selectedAgent.pricing_info" class="muted" style="display: block; margin-top: 0.3em;">{{ selectedAgent.pricing_info }}</small>
                 </div>
