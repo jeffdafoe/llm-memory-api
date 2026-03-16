@@ -12,6 +12,7 @@ const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
+const { resolveEffectiveLimits } = require('../services/virtual-agent');
 const { requireByName, resolveByName, resolveById } = require('../services/actors');
 const { requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
@@ -1501,8 +1502,9 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), async (req, 
 });
 
 // POST /admin/agents/read — get full agent detail (includes configuration JSON)
+// Accepts optional `timezone` (IANA string, e.g. "America/New_York") for local day boundary.
 router.post('/admin/agents/read', requirePerm('agents', 'read'), async (req, res) => {
-    const { agent } = req.body;
+    const { agent, timezone } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
@@ -1523,17 +1525,23 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), async (req, res
         }
         const row = result.rows[0];
 
-        // Compute current cost totals from usage log
+        // Use client timezone for "today" boundary if provided, fall back to UTC
+        const tz = timezone || 'UTC';
         const costResult = await pool.query(
             `SELECT
-                COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost ELSE 0 END), 0) AS cost_today,
+                COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE $2) AT TIME ZONE $2 THEN cost ELSE 0 END), 0) AS cost_today,
                 COALESCE(SUM(cost), 0) AS cost_monthly
              FROM virtual_agent_usage
              WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
-            [actor.id]
+            [actor.id, tz]
         );
         row.cost_today = parseFloat(costResult.rows[0].cost_today);
         row.cost_monthly = parseFloat(costResult.rows[0].cost_monthly);
+
+        // Resolve effective budget limits (agent override → system default → null)
+        const { dailyLimit, monthlyLimit } = resolveEffectiveLimits(row);
+        row.effective_daily_limit = dailyLimit;
+        row.effective_monthly_limit = monthlyLimit;
 
         // Add pricing info string for display, accounting for agent's service tier
         if (row.provider && row.model) {
