@@ -4,6 +4,17 @@
 const pool = require('../db');
 const { ingestContent } = require('./memory');
 const { resolveByName } = require('./actors');
+const { handleError } = require('./error-handler');
+
+function slugToKind(slug) {
+    if (slug.startsWith('instructions/')) return 'instruction';
+    if (slug.startsWith('notes/codebase/')) return 'reference';
+    if (slug.startsWith('tasks/done/')) return 'task';
+    if (slug.startsWith('tasks/')) return 'task';
+    if (slug.startsWith('learnings/')) return 'learning';
+    if (slug.startsWith('notes/')) return 'note';
+    return 'note';
+}
 
 function titleToSlug(title) {
     return title
@@ -48,22 +59,24 @@ async function saveNote(namespace, title, content, slug, createdBy) {
         if (actor) createdByActorId = actor.id;
     }
 
+    const kind = slugToKind(resolvedSlug);
+
     let result;
     if (existing.rows.length > 0) {
         // Update existing row — also clears deleted_at if it was soft-deleted.
         // Don't overwrite created_by_actor_id on updates — preserve original author.
         result = await pool.query(`
             UPDATE documents
-            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW()
+            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5
             WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
             RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-        `, [title, content, namespace, resolvedSlug]);
+        `, [title, content, namespace, resolvedSlug, kind]);
     } else {
         result = await pool.query(`
-            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-        `, [namespace, resolvedSlug, title, content, createdByActorId]);
+        `, [namespace, resolvedSlug, title, content, createdByActorId, kind]);
     }
 
     const doc = result.rows[0];
@@ -79,7 +92,9 @@ async function saveNote(namespace, title, content, slug, createdBy) {
 
     // Auto-index into vector DB (fire-and-forget — don't fail the save if indexing fails)
     ingestContent(namespace, resolvedSlug, content).catch(err => {
-        console.error(`Document auto-index failed for ${namespace}/${resolvedSlug}:`, err.message);
+        handleError(null, 'documents', 'AUTO_INDEX_FAILED', {
+            namespace, slug: resolvedSlug, error: err.message
+        }).catch(() => {});
     });
 
     return doc;
@@ -133,6 +148,16 @@ async function readNote(namespace, slug) {
     if (result.rows.length === 0) {
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
+
+    // Touch last_accessed for search decay/boost (fire-and-forget)
+    pool.query(
+        'UPDATE documents SET last_accessed = NOW() WHERE namespace = $1 AND LOWER(slug) = LOWER($2)',
+        [namespace, slug]
+    ).catch(err => {
+        handleError(null, 'documents', 'LAST_ACCESSED_UPDATE_FAILED', {
+            namespace, slug, error: err.message
+        }).catch(() => {});
+    });
 
     return result.rows[0];
 }
@@ -233,7 +258,9 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
 
     // Re-index into vector DB (fire-and-forget)
     ingestContent(namespace, slug, updatedContent).catch(err => {
-        console.error(`Document re-index failed for ${namespace}/${slug}:`, err.message);
+        handleError(null, 'documents', 'REINDEX_FAILED', {
+            namespace, slug, error: err.message
+        }).catch(() => {});
     });
 
     return {
@@ -353,13 +380,14 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         );
     }
 
-    // Update the document
+    // Update the document (recalculate kind from new slug)
+    const newKind = slugToKind(newSlug);
     const result = await pool.query(`
         UPDATE documents
-        SET slug = $1, namespace = $2, updated_at = NOW()
+        SET slug = $1, namespace = $2, updated_at = NOW(), kind = $5
         WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
         RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-    `, [newSlug, targetNamespace, namespace, slug]);
+    `, [newSlug, targetNamespace, namespace, slug, newKind]);
 
     // Update vector chunks to match the new slug/namespace
     await pool.query(
