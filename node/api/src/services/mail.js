@@ -172,4 +172,80 @@ async function mailUnsend(id, fromAgent) {
     return { id: result.rows[0].id, to_agent: mailRow.rows[0].to_agent, subject: result.rows[0].subject };
 }
 
-module.exports = { mailSend, mailReceive, mailAck, mailEdit, mailUnsend };
+// List mail sent by this agent, newest first
+async function mailSent(agent, options = {}) {
+    if (!agent) {
+        throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
+    }
+
+    const actor = await requireByName(agent);
+    const limit = Math.min(options.limit || 50, 100);
+    const offset = options.offset || 0;
+
+    // Build optional filters
+    const conditions = ['m.from_actor_id = $1', 'm.deleted_at IS NULL'];
+    const values = [actor.id];
+    let paramIndex = 2;
+
+    if (options.to) {
+        const toActor = await requireByName(options.to);
+        conditions.push(`m.to_actor_id = $${paramIndex++}`);
+        values.push(toActor.id);
+    }
+
+    values.push(limit, offset);
+
+    const result = await pool.query(
+        `SELECT m.id, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
+         FROM mail m
+         JOIN actors ta ON ta.id = m.to_actor_id
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY m.sent_at DESC
+         LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
+        values
+    );
+
+    logMail('sent', { agent, count: result.rows.length });
+
+    return { messages: result.rows };
+}
+
+// List acked (read) mail received by this agent, newest first
+async function mailHistory(agent, options = {}) {
+    if (!agent) {
+        throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
+    }
+
+    const actor = await requireByName(agent);
+    const limit = Math.min(options.limit || 50, 100);
+    const offset = options.offset || 0;
+
+    // Build optional filters
+    const conditions = ['m.to_actor_id = $1', 'm.acked_at IS NOT NULL', 'm.deleted_at IS NULL'];
+    const values = [actor.id];
+    let paramIndex = 2;
+
+    if (options.from) {
+        const fromActor = await requireByName(options.from);
+        conditions.push(`m.from_actor_id = $${paramIndex++}`);
+        values.push(fromActor.id);
+    }
+
+    values.push(limit, offset);
+
+    const result = await pool.query(
+        `SELECT m.id, fa.name AS from_agent, m.subject, m.body, m.sent_at, m.acked_at
+         FROM mail m
+         JOIN actors fa ON fa.id = m.from_actor_id
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY m.sent_at DESC
+         LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
+        values
+    );
+
+    logMail('history', { agent, count: result.rows.length });
+
+    return { messages: result.rows };
+}
+
+module.exports = { mailSend, mailReceive, mailAck, mailEdit, mailUnsend, mailSent, mailHistory };

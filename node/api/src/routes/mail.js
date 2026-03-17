@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { logError } = require('../services/logger');
-const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend } = require('../services/mail');
+const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 
 const router = Router();
 
@@ -115,6 +115,52 @@ router.post('/mail/ack', async (req, res) => {
         res.json(data);
     } catch (err) {
         logError('mail', 'ack', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
+        const status = err.statusCode || 500;
+        res.status(status).json({
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
+        });
+    }
+});
+
+router.post('/mail/sent', async (req, res) => {
+    try {
+        let { agent, to, limit, offset } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
+
+        const data = await mailSent(agent, { to, limit, offset });
+        res.json(data);
+    } catch (err) {
+        logError('mail', 'sent', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
+        const status = err.statusCode || 500;
+        res.status(status).json({
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
+        });
+    }
+});
+
+router.post('/mail/history', async (req, res) => {
+    try {
+        let { agent, from, limit, offset } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
+
+        const data = await mailHistory(agent, { from, limit, offset });
+        res.json(data);
+    } catch (err) {
+        logError('mail', 'history', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
         const status = err.statusCode || 500;
         res.status(status).json({
             error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }

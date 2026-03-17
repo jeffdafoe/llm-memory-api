@@ -15,7 +15,7 @@ const { logError } = require('../services/logger');
 const { searchMemory, deleteMemory } = require('../services/memory');
 const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
-const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend } = require('../services/mail');
+const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 const {
     discussionCreate, discussionList, discussionStatus, discussionPending,
     discussionConclude, discussionJoin, discussionDefer, discussionLeave,
@@ -298,6 +298,32 @@ const TOOLS = [
             required: ['id']
         }
     },
+    {
+        name: 'mail_sent',
+        description: 'Get mail you have sent. Returns sent messages with delivery status (whether recipient has acked).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                agent: { type: 'string', description: 'Agent to check sent mail for (default: configured agent)' },
+                to: { type: 'string', description: 'Filter by recipient agent name' },
+                limit: { type: 'number', description: 'Max results (default: 50)' },
+                offset: { type: 'number', description: 'Pagination offset (default: 0)' }
+            }
+        }
+    },
+    {
+        name: 'mail_history',
+        description: 'Get previously received and acked mail. Returns your read inbox history.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                agent: { type: 'string', description: 'Agent to check history for (default: configured agent)' },
+                from: { type: 'string', description: 'Filter by sender agent name' },
+                limit: { type: 'number', description: 'Max results (default: 50)' },
+                offset: { type: 'number', description: 'Pagination offset (default: 0)' }
+            }
+        }
+    },
     // --- Agent tools ---
     {
         name: 'agent_status',
@@ -523,6 +549,8 @@ const TOOL_PERMISSIONS = {
     mail_ack: 'mcp_mail_ack',
     mail_edit: 'mcp_mail_send',
     mail_unsend: 'mcp_mail_send',
+    mail_sent: 'mcp_mail_send',
+    mail_history: 'mcp_mail_receive',
     agent_status: 'mcp_agent_status',
     update_expertise: 'mcp_agent_status',
     update_profile: 'mcp_agent_status',
@@ -790,6 +818,29 @@ const TOOL_HANDLERS = {
     async mail_unsend(args, agent, namespace) {
         const data = await mailUnsend(args.id, agent);
         return `Mail ${data.id} unsent (was to: ${data.to_agent}, subject: "${data.subject}")`;
+    },
+
+    async mail_sent(args, agent, namespace) {
+        const data = await mailSent(validateIdentity(args.agent, agent, 'agent'), { to: args.to, limit: args.limit, offset: args.offset });
+        if (data.messages.length === 0) {
+            return 'No sent mail found.';
+        }
+        const formatted = data.messages.map(msg => {
+            const status = msg.acked_at ? 'read' : 'unread';
+            return `**To:** ${msg.to_agent} [${status}]\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`;
+        }).join('\n\n---\n\n');
+        return formatted;
+    },
+
+    async mail_history(args, agent, namespace) {
+        const data = await mailHistory(validateIdentity(args.agent, agent, 'agent'), { from: args.from, limit: args.limit, offset: args.offset });
+        if (data.messages.length === 0) {
+            return 'No mail history found.';
+        }
+        const formatted = data.messages.map(msg =>
+            `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`
+        ).join('\n\n---\n\n');
+        return formatted;
     },
 
     // --- Agent ---
