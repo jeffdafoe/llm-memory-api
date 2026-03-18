@@ -55,6 +55,20 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+// Global error handler — catches unhandled errors (JSON parse failures, etc.)
+// and returns a clean JSON response instead of Express's default HTML stack trace.
+app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err.stack || err.message || err);
+
+    const status = err.status || err.statusCode || 500;
+    res.status(status).json({
+        error: {
+            code: status === 500 ? 'INTERNAL_ERROR' : 'BAD_REQUEST',
+            message: err.message || 'An internal error occurred'
+        }
+    });
+});
+
 // Load config from DB before accepting requests
 config.init().then(() => {
     // Register virtual agent handler (depends on config being loaded)
