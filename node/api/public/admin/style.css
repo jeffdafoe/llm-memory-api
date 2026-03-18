@@ -1155,6 +1155,34 @@ h4 i {
     max-width: 100%;
 }
 
+/* Fullscreen note viewer — hides sidebar tree, top nav, and fills viewport */
+.notes-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    background: var(--pico-background-color);
+    display: block;
+    padding: 0;
+    margin: 0;
+}
+
+.notes-fullscreen .notes-sidebar {
+    display: none;
+}
+
+.notes-fullscreen .notes-content {
+    max-height: 100vh;
+}
+
+.notes-fullscreen .notes-markdown,
+.notes-fullscreen .notes-mermaid {
+    max-height: calc(100vh - 5rem);
+    height: calc(100vh - 5rem);
+}
+
 .notes-mermaid {
     height: calc(100vh - 14rem);
     overflow: hidden;

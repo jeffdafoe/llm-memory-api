@@ -21,6 +21,7 @@ function useNotes({ api, showToast, showConfirm }) {
         const content = (selectedNote.value.content || '').trim();
         return content.startsWith('```mermaid') && content.endsWith('```');
     });
+    const notesFullscreen = ref(false);
     const notesEditing = ref(false);
     const notesEditTitle = ref('');
     const notesEditContent = ref('');
@@ -166,6 +167,22 @@ function useNotes({ api, showToast, showConfirm }) {
             renderedNoteContent.value = DOMPurify.sanitize(marked.parse(selectedNote.value.content));
         }
     }, { immediate: true });
+
+    function toggleFullscreen() {
+        notesFullscreen.value = !notesFullscreen.value;
+        // Re-init pan-zoom when entering/exiting fullscreen since container size changes
+        if (isMermaid.value) {
+            nextTick(() => initPanZoom());
+        }
+    }
+
+    // Esc key exits fullscreen
+    function onFullscreenKeydown(e) {
+        if (e.key === 'Escape' && notesFullscreen.value) {
+            toggleFullscreen();
+        }
+    }
+    document.addEventListener('keydown', onFullscreenKeydown);
 
     async function loadNotes() {
         try {
@@ -340,7 +357,8 @@ function useNotes({ api, showToast, showConfirm }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
+        selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesFullscreen, toggleFullscreen,
+        notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
         loadNotes, toggleNamespace, toggleFolder,
