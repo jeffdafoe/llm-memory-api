@@ -231,13 +231,9 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
         );
     }
 
-    // Perform the replacement
-    let updatedContent;
-    if (replaceAll) {
-        updatedContent = content.split(oldString).join(newString);
-    } else {
-        updatedContent = content.replace(oldString, newString);
-    }
+    // Perform the replacement (split/join is literal — unlike String.replace,
+    // it won't interpret $ sequences in newString as special patterns)
+    const updatedContent = content.split(oldString).join(newString);
 
     // Save the updated content
     const result = await pool.query(`
