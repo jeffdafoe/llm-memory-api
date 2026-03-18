@@ -1,5 +1,5 @@
 /* Override Pico's fluid type scale — 14px base tightens the whole UI */
-html { font-size: 14px; }
+html { font-size: 14.5px; }
 
 .login-page {
     min-height: 100vh;
