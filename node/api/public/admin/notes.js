@@ -6,7 +6,26 @@ import mermaid from 'mermaid';
 import svgPanZoom from 'svg-pan-zoom';
 
 // Initialize mermaid — startOnLoad false since we render manually
-mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+        lineColor: '#333333',
+        textColor: '#1a1a1a',
+        primaryColor: '#e8e8e8',
+        primaryBorderColor: '#333333',
+        primaryTextColor: '#1a1a1a',
+        signalColor: '#333333',
+        signalTextColor: '#1a1a1a',
+        noteBkgColor: '#fff3cd',
+        noteBorderColor: '#997a00',
+        noteTextColor: '#1a1a1a',
+        actorLineColor: '#555555',
+        actorBorder: '#333333',
+        actorBkg: '#f0f0f0',
+        actorTextColor: '#1a1a1a'
+    }
+});
 
 function useNotes({ api, showToast, showConfirm }) {
     const notesNamespaces = ref([]);
