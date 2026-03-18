@@ -70,6 +70,8 @@
             <div v-if="notesEditing" class="notes-editor">
                 <textarea v-model="notesEditContent" class="notes-edit-textarea"></textarea>
             </div>
+            <div v-else-if="isMermaid" ref="mermaidContainer" class="notes-body notes-mermaid" v-html="renderedNoteContent">
+            </div>
             <div v-else class="notes-body notes-markdown" v-html="renderedNoteContent">
             </div>
         </div>

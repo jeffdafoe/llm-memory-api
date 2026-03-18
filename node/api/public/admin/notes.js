@@ -1,8 +1,9 @@
 // notes.js — Notes browser (tree view, editor, search, reindex)
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import mermaid from 'mermaid';
+import svgPanZoom from 'svg-pan-zoom';
 
 // Initialize mermaid — startOnLoad false since we render manually
 mermaid.initialize({ startOnLoad: false, theme: 'dark' });
@@ -102,8 +103,41 @@ function useNotes({ api, showToast, showConfirm }) {
 
     // Rendered HTML for the note body — markdown or mermaid SVG
     const renderedNoteContent = ref('');
+    const mermaidContainer = ref(null); // template ref for the mermaid wrapper div
+    let panZoomInstance = null;
+
+    // Clean up any existing pan-zoom instance
+    function destroyPanZoom() {
+        if (panZoomInstance) {
+            panZoomInstance.destroy();
+            panZoomInstance = null;
+        }
+    }
+
+    // Attach pan+zoom to the SVG inside the mermaid container
+    function initPanZoom() {
+        destroyPanZoom();
+        if (!mermaidContainer.value) return;
+        const svg = mermaidContainer.value.querySelector('svg');
+        if (!svg) return;
+        // Make SVG fill its container so pan-zoom has room to work
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.maxWidth = 'none';
+        panZoomInstance = svgPanZoom(svg, {
+            zoomEnabled: true,
+            panEnabled: true,
+            controlIconsEnabled: true,
+            fit: true,
+            center: true,
+            minZoom: 0.25,
+            maxZoom: 10,
+            zoomScaleSensitivity: 0.3
+        });
+    }
 
     watch([selectedNote, isMermaid], async () => {
+        destroyPanZoom();
         if (!selectedNote.value || !selectedNote.value.content) {
             renderedNoteContent.value = '';
             return;
@@ -119,6 +153,9 @@ function useNotes({ api, showToast, showConfirm }) {
                 const id = 'mermaid-' + Date.now();
                 const { svg } = await mermaid.render(id, diagram);
                 renderedNoteContent.value = svg;
+                // Wait for DOM update, then attach pan+zoom
+                await nextTick();
+                initPanZoom();
             } catch (err) {
                 // Show the parse error + raw content as fallback
                 renderedNoteContent.value = '<pre class="mermaid-error">Mermaid error: '
@@ -303,7 +340,7 @@ function useNotes({ api, showToast, showConfirm }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, renderedNoteContent, isMermaid, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
+        selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
         loadNotes, toggleNamespace, toggleFolder,
