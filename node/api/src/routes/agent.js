@@ -7,6 +7,8 @@ const auth = require('../middleware/auth');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
 const { SESSION_KIND } = require('../constants');
 const { broadcast } = require('../services/events');
+const { listNotes, readNote, saveNote } = require('../services/documents');
+const { requireAccess, validateNamespace } = require('../services/namespace-permissions');
 // actors service no longer needed — all routes use req.actorId from auth middleware
 
 const router = Router();
@@ -564,6 +566,259 @@ router.post('/agent/instructions/save', async (req, res) => {
         res.status(500).json({
             error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' }
         });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// POST /agent/memory/sync — bidirectional memory sync in a single round trip.
+//
+// The client sends its local file inventory (filename, content, mtime) and the
+// remote prefix to sync against. The server compares each file against the
+// corresponding remote note, saves locally-newer content to remote, and returns
+// remotely-newer/remote-only content so the client can write it locally.
+//
+// Protocol is explicitly flat — filenames must be safe basenames (no slashes,
+// no path traversal). Remote notes with nested slugs under the prefix are
+// skipped with a warning in the log.
+//
+// Auth: agent session token (via middleware).
+// Body: {
+//   namespace: string (optional, defaults to agent name),
+//   prefix: string (remote slug prefix, e.g. "instructions/memory/"),
+//   files: [{ filename: string, content: string, mtime: ISO8601 string }]
+// }
+//
+// Response: {
+//   actions: [{
+//     filename: string,
+//     action: "pull" | "push" | "unchanged",
+//     content?: string (included for "pull" actions),
+//     title?: string (included for "pull" actions),
+//     remote_updated_at?: string
+//   }]
+// }
+// ---------------------------------------------------------------------------
+
+// Validate that a filename is a safe flat basename — no slashes, no
+// traversal, no empty strings. Returns true if safe.
+function isSafeFilename(name) {
+    if (!name || typeof name !== 'string') return false;
+    if (name.includes('/') || name.includes('\\')) return false;
+    if (name === '.' || name === '..') return false;
+    if (name.startsWith('.')) return false;
+    return true;
+}
+
+// Extract title from markdown frontmatter (name field) or fall back to filename
+function extractTitle(content, filename) {
+    if (content) {
+        // Try frontmatter name field: ---\nname: Some Title\n---
+        const fmMatch = content.match(/^---\s*\n[\s\S]*?name:\s*(.+)\n[\s\S]*?---/);
+        if (fmMatch) {
+            return fmMatch[1].trim();
+        }
+        // Try first markdown heading
+        const headingMatch = content.match(/^#\s+(.+)/m);
+        if (headingMatch) {
+            return headingMatch[1].trim();
+        }
+    }
+    // Fall back to filename without extension
+    return filename.replace(/\.md$/, '').replace(/[_-]/g, ' ');
+}
+
+router.post('/agent/memory/sync', async (req, res) => {
+    const agent = req.authenticatedAgent;
+    if (!agent) {
+        return res.status(401).json({
+            error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+        });
+    }
+
+    try {
+        const namespace = req.body.namespace || agent;
+        let prefix = req.body.prefix || '';
+        const localFiles = req.body.files;
+
+        // --- Input validation ---
+
+        try {
+            validateNamespace(namespace);
+        } catch (err) {
+            logError('agent', 'memory-sync-rejected', { agent, message: 'invalid namespace: ' + namespace });
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
+        }
+
+        // Normalize prefix: must be empty or end with /
+        if (prefix && !prefix.endsWith('/')) {
+            prefix += '/';
+        }
+
+        if (!Array.isArray(localFiles)) {
+            logError('agent', 'memory-sync-rejected', { agent, message: 'files is not an array' });
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Required field: files (array of {filename, content, mtime})' }
+            });
+        }
+
+        // Validate each file entry
+        for (let i = 0; i < localFiles.length; i++) {
+            const file = localFiles[i];
+            if (!file || typeof file !== 'object') {
+                logError('agent', 'memory-sync-rejected', { agent, message: 'files[' + i + '] is not an object' });
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '] is not an object' }
+                });
+            }
+            if (!isSafeFilename(file.filename)) {
+                logError('agent', 'memory-sync-rejected', { agent, message: 'unsafe filename: ' + file.filename, detail: 'index=' + i });
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '].filename is invalid: must be a safe basename (no slashes, no .., no leading dot)' }
+                });
+            }
+            if (typeof file.content !== 'string') {
+                logError('agent', 'memory-sync-rejected', { agent, message: 'files[' + i + '].content must be a string', detail: 'filename=' + file.filename });
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '].content must be a string' }
+                });
+            }
+            if (!file.mtime || isNaN(new Date(file.mtime).getTime())) {
+                logError('agent', 'memory-sync-rejected', { agent, message: 'invalid mtime for ' + file.filename + ': ' + file.mtime, detail: 'index=' + i });
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '].mtime must be a valid ISO8601 timestamp' }
+                });
+            }
+        }
+
+        // --- Access control ---
+
+        await requireAccess(req.actorId, agent, 'agent', namespace, 'read');
+
+        // --- Build inventories ---
+
+        // Get all remote notes under the prefix
+        const remoteData = await listNotes(namespace, 500, 0, prefix || undefined);
+        const remoteNotes = remoteData.notes;
+
+        // Build a map of remote notes by filename (slug minus prefix).
+        // Only include notes that are direct children of the prefix (flat).
+        const remoteByFilename = {};
+        for (const note of remoteNotes) {
+            if (!note.slug.startsWith(prefix)) {
+                // Shouldn't happen since listNotes filters by prefix, but be safe
+                continue;
+            }
+            const derived = note.slug.slice(prefix.length);
+            // Skip nested slugs (contain /) — protocol is flat only
+            if (!isSafeFilename(derived)) {
+                logError('agent', 'memory-sync-skip', { agent, message: 'nested or unsafe remote slug: ' + note.slug, detail: 'derived=' + derived });
+                continue;
+            }
+            remoteByFilename[derived] = note;
+        }
+
+        // Build a map of local files by filename (already validated above)
+        const localByFilename = {};
+        for (const file of localFiles) {
+            localByFilename[file.filename] = file;
+        }
+
+        // Collect all unique filenames from both sides
+        const allFilenames = new Set([
+            ...Object.keys(remoteByFilename),
+            ...Object.keys(localByFilename)
+        ]);
+
+        const actions = [];
+
+        // Check write access once if we might need to push
+        let hasWriteAccess = false;
+        async function ensureWriteAccess() {
+            if (!hasWriteAccess) {
+                await requireAccess(req.actorId, agent, 'agent', namespace, 'write');
+                hasWriteAccess = true;
+            }
+        }
+
+        // --- Compare and sync ---
+
+        for (const filename of allFilenames) {
+            const remote = remoteByFilename[filename];
+            const local = localByFilename[filename];
+
+            if (remote && !local) {
+                // Remote-only — client needs to pull it down
+                // Read full content (listNotes only returns snippet)
+                const fullNote = await readNote(namespace, remote.slug);
+                actions.push({
+                    filename,
+                    action: 'pull',
+                    content: fullNote.content,
+                    title: fullNote.title,
+                    remote_updated_at: fullNote.updated_at
+                });
+            } else if (local && !remote) {
+                // Local-only — push to remote
+                await ensureWriteAccess();
+                const slug = prefix + filename;
+                const title = extractTitle(local.content, filename);
+                const doc = await saveNote(namespace, title, local.content, slug, agent);
+                actions.push({
+                    filename,
+                    action: 'push',
+                    remote_updated_at: doc.updated_at
+                });
+            } else {
+                // Both exist — compare timestamps
+                const remoteTime = new Date(remote.updated_at).getTime();
+                const localTime = new Date(local.mtime).getTime();
+
+                if (remoteTime > localTime) {
+                    // Remote is newer — pull
+                    const fullNote = await readNote(namespace, remote.slug);
+                    actions.push({
+                        filename,
+                        action: 'pull',
+                        content: fullNote.content,
+                        title: fullNote.title,
+                        remote_updated_at: fullNote.updated_at
+                    });
+                } else if (localTime > remoteTime) {
+                    // Local is newer — push
+                    await ensureWriteAccess();
+                    const slug = prefix + filename;
+                    const title = extractTitle(local.content, filename);
+                    const doc = await saveNote(namespace, title, local.content, slug, agent);
+                    actions.push({
+                        filename,
+                        action: 'push',
+                        remote_updated_at: doc.updated_at
+                    });
+                } else {
+                    actions.push({
+                        filename,
+                        action: 'unchanged'
+                    });
+                }
+            }
+        }
+
+        res.json({ actions });
+    } catch (err) {
+        if (err.statusCode === 400) {
+            logError('agent', 'memory-sync-error', { agent, message: err.message });
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
+        }
+        if (err.statusCode === 403) {
+            logError('agent', 'memory-sync-error', { agent, message: err.message });
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: err.message } });
+        }
+        if (err.statusCode === 404) {
+            logError('agent', 'memory-sync-error', { agent, message: err.message });
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: err.message } });
+        }
+        logError('agent', 'memory-sync', { agent, message: err.message, detail: err.stack });
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to sync notes' } });
     }
 });
 

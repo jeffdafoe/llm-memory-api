@@ -37,6 +37,7 @@ let cliAgent = null;
 let cliPassphrase = null;
 let cliApiUrl = null;
 let configFilePath = null;
+let agentConfigFilePath = null;
 
 for (let i = 1; i < args.length; i++) {
     if (args[i] === '--topic' && args[i + 1]) {
@@ -87,16 +88,36 @@ for (let i = 1; i < args.length; i++) {
     } else if (args[i] === '--config' && args[i + 1]) {
         configFilePath = args[i + 1];
         i++;
+    } else if (args[i] === '--agent-config' && args[i + 1]) {
+        agentConfigFilePath = args[i + 1];
+        i++;
     } else if (command === 'join' && !discussionId && /^\d+$/.test(args[i])) {
         discussionId = parseInt(args[i], 10);
     }
 }
 
 // ---------------------------------------------------------------------------
-// Config file — provides defaults for agent, passphrase, api_url, work_dir.
-// CLI flags take precedence over config file values.
+// Config files — .agent.json provides auth (agent, passphrase, api_url),
+// .discuss.json provides discuss-specific fields (work_dir, launcher_path).
+// The old combined format (all fields in .discuss.json) still works for
+// backwards compatibility. CLI flags take precedence over config file values.
 // ---------------------------------------------------------------------------
 
+// Read .agent.json first for auth credentials
+if (agentConfigFilePath) {
+    try {
+        const agentConfig = JSON.parse(fs.readFileSync(agentConfigFilePath, 'utf-8'));
+        if (!cliAgent && agentConfig.agent) cliAgent = agentConfig.agent;
+        if (!cliPassphrase && agentConfig.passphrase) cliPassphrase = agentConfig.passphrase;
+        if (!cliApiUrl && agentConfig.api_url) cliApiUrl = agentConfig.api_url;
+    } catch (e) {
+        console.error(`Failed to read agent config file ${agentConfigFilePath}: ${e.message}`);
+        process.exit(1);
+    }
+}
+
+// Read .discuss.json for discuss-specific fields (and auth fallback for
+// backwards compatibility with the old combined format)
 if (configFilePath) {
     try {
         const fileConfig = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'));
