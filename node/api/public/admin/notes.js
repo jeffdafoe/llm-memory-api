@@ -13,7 +13,13 @@ function useNotes({ api, showToast, showConfirm }) {
     const expandedNamespaces = ref({});
     const expandedFolders = ref({});
     const selectedNote = ref(null);
-    const isMermaid = computed(() => selectedNote.value && selectedNote.value.slug.endsWith('.mmd'));
+    const isMermaid = computed(() => {
+        if (!selectedNote.value) return false;
+        if (selectedNote.value.slug.endsWith('.mmd')) return true;
+        // Detect content wrapped in a ```mermaid fenced block
+        const content = (selectedNote.value.content || '').trim();
+        return content.startsWith('```mermaid') && content.endsWith('```');
+    });
     const notesEditing = ref(false);
     const notesEditTitle = ref('');
     const notesEditContent = ref('');
@@ -104,9 +110,14 @@ function useNotes({ api, showToast, showConfirm }) {
         }
         if (isMermaid.value) {
             try {
+                // Strip ```mermaid fences if present
+                let diagram = selectedNote.value.content.trim();
+                if (diagram.startsWith('```mermaid')) {
+                    diagram = diagram.replace(/^```mermaid\s*\n?/, '').replace(/\n?```\s*$/, '');
+                }
                 // mermaid.render needs a unique ID per call
                 const id = 'mermaid-' + Date.now();
-                const { svg } = await mermaid.render(id, selectedNote.value.content);
+                const { svg } = await mermaid.render(id, diagram);
                 renderedNoteContent.value = svg;
             } catch (err) {
                 // Show the parse error + raw content as fallback
