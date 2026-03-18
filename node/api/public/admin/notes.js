@@ -1,7 +1,11 @@
 // notes.js — Notes browser (tree view, editor, search, reindex)
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import mermaid from 'mermaid';
+
+// Initialize mermaid — startOnLoad false since we render manually
+mermaid.initialize({ startOnLoad: false, theme: 'dark' });
 
 function useNotes({ api, showToast, showConfirm }) {
     const notesNamespaces = ref([]);
@@ -9,6 +13,7 @@ function useNotes({ api, showToast, showConfirm }) {
     const expandedNamespaces = ref({});
     const expandedFolders = ref({});
     const selectedNote = ref(null);
+    const isMermaid = computed(() => selectedNote.value && selectedNote.value.slug.endsWith('.mmd'));
     const notesEditing = ref(false);
     const notesEditTitle = ref('');
     const notesEditContent = ref('');
@@ -89,10 +94,30 @@ function useNotes({ api, showToast, showConfirm }) {
         return result;
     });
 
-    const renderedNoteContent = computed(() => {
-        if (!selectedNote.value || !selectedNote.value.content) return '';
-        return DOMPurify.sanitize(marked.parse(selectedNote.value.content));
-    });
+    // Rendered HTML for the note body — markdown or mermaid SVG
+    const renderedNoteContent = ref('');
+
+    watch([selectedNote, isMermaid], async () => {
+        if (!selectedNote.value || !selectedNote.value.content) {
+            renderedNoteContent.value = '';
+            return;
+        }
+        if (isMermaid.value) {
+            try {
+                // mermaid.render needs a unique ID per call
+                const id = 'mermaid-' + Date.now();
+                const { svg } = await mermaid.render(id, selectedNote.value.content);
+                renderedNoteContent.value = svg;
+            } catch (err) {
+                // Show the parse error + raw content as fallback
+                renderedNoteContent.value = '<pre class="mermaid-error">Mermaid error: '
+                    + DOMPurify.sanitize(err.message) + '</pre>'
+                    + '<pre>' + DOMPurify.sanitize(selectedNote.value.content) + '</pre>';
+            }
+        } else {
+            renderedNoteContent.value = DOMPurify.sanitize(marked.parse(selectedNote.value.content));
+        }
+    }, { immediate: true });
 
     async function loadNotes() {
         try {
@@ -267,7 +292,7 @@ function useNotes({ api, showToast, showConfirm }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, renderedNoteContent, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
+        selectedNote, renderedNoteContent, isMermaid, notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
         loadNotes, toggleNamespace, toggleFolder,
