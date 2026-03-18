@@ -702,16 +702,40 @@ router.post('/agent/memory/sync', async (req, res) => {
 
         // Build a map of remote notes by filename (slug minus prefix).
         // Only include notes that are direct children of the prefix (flat).
+        // Normalize filenames: if the derived name has no file extension,
+        // append .md so that remote slugs like "foo" and "foo.md" both
+        // resolve to the local filename "foo.md".
         const remoteByFilename = {};
         for (const note of remoteNotes) {
             if (!note.slug.startsWith(prefix)) {
                 // Shouldn't happen since listNotes filters by prefix, but be safe
                 continue;
             }
-            const derived = note.slug.slice(prefix.length);
+            let derived = note.slug.slice(prefix.length);
             // Skip nested slugs (contain /) — protocol is flat only
             if (!isSafeFilename(derived)) {
                 logError('agent', 'memory-sync-skip', { agent, message: 'nested or unsafe remote slug: ' + note.slug, detail: 'derived=' + derived });
+                continue;
+            }
+            // Normalize: if no file extension, append .md
+            if (!derived.includes('.')) {
+                derived = derived + '.md';
+            }
+            // Collision check: if two remote slugs normalize to the same
+            // filename, keep the newer one and log a warning.
+            if (remoteByFilename[derived]) {
+                const existing = remoteByFilename[derived];
+                const existingTime = new Date(existing.updated_at).getTime();
+                const currentTime = new Date(note.updated_at).getTime();
+                logError('agent', 'memory-sync-collision', {
+                    agent,
+                    message: 'remote slugs "' + existing.slug + '" and "' + note.slug + '" both normalize to filename "' + derived + '"',
+                    detail: 'keeping newer note, discarding older'
+                });
+                if (currentTime > existingTime) {
+                    remoteByFilename[derived] = note;
+                }
+                // else keep existing (it's newer)
                 continue;
             }
             remoteByFilename[derived] = note;
