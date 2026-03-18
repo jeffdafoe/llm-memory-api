@@ -1152,6 +1152,19 @@ h4 i {
     max-width: 100%;
 }
 
+.notes-mermaid {
+    height: calc(100vh - 14rem);
+    overflow: hidden;
+    position: relative;
+    background: var(--pico-card-background-color);
+    border-radius: 4px;
+}
+
+/* svg-pan-zoom control icons — make them visible on dark backgrounds */
+.notes-mermaid .svg-pan-zoom-control {
+    cursor: pointer;
+}
+
 .notes-editor {
     display: flex;
     flex-direction: column;
