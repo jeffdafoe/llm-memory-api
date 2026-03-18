@@ -647,7 +647,7 @@ const TOOL_HANDLERS = {
         validateNamespace(targetNs);
         await requireAccess(actorId, agent, 'agent', targetNs, 'read');
         const doc = await readNote(targetNs, args.slug);
-        return `# ${doc.title}\n\n${doc.content}`;
+        return doc.content;
     },
 
     async delete_note(args, agent, namespace, actorId) {
