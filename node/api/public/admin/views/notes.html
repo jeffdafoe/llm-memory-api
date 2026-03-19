@@ -1,5 +1,6 @@
-<div class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen }">
+<div class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
     <div class="notes-sidebar">
+        <button class="notes-sidebar-toggle" @click="notesSidebarCollapsed = !notesSidebarCollapsed" :title="notesSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"><i :class="notesSidebarCollapsed ? 'icon-panel-left-open' : 'icon-panel-left-close'"></i></button>
         <div class="notes-search">
             <form @submit.prevent="searchNotes">
                 <input type="text" v-model="notesSearchQuery" placeholder="Search notes..." class="notes-search-input">

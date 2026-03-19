@@ -884,6 +884,43 @@ h4 i {
     overflow-y: auto;
     border-right: 1px solid var(--pico-muted-border-color);
     padding-right: 1rem;
+    position: relative;
+    transition: width 0.15s, min-width 0.15s, padding 0.15s;
+}
+
+.notes-sidebar-toggle {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    color: var(--pico-muted-color);
+    font-size: 1rem;
+    z-index: 1;
+}
+
+.notes-sidebar-toggle:hover {
+    color: var(--pico-color);
+}
+
+/* Collapsed sidebar — just the toggle button visible */
+.notes-sidebar-collapsed .notes-sidebar {
+    width: 2.5rem;
+    min-width: 2.5rem;
+    padding-right: 0;
+    overflow: hidden;
+}
+
+.notes-sidebar-collapsed .notes-sidebar > *:not(.notes-sidebar-toggle) {
+    display: none;
+}
+
+.notes-sidebar-collapsed .notes-sidebar-toggle {
+    position: static;
+    display: block;
+    margin: 0.25rem auto;
 }
 
 .notes-content {
