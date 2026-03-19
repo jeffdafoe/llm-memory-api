@@ -9,6 +9,7 @@ const { SESSION_KIND } = require('../constants');
 const { broadcast } = require('../services/events');
 const { listNotes, readNote, saveNote } = require('../services/documents');
 const { requireAccess, validateNamespace } = require('../services/namespace-permissions');
+const config = require('../services/config');
 // actors service no longer needed — all routes use req.actorId from auth middleware
 
 const router = Router();
@@ -636,169 +637,119 @@ router.post('/agent/memory/sync', async (req, res) => {
     }
 
     try {
-        const namespace = req.body.namespace || agent;
-        let prefix = req.body.prefix || '';
-        const localFiles = req.body.files;
+        // Server controls namespace and prefix — agent's own namespace, fixed prefix.
+        const namespace = agent;
+        const prefix = 'instructions/memory/';
 
-        // --- Input validation ---
+        const response = {};
 
-        try {
-            validateNamespace(namespace);
-        } catch (err) {
-            logError('agent', 'memory-sync-rejected', { agent, message: 'invalid namespace: ' + namespace });
-            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
-        }
+        // --- Memory sync ---
+        // Bidirectional sync of memory files (local .md files ↔ remote notes).
+        // Only runs if client sends a memory field.
+        if (req.body.memory) {
+            const localFiles = req.body.memory.files;
 
-        // Normalize prefix: must be empty or end with /
-        if (prefix && !prefix.endsWith('/')) {
-            prefix += '/';
-        }
-
-        if (!Array.isArray(localFiles)) {
-            logError('agent', 'memory-sync-rejected', { agent, message: 'files is not an array' });
-            return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Required field: files (array of {filename, content, mtime})' }
-            });
-        }
-
-        // Validate each file entry
-        for (let i = 0; i < localFiles.length; i++) {
-            const file = localFiles[i];
-            if (!file || typeof file !== 'object') {
-                logError('agent', 'memory-sync-rejected', { agent, message: 'files[' + i + '] is not an object' });
+            if (!Array.isArray(localFiles)) {
+                logError('agent', 'memory-sync-rejected', { agent, message: 'memory.files is not an array' });
                 return res.status(400).json({
-                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '] is not an object' }
+                    error: { code: 'BAD_REQUEST', message: 'memory.files must be an array of {filename, content, mtime}' }
                 });
             }
-            if (!isSafeFilename(file.filename)) {
-                logError('agent', 'memory-sync-rejected', { agent, message: 'unsafe filename: ' + file.filename, detail: 'index=' + i });
-                return res.status(400).json({
-                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '].filename is invalid: must be a safe basename (no slashes, no .., no leading dot)' }
-                });
-            }
-            if (typeof file.content !== 'string') {
-                logError('agent', 'memory-sync-rejected', { agent, message: 'files[' + i + '].content must be a string', detail: 'filename=' + file.filename });
-                return res.status(400).json({
-                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '].content must be a string' }
-                });
-            }
-            if (!file.mtime || isNaN(new Date(file.mtime).getTime())) {
-                logError('agent', 'memory-sync-rejected', { agent, message: 'invalid mtime for ' + file.filename + ': ' + file.mtime, detail: 'index=' + i });
-                return res.status(400).json({
-                    error: { code: 'BAD_REQUEST', message: 'files[' + i + '].mtime must be a valid ISO8601 timestamp' }
-                });
-            }
-        }
 
-        // --- Access control ---
-
-        await requireAccess(req.actorId, agent, 'agent', namespace, 'read');
-
-        // --- Build inventories ---
-
-        // Get all remote notes under the prefix
-        const remoteData = await listNotes(namespace, 500, 0, prefix || undefined);
-        const remoteNotes = remoteData.notes;
-
-        // Build a map of remote notes by filename (slug minus prefix).
-        // Only include notes that are direct children of the prefix (flat).
-        // Normalize filenames: if the derived name has no file extension,
-        // append .md so that remote slugs like "foo" and "foo.md" both
-        // resolve to the local filename "foo.md".
-        const remoteByFilename = {};
-        for (const note of remoteNotes) {
-            if (!note.slug.startsWith(prefix)) {
-                // Shouldn't happen since listNotes filters by prefix, but be safe
-                continue;
-            }
-            let derived = note.slug.slice(prefix.length);
-            // Skip nested slugs (contain /) — protocol is flat only
-            if (!isSafeFilename(derived)) {
-                logError('agent', 'memory-sync-skip', { agent, message: 'nested or unsafe remote slug: ' + note.slug, detail: 'derived=' + derived });
-                continue;
-            }
-            // Normalize: if no file extension, append .md
-            if (!derived.includes('.')) {
-                derived = derived + '.md';
-            }
-            // Collision check: if two remote slugs normalize to the same
-            // filename, keep the newer one and log a warning.
-            if (remoteByFilename[derived]) {
-                const existing = remoteByFilename[derived];
-                const existingTime = new Date(existing.updated_at).getTime();
-                const currentTime = new Date(note.updated_at).getTime();
-                logError('agent', 'memory-sync-collision', {
-                    agent,
-                    message: 'remote slugs "' + existing.slug + '" and "' + note.slug + '" both normalize to filename "' + derived + '"',
-                    detail: 'keeping newer note, discarding older'
-                });
-                if (currentTime > existingTime) {
-                    remoteByFilename[derived] = note;
+            // Validate each file entry
+            for (let i = 0; i < localFiles.length; i++) {
+                const file = localFiles[i];
+                if (!file || typeof file !== 'object') {
+                    return res.status(400).json({
+                        error: { code: 'BAD_REQUEST', message: 'memory.files[' + i + '] is not an object' }
+                    });
                 }
-                // else keep existing (it's newer)
-                continue;
+                if (!isSafeFilename(file.filename)) {
+                    return res.status(400).json({
+                        error: { code: 'BAD_REQUEST', message: 'memory.files[' + i + '].filename is invalid: must be a safe basename (no slashes, no .., no leading dot)' }
+                    });
+                }
+                if (typeof file.content !== 'string') {
+                    return res.status(400).json({
+                        error: { code: 'BAD_REQUEST', message: 'memory.files[' + i + '].content must be a string' }
+                    });
+                }
+                if (!file.mtime || isNaN(new Date(file.mtime).getTime())) {
+                    return res.status(400).json({
+                        error: { code: 'BAD_REQUEST', message: 'memory.files[' + i + '].mtime must be a valid ISO8601 timestamp' }
+                    });
+                }
             }
-            remoteByFilename[derived] = note;
-        }
 
-        // Build a map of local files by filename (already validated above)
-        const localByFilename = {};
-        for (const file of localFiles) {
-            localByFilename[file.filename] = file;
-        }
+            await requireAccess(req.actorId, agent, 'agent', namespace, 'read');
 
-        // Collect all unique filenames from both sides
-        const allFilenames = new Set([
-            ...Object.keys(remoteByFilename),
-            ...Object.keys(localByFilename)
-        ]);
+            // Get all remote notes under the prefix
+            const remoteData = await listNotes(namespace, 500, 0, prefix);
+            const remoteNotes = remoteData.notes;
 
-        const actions = [];
-
-        // Check write access once if we might need to push
-        let hasWriteAccess = false;
-        async function ensureWriteAccess() {
-            if (!hasWriteAccess) {
-                await requireAccess(req.actorId, agent, 'agent', namespace, 'write');
-                hasWriteAccess = true;
+            // Build a map of remote notes by filename (slug minus prefix).
+            // Only include notes that are direct children of the prefix (flat).
+            // Normalize filenames: if the derived name has no file extension,
+            // append .md so that remote slugs like "foo" and "foo.md" both
+            // resolve to the local filename "foo.md".
+            const remoteByFilename = {};
+            for (const note of remoteNotes) {
+                if (!note.slug.startsWith(prefix)) continue;
+                let derived = note.slug.slice(prefix.length);
+                // Skip nested slugs (contain /) — protocol is flat only
+                if (!isSafeFilename(derived)) {
+                    logError('agent', 'memory-sync-skip', { agent, message: 'nested or unsafe remote slug: ' + note.slug, detail: 'derived=' + derived });
+                    continue;
+                }
+                // Normalize: if no file extension, append .md
+                if (!derived.includes('.')) {
+                    derived = derived + '.md';
+                }
+                // Collision check: if two remote slugs normalize to the same
+                // filename, keep the newer one and log a warning.
+                if (remoteByFilename[derived]) {
+                    const existing = remoteByFilename[derived];
+                    const existingTime = new Date(existing.updated_at).getTime();
+                    const currentTime = new Date(note.updated_at).getTime();
+                    logError('agent', 'memory-sync-collision', {
+                        agent,
+                        message: 'remote slugs "' + existing.slug + '" and "' + note.slug + '" both normalize to filename "' + derived + '"',
+                        detail: 'keeping newer note, discarding older'
+                    });
+                    if (currentTime > existingTime) {
+                        remoteByFilename[derived] = note;
+                    }
+                    continue;
+                }
+                remoteByFilename[derived] = note;
             }
-        }
 
-        // --- Compare and sync ---
+            // Build a map of local files by filename
+            const localByFilename = {};
+            for (const file of localFiles) {
+                localByFilename[file.filename] = file;
+            }
 
-        for (const filename of allFilenames) {
-            const remote = remoteByFilename[filename];
-            const local = localByFilename[filename];
+            const allFilenames = new Set([
+                ...Object.keys(remoteByFilename),
+                ...Object.keys(localByFilename)
+            ]);
 
-            if (remote && !local) {
-                // Remote-only — client needs to pull it down
-                // Read full content (listNotes only returns snippet)
-                const fullNote = await readNote(namespace, remote.slug);
-                actions.push({
-                    filename,
-                    action: 'pull',
-                    content: fullNote.content,
-                    title: fullNote.title,
-                    remote_updated_at: fullNote.updated_at
-                });
-            } else if (local && !remote) {
-                // Local-only — push to remote
-                await ensureWriteAccess();
-                const slug = prefix + filename;
-                const title = extractTitle(local.content, filename);
-                const doc = await saveNote(namespace, title, local.content, slug, agent);
-                actions.push({
-                    filename,
-                    action: 'push',
-                    remote_updated_at: doc.updated_at
-                });
-            } else {
-                // Both exist — compare timestamps
-                const remoteTime = new Date(remote.updated_at).getTime();
-                const localTime = new Date(local.mtime).getTime();
+            const actions = [];
 
-                if (remoteTime > localTime) {
-                    // Remote is newer — pull
+            let hasWriteAccess = false;
+            async function ensureWriteAccess() {
+                if (!hasWriteAccess) {
+                    await requireAccess(req.actorId, agent, 'agent', namespace, 'write');
+                    hasWriteAccess = true;
+                }
+            }
+
+            for (const filename of allFilenames) {
+                const remote = remoteByFilename[filename];
+                const local = localByFilename[filename];
+
+                if (remote && !local) {
                     const fullNote = await readNote(namespace, remote.slug);
                     actions.push({
                         filename,
@@ -807,8 +758,7 @@ router.post('/agent/memory/sync', async (req, res) => {
                         title: fullNote.title,
                         remote_updated_at: fullNote.updated_at
                     });
-                } else if (localTime > remoteTime) {
-                    // Local is newer — push
+                } else if (local && !remote) {
                     await ensureWriteAccess();
                     const slug = prefix + filename;
                     const title = extractTitle(local.content, filename);
@@ -819,15 +769,116 @@ router.post('/agent/memory/sync', async (req, res) => {
                         remote_updated_at: doc.updated_at
                     });
                 } else {
-                    actions.push({
-                        filename,
-                        action: 'unchanged'
-                    });
+                    const remoteTime = new Date(remote.updated_at).getTime();
+                    const localTime = new Date(local.mtime).getTime();
+
+                    if (remoteTime > localTime) {
+                        const fullNote = await readNote(namespace, remote.slug);
+                        actions.push({
+                            filename,
+                            action: 'pull',
+                            content: fullNote.content,
+                            title: fullNote.title,
+                            remote_updated_at: fullNote.updated_at
+                        });
+                    } else if (localTime > remoteTime) {
+                        await ensureWriteAccess();
+                        const slug = prefix + filename;
+                        const title = extractTitle(local.content, filename);
+                        const doc = await saveNote(namespace, title, local.content, slug, agent);
+                        actions.push({
+                            filename,
+                            action: 'push',
+                            remote_updated_at: doc.updated_at
+                        });
+                    } else {
+                        actions.push({ filename, action: 'unchanged' });
+                    }
                 }
             }
+
+            response.memory = { actions };
         }
 
-        res.json({ actions });
+        // --- Conversation sync ---
+        // If client sent a conversations field (even empty object), return retention config.
+        // This is independent of memory sync — errors here don't affect memory actions.
+        if (req.body.conversations !== undefined && req.body.conversations !== null) {
+            let conversationsResponse = {};
+            try {
+                const retentionDays = parseInt(config.get('conversation_retention_days')) || 30;
+                conversationsResponse.retention_days = retentionDays;
+
+                // If client sent session_ids, compare against existing conversation notes
+                const sessionIds = req.body.conversations.session_ids;
+                if (Array.isArray(sessionIds) && sessionIds.length > 0) {
+                    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                    const maxIds = 1000;
+                    if (sessionIds.length > maxIds) {
+                        conversationsResponse.error = 'Too many session IDs (max ' + maxIds + ')';
+                    } else {
+                        const seen = new Set();
+                        const validIds = [];
+                        for (const id of sessionIds) {
+                            if (typeof id !== 'string' || !uuidRegex.test(id)) continue;
+                            const lower = id.toLowerCase();
+                            if (seen.has(lower)) continue;
+                            seen.add(lower);
+                            validIds.push(lower);
+                        }
+
+                        // Query by metadata->session_id — no slug parsing, no row cap
+                        const existingResult = await pool.query(`
+                            SELECT metadata->>'session_id' AS session_id
+                            FROM documents
+                            WHERE namespace = $1 AND kind = 'conversation' AND deleted_at IS NULL
+                              AND metadata->>'session_id' = ANY($2)
+                        `, [agent, validIds]);
+                        const existingSessionIds = new Set(
+                            existingResult.rows.map(r => r.session_id.toLowerCase())
+                        );
+
+                        conversationsResponse.missing = validIds.filter(id => !existingSessionIds.has(id));
+                    }
+                }
+
+                // If client sent uploads, save them as conversation notes.
+                // Server controls slug prefix and namespace.
+                const uploads = req.body.conversations.uploads;
+                if (Array.isArray(uploads) && uploads.length > 0) {
+                    let uploaded = 0;
+                    const uploadErrors = [];
+
+                    for (const upload of uploads) {
+                        try {
+                            if (!upload.content || !upload.session_id || !upload.date) {
+                                uploadErrors.push({ session_id: upload.session_id || 'unknown', error: 'Missing required fields: content, session_id, date' });
+                                continue;
+                            }
+
+                            const slug = 'conversations/' + upload.date + '-' + upload.session_id;
+                            const title = 'Conversation ' + upload.date + ' (' + upload.session_id.slice(0, 8) + ')';
+
+                            await saveNote(agent, title, upload.content, slug, agent, upload.metadata || undefined);
+                            uploaded++;
+                        } catch (uploadErr) {
+                            uploadErrors.push({ session_id: upload.session_id || 'unknown', error: uploadErr.message });
+                        }
+                    }
+
+                    conversationsResponse.uploaded = uploaded;
+                    if (uploadErrors.length > 0) {
+                        conversationsResponse.upload_errors = uploadErrors;
+                    }
+                }
+            } catch (conversationErr) {
+                logError('agent', 'memory-sync-conversations', { agent, message: conversationErr.message, detail: conversationErr.stack });
+                conversationsResponse.error = 'Conversation sync failed: ' + conversationErr.message;
+            }
+            response.conversations = conversationsResponse;
+        }
+
+        res.json(response);
     } catch (err) {
         if (err.statusCode === 400) {
             logError('agent', 'memory-sync-error', { agent, message: err.message });

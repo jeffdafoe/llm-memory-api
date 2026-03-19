@@ -67,10 +67,15 @@ async function searchMemory(query, namespace, limit, readableNamespaces) {
         note: parseNonNegativeFinite(config.get('search_decay_halflife_note')),
         reference: parseNonNegativeFinite(config.get('search_decay_halflife_reference')),
         instruction: parseNonNegativeFinite(config.get('search_decay_halflife_instruction')),
+        conversation: parseNonNegativeFinite(config.get('search_decay_halflife_conversation')),
     };
     const accessBoostMax = parseNonNegativeFinite(config.get('search_access_boost_max'));
     const accessBoostWindowDays = parseNonNegativeFinite(config.get('search_access_boost_window_days'));
     const accessBoostWindowSeconds = accessBoostWindowDays * 86400;
+
+    // Conversation weight: multiplier applied to conversation results so they
+    // don't outrank same-relevance curated notes. 1.0 = no penalty, 0.0 = invisible.
+    const conversationWeight = parseNonNegativeFinite(config.get('search_conversation_weight'), 0.7);
 
     // Build params array incrementally. All config values are bound, not interpolated.
     // paramIdx tracks the next available $N placeholder.
@@ -116,6 +121,12 @@ async function searchMemory(query, namespace, limit, readableNamespaces) {
     });
     const decayExpression = `CASE ${decayCases.join(' ')} ELSE 1.0 END`;
 
+    // Kind-level weight multiplier (currently only conversations are penalized)
+    const convWeightIdx = paramIdx;
+    params.push(conversationWeight);
+    paramIdx++;
+    const kindWeightExpression = `CASE WHEN d.kind = 'conversation' THEN $${convWeightIdx} ELSE 1.0 END`;
+
     // Access boost: linear ramp-down from max to 0 over the window.
     // Uses epoch math with bound params.
     let accessBoostExpression = '0';
@@ -147,7 +158,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces) {
         sql = `
             SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
                    ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${accessBoostExpression})
-                   * ${decayExpression} AS similarity
+                   * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
             LEFT JOIN documents d ON d.namespace = mc.namespace AND LOWER(d.slug) = LOWER(mc.source_file)
             WHERE 1=1 ${nsFilter} ${softDeleteFilter}
@@ -158,7 +169,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces) {
         sql = `
             SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
                    ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${accessBoostExpression})
-                   * ${decayExpression} AS similarity
+                   * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
             LEFT JOIN documents d ON d.namespace = mc.namespace AND LOWER(d.slug) = LOWER(mc.source_file)
             WHERE mc.namespace = $2 ${softDeleteFilter}

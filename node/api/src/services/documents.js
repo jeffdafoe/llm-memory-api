@@ -9,6 +9,7 @@ const { handleError } = require('./error-handler');
 function slugToKind(slug) {
     if (slug.startsWith('instructions/')) return 'instruction';
     if (slug.startsWith('notes/codebase/')) return 'reference';
+    if (slug.startsWith('conversations/')) return 'conversation';
     if (slug.startsWith('tasks/done/')) return 'task';
     if (slug.startsWith('tasks/')) return 'task';
     if (slug.startsWith('learnings/')) return 'learning';
@@ -26,7 +27,7 @@ function titleToSlug(title) {
         .substring(0, 200);
 }
 
-async function saveNote(namespace, title, content, slug, createdBy) {
+async function saveNote(namespace, title, content, slug, createdBy, metadata) {
     if (!title || !content) {
         throw Object.assign(new Error('Required fields: title, content'), { statusCode: 400 });
     }
@@ -61,22 +62,46 @@ async function saveNote(namespace, title, content, slug, createdBy) {
 
     const kind = slugToKind(resolvedSlug);
 
+    // Validate and normalize metadata: must be a plain object if provided, max 10KB serialized.
+    // null/undefined → null (no metadata). Prevents arbitrary blobs or non-object types.
+    let metadataJson = null;
+    if (metadata) {
+        if (typeof metadata !== 'object' || Array.isArray(metadata)) {
+            throw Object.assign(new Error('metadata must be a plain object'), { statusCode: 400 });
+        }
+        const serialized = JSON.stringify(metadata);
+        if (serialized.length > 10240) {
+            throw Object.assign(new Error('metadata exceeds 10KB limit'), { statusCode: 400 });
+        }
+        metadataJson = serialized;
+    }
+
     let result;
     if (existing.rows.length > 0) {
         // Update existing row — also clears deleted_at if it was soft-deleted.
         // Don't overwrite created_by_actor_id on updates — preserve original author.
-        result = await pool.query(`
-            UPDATE documents
-            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5
-            WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
-            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-        `, [title, content, namespace, resolvedSlug, kind]);
+        // Only update metadata if a new value was provided (don't null out existing metadata on saves that don't pass it)
+        if (metadataJson) {
+            result = await pool.query(`
+                UPDATE documents
+                SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5, metadata = $6
+                WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
+                RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata
+            `, [title, content, namespace, resolvedSlug, kind, metadataJson]);
+        } else {
+            result = await pool.query(`
+                UPDATE documents
+                SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5
+                WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
+                RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata
+            `, [title, content, namespace, resolvedSlug, kind]);
+        }
     } else {
         result = await pool.query(`
-            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-        `, [namespace, resolvedSlug, title, content, createdByActorId, kind]);
+            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata
+        `, [namespace, resolvedSlug, title, content, createdByActorId, kind, metadataJson]);
     }
 
     const doc = result.rows[0];
@@ -139,7 +164,7 @@ async function listNotes(namespace, limit, offset, prefix) {
 async function readNote(namespace, slug) {
     const result = await pool.query(`
         SELECT d.id, d.namespace, d.slug, d.title, d.content,
-               ac.name AS created_by, d.created_at, d.updated_at
+               ac.name AS created_by, d.created_at, d.updated_at, d.metadata
         FROM documents d
         LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
         WHERE d.namespace = $1 AND LOWER(d.slug) = LOWER($2) AND d.deleted_at IS NULL

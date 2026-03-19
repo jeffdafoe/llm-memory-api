@@ -3,23 +3,26 @@
 
 // ---------------------------------------------------------------------------
 // memory-sync.js — Bidirectional sync between local memory files and remote
-// notes via the memory API.
+// notes, plus conversation log sync, via the memory API.
 //
-// Reads .agent.json for auth credentials, scans a local directory for .md
-// files, sends them to POST /agent/memory/sync along with their modification
-// times, and writes back any remotely-newer or remote-only files.
+// Reads .agent.json for auth credentials, scans a project directory for:
+//   - {project-dir}/memory/*.md — note files (bidirectional sync)
+//   - {project-dir}/*.jsonl — Claude Code session logs (one-way upload)
 //
 // Usage:
-//   node memory-sync.js --local-dir <path> --prefix <remote-prefix>
+//   node memory-sync.js --project-dir <path>
 //                        [--config <path-to-.agent.json>]
+//                        [--user <username>]
 //
 // Example:
 //   node memory-sync.js \
-//     --local-dir C:/Users/jdafoe/.claude/projects/C--bill1st-dev/memory \
-//     --prefix instructions/memory/ \
-//     --config C:/bill1st/dev/.agent.json
+//     --project-dir C:/Users/jdafoe/.claude/projects/C--bill1st-dev \
+//     --config C:/bill1st/dev/.agent.json \
+//     --user jeff
 //
+// --local-dir is accepted as a deprecated alias for --project-dir.
 // If --config is not provided, looks for .agent.json in the current directory.
+// --user sets the label for user messages in conversation logs (default: "user").
 // ---------------------------------------------------------------------------
 
 const fs = require('fs');
@@ -32,27 +35,33 @@ const http = require('http');
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
-let localDir = null;
-let prefix = '';
+let projectDir = null;
 let configPath = null;
+let userName = 'user';
 
 for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--local-dir' && args[i + 1]) {
-        localDir = args[i + 1];
+    if ((args[i] === '--project-dir' || args[i] === '--local-dir') && args[i + 1]) {
+        projectDir = args[i + 1];
         i++;
     } else if (args[i] === '--prefix' && args[i + 1]) {
-        prefix = args[i + 1];
+        // Deprecated — prefix is now server-controlled. Accept and ignore for backwards compat.
         i++;
     } else if (args[i] === '--config' && args[i + 1]) {
         configPath = args[i + 1];
         i++;
+    } else if (args[i] === '--user' && args[i + 1]) {
+        userName = args[i + 1];
+        i++;
     }
 }
 
-if (!localDir) {
-    console.error('Usage: node memory-sync.js --local-dir <path> --prefix <remote-prefix> [--config <path>]');
+if (!projectDir) {
+    console.error('Usage: node memory-sync.js --project-dir <path> [--config <path>] [--user <name>]');
     process.exit(1);
 }
+
+// Derive memory dir from project dir
+const memoryDir = path.join(projectDir, 'memory');
 
 // ---------------------------------------------------------------------------
 // Config — read .agent.json
@@ -128,6 +137,125 @@ function isSafeFilename(name) {
     return true;
 }
 
+// UUID format check for session IDs
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ---------------------------------------------------------------------------
+// Conversation preprocessing
+// ---------------------------------------------------------------------------
+
+// Extract user and assistant text messages from a Claude Code JSONL session file.
+// Returns a markdown string with timestamped, labeled messages.
+function preprocessSession(filePath, agentName) {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const lines = raw.split('\n').filter(Boolean);
+    const messages = [];
+
+    for (const line of lines) {
+        let entry;
+        try {
+            entry = JSON.parse(line);
+        } catch (e) {
+            continue; // skip malformed lines
+        }
+
+        if (entry.type === 'user') {
+            // User messages: extract text content, skip tool results
+            const msg = entry.message;
+            if (!msg) continue;
+
+            // msg can be a string or an object with role/content
+            let content = null;
+            if (typeof msg === 'string') {
+                content = msg;
+            } else if (msg.content) {
+                // content can be a string or an array of content blocks
+                if (typeof msg.content === 'string') {
+                    content = msg.content;
+                } else if (Array.isArray(msg.content)) {
+                    // Filter to text blocks only (skip tool_result blocks)
+                    const textParts = [];
+                    for (const block of msg.content) {
+                        if (block.type === 'text') {
+                            textParts.push(block.text);
+                        }
+                        // Skip tool_result blocks entirely
+                    }
+                    if (textParts.length > 0) {
+                        content = textParts.join('\n');
+                    }
+                }
+            }
+
+            if (content && content.trim()) {
+                messages.push({
+                    timestamp: entry.timestamp,
+                    speaker: userName,
+                    text: content.trim()
+                });
+            }
+        } else if (entry.type === 'assistant') {
+            // Assistant messages: extract text blocks only (skip tool_use blocks)
+            const msg = entry.message;
+            if (!msg || !msg.content) continue;
+
+            const contentArr = Array.isArray(msg.content) ? msg.content : [];
+            const textParts = [];
+            for (const block of contentArr) {
+                if (block.type === 'text' && block.text && block.text.trim()) {
+                    textParts.push(block.text.trim());
+                }
+            }
+
+            if (textParts.length > 0) {
+                messages.push({
+                    timestamp: entry.timestamp,
+                    speaker: agentName,
+                    text: textParts.join('\n')
+                });
+            }
+        }
+        // Skip progress, system, queue-operation entries entirely
+    }
+
+    return messages;
+}
+
+// Format preprocessed messages into a markdown note
+function formatConversation(sessionId, messages) {
+    if (messages.length === 0) return null;
+
+    // Derive date from first message timestamp
+    const firstTimestamp = messages[0].timestamp;
+    const sessionDate = firstTimestamp
+        ? new Date(firstTimestamp).toISOString().slice(0, 10)
+        : 'unknown';
+
+    // Build header
+    const headerLines = [
+        'Session: ' + sessionDate + ' (' + sessionId + ')',
+        'Project: ' + projectDir,
+        '',
+        '---',
+        ''
+    ];
+
+    // Build message lines
+    const msgLines = [];
+    for (const msg of messages) {
+        let timeStr = '';
+        if (msg.timestamp) {
+            const d = new Date(msg.timestamp);
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            timeStr = hh + ':' + mm;
+        }
+        msgLines.push('[' + timeStr + ' ' + msg.speaker + '] ' + msg.text);
+    }
+
+    return headerLines.join('\n') + msgLines.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -150,15 +278,18 @@ async function main() {
     const authHeaders = { 'Authorization': 'Bearer ' + sessionToken };
 
     try {
-        // Step 2: Read local files
-        // Ensure local directory exists
-        fs.mkdirSync(localDir, { recursive: true });
+        // ---------------------------------------------------------------
+        // Phase 1: Note sync (existing behavior)
+        // ---------------------------------------------------------------
+
+        // Ensure memory directory exists
+        fs.mkdirSync(memoryDir, { recursive: true });
 
         const localFiles = [];
-        const entries = fs.readdirSync(localDir);
+        const entries = fs.readdirSync(memoryDir);
         for (const entry of entries) {
             if (!entry.endsWith('.md')) continue;
-            const filePath = path.join(localDir, entry);
+            const filePath = path.join(memoryDir, entry);
             const stat = fs.statSync(filePath);
             if (!stat.isFile()) continue;
             const content = fs.readFileSync(filePath, 'utf-8');
@@ -169,19 +300,20 @@ async function main() {
             });
         }
 
-        // Step 3: Call sync endpoint
+        // Call sync endpoint — memory files + conversation support signal
         const result = await httpPost(config.api_url + '/agent/memory/sync', authHeaders, {
-            prefix: prefix,
-            files: localFiles
+            memory: { files: localFiles },
+            conversations: {}
         });
 
-        // Step 4: Process actions
+        // Process memory sync actions
         let pulled = 0;
         let pushed = 0;
         let unchanged = 0;
         let skipped = 0;
 
-        for (const action of result.actions) {
+        const memoryActions = (result.memory && result.memory.actions) || [];
+        for (const action of memoryActions) {
             // Defensive: validate filenames returned by the server before writing
             if (!isSafeFilename(action.filename)) {
                 console.error('  SKIP unsafe filename from server: ' + action.filename);
@@ -191,7 +323,7 @@ async function main() {
 
             if (action.action === 'pull') {
                 // Write remote content to local file
-                const filePath = path.join(localDir, action.filename);
+                const filePath = path.join(memoryDir, action.filename);
                 fs.writeFileSync(filePath, action.content, 'utf-8');
                 // Set mtime to match remote so future syncs see them as equal
                 if (action.remote_updated_at) {
@@ -203,7 +335,7 @@ async function main() {
             } else if (action.action === 'push') {
                 // Update local mtime to match remote after push
                 if (action.remote_updated_at) {
-                    const filePath = path.join(localDir, action.filename);
+                    const filePath = path.join(memoryDir, action.filename);
                     if (fs.existsSync(filePath)) {
                         const mtime = new Date(action.remote_updated_at);
                         fs.utimesSync(filePath, mtime, mtime);
@@ -221,6 +353,142 @@ async function main() {
             summary += ', ' + skipped + ' skipped (unsafe filenames)';
         }
         console.log(summary);
+
+        // ---------------------------------------------------------------
+        // Phase 2: Conversation sync
+        // ---------------------------------------------------------------
+
+        // Only proceed if server returned conversation config
+        if (result.conversations && result.conversations.retention_days) {
+            const retentionDays = result.conversations.retention_days;
+            const cutoffMs = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+            const activeThresholdMs = 5 * 60 * 1000; // 5 minutes — skip active sessions
+
+            // Scan for JSONL session files in the project directory
+            const allEntries = fs.readdirSync(projectDir);
+            const candidateIds = [];
+
+            for (const entry of allEntries) {
+                if (!entry.endsWith('.jsonl')) continue;
+                // Skip subagent sessions
+                if (entry.startsWith('agent-')) continue;
+
+                // Extract session ID (filename without .jsonl)
+                const sessionId = entry.replace('.jsonl', '');
+                if (!UUID_REGEX.test(sessionId)) continue;
+
+                const filePath = path.join(projectDir, entry);
+                const stat = fs.statSync(filePath);
+                if (!stat.isFile()) continue;
+
+                // Skip files outside retention window
+                if (stat.mtime.getTime() < cutoffMs) continue;
+
+                // Skip files modified in the last 5 minutes (likely active sessions)
+                if (Date.now() - stat.mtime.getTime() < activeThresholdMs) continue;
+
+                candidateIds.push(sessionId.toLowerCase());
+            }
+
+            if (candidateIds.length > 0) {
+                // Ask server which sessions are missing
+                const diffResult = await httpPost(config.api_url + '/agent/memory/sync', authHeaders, {
+                    conversations: { session_ids: candidateIds }
+                });
+
+                const missing = (diffResult.conversations && diffResult.conversations.missing) || [];
+
+                if (missing.length > 0) {
+                    // Preprocess all missing sessions into file entries for the sync endpoint
+                    const conversationFiles = [];
+                    let conversationErrors = 0;
+
+                    for (const sessionId of missing) {
+                        try {
+                            // Find the local file (case-insensitive match)
+                            const jsonlName = sessionId + '.jsonl';
+                            let actualPath = path.join(projectDir, jsonlName);
+
+                            if (!fs.existsSync(actualPath)) {
+                                const match = allEntries.find(e =>
+                                    e.toLowerCase() === jsonlName.toLowerCase()
+                                );
+                                if (!match) {
+                                    console.error('  CONV SKIP missing file: ' + jsonlName);
+                                    conversationErrors++;
+                                    continue;
+                                }
+                                actualPath = path.join(projectDir, match);
+                            }
+
+                            // Preprocess the session
+                            const messages = preprocessSession(actualPath, config.agent);
+                            const content = formatConversation(sessionId, messages);
+
+                            if (!content) {
+                                // Empty session (no text messages) — skip silently
+                                continue;
+                            }
+
+                            // Derive date from first message
+                            const firstTs = messages[0].timestamp;
+                            const dateStr = firstTs
+                                ? new Date(firstTs).toISOString().slice(0, 10)
+                                : 'unknown';
+
+                            conversationFiles.push({
+                                session_id: sessionId,
+                                date: dateStr,
+                                content: content,
+                                metadata: {
+                                    session_id: sessionId,
+                                    session_date: dateStr,
+                                    project: projectDir,
+                                    agent: config.agent,
+                                    user: userName,
+                                    message_count: messages.length,
+                                    source: 'claude-code-jsonl'
+                                }
+                            });
+                        } catch (err) {
+                            console.error('  CONV ERROR ' + sessionId + ': ' + err.message);
+                            conversationErrors++;
+                        }
+                    }
+
+                    // Upload via conversations.uploads — server handles slug/namespace
+                    if (conversationFiles.length > 0) {
+                        const uploadResult = await httpPost(config.api_url + '/agent/memory/sync', authHeaders, {
+                            conversations: { uploads: conversationFiles }
+                        });
+
+                        const uploaded = (uploadResult.conversations && uploadResult.conversations.uploaded) || 0;
+                        for (const file of conversationFiles) {
+                            console.log('  CONV conversations/' + file.date + '-' + file.session_id);
+                        }
+
+                        let conversationSummary = 'Conversations: ' + uploaded + ' uploaded';
+                        if (conversationErrors > 0) {
+                            conversationSummary += ', ' + conversationErrors + ' errors';
+                        }
+                        const uploadErrors = uploadResult.conversations && uploadResult.conversations.upload_errors;
+                        if (uploadErrors && uploadErrors.length > 0) {
+                            for (const ue of uploadErrors) {
+                                console.error('  CONV SERVER ERROR ' + ue.session_id + ': ' + ue.error);
+                            }
+                            conversationSummary += ', ' + uploadErrors.length + ' server errors';
+                        }
+                        console.log(conversationSummary);
+                    } else if (conversationErrors > 0) {
+                        console.log('Conversations: 0 uploaded, ' + conversationErrors + ' errors');
+                    }
+                } else {
+                    console.log('Conversations: all up to date');
+                }
+            } else {
+                console.log('Conversations: no new sessions');
+            }
+        }
     } finally {
         // Always attempt logout so we don't leak sessions
         try {
