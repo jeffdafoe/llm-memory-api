@@ -888,24 +888,7 @@ h4 i {
     transition: width 0.15s, min-width 0.15s, padding 0.15s;
 }
 
-.notes-sidebar-toggle {
-    position: absolute;
-    top: 0.25rem;
-    right: 0.25rem;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0.25rem;
-    color: var(--pico-muted-color);
-    font-size: 1rem;
-    z-index: 1;
-}
-
-.notes-sidebar-toggle:hover {
-    color: var(--pico-color);
-}
-
-/* Collapsed sidebar — just the toggle button visible */
+/* Collapsed sidebar — just the expand button visible */
 .notes-sidebar-collapsed .notes-sidebar {
     width: 2.5rem;
     min-width: 2.5rem;
@@ -913,14 +896,16 @@ h4 i {
     overflow: hidden;
 }
 
-.notes-sidebar-collapsed .notes-sidebar > *:not(.notes-sidebar-toggle) {
+.notes-sidebar-collapsed .notes-sidebar > *:not(.notes-sidebar-header) {
     display: none;
 }
 
-.notes-sidebar-collapsed .notes-sidebar-toggle {
-    position: static;
-    display: block;
-    margin: 0.25rem auto;
+.notes-sidebar-collapsed .notes-sidebar-header > *:not(:last-child) {
+    display: none;
+}
+
+.notes-sidebar-collapsed .notes-sidebar-header {
+    justify-content: center;
 }
 
 .notes-content {
@@ -937,16 +922,52 @@ h4 i {
     height: 100%;
 }
 
-.notes-search {
-    margin-bottom: 1rem;
+/* Compact sidebar header — search + icon buttons on one row */
+.notes-sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.notes-search-form {
+    flex: 1;
+    min-width: 0;
 }
 
 .notes-search-input {
     margin-bottom: 0;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.85em;
+    height: auto;
 }
 
-.notes-toolbar-row {
-    margin-bottom: 1rem;
+.notes-sidebar-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.3rem;
+    color: var(--pico-muted-color);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.notes-sidebar-icon:hover {
+    color: var(--pico-color);
+}
+
+.notes-sidebar-icon:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.notes-sidebar-icon .spin {
+    animation: spin 1s linear infinite;
 }
 
 .notes-search-header {
@@ -1202,7 +1223,7 @@ h4 i {
     z-index: 9999;
     background: var(--pico-background-color);
     display: block;
-    padding: 0;
+    padding: 1rem;
     margin: 0;
 }
 
