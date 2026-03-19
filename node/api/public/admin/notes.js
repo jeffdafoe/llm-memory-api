@@ -27,7 +27,7 @@ mermaid.initialize({
     }
 });
 
-function useNotes({ api, showToast, showConfirm }) {
+function useNotes({ api, showToast, showConfirm, onEvent }) {
     const notesNamespaces = ref([]);
     const notesTreesRaw = ref({});
     const expandedNamespaces = ref({});
@@ -230,6 +230,28 @@ function useNotes({ api, showToast, showConfirm }) {
         }
     }
     document.addEventListener('keydown', onKeydown);
+
+    // Live note update notifications via WebSocket
+    if (onEvent) {
+        const opMessages = {
+            saved: 'This note was updated externally',
+            edited: 'This note was edited externally',
+            deleted: 'This note was deleted',
+            restored: 'This note was restored',
+            moved: 'This note was moved'
+        };
+        onEvent('note_updated', (data) => {
+            if (selectedNote.value &&
+                selectedNote.value.namespace === data.namespace &&
+                selectedNote.value.slug === data.slug) {
+                const msg = opMessages[data.operation] || 'This note changed';
+                const type = data.operation === 'deleted' ? 'error' : 'info';
+                showToast(msg, type, 15000, () => {
+                    openNote(data.namespace, data.slug);
+                });
+            }
+        });
+    }
 
     async function loadNotes() {
         try {
