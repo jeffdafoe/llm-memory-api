@@ -1191,6 +1191,12 @@ h4 i {
     border-radius: 4px;
 }
 
+/* Thicker message arrows in sequence diagrams */
+.notes-mermaid .messageLine0,
+.notes-mermaid .messageLine1 {
+    stroke-width: 1.5 !important;
+}
+
 /* svg-pan-zoom control icons — make them visible on dark backgrounds */
 .notes-mermaid .svg-pan-zoom-control {
     cursor: pointer;
