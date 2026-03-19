@@ -10,7 +10,7 @@ mermaid.initialize({
     startOnLoad: false,
     theme: 'base',
     themeVariables: {
-        lineColor: '#333333',
+        lineColor: '#1a1a1a',
         textColor: '#1a1a1a',
         primaryColor: '#e8e8e8',
         primaryBorderColor: '#333333',
@@ -20,7 +20,7 @@ mermaid.initialize({
         noteBkgColor: '#fff3cd',
         noteBorderColor: '#997a00',
         noteTextColor: '#1a1a1a',
-        actorLineColor: '#555555',
+        actorLineColor: '#cccccc',
         actorBorder: '#333333',
         actorBkg: '#f0f0f0',
         actorTextColor: '#1a1a1a'
