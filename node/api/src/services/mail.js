@@ -9,7 +9,7 @@ function logMail(action, details) {
     log('mail', action, details);
 }
 
-async function mailSend(toAgent, fromAgent, subject, body) {
+async function mailSend(toAgent, fromAgent, subject, body, inReplyTo) {
     if (!toAgent || !fromAgent || !subject || !body) {
         throw Object.assign(new Error('Required fields: to_agent, from_agent, subject, body'), { statusCode: 400 });
     }
@@ -17,10 +17,17 @@ async function mailSend(toAgent, fromAgent, subject, body) {
     const toActor = await requireByName(toAgent);
     const fromActor = await requireByName(fromAgent);
 
-    const result = await pool.query(
-        'INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-        [toActor.id, fromActor.id, subject, body]
-    );
+    // Build insert with optional in_reply_to
+    let sql, params;
+    if (inReplyTo) {
+        sql = 'INSERT INTO mail (to_actor_id, from_actor_id, subject, body, in_reply_to) VALUES ($1, $2, $3, $4, $5) RETURNING id, sent_at';
+        params = [toActor.id, fromActor.id, subject, body, inReplyTo];
+    } else {
+        sql = 'INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at';
+        params = [toActor.id, fromActor.id, subject, body];
+    }
+
+    const result = await pool.query(sql, params);
 
     logMail('send', { from_agent: fromAgent, to_agent: toAgent, mail_id: result.rows[0].id, subject });
 
@@ -54,22 +61,37 @@ async function mailSend(toAgent, fromAgent, subject, body) {
     };
 }
 
-async function mailReceive(agent) {
+async function mailReceive(agent, ids) {
     if (!agent) {
         throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
     }
 
     const actor = await requireByName(agent);
 
-    const result = await pool.query(
-        `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at
-         FROM mail m
-         JOIN actors fa ON fa.id = m.from_actor_id
-         JOIN actors ta ON ta.id = m.to_actor_id
-         WHERE m.to_actor_id = $1 AND m.acked_at IS NULL AND m.deleted_at IS NULL
-         ORDER BY m.sent_at ASC`,
-        [actor.id]
-    );
+    let result;
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+        // Fetch specific messages by ID (must belong to this agent, unacked)
+        result = await pool.query(
+            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.in_reply_to
+             FROM mail m
+             JOIN actors fa ON fa.id = m.from_actor_id
+             JOIN actors ta ON ta.id = m.to_actor_id
+             WHERE m.id = ANY($1) AND m.to_actor_id = $2 AND m.acked_at IS NULL AND m.deleted_at IS NULL
+             ORDER BY m.sent_at ASC`,
+            [ids, actor.id]
+        );
+    } else {
+        // Fetch all unacked messages (original behavior)
+        result = await pool.query(
+            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.in_reply_to
+             FROM mail m
+             JOIN actors fa ON fa.id = m.from_actor_id
+             JOIN actors ta ON ta.id = m.to_actor_id
+             WHERE m.to_actor_id = $1 AND m.acked_at IS NULL AND m.deleted_at IS NULL
+             ORDER BY m.sent_at ASC`,
+            [actor.id]
+        );
+    }
 
     logMail('receive', { agent, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
 
@@ -172,7 +194,30 @@ async function mailUnsend(id, fromAgent) {
     return { id: result.rows[0].id, to_agent: mailRow.rows[0].to_agent, subject: result.rows[0].subject };
 }
 
-// List mail sent by this agent, newest first
+// Lightweight list of unread mail — subject, sender, date, ID, body preview. No full body.
+async function mailCheck(agent) {
+    if (!agent) {
+        throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
+    }
+
+    const actor = await requireByName(agent);
+
+    const result = await pool.query(
+        `SELECT m.id, fa.name AS from_agent, m.subject, m.sent_at, m.in_reply_to,
+                SUBSTRING(m.body FROM 1 FOR 200) AS body_preview
+         FROM mail m
+         JOIN actors fa ON fa.id = m.from_actor_id
+         WHERE m.to_actor_id = $1 AND m.acked_at IS NULL AND m.deleted_at IS NULL
+         ORDER BY m.sent_at ASC`,
+        [actor.id]
+    );
+
+    logMail('check', { agent, pending_count: result.rows.length });
+
+    return { messages: result.rows };
+}
+
+// List mail sent by this agent, newest first (body truncated to preview)
 async function mailSent(agent, options = {}) {
     if (!agent) {
         throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
@@ -196,7 +241,9 @@ async function mailSent(agent, options = {}) {
     values.push(limit, offset);
 
     const result = await pool.query(
-        `SELECT m.id, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
+        `SELECT m.id, ta.name AS to_agent, m.subject,
+                SUBSTRING(m.body FROM 1 FOR 200) AS body_preview,
+                m.sent_at, m.acked_at, m.in_reply_to
          FROM mail m
          JOIN actors ta ON ta.id = m.to_actor_id
          WHERE ${conditions.join(' AND ')}
@@ -234,7 +281,7 @@ async function mailHistory(agent, options = {}) {
     values.push(limit, offset);
 
     const result = await pool.query(
-        `SELECT m.id, fa.name AS from_agent, m.subject, m.body, m.sent_at, m.acked_at
+        `SELECT m.id, fa.name AS from_agent, m.subject, m.body, m.sent_at, m.acked_at, m.in_reply_to
          FROM mail m
          JOIN actors fa ON fa.id = m.from_actor_id
          WHERE ${conditions.join(' AND ')}
@@ -248,4 +295,4 @@ async function mailHistory(agent, options = {}) {
     return { messages: result.rows };
 }
 
-module.exports = { mailSend, mailReceive, mailAck, mailEdit, mailUnsend, mailSent, mailHistory };
+module.exports = { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory };
