@@ -15,7 +15,7 @@ const { logError } = require('../services/logger');
 const { searchMemory, deleteMemory } = require('../services/memory');
 const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
-const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
+const { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 const {
     discussionCreate, discussionList, discussionStatus, discussionPending,
     discussionConclude, discussionJoin, discussionDefer, discussionLeave,
@@ -241,25 +241,37 @@ const TOOLS = [
     // --- Mail tools ---
     {
         name: 'mail_send',
-        description: 'Send mail to another agent. Mail is stored in the API database until the recipient acks it.',
+        description: 'Send mail to another agent. Mail is stored in the API database until the recipient acks it. Returns the mail UUID — save it to match replies via in_reply_to.',
         inputSchema: {
             type: 'object',
             properties: {
                 to: { type: 'string', description: 'Recipient agent (e.g., "home", "work")' },
                 subject: { type: 'string', description: 'Mail subject line' },
                 body: { type: 'string', description: 'Mail body (markdown)' },
-                from: { type: 'string', description: 'Sender agent (default: configured agent)' }
+                from: { type: 'string', description: 'Sender agent (default: configured agent)' },
+                in_reply_to: { type: 'string', description: 'UUID of the message this is replying to (for threading)' }
             },
             required: ['to', 'subject', 'body']
         }
     },
     {
-        name: 'mail_receive',
-        description: 'Check for new mail addressed to this agent. Returns unacked messages. Call mail_ack with the IDs after processing.',
+        name: 'mail_check',
+        description: 'List unread mail with subject, sender, date, and body preview (no full body). Use this to see what is waiting, then call mail_receive with specific IDs to read individual messages.',
         inputSchema: {
             type: 'object',
             properties: {
                 agent: { type: 'string', description: 'Agent to check mail for (default: configured agent)' }
+            }
+        }
+    },
+    {
+        name: 'mail_receive',
+        description: 'Read full mail content. When IDs are provided, returns only those specific messages. When no IDs given, returns all unacked messages. Call mail_ack with the IDs after processing.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                agent: { type: 'string', description: 'Agent to check mail for (default: configured agent)' },
+                ids: { type: 'array', items: { type: 'string' }, description: 'Specific mail UUIDs to read (optional — omit to get all unread)' }
             }
         }
     },
@@ -545,6 +557,7 @@ const TOOL_PERMISSIONS = {
     chat_ack: 'mcp_chat_ack',
     chat_status: 'mcp_chat_status',
     mail_send: 'mcp_mail_send',
+    mail_check: 'mcp_mail_receive',
     mail_receive: 'mcp_mail_receive',
     mail_ack: 'mcp_mail_ack',
     mail_edit: 'mcp_mail_send',
@@ -785,7 +798,7 @@ const TOOL_HANDLERS = {
 
     // --- Mail ---
     async mail_send(args, agent, namespace, actorId) {
-        const data = await mailSend(args.to, validateIdentity(args.from, agent, 'from'), args.subject, args.body);
+        const data = await mailSend(args.to, validateIdentity(args.from, agent, 'from'), args.subject, args.body, args.in_reply_to);
         // Refresh activity indicator
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
@@ -793,15 +806,37 @@ const TOOL_HANDLERS = {
         return `Mail sent to ${data.to_agent} (id: ${data.id}, subject: "${data.subject}")`;
     },
 
+    async mail_check(args, agent, namespace) {
+        const data = await mailCheck(validateIdentity(args.agent, agent, 'agent'));
+        if (data.messages.length === 0) {
+            return 'No unread mail.';
+        }
+        const formatted = data.messages.map(msg => {
+            let line = `**From:** ${msg.from_agent} | **Date:** ${msg.sent_at} | **Subject:** ${msg.subject} | **ID:** ${msg.id}`;
+            if (msg.in_reply_to) {
+                line += ` | **In-Reply-To:** ${msg.in_reply_to}`;
+            }
+            if (msg.body_preview) {
+                line += `\n> ${msg.body_preview}${msg.body_preview.length >= 200 ? '...' : ''}`;
+            }
+            return line;
+        }).join('\n\n');
+        return `${data.messages.length} unread message(s):\n\n${formatted}`;
+    },
+
     async mail_receive(args, agent, namespace) {
-        const data = await mailReceive(validateIdentity(args.agent, agent, 'agent'));
+        const data = await mailReceive(validateIdentity(args.agent, agent, 'agent'), args.ids);
         if (data.messages.length === 0) {
             return 'No new mail.';
         }
         const ids = data.messages.map(m => m.id);
-        const formatted = data.messages.map(msg =>
-            `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`
-        ).join('\n\n---\n\n');
+        const formatted = data.messages.map(msg => {
+            let header = `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}`;
+            if (msg.in_reply_to) {
+                header += `\n**In-Reply-To:** ${msg.in_reply_to}`;
+            }
+            return `${header}\n\n${msg.body}`;
+        }).join('\n\n---\n\n');
         return `${formatted}\n\n(ids: [${ids.join(', ')}] — call mail_ack to mark as read)`;
     },
 
@@ -827,8 +862,15 @@ const TOOL_HANDLERS = {
         }
         const formatted = data.messages.map(msg => {
             const status = msg.acked_at ? 'read' : 'unread';
-            return `**To:** ${msg.to_agent} [${status}]\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`;
-        }).join('\n\n---\n\n');
+            let line = `**To:** ${msg.to_agent} [${status}] | **Date:** ${msg.sent_at} | **Subject:** ${msg.subject} | **ID:** ${msg.id}`;
+            if (msg.in_reply_to) {
+                line += ` | **In-Reply-To:** ${msg.in_reply_to}`;
+            }
+            if (msg.body_preview) {
+                line += `\n> ${msg.body_preview}${msg.body_preview.length >= 200 ? '...' : ''}`;
+            }
+            return line;
+        }).join('\n\n');
         return formatted;
     },
 
@@ -837,9 +879,13 @@ const TOOL_HANDLERS = {
         if (data.messages.length === 0) {
             return 'No mail history found.';
         }
-        const formatted = data.messages.map(msg =>
-            `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}\n\n${msg.body}`
-        ).join('\n\n---\n\n');
+        const formatted = data.messages.map(msg => {
+            let header = `**From:** ${msg.from_agent}\n**Date:** ${msg.sent_at}\n**Subject:** ${msg.subject}\n**ID:** ${msg.id}`;
+            if (msg.in_reply_to) {
+                header += `\n**In-Reply-To:** ${msg.in_reply_to}`;
+            }
+            return `${header}\n\n${msg.body}`;
+        }).join('\n\n---\n\n');
         return formatted;
     },
 

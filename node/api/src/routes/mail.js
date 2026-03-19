@@ -1,12 +1,12 @@
 const { Router } = require('express');
 const { logError } = require('../services/logger');
-const { mailSend, mailReceive, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
+const { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 
 const router = Router();
 
 router.post('/mail/send', async (req, res) => {
     try {
-        let { to_agent, from_agent, subject, body } = req.body;
+        let { to_agent, from_agent, subject, body, in_reply_to } = req.body;
 
         // Enforce agent identity (skip for admin user sessions)
         if (req.authenticatedAgent) {
@@ -16,7 +16,7 @@ router.post('/mail/send', async (req, res) => {
             from_agent = req.authenticatedAgent;
         }
 
-        const data = await mailSend(to_agent, from_agent, subject, body);
+        const data = await mailSend(to_agent, from_agent, subject, body, in_reply_to);
         res.json(data);
     } catch (err) {
         logError('mail', 'send', { agent: req.authenticatedAgent || req.body.from_agent, message: err.message, detail: err.stack });
@@ -27,7 +27,7 @@ router.post('/mail/send', async (req, res) => {
     }
 });
 
-router.post('/mail/receive', async (req, res) => {
+router.post('/mail/check', async (req, res) => {
     try {
         let { agent } = req.body;
 
@@ -39,7 +39,30 @@ router.post('/mail/receive', async (req, res) => {
             agent = req.authenticatedAgent;
         }
 
-        const data = await mailReceive(agent);
+        const data = await mailCheck(agent);
+        res.json(data);
+    } catch (err) {
+        logError('mail', 'check', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });
+        const status = err.statusCode || 500;
+        res.status(status).json({
+            error: { code: status === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
+        });
+    }
+});
+
+router.post('/mail/receive', async (req, res) => {
+    try {
+        let { agent, ids } = req.body;
+
+        // Enforce agent identity (skip for admin user sessions)
+        if (req.authenticatedAgent) {
+            if (agent && agent !== req.authenticatedAgent) {
+                return res.status(403).json({ error: { code: 'IDENTITY_MISMATCH', message: 'agent does not match authenticated agent' } });
+            }
+            agent = req.authenticatedAgent;
+        }
+
+        const data = await mailReceive(agent, ids);
         res.json(data);
     } catch (err) {
         logError('mail', 'receive', { agent: req.authenticatedAgent || req.body.agent, message: err.message, detail: err.stack });

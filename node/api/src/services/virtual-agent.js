@@ -839,7 +839,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             const { mailSend: mailSendErr } = require('./mail');
             const errSubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
             await mailSendErr(fromAgent, virtualAgentName, errSubject,
-                '[Error] Rate limited — too many API calls. Please wait before trying again.');
+                '[Error] Rate limited — too many API calls. Please wait before trying again.', mailId);
             return;
         }
 
@@ -850,7 +850,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             const { mailSend: mailSendErr } = require('./mail');
             const errSubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
             await mailSendErr(fromAgent, virtualAgentName, errSubject,
-                `[Error] ${costCheck.reason}`);
+                `[Error] ${costCheck.reason}`, mailId);
             return;
         }
 
@@ -866,10 +866,10 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             [mailId, agent.actor_id]
         );
 
-        // Send reply mail
+        // Send reply mail (threaded via in_reply_to)
         const replySubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
         const { mailSend } = require('./mail');
-        await mailSend(fromAgent, agent.agent, replySubject, response);
+        await mailSend(fromAgent, agent.agent, replySubject, response, mailId);
 
         logVA('direct-mail-responded', { agent: agent.agent, to: fromAgent, mailId, responseLength: response.length });
 
@@ -892,7 +892,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             const subject = mailResult.rows.length > 0 ? mailResult.rows[0].subject : 'Unknown';
             const errSubject = subject.startsWith('Re: ') ? subject : `Re: ${subject}`;
             await mailSendErr(fromAgent, virtualAgentName, errSubject,
-                `[Error] ${err.message}`);
+                `[Error] ${err.message}`, mailId);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
