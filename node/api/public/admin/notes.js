@@ -40,6 +40,7 @@ function useNotes({ api, showToast, showConfirm }) {
         const content = (selectedNote.value.content || '').trim();
         return content.startsWith('```mermaid') && content.endsWith('```');
     });
+    const notesSidebarCollapsed = ref(false);
     const notesFullscreen = ref(false);
     const notesEditing = ref(false);
     const notesEditTitle = ref('');
@@ -376,7 +377,7 @@ function useNotes({ api, showToast, showConfirm }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesFullscreen, toggleFullscreen,
+        selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
         notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
