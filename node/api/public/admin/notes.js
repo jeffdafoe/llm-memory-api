@@ -196,13 +196,40 @@ function useNotes({ api, showToast, showConfirm }) {
         }
     }
 
-    // Esc key exits fullscreen
-    function onFullscreenKeydown(e) {
+    // Build a flat list of all file nodes for arrow key navigation
+    function getAllFileNodes() {
+        const files = [];
+        for (const ns of notesNamespaces.value) {
+            const tree = notesTreesRaw.value[ns.namespace];
+            if (!tree) continue;
+            for (const node of tree) {
+                if (node.type === 'file') {
+                    files.push({ namespace: ns.namespace, slug: node.slug });
+                }
+            }
+        }
+        return files;
+    }
+
+    // Keyboard shortcuts: Esc exits fullscreen, Left/Right navigate notes
+    function onKeydown(e) {
+        // Don't capture when typing in inputs/textareas
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         if (e.key === 'Escape' && notesFullscreen.value) {
             toggleFullscreen();
+            return;
+        }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            if (!selectedNote.value) return;
+            const files = getAllFileNodes();
+            const idx = files.findIndex(f => f.namespace === selectedNote.value.namespace && f.slug === selectedNote.value.slug);
+            if (idx === -1) return;
+            const next = e.key === 'ArrowLeft' ? idx - 1 : idx + 1;
+            if (next < 0 || next >= files.length) return;
+            openNote(files[next].namespace, files[next].slug);
         }
     }
-    document.addEventListener('keydown', onFullscreenKeydown);
+    document.addEventListener('keydown', onKeydown);
 
     async function loadNotes() {
         try {
