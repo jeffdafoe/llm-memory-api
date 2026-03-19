@@ -41,15 +41,30 @@ createApp({
         const validCommSubs = new Set(['mail', 'chat', 'discussions']);
         let suppressHashUpdate = false;
 
+        // Deep link for notes — stash namespace/slug from hash, open after notes load
+        let pendingNoteLink = null;
+
         function readHash() {
             const hash = location.hash.replace(/^#\/?/, '');
             if (!hash) return;
-            const [view, sub] = hash.split('/');
+            const slashIndex = hash.indexOf('/');
+            const view = slashIndex === -1 ? hash : hash.substring(0, slashIndex);
+            const rest = slashIndex === -1 ? '' : hash.substring(slashIndex + 1);
             if (!validViews.has(view)) return;
             suppressHashUpdate = true;
             currentView.value = view;
-            if (view === 'config' && sub && validConfigSubs.has(sub)) configSubTab.value = sub;
-            if (view === 'comms' && sub && validCommSubs.has(sub)) commSubTab.value = sub;
+            if (view === 'config' && rest && validConfigSubs.has(rest)) configSubTab.value = rest;
+            if (view === 'comms' && rest && validCommSubs.has(rest)) commSubTab.value = rest;
+            // notes/namespace/slug — stash for opening after load
+            if (view === 'notes' && rest) {
+                const nsSlash = rest.indexOf('/');
+                if (nsSlash !== -1) {
+                    pendingNoteLink = {
+                        namespace: rest.substring(0, nsSlash),
+                        slug: rest.substring(nsSlash + 1)
+                    };
+                }
+            }
             suppressHashUpdate = false;
         }
 
@@ -58,6 +73,9 @@ createApp({
             let hash = currentView.value;
             if (currentView.value === 'config') hash += '/' + configSubTab.value;
             if (currentView.value === 'comms') hash += '/' + commSubTab.value;
+            if (currentView.value === 'notes' && notesModule.selectedNote.value) {
+                hash += '/' + notesModule.selectedNote.value.namespace + '/' + notesModule.selectedNote.value.slug;
+            }
             if (location.hash !== '#' + hash) {
                 history.replaceState(null, '', '#' + hash);
             }
@@ -140,7 +158,13 @@ createApp({
                     if (agentsModule.agents.value.length === 0) agentsModule.loadAgents();
                 }
             } else if (currentView.value === 'notes') {
-                notesModule.loadNotes();
+                notesModule.loadNotes().then(() => {
+                    if (pendingNoteLink) {
+                        notesModule.openNote(pendingNoteLink.namespace, pendingNoteLink.slug);
+                        pendingNoteLink = null;
+                        writeHash();
+                    }
+                });
             }
         }
 
@@ -192,6 +216,10 @@ createApp({
         watch(currentView, () => {
             writeHash();
             loadCurrentView();
+        });
+        // Update hash when a note is selected or deselected
+        watch(() => notesModule.selectedNote.value, () => {
+            if (currentView.value === 'notes') writeHash();
         });
         watch(commSubTab, () => {
             writeHash();
@@ -248,7 +276,11 @@ createApp({
         // Login/logout wrappers that hook into polling
         function login() {
             core.login(() => {
-                navigateToFirstPermitted();
+                // If a hash was set before login (e.g. deep link), honor it
+                readHash();
+                if (!location.hash || location.hash === '#') {
+                    navigateToFirstPermitted();
+                }
                 loadCurrentView();
                 startPolling();
                 notesModule.pollReindexStatus();
