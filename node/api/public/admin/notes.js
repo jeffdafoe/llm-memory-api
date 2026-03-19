@@ -373,6 +373,38 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    function downloadNote() {
+        if (!selectedNote.value) return;
+        const slug = selectedNote.value.slug;
+        const filename = slug.substring(slug.lastIndexOf('/') + 1) + '.md';
+        const blob = new Blob([selectedNote.value.content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    async function uploadNote(event) {
+        const file = event.target.files[0];
+        if (!file || !selectedNote.value) return;
+        event.target.value = ''; // reset input so same file can be re-uploaded
+        const content = await file.text();
+        try {
+            await api('/admin/notes/save', {
+                namespace: selectedNote.value.namespace,
+                slug: selectedNote.value.slug,
+                title: selectedNote.value.title,
+                content
+            });
+            selectedNote.value.content = content;
+            showToast('Uploaded: ' + file.name, 'success');
+        } catch (err) {
+            showToast('Upload failed: ' + err.message, 'error');
+        }
+    }
+
     // Reindex
     function reindexNotes() {
         showConfirm('Delete ALL vector chunks and re-ingest every note? This may take a while.', async () => {
@@ -433,6 +465,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         loadNotes, toggleNamespace, toggleFolder,
         openNote, openNoteFromSearch,
         startEditNote, cancelEditNote, saveEditedNote, confirmDeleteNote,
+        downloadNote, uploadNote,
         searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling
     };
 }
