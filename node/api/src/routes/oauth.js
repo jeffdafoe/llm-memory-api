@@ -18,6 +18,12 @@ const router = Router();
 
 const TOKEN_TTL_SECONDS = 86400; // 24 hours (cosmetic — token never actually expires server-side)
 
+// Allowlist of permitted redirect URIs for authorization_code flow.
+// Add new entries as additional platforms are onboarded.
+const ALLOWED_REDIRECT_URIS = [
+    'https://claude.ai/api/mcp/auth_callback'
+];
+
 // In-memory store for authorization codes. Codes expire after 60 seconds.
 // Map of code -> { clientId, redirectUri, codeChallenge, codeChallengeMethod, expiresAt }
 const authCodes = new Map();
@@ -100,10 +106,6 @@ router.get('/.well-known/oauth-authorization-server', (req, res) => {
 // back with a code, since the client credentials (configured in claude.ai
 // connector settings) already prove identity. No login page needed.
 router.get('/authorize', async (req, res) => {
-    // TEMPORARY: log all params claude.ai sends during OAuth flow
-    // Remove after confirming PKCE/client_secret behavior — see security finding #1
-    console.log('[oauth-debug] /authorize query params:', JSON.stringify(req.query));
-
     const {
         response_type, client_id, redirect_uri, state,
         code_challenge, code_challenge_method
@@ -120,6 +122,22 @@ router.get('/authorize', async (req, res) => {
         return res.status(400).json({
             error: 'invalid_request',
             error_description: 'client_id and redirect_uri are required'
+        });
+    }
+
+    // Validate redirect_uri against allowlist
+    if (!ALLOWED_REDIRECT_URIS.includes(redirect_uri)) {
+        return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'redirect_uri is not allowed'
+        });
+    }
+
+    // Require PKCE (S256)
+    if (!code_challenge || code_challenge_method !== 'S256') {
+        return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'code_challenge with S256 method is required'
         });
     }
 
@@ -146,8 +164,8 @@ router.get('/authorize', async (req, res) => {
     authCodes.set(code, {
         clientId: client_id,
         redirectUri: redirect_uri,
-        codeChallenge: code_challenge || null,
-        codeChallengeMethod: code_challenge_method || null,
+        codeChallenge: code_challenge,
+        codeChallengeMethod: code_challenge_method,
         expiresAt: Date.now() + AUTH_CODE_TTL_MS
     });
 
@@ -163,13 +181,6 @@ router.get('/authorize', async (req, res) => {
 // client_credentials: client_id + client_secret → token directly
 // authorization_code: code + code_verifier → token (with PKCE validation)
 router.post('/oauth/token', express.urlencoded({ extended: false }), async (req, res) => {
-    // TEMPORARY: log all params claude.ai sends during OAuth flow
-    // Remove after confirming PKCE/client_secret behavior — see security finding #1
-    const safeBody = { ...req.body };
-    if (safeBody.client_secret) safeBody.client_secret = '***REDACTED***';
-    if (safeBody.code) safeBody.code = safeBody.code.substring(0, 8) + '...';
-    console.log('[oauth-debug] /oauth/token body:', JSON.stringify(safeBody));
-
     const { grant_type } = req.body;
 
     if (grant_type === 'client_credentials') {
@@ -224,10 +235,10 @@ async function handleClientCredentials(req, res) {
 async function handleAuthorizationCode(req, res) {
     const { code, code_verifier, client_id, client_secret, redirect_uri } = req.body;
 
-    if (!code) {
+    if (!code || !code_verifier || !client_id || !client_secret || !redirect_uri) {
         return res.status(400).json({
             error: 'invalid_request',
-            error_description: 'code is required'
+            error_description: 'code, code_verifier, client_id, client_secret, and redirect_uri are required'
         });
     }
 
@@ -243,7 +254,7 @@ async function handleAuthorizationCode(req, res) {
     }
 
     // Validate redirect_uri matches what was used in /authorize
-    if (redirect_uri && redirect_uri !== codeData.redirectUri) {
+    if (redirect_uri !== codeData.redirectUri) {
         return res.status(400).json({
             error: 'invalid_grant',
             error_description: 'redirect_uri mismatch'
@@ -251,45 +262,34 @@ async function handleAuthorizationCode(req, res) {
     }
 
     // Validate client_id matches
-    if (client_id && client_id !== codeData.clientId) {
+    if (client_id !== codeData.clientId) {
         return res.status(400).json({
             error: 'invalid_grant',
             error_description: 'client_id mismatch'
         });
     }
 
-    // Validate PKCE code_verifier if a code_challenge was provided during /authorize
-    if (codeData.codeChallenge) {
-        if (!code_verifier) {
-            return res.status(400).json({
-                error: 'invalid_request',
-                error_description: 'code_verifier is required'
-            });
-        }
+    // Validate PKCE code_verifier (always required)
+    // S256: BASE64URL(SHA256(code_verifier)) should equal code_challenge
+    const computed = crypto.createHash('sha256')
+        .update(code_verifier)
+        .digest('base64url');
 
-        // S256: BASE64URL(SHA256(code_verifier)) should equal code_challenge
-        const computed = crypto.createHash('sha256')
-            .update(code_verifier)
-            .digest('base64url');
-
-        if (computed !== codeData.codeChallenge) {
-            return res.status(400).json({
-                error: 'invalid_grant',
-                error_description: 'PKCE code_verifier validation failed'
-            });
-        }
+    if (computed !== codeData.codeChallenge) {
+        return res.status(400).json({
+            error: 'invalid_grant',
+            error_description: 'PKCE code_verifier validation failed'
+        });
     }
 
     try {
-        // If client_secret is provided, validate it (confidential client)
-        if (client_secret) {
-            const agent = await validateClientCredentials(codeData.clientId, client_secret);
-            if (!agent) {
-                return res.status(401).json({
-                    error: 'invalid_client',
-                    error_description: 'Invalid client_secret'
-                });
-            }
+        // Validate client_secret (always required)
+        const agent = await validateClientCredentials(codeData.clientId, client_secret);
+        if (!agent) {
+            return res.status(401).json({
+                error: 'invalid_client',
+                error_description: 'Invalid client_secret'
+            });
         }
 
         const token = issueOAuthToken(codeData.clientId);
