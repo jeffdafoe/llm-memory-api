@@ -50,9 +50,9 @@ function useCore() {
     const toast = ref(null);
     let toastTimer = null;
 
-    function showToast(text, type, duration) {
+    function showToast(text, type, duration, action) {
         if (toastTimer) clearTimeout(toastTimer);
-        toast.value = { text, type: type || 'info' };
+        toast.value = { text, type: type || 'info', action: action || null };
         toastTimer = setTimeout(() => { toast.value = null; }, duration || 5000);
     }
 

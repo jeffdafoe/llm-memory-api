@@ -5,6 +5,7 @@ const pool = require('../db');
 const { ingestContent } = require('./memory');
 const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
+const { broadcast } = require('./events');
 
 function slugToKind(slug) {
     if (slug.startsWith('instructions/')) return 'instruction';
@@ -122,6 +123,9 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata) {
         }).catch(() => {});
     });
 
+    // Notify admin dashboard clients that this note changed
+    broadcast('note_updated', { namespace, slug: resolvedSlug, operation: 'saved' });
+
     return doc;
 }
 
@@ -202,6 +206,8 @@ async function deleteNote(namespace, slug) {
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
 
+    broadcast('note_updated', { namespace, slug, operation: 'deleted' });
+
     return { deleted: true, slug };
 }
 
@@ -217,6 +223,8 @@ async function restoreNote(namespace, slug) {
     if (result.rows.length === 0) {
         throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
     }
+
+    broadcast('note_updated', { namespace, slug, operation: 'restored' });
 
     return result.rows[0];
 }
@@ -283,6 +291,9 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
             namespace, slug, error: err.message
         }).catch(() => {});
     });
+
+    // Notify admin dashboard clients that this note changed
+    broadcast('note_updated', { namespace, slug, operation: 'edited' });
 
     return {
         ...result.rows[0],
@@ -426,6 +437,10 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
     } else {
         doc.created_by = null;
     }
+
+    // Notify for both old location (stale view) and new location
+    broadcast('note_updated', { namespace, slug, operation: 'moved' });
+    broadcast('note_updated', { namespace: targetNamespace, slug: newSlug, operation: 'moved' });
 
     return doc;
 }

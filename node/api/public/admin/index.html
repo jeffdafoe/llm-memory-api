@@ -67,8 +67,10 @@
                 <misc-dialogs></misc-dialogs>
 
                 <!-- Toast notification -->
-                <div v-if="toast" class="toast" :class="'toast-' + toast.type" @click="toast = null">
+                <div v-if="toast" class="toast" :class="'toast-' + toast.type" @click="!toast.action && (toast = null)">
                     {{ toast.text }}
+                    <button v-if="toast.action" class="toast-action" @click.stop="toast.action(); toast = null">Refresh</button>
+                    <button v-if="toast.action" class="toast-dismiss" @click.stop="toast = null">&times;</button>
                 </div>
             </main>
         </div>
