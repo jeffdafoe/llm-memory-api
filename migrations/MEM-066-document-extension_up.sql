@@ -1,0 +1,1 @@
+ALTER TABLE documents ADD COLUMN extension VARCHAR(20) DEFAULT NULL;

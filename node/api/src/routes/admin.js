@@ -934,7 +934,7 @@ router.post('/admin/notes/read', requirePerm('notes', 'read'), async (req, res) 
 
 // POST /admin/notes/save — save (update) a note
 router.post('/admin/notes/save', requirePerm('notes', 'write'), async (req, res) => {
-    const { namespace, slug, title, content } = req.body;
+    const { namespace, slug, title, content, extension } = req.body;
     if (!namespace || !slug || !title || content === undefined) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug, title, content' }
@@ -943,7 +943,7 @@ router.post('/admin/notes/save', requirePerm('notes', 'write'), async (req, res)
     try {
         validateNamespace(namespace);
         await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
-        const doc = await saveNote(namespace, title, content, slug, null);
+        const doc = await saveNote(namespace, title, content, slug, null, null, extension);
         logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
         res.json({ note: doc });
     } catch (err) {

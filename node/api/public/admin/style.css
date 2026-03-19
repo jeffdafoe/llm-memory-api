@@ -244,6 +244,14 @@ dialog article {
     font-size: 0.85em;
 }
 
+label.inline-button {
+    cursor: pointer;
+    border: 1px solid var(--pico-primary-border);
+    border-radius: 4px;
+    background: var(--pico-primary-background);
+    color: var(--pico-primary-inverse);
+}
+
 .chat-transcript {
     max-height: 50vh;
     overflow-y: auto;
