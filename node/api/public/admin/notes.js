@@ -373,10 +373,21 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    function inferExtension(note) {
+        // Use stored extension if available
+        if (note.extension) return note.extension;
+        // Infer from content
+        const content = (note.content || '').trim();
+        if (content.startsWith('```mermaid') || note.slug.endsWith('.mmd')) return '.mmd';
+        return '.md';
+    }
+
     function downloadNote() {
         if (!selectedNote.value) return;
         const slug = selectedNote.value.slug;
-        const filename = slug.substring(slug.lastIndexOf('/') + 1) + '.md';
+        const baseName = slug.substring(slug.lastIndexOf('/') + 1);
+        const ext = inferExtension(selectedNote.value);
+        const filename = baseName + ext;
         const blob = new Blob([selectedNote.value.content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -391,14 +402,19 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         if (!file || !selectedNote.value) return;
         event.target.value = ''; // reset input so same file can be re-uploaded
         const content = await file.text();
+        // Extract extension from uploaded filename
+        const dotIndex = file.name.lastIndexOf('.');
+        const extension = dotIndex > 0 ? file.name.substring(dotIndex) : null;
         try {
             await api('/admin/notes/save', {
                 namespace: selectedNote.value.namespace,
                 slug: selectedNote.value.slug,
                 title: selectedNote.value.title,
-                content
+                content,
+                extension
             });
             selectedNote.value.content = content;
+            if (extension) selectedNote.value.extension = extension;
             showToast('Uploaded: ' + file.name, 'success');
         } catch (err) {
             showToast('Upload failed: ' + err.message, 'error');

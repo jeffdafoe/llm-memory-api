@@ -28,7 +28,7 @@ function titleToSlug(title) {
         .substring(0, 200);
 }
 
-async function saveNote(namespace, title, content, slug, createdBy, metadata) {
+async function saveNote(namespace, title, content, slug, createdBy, metadata, extension) {
     if (!title || !content) {
         throw Object.assign(new Error('Required fields: title, content'), { statusCode: 400 });
     }
@@ -77,32 +77,39 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata) {
         metadataJson = serialized;
     }
 
+    // Build optional SET clauses for fields that should only update when provided
+    const optionalSets = [];
+    const optionalParams = [];
+    let paramIndex = 6; // $1-$5 are title, content, namespace, slug, kind
+    if (metadataJson) {
+        optionalSets.push('metadata = $' + paramIndex);
+        optionalParams.push(metadataJson);
+        paramIndex++;
+    }
+    if (extension) {
+        optionalSets.push('extension = $' + paramIndex);
+        optionalParams.push(extension);
+        paramIndex++;
+    }
+
     let result;
     if (existing.rows.length > 0) {
         // Update existing row — also clears deleted_at if it was soft-deleted.
         // Don't overwrite created_by_actor_id on updates — preserve original author.
-        // Only update metadata if a new value was provided (don't null out existing metadata on saves that don't pass it)
-        if (metadataJson) {
-            result = await pool.query(`
-                UPDATE documents
-                SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5, metadata = $6
-                WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
-                RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata
-            `, [title, content, namespace, resolvedSlug, kind, metadataJson]);
-        } else {
-            result = await pool.query(`
-                UPDATE documents
-                SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5
-                WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
-                RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata
-            `, [title, content, namespace, resolvedSlug, kind]);
-        }
-    } else {
+        const extraSets = optionalSets.length ? ', ' + optionalSets.join(', ') : '';
         result = await pool.query(`
-            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata
-        `, [namespace, resolvedSlug, title, content, createdByActorId, kind, metadataJson]);
+            UPDATE documents
+            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5${extraSets}
+            WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
+            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
+        `, [title, content, namespace, resolvedSlug, kind, ...optionalParams]);
+    } else {
+        // For inserts, include extension and metadata directly
+        result = await pool.query(`
+            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind, metadata, extension)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
+        `, [namespace, resolvedSlug, title, content, createdByActorId, kind, metadataJson, extension || null]);
     }
 
     const doc = result.rows[0];
@@ -168,7 +175,7 @@ async function listNotes(namespace, limit, offset, prefix) {
 async function readNote(namespace, slug) {
     const result = await pool.query(`
         SELECT d.id, d.namespace, d.slug, d.title, d.content,
-               ac.name AS created_by, d.created_at, d.updated_at, d.metadata
+               ac.name AS created_by, d.created_at, d.updated_at, d.metadata, d.extension
         FROM documents d
         LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
         WHERE d.namespace = $1 AND LOWER(d.slug) = LOWER($2) AND d.deleted_at IS NULL
