@@ -20,7 +20,7 @@ mermaid.initialize({
         noteBkgColor: '#fff3cd',
         noteBorderColor: '#997a00',
         noteTextColor: '#1a1a1a',
-        actorLineColor: '#cccccc',
+        actorLineColor: '#e0e0e0',
         actorBorder: '#333333',
         actorBkg: '#f0f0f0',
         actorTextColor: '#1a1a1a'
