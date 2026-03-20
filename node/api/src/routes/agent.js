@@ -897,4 +897,29 @@ router.post('/agent/memory/sync', async (req, res) => {
     }
 });
 
+// POST /agent/sync-mappings — list the authenticated agent's note sync mappings.
+// Used by the sync script to discover which note prefixes to sync to which local paths.
+router.post('/agent/sync-mappings', async (req, res) => {
+    const agent = req.authenticatedAgent;
+    if (!agent) {
+        return res.status(401).json({
+            error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+        });
+    }
+
+    try {
+        const result = await pool.query(`
+            SELECT ns.id, ns.namespace, ns.slug, ns.local_path, ns.created_at
+            FROM note_synchronization ns
+            JOIN actors a ON a.id = ns.actor_id
+            WHERE a.name = $1
+            ORDER BY ns.namespace, ns.slug
+        `, [agent]);
+        res.json({ mappings: result.rows });
+    } catch (err) {
+        logError('agent', 'sync-mappings', { agent, message: err.message, detail: err.stack });
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch sync mappings' } });
+    }
+});
+
 module.exports = router;

@@ -1166,6 +1166,83 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
     res.json({ ok: true });
 });
 
+// ---- Note Synchronization CRUD ----
+
+// POST /admin/notes/sync/list — list sync mappings, optionally filtered by actor_id
+router.post('/admin/notes/sync/list', requirePerm('notes', 'read'), async (req, res) => {
+    try {
+        const { actor_id } = req.body;
+        let query, params;
+        if (actor_id) {
+            query = `
+                SELECT ns.id, ns.actor_id, a.name AS actor_name, ns.namespace, ns.slug, ns.local_path, ns.created_at
+                FROM note_synchronization ns
+                JOIN actors a ON a.id = ns.actor_id
+                WHERE ns.actor_id = $1
+                ORDER BY ns.namespace, ns.slug`;
+            params = [actor_id];
+        } else {
+            query = `
+                SELECT ns.id, ns.actor_id, a.name AS actor_name, ns.namespace, ns.slug, ns.local_path, ns.created_at
+                FROM note_synchronization ns
+                JOIN actors a ON a.id = ns.actor_id
+                ORDER BY a.name, ns.namespace, ns.slug`;
+            params = [];
+        }
+        const result = await pool.query(query, params);
+        res.json({ mappings: result.rows });
+    } catch (err) {
+        console.error('Admin sync list error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to list sync mappings' } });
+    }
+});
+
+// POST /admin/notes/sync/save — create or update a sync mapping
+router.post('/admin/notes/sync/save', requirePerm('notes', 'write'), async (req, res) => {
+    const { actor_id, namespace, slug, local_path } = req.body;
+    if (!actor_id || !namespace || !local_path) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: actor_id, namespace, slug, local_path' }
+        });
+    }
+    // slug can be empty string (entire namespace sync)
+    const resolvedSlug = slug || '';
+    try {
+        // Verify actor exists
+        const actor = await resolveById(actor_id);
+        if (!actor) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+        }
+        const result = await pool.query(`
+            INSERT INTO note_synchronization (actor_id, namespace, slug, local_path)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (actor_id, namespace, slug) DO UPDATE SET local_path = $4
+            RETURNING *
+        `, [actor_id, namespace, resolvedSlug, local_path]);
+        res.json({ mapping: result.rows[0] });
+    } catch (err) {
+        console.error('Admin sync save error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save sync mapping' } });
+    }
+});
+
+// POST /admin/notes/sync/delete — delete a sync mapping by id
+router.post('/admin/notes/sync/delete', requirePerm('notes', 'write'), async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
+        });
+    }
+    try {
+        await pool.query('DELETE FROM note_synchronization WHERE id = $1', [id]);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('Admin sync delete error:', err.message);
+        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to delete sync mapping' } });
+    }
+});
+
 // ---- Templates CRUD ----
 
 const TEMPLATE_KINDS = new Set(['welcome']);

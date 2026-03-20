@@ -21,7 +21,7 @@
         </div>
         <div v-else>
             <div v-for="ns in notesNamespaces" :key="ns.namespace" class="tree-namespace">
-                <div class="tree-namespace-header" @click="toggleNamespace(ns.namespace)">
+                <div class="tree-namespace-header" @click="toggleNamespace(ns.namespace)" @contextmenu="showSyncContextMenu($event, ns.namespace, '')">
                     <i :class="expandedNamespaces[ns.namespace] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
                     <i class="icon-folder"></i>
                     <strong>{{ ns.namespace }}</strong>
@@ -30,13 +30,13 @@
                 <div v-if="expandedNamespaces[ns.namespace]" class="tree-children">
                     <template v-for="node in notesTrees[ns.namespace]" :key="node.path">
                         <div v-if="node.type === 'folder'" class="tree-folder">
-                            <div class="tree-folder-header" @click="toggleFolder(ns.namespace, node.path)" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
+                            <div class="tree-folder-header" @click="toggleFolder(ns.namespace, node.path)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.path + '/')" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
                                 <i :class="expandedFolders[ns.namespace + '/' + node.path] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
                                 <i class="icon-folder"></i>
                                 {{ node.name }}
                             </div>
                         </div>
-                        <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
+                        <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
                             <i class="icon-file-text"></i>
                             <span class="tree-file-name">{{ node.name }}</span>
                             <span v-if="node.updated_at" class="tree-file-time">{{ timeAgo(node.updated_at) }}</span>
@@ -78,4 +78,52 @@
             </div>
         </div>
     </div>
+
+    <!-- Context menu for sync mappings -->
+    <div v-if="syncContextMenu" class="context-menu" :style="{ left: syncContextMenu.x + 'px', top: syncContextMenu.y + 'px' }">
+        <div class="context-menu-item" @click.stop="openSyncDialog">
+            <i class="icon-refresh-cw"></i> Sync to local directory...
+        </div>
+    </div>
+
+    <!-- Sync mapping dialog -->
+    <dialog :open="syncDialog !== null" @close="closeSyncDialog">
+        <article v-if="syncDialog" class="confirm-dialog" style="min-width: 500px;">
+            <header>
+                <button aria-label="Close" rel="prev" @click="closeSyncDialog"></button>
+                <h3>Sync Mapping</h3>
+            </header>
+            <div class="dialog-body">
+                <p class="muted">{{ syncDialog.namespace ? '[' + syncDialog.namespace + '] ' : '' }}{{ syncDialog.slug || '(entire namespace)' }}</p>
+
+                <div v-if="syncMappings.length > 0" style="margin-bottom: 1em;">
+                    <strong>Existing mappings:</strong>
+                    <table>
+                        <thead><tr><th>Agent</th><th>Local path</th><th></th></tr></thead>
+                        <tbody>
+                            <tr v-for="m in syncMappings" :key="m.id">
+                                <td>{{ m.actor_name }}</td>
+                                <td><code>{{ m.local_path }}</code></td>
+                                <td><button class="inline-button danger" @click="deleteSyncMapping(m.id)" title="Remove"><i class="icon-trash-2"></i></button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <label>Agent
+                    <select v-model="syncDialog.actorId">
+                        <option :value="null" disabled>Select agent...</option>
+                        <option v-for="a in syncAgents" :key="a.id" :value="a.id">{{ a.name }}</option>
+                    </select>
+                </label>
+                <label>Local path
+                    <input type="text" v-model="syncDialog.localPath" placeholder="C:/path/to/local/directory" spellcheck="false">
+                </label>
+                <div class="button-row">
+                    <button @click="saveSyncMapping" :disabled="syncSaving || !syncDialog.actorId || !syncDialog.localPath">{{ syncSaving ? 'Saving...' : 'Add Mapping' }}</button>
+                    <button class="secondary" @click="closeSyncDialog">Close</button>
+                </div>
+            </div>
+        </article>
+    </dialog>
 </div>
