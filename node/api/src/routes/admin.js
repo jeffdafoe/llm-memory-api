@@ -2,7 +2,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
-const { log } = require('../services/logger');
+const { log, logError } = require('../services/logger');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote, moveNote } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
@@ -47,6 +47,32 @@ async function requireVisibility(req, res, agentName) {
         return null;
     }
     return actor;
+}
+
+// Wrapper for admin route handlers that provides automatic error logging.
+// Handlers throw on error instead of try/catch — the wrapper catches, logs to
+// both console and the error_log table, and sends the 500 response.
+// Known errors (statusCode < 500) are returned without logging to error_log.
+function adminRoute(label, fn) {
+    return async (req, res) => {
+        try {
+            await fn(req, res);
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return res.status(err.statusCode).json({
+                    error: { code: err.code || 'ERROR', message: err.message }
+                });
+            }
+            console.error(`Admin ${label} error:`, err.message);
+            logError('admin', label, {
+                message: err.message,
+                detail: err.stack
+            });
+            res.status(500).json({
+                error: { code: 'INTERNAL', message: `Failed: ${label}` }
+            });
+        }
+    };
 }
 
 // Middleware: require authenticated user (not agent) for all admin routes except login
@@ -210,166 +236,138 @@ router.post('/admin/change-password', async (req, res) => {
 });
 
 // POST /admin/dashboard — combined summary data
-router.post('/admin/dashboard', requirePerm('dashboard', 'read'), async (req, res) => {
-    try {
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        const hasFilter = visibleIds !== null;
-        const idsArray = hasFilter ? Array.from(visibleIds) : [];
+router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('dashboard', async (req, res) => {
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    const hasFilter = visibleIds !== null;
+    const idsArray = hasFilter ? Array.from(visibleIds) : [];
 
-        let agentsSql = `SELECT agent, status, last_seen, registered_at, provider, model, virtual, active_since
-             FROM agent_status`;
-        const agentsParams = [];
-        if (hasFilter) {
-            agentsSql += ' WHERE actor_id = ANY($1)';
-            agentsParams.push(idsArray);
-        }
-        agentsSql += ` ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`;
-        const agents = await pool.query(agentsSql, agentsParams);
-
-        let discussionsSql = `
-            SELECT d.id, d.topic, d.status, d.outcome, ac.name AS created_by, d.created_at,
-                    COUNT(dp.actor_id) AS participant_count
-             FROM discussions d
-             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
-             LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id`;
-        const discussionsParams = [];
-        if (hasFilter) {
-            discussionsSql += ` WHERE NOT EXISTS (
-                SELECT 1 FROM discussion_participants dp2
-                WHERE dp2.discussion_id = d.id AND dp2.actor_id != ALL($1))`;
-            discussionsParams.push(idsArray);
-        }
-        discussionsSql += ` GROUP BY d.id, ac.name
-             ORDER BY CASE d.status WHEN 'active' THEN 0 ELSE 1 END, d.created_at DESC
-             LIMIT 10`;
-        const discussions = await pool.query(discussionsSql, discussionsParams);
-
-        let chatSql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
-             FROM chat_messages cm
-             JOIN actors fa ON fa.id = cm.from_actor_id
-             JOIN actors ta ON ta.id = cm.to_actor_id
-             WHERE fa.name != 'system'
-               AND cm.deleted_at IS NULL
-               AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
-        const chatParams = [];
-        if (hasFilter) {
-            chatSql += ' AND cm.from_actor_id = ANY($1) AND cm.to_actor_id = ANY($1)';
-            chatParams.push(idsArray);
-        }
-        chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cm.sent_at DESC LIMIT 15`;
-        const chat = await pool.query(chatSql, chatParams);
-
-        let mailSql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
-             FROM mail m
-             JOIN actors fa ON fa.id = m.from_actor_id
-             JOIN actors ta ON ta.id = m.to_actor_id
-             WHERE m.deleted_at IS NULL`;
-        const mailParams = [];
-        if (hasFilter) {
-            mailSql += ' AND m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
-            mailParams.push(idsArray);
-        }
-        mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
-        const mail = await pool.query(mailSql, mailParams);
-
-        let sysMsgSql = `SELECT cm.id, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
-             FROM chat_messages cm
-             JOIN actors fa ON fa.id = cm.from_actor_id
-             JOIN actors ta ON ta.id = cm.to_actor_id
-             WHERE fa.name = 'system' AND cm.deleted_at IS NULL`;
-        const sysMsgParams = [];
-        if (hasFilter) {
-            sysMsgSql += ' AND cm.to_actor_id = ANY($1)';
-            sysMsgParams.push(idsArray);
-        }
-        sysMsgSql += ' ORDER BY cm.sent_at DESC LIMIT 15';
-        const systemMessages = await pool.query(sysMsgSql, sysMsgParams);
-
-        res.json({
-            agents: agents.rows,
-            discussions: discussions.rows,
-            chat: chat.rows,
-            mail: mail.rows,
-            system_messages: systemMessages.rows
-        });
-    } catch (err) {
-        console.error('Admin dashboard error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch dashboard data' }
-        });
+    let agentsSql = `SELECT agent, status, last_seen, registered_at, provider, model, virtual, active_since
+         FROM agent_status`;
+    const agentsParams = [];
+    if (hasFilter) {
+        agentsSql += ' WHERE actor_id = ANY($1)';
+        agentsParams.push(idsArray);
     }
-});
+    agentsSql += ` ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`;
+    const agents = await pool.query(agentsSql, agentsParams);
+
+    let discussionsSql = `
+        SELECT d.id, d.topic, d.status, d.outcome, ac.name AS created_by, d.created_at,
+                COUNT(dp.actor_id) AS participant_count
+         FROM discussions d
+         LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
+         LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id`;
+    const discussionsParams = [];
+    if (hasFilter) {
+        discussionsSql += ` WHERE NOT EXISTS (
+            SELECT 1 FROM discussion_participants dp2
+            WHERE dp2.discussion_id = d.id AND dp2.actor_id != ALL($1))`;
+        discussionsParams.push(idsArray);
+    }
+    discussionsSql += ` GROUP BY d.id, ac.name
+         ORDER BY CASE d.status WHEN 'active' THEN 0 ELSE 1 END, d.created_at DESC
+         LIMIT 10`;
+    const discussions = await pool.query(discussionsSql, discussionsParams);
+
+    let chatSql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+         FROM chat_messages cm
+         JOIN actors fa ON fa.id = cm.from_actor_id
+         JOIN actors ta ON ta.id = cm.to_actor_id
+         WHERE fa.name != 'system'
+           AND cm.deleted_at IS NULL
+           AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
+    const chatParams = [];
+    if (hasFilter) {
+        chatSql += ' AND cm.from_actor_id = ANY($1) AND cm.to_actor_id = ANY($1)';
+        chatParams.push(idsArray);
+    }
+    chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cm.sent_at DESC LIMIT 15`;
+    const chat = await pool.query(chatSql, chatParams);
+
+    let mailSql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
+         FROM mail m
+         JOIN actors fa ON fa.id = m.from_actor_id
+         JOIN actors ta ON ta.id = m.to_actor_id
+         WHERE m.deleted_at IS NULL`;
+    const mailParams = [];
+    if (hasFilter) {
+        mailSql += ' AND m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+        mailParams.push(idsArray);
+    }
+    mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
+    const mail = await pool.query(mailSql, mailParams);
+
+    let sysMsgSql = `SELECT cm.id, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+         FROM chat_messages cm
+         JOIN actors fa ON fa.id = cm.from_actor_id
+         JOIN actors ta ON ta.id = cm.to_actor_id
+         WHERE fa.name = 'system' AND cm.deleted_at IS NULL`;
+    const sysMsgParams = [];
+    if (hasFilter) {
+        sysMsgSql += ' AND cm.to_actor_id = ANY($1)';
+        sysMsgParams.push(idsArray);
+    }
+    sysMsgSql += ' ORDER BY cm.sent_at DESC LIMIT 15';
+    const systemMessages = await pool.query(sysMsgSql, sysMsgParams);
+
+    res.json({
+        agents: agents.rows,
+        discussions: discussions.rows,
+        chat: chat.rows,
+        mail: mail.rows,
+        system_messages: systemMessages.rows
+    });
+}));
 
 // POST /admin/api-log — recent API requests from request_log table
-router.post('/admin/api-log', requirePerm('logs', 'read'), async (req, res) => {
+router.post('/admin/api-log', requirePerm('logs', 'read'), adminRoute('api-log', async (req, res) => {
     const { since_id, limit } = req.body;
-    try {
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        const entries = await getRequestLogEntries(since_id || 0, limit || 100, visibleIds);
-        res.json({ entries });
-    } catch (err) {
-        console.error('Admin api-log error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch API log' }
-        });
-    }
-});
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    const entries = await getRequestLogEntries(since_id || 0, limit || 100, visibleIds);
+    res.json({ entries });
+}));
 
 // POST /admin/error-log — recent errors from error_log table
-router.post('/admin/error-log', requirePerm('logs', 'read'), async (req, res) => {
+router.post('/admin/error-log', requirePerm('logs', 'read'), adminRoute('error-log', async (req, res) => {
     const { since_id, limit } = req.body;
-    try {
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        const entries = await getErrorLogEntries(since_id || 0, limit || 100, visibleIds);
-        res.json({ entries });
-    } catch (err) {
-        console.error('Admin error-log error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch error log' }
-        });
-    }
-});
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    const entries = await getErrorLogEntries(since_id || 0, limit || 100, visibleIds);
+    res.json({ entries });
+}));
 
 // POST /admin/agents — list all agents
-router.post('/admin/agents', requirePerm('agents', 'read'), async (req, res) => {
-    try {
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
-                    s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, ac.configuration
-             FROM agent_status s
-             LEFT JOIN agent_configuration ac ON ac.actor_id = s.actor_id`;
-        const params = [];
-        if (visibleIds !== null) {
-            sql += ' WHERE s.actor_id = ANY($1)';
-            params.push(Array.from(visibleIds));
-        }
-        sql += ` ORDER BY CASE s.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, s.last_seen DESC NULLS LAST`;
-        const result = await pool.query(sql, params);
-
-        // Compute pricing_info for each agent via provider formatPricing
-        for (const row of result.rows) {
-            if (row.provider && row.model) {
-                let config = {};
-                if (row.configuration) {
-                    if (typeof row.configuration === 'object') {
-                        config = row.configuration;
-                    } else {
-                        try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
-                    }
-                }
-                row.pricing_info = formatPricing(row.provider, row.model, config);
-            }
-            delete row.configuration;
-        }
-
-        res.json({ agents: result.rows });
-    } catch (err) {
-        console.error('Admin agents error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch agents' }
-        });
+router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-list', async (req, res) => {
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
+                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, ac.configuration
+         FROM agent_status s
+         LEFT JOIN agent_configuration ac ON ac.actor_id = s.actor_id`;
+    const params = [];
+    if (visibleIds !== null) {
+        sql += ' WHERE s.actor_id = ANY($1)';
+        params.push(Array.from(visibleIds));
     }
-});
+    sql += ` ORDER BY CASE s.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, s.last_seen DESC NULLS LAST`;
+    const result = await pool.query(sql, params);
+
+    // Compute pricing_info for each agent via provider formatPricing
+    for (const row of result.rows) {
+        if (row.provider && row.model) {
+            let config = {};
+            if (row.configuration) {
+                if (typeof row.configuration === 'object') {
+                    config = row.configuration;
+                } else {
+                    try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+                }
+            }
+            row.pricing_info = formatPricing(row.provider, row.model, config);
+        }
+        delete row.configuration;
+    }
+
+    res.json({ agents: result.rows });
+}));
 
 // POST /admin/agents/instructions/read — read an agent's startup instructions
 router.post('/admin/agents/instructions/read', requirePerm('agents', 'read'), async (req, res) => {
@@ -1170,36 +1168,31 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
 // ---- Note Synchronization CRUD ----
 
 // POST /admin/notes/sync/list — list sync mappings, optionally filtered by actor_id
-router.post('/admin/notes/sync/list', requirePerm('notes', 'read'), async (req, res) => {
-    try {
-        const { actor_id } = req.body;
-        let query, params;
-        if (actor_id) {
-            query = `
-                SELECT ns.id, ns.actor_id, a.name AS actor_name, ns.namespace, ns.slug, ns.local_path, ns.created_at
-                FROM note_synchronization ns
-                JOIN actors a ON a.id = ns.actor_id
-                WHERE ns.actor_id = $1
-                ORDER BY ns.namespace, ns.slug`;
-            params = [actor_id];
-        } else {
-            query = `
-                SELECT ns.id, ns.actor_id, a.name AS actor_name, ns.namespace, ns.slug, ns.local_path, ns.created_at
-                FROM note_synchronization ns
-                JOIN actors a ON a.id = ns.actor_id
-                ORDER BY a.name, ns.namespace, ns.slug`;
-            params = [];
-        }
-        const result = await pool.query(query, params);
-        res.json({ mappings: result.rows });
-    } catch (err) {
-        console.error('Admin sync list error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to list sync mappings' } });
+router.post('/admin/notes/sync/list', requirePerm('notes', 'read'), adminRoute('sync-list', async (req, res) => {
+    const { actor_id } = req.body;
+    let query, params;
+    if (actor_id) {
+        query = `
+            SELECT ns.id, ns.actor_id, a.name AS actor_name, ns.namespace, ns.slug, ns.local_path, ns.created_at
+            FROM note_synchronization ns
+            JOIN actors a ON a.id = ns.actor_id
+            WHERE ns.actor_id = $1
+            ORDER BY ns.namespace, ns.slug`;
+        params = [actor_id];
+    } else {
+        query = `
+            SELECT ns.id, ns.actor_id, a.name AS actor_name, ns.namespace, ns.slug, ns.local_path, ns.created_at
+            FROM note_synchronization ns
+            JOIN actors a ON a.id = ns.actor_id
+            ORDER BY a.name, ns.namespace, ns.slug`;
+        params = [];
     }
-});
+    const result = await pool.query(query, params);
+    res.json({ mappings: result.rows });
+}));
 
 // POST /admin/notes/sync/save — create or update a sync mapping
-router.post('/admin/notes/sync/save', requirePerm('notes', 'write'), async (req, res) => {
+router.post('/admin/notes/sync/save', requirePerm('notes', 'write'), adminRoute('sync-save', async (req, res) => {
     const { actor_id, namespace, slug, local_path } = req.body;
     if (!actor_id || !namespace || !local_path) {
         return res.status(400).json({
@@ -1208,41 +1201,31 @@ router.post('/admin/notes/sync/save', requirePerm('notes', 'write'), async (req,
     }
     // slug can be empty string (entire namespace sync)
     const resolvedSlug = slug || '';
-    try {
-        // Verify actor exists
-        const actor = await resolveById(actor_id);
-        if (!actor) {
-            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
-        }
-        const result = await pool.query(`
-            INSERT INTO note_synchronization (actor_id, namespace, slug, local_path)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (actor_id, namespace, slug) DO UPDATE SET local_path = $4
-            RETURNING *
-        `, [actor_id, namespace, resolvedSlug, local_path]);
-        res.json({ mapping: result.rows[0] });
-    } catch (err) {
-        console.error('Admin sync save error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save sync mapping' } });
+    // Verify actor exists
+    const actor = await resolveById(actor_id);
+    if (!actor) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
-});
+    const result = await pool.query(`
+        INSERT INTO note_synchronization (actor_id, namespace, slug, local_path)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (actor_id, namespace, slug) DO UPDATE SET local_path = $4
+        RETURNING *
+    `, [actor_id, namespace, resolvedSlug, local_path]);
+    res.json({ mapping: result.rows[0] });
+}));
 
 // POST /admin/notes/sync/delete — delete a sync mapping by id
-router.post('/admin/notes/sync/delete', requirePerm('notes', 'write'), async (req, res) => {
+router.post('/admin/notes/sync/delete', requirePerm('notes', 'write'), adminRoute('sync-delete', async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    try {
-        await pool.query('DELETE FROM note_synchronization WHERE id = $1', [id]);
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('Admin sync delete error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to delete sync mapping' } });
-    }
-});
+    await pool.query('DELETE FROM note_synchronization WHERE id = $1', [id]);
+    res.json({ ok: true });
+}));
 
 // ---- Templates CRUD ----
 
@@ -1789,43 +1772,38 @@ function parseActorId(raw, res) {
 }
 
 // POST /admin/actors/list — list all actors (for the Actors config tab)
-router.post('/admin/actors/list', requirePerm('actors', 'read'), async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT a.id, a.name, a.created_at,
-                    (ac.actor_id IS NOT NULL) AS is_agent,
-                    (a.password_hash IS NOT NULL) AS is_user,
-                    s.status, s.last_seen, s.registered_at,
-                    s.provider, s.model, s.virtual, s.personality,
-                    s.active_since, ac.configuration
-             FROM actors a
-             LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
-             LEFT JOIN agent_status s ON s.actor_id = a.id
-             ORDER BY a.name`
-        );
+router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('actors-list', async (req, res) => {
+    const result = await pool.query(
+        `SELECT a.id, a.name, a.created_at,
+                (ac.actor_id IS NOT NULL) AS is_agent,
+                (a.password_hash IS NOT NULL) AS is_user,
+                s.status, s.last_seen, s.registered_at,
+                s.provider, s.model, s.virtual, s.personality,
+                s.active_since, ac.configuration
+         FROM actors a
+         LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
+         LEFT JOIN agent_status s ON s.actor_id = a.id
+         ORDER BY a.name`
+    );
 
-        // Compute pricing_info for agents that have provider+model
-        for (const row of result.rows) {
-            if (row.provider && row.model) {
-                let config = {};
-                if (row.configuration) {
-                    if (typeof row.configuration === 'object') {
-                        config = row.configuration;
-                    } else {
-                        try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
-                    }
+    // Compute pricing_info for agents that have provider+model
+    for (const row of result.rows) {
+        if (row.provider && row.model) {
+            let config = {};
+            if (row.configuration) {
+                if (typeof row.configuration === 'object') {
+                    config = row.configuration;
+                } else {
+                    try { config = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
                 }
-                row.pricing_info = formatPricing(row.provider, row.model, config);
             }
-            delete row.configuration;
+            row.pricing_info = formatPricing(row.provider, row.model, config);
         }
-
-        res.json({ actors: result.rows });
-    } catch (err) {
-        console.error('Admin actors list error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch actors' } });
+        delete row.configuration;
     }
-});
+
+    res.json({ actors: result.rows });
+}));
 
 // POST /admin/actors/permissions/read — get namespace permissions for one actor
 router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), async (req, res) => {
