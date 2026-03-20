@@ -13,6 +13,11 @@
 //   node memory-sync.js --project-dir <path>
 //                        [--config <path-to-.agent.json>]
 //                        [--user <username>]
+//                        [--notes-only]
+//
+// --notes-only skips memory sync and conversation upload, running only
+// the note directory sync (Phase 3). Useful at session end to push
+// note changes without re-syncing everything.
 //
 // Example:
 //   node memory-sync.js \
@@ -52,11 +57,14 @@ for (let i = 0; i < args.length; i++) {
     } else if (args[i] === '--user' && args[i + 1]) {
         userName = args[i + 1];
         i++;
+    } else if (args[i] === '--notes-only') {
+        // Skip memory sync and conversation upload — only run note directory sync
+        global.notesOnly = true;
     }
 }
 
 if (!projectDir) {
-    console.error('Usage: node memory-sync.js --project-dir <path> [--config <path>] [--user <name>]');
+    console.error('Usage: node memory-sync.js --project-dir <path> [--config <path>] [--user <name>] [--notes-only]');
     process.exit(1);
 }
 
@@ -283,6 +291,7 @@ async function main() {
     const authHeaders = { 'Authorization': 'Bearer ' + sessionToken };
 
     try {
+        if (!global.notesOnly) {
         // ---------------------------------------------------------------
         // Phase 1: Note sync (existing behavior)
         // ---------------------------------------------------------------
@@ -510,6 +519,7 @@ async function main() {
                 console.log('Conversations: no new sessions');
             }
         }
+        } // end if (!global.notesOnly)
         // ---------------------------------------------------------------
         // Phase 3: Note directory sync (configured mappings)
         // ---------------------------------------------------------------
