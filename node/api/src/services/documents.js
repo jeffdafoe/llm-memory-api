@@ -155,6 +155,7 @@ async function listNotes(namespace, limit, offset, prefix) {
         sql = `
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
+                   MD5(d.content) AS content_hash,
                    ac.name AS created_by, d.created_at, d.updated_at
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
@@ -167,6 +168,7 @@ async function listNotes(namespace, limit, offset, prefix) {
         sql = `
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
+                   MD5(d.content) AS content_hash,
                    ac.name AS created_by, d.created_at, d.updated_at
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
