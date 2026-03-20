@@ -334,15 +334,16 @@ router.post('/admin/error-log', requirePerm('logs', 'read'), async (req, res) =>
 router.post('/admin/agents', requirePerm('agents', 'read'), async (req, res) => {
     try {
         const visibleIds = await getVisibleActorIds(req.actorId);
-        let sql = `SELECT agent, actor_id, status, last_seen, passphrase_rotated_at, registered_at, provider, model, virtual, personality, active_since,
-                    cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration
-             FROM agent_status`;
+        let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
+                    s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, ac.configuration
+             FROM agent_status s
+             LEFT JOIN agent_configuration ac ON ac.actor_id = s.actor_id`;
         const params = [];
         if (visibleIds !== null) {
-            sql += ' WHERE actor_id = ANY($1)';
+            sql += ' WHERE s.actor_id = ANY($1)';
             params.push(Array.from(visibleIds));
         }
-        sql += ` ORDER BY CASE status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, last_seen DESC NULLS LAST`;
+        sql += ` ORDER BY CASE s.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, s.last_seen DESC NULLS LAST`;
         const result = await pool.query(sql, params);
 
         // Compute pricing_info for each agent via provider formatPricing
@@ -1796,7 +1797,7 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), async (req, res
                     (a.password_hash IS NOT NULL) AS is_user,
                     s.status, s.last_seen, s.registered_at,
                     s.provider, s.model, s.virtual, s.personality,
-                    s.active_since, s.configuration
+                    s.active_since, ac.configuration
              FROM actors a
              LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
              LEFT JOIN agent_status s ON s.actor_id = a.id
