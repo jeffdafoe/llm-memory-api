@@ -266,13 +266,14 @@ const TOOLS = [
     },
     {
         name: 'mail_receive',
-        description: 'Read full mail content. When IDs are provided, returns only those specific messages. When no IDs given, returns all unacked messages. Call mail_ack with the IDs after processing.',
+        description: 'Read full mail content by ID. Requires specific message IDs — use mail_check first to list unread mail and get IDs, then call this with those IDs, then mail_ack after processing.',
         inputSchema: {
             type: 'object',
             properties: {
                 agent: { type: 'string', description: 'Agent to check mail for (default: configured agent)' },
-                ids: { type: 'array', items: { type: 'string' }, description: 'Specific mail UUIDs to read (optional — omit to get all unread)' }
-            }
+                ids: { type: 'array', items: { type: 'string' }, description: 'Mail UUIDs to read (required — get these from mail_check)' }
+            },
+            required: ['ids']
         }
     },
     {
