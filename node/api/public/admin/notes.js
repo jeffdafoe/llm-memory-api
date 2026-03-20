@@ -33,6 +33,13 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const expandedNamespaces = ref({});
     const expandedFolders = ref({});
     const selectedNote = ref(null);
+
+    // ---- Sync mappings (context menu) ----
+    const syncContextMenu = ref(null);       // { x, y, namespace, slug }
+    const syncDialog = ref(null);            // { namespace, slug, localPath, actorId }
+    const syncAgents = ref([]);              // agents list for dropdown
+    const syncMappings = ref([]);            // current mappings for display
+    const syncSaving = ref(false);
     const isMermaid = computed(() => {
         if (!selectedNote.value) return false;
         if (selectedNote.value.slug.endsWith('.mmd')) return true;
@@ -472,17 +479,110 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // ---- Sync mapping context menu and dialog ----
+
+    // Show context menu on right-click of a tree node
+    function showSyncContextMenu(event, namespace, slug) {
+        event.preventDefault();
+        syncContextMenu.value = { x: event.clientX, y: event.clientY, namespace, slug };
+    }
+
+    // Close context menu (called on any click)
+    function closeSyncContextMenu() {
+        syncContextMenu.value = null;
+    }
+
+    // Open the sync dialog from the context menu
+    async function openSyncDialog() {
+        const ctx = syncContextMenu.value;
+        if (!ctx) return;
+        syncDialog.value = { namespace: ctx.namespace, slug: ctx.slug, localPath: '', actorId: null };
+        syncContextMenu.value = null;
+
+        // Load agents list for the dropdown
+        if (syncAgents.value.length === 0) {
+            try {
+                const data = await api('/admin/actors/list');
+                // Filter to agents only (have is_agent flag)
+                syncAgents.value = (data.actors || []).filter(a => a.is_agent);
+            } catch (err) {
+                console.error('Failed to load agents:', err);
+            }
+        }
+
+        // Load existing mappings for this namespace+slug
+        await loadSyncMappings(ctx.namespace, ctx.slug);
+    }
+
+    async function loadSyncMappings(namespace, slug) {
+        try {
+            const data = await api('/admin/notes/sync/list');
+            // Filter to mappings that match this namespace+slug
+            syncMappings.value = (data.mappings || []).filter(m => m.namespace === namespace && m.slug === slug);
+        } catch (err) {
+            console.error('Failed to load sync mappings:', err);
+            syncMappings.value = [];
+        }
+    }
+
+    async function saveSyncMapping() {
+        const dlg = syncDialog.value;
+        if (!dlg || !dlg.actorId || !dlg.localPath) return;
+        syncSaving.value = true;
+        try {
+            await api('/admin/notes/sync/save', {
+                actor_id: dlg.actorId,
+                namespace: dlg.namespace,
+                slug: dlg.slug,
+                local_path: dlg.localPath
+            });
+            showToast('Sync mapping saved', 'success');
+            // Reload mappings to show the new one
+            await loadSyncMappings(dlg.namespace, dlg.slug);
+            // Reset form fields but keep dialog open
+            dlg.localPath = '';
+            dlg.actorId = null;
+        } catch (err) {
+            showToast('Failed to save: ' + err.message, 'error');
+        } finally {
+            syncSaving.value = false;
+        }
+    }
+
+    async function deleteSyncMapping(id) {
+        try {
+            await api('/admin/notes/sync/delete', { id });
+            showToast('Mapping removed', 'success');
+            if (syncDialog.value) {
+                await loadSyncMappings(syncDialog.value.namespace, syncDialog.value.slug);
+            }
+        } catch (err) {
+            showToast('Failed to delete: ' + err.message, 'error');
+        }
+    }
+
+    function closeSyncDialog() {
+        syncDialog.value = null;
+        syncMappings.value = [];
+    }
+
+    // Close context menu on any click anywhere
+    document.addEventListener('click', closeSyncContextMenu);
+
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
         selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
         notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
+        syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving,
         loadNotes, toggleNamespace, toggleFolder,
         openNote, openNoteFromSearch,
         startEditNote, cancelEditNote, saveEditedNote, confirmDeleteNote,
         downloadNote, uploadNote,
-        searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling
+        searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling,
+        showSyncContextMenu, closeSyncContextMenu, openSyncDialog,
+        saveSyncMapping, deleteSyncMapping, closeSyncDialog
     };
 }
 

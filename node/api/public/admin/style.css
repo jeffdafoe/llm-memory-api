@@ -1138,6 +1138,31 @@ h4 i {
     opacity: 0.7;
 }
 
+/* Context menu (right-click on tree nodes) */
+.context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: var(--pico-card-background-color);
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    padding: 0.25rem 0;
+    min-width: 200px;
+}
+
+.context-menu-item {
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: 0.9em;
+}
+
+.context-menu-item:hover {
+    background: var(--pico-table-row-stripped-background-color);
+}
+
 .notes-toolbar {
     display: flex;
     justify-content: space-between;

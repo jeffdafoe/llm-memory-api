@@ -510,6 +510,58 @@ async function main() {
                 console.log('Conversations: no new sessions');
             }
         }
+        // ---------------------------------------------------------------
+        // Phase 3: Note directory sync (configured mappings)
+        // ---------------------------------------------------------------
+        // Fetch agent-specific sync mappings from the server. Each mapping
+        // pairs a note slug (or slug prefix) with a local filesystem path.
+        // Uses the same timestamp-compare logic as memory sync.
+
+        try {
+            const mappingsResult = await httpPost(config.api_url + '/agent/sync-mappings', authHeaders, {});
+            const mappings = mappingsResult.mappings || [];
+
+            if (mappings.length > 0) {
+                let totalPulled = 0;
+                let totalPushed = 0;
+                let totalUnchanged = 0;
+
+                for (const mapping of mappings) {
+                    const localDir = mapping.local_path;
+                    const slugPrefix = mapping.slug;
+                    const namespace = mapping.namespace;
+
+                    // Ensure local directory exists
+                    fs.mkdirSync(localDir, { recursive: true });
+
+                    // Determine if this is a single-note mapping or a prefix mapping.
+                    // A prefix mapping ends with '/' or is empty (entire namespace).
+                    // A single-note mapping is an exact slug with no trailing slash.
+                    const isPrefix = slugPrefix === '' || slugPrefix.endsWith('/');
+
+                    if (!isPrefix) {
+                        // Single note sync — sync one note to one file
+                        const result = await syncSingleNote(namespace, slugPrefix, localDir, authHeaders);
+                        totalPulled += result.pulled;
+                        totalPushed += result.pushed;
+                        totalUnchanged += result.unchanged;
+                    } else {
+                        // Prefix sync — sync all notes under the prefix to the directory
+                        const result = await syncNotePrefix(namespace, slugPrefix, localDir, authHeaders);
+                        totalPulled += result.pulled;
+                        totalPushed += result.pushed;
+                        totalUnchanged += result.unchanged;
+                    }
+                }
+
+                if (totalPulled > 0 || totalPushed > 0) {
+                    console.log('Note sync: ' + totalPulled + ' pulled, ' + totalPushed + ' pushed, ' + totalUnchanged + ' unchanged');
+                }
+            }
+        } catch (err) {
+            // Non-fatal — don't block the rest of sync
+            console.error('Note sync error: ' + err.message);
+        }
     } finally {
         // Always attempt logout so we don't leak sessions
         try {
@@ -520,6 +572,266 @@ async function main() {
             // Non-fatal — session will expire on its own
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Note directory sync helpers
+// ---------------------------------------------------------------------------
+
+// Sync a single note to a single file in the target directory.
+// The filename is derived from the last segment of the slug.
+async function syncSingleNote(namespace, slug, localDir, authHeaders) {
+    const result = { pulled: 0, pushed: 0, unchanged: 0 };
+
+    // Derive filename from the slug's last segment
+    const lastSlash = slug.lastIndexOf('/');
+    let baseName = lastSlash >= 0 ? slug.slice(lastSlash + 1) : slug;
+    if (!baseName.includes('.')) {
+        baseName = baseName + '.md';
+    }
+
+    const filePath = path.join(localDir, baseName);
+
+    // Try to read the remote note
+    let remoteNote = null;
+    try {
+        remoteNote = await httpPost(config.api_url + '/documents/read', authHeaders, {
+            namespace, slug
+        });
+        // /documents/read returns the note object directly (flat, no wrapper)
+    } catch (err) {
+        // 404 means remote doesn't exist yet
+        if (!err.message.includes('404')) {
+            console.error('  NOTE SYNC ERROR reading ' + slug + ': ' + err.message);
+            return result;
+        }
+    }
+
+    const localExists = fs.existsSync(filePath);
+
+    if (remoteNote && !localExists) {
+        // Pull: remote exists, local doesn't
+        fs.writeFileSync(filePath, remoteNote.content, 'utf-8');
+        if (remoteNote.updated_at) {
+            const mtime = new Date(remoteNote.updated_at);
+            fs.utimesSync(filePath, mtime, mtime);
+        }
+        console.log('  PULL ' + slug + ' → ' + filePath);
+        result.pulled++;
+    } else if (!remoteNote && localExists) {
+        // Push: local exists, remote doesn't
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const title = extractSyncTitle(content, baseName);
+        const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
+            namespace, slug, title, content
+        });
+        if (doc.updated_at) {
+            const mtime = new Date(doc.updated_at);
+            fs.utimesSync(filePath, mtime, mtime);
+        }
+        console.log('  PUSH ' + slug + ' ← ' + filePath);
+        result.pushed++;
+    } else if (remoteNote && localExists) {
+        // Both exist — compare timestamps
+        const stat = fs.statSync(filePath);
+        const remoteTime = new Date(remoteNote.updated_at).getTime();
+        const localTime = stat.mtime.getTime();
+
+        if (remoteTime > localTime) {
+            fs.writeFileSync(filePath, remoteNote.content, 'utf-8');
+            const mtime = new Date(remoteNote.updated_at);
+            fs.utimesSync(filePath, mtime, mtime);
+            console.log('  PULL ' + slug + ' → ' + filePath);
+            result.pulled++;
+        } else if (localTime > remoteTime) {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const title = extractSyncTitle(content, baseName);
+            const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
+                namespace, slug, title, content
+            });
+            if (doc.updated_at) {
+                const mtime = new Date(doc.updated_at);
+                fs.utimesSync(filePath, mtime, mtime);
+            }
+            console.log('  PUSH ' + slug + ' ← ' + filePath);
+            result.pushed++;
+        } else {
+            result.unchanged++;
+        }
+    }
+    // Neither exists — nothing to do
+
+    return result;
+}
+
+// Sync all notes under a slug prefix to files in a local directory.
+// Each note's filename is derived from its slug relative to the prefix.
+async function syncNotePrefix(namespace, prefix, localDir, authHeaders) {
+    const result = { pulled: 0, pushed: 0, unchanged: 0 };
+
+    // List remote notes under the prefix
+    let remoteNotes = [];
+    try {
+        const data = await httpPost(config.api_url + '/documents/list', authHeaders, {
+            namespace, prefix, limit: 500
+        });
+        remoteNotes = data.notes || [];
+    } catch (err) {
+        console.error('  NOTE SYNC ERROR listing ' + prefix + ': ' + err.message);
+        return result;
+    }
+
+    // Build remote map: relative path → note metadata
+    const remoteByRelPath = {};
+    for (const note of remoteNotes) {
+        if (!note.slug.startsWith(prefix)) continue;
+        let relPath = note.slug.slice(prefix.length);
+        // Convert slug separators to path separators and add .md if no extension
+        if (!relPath.includes('.')) {
+            relPath = relPath + '.md';
+        }
+        remoteByRelPath[relPath] = note;
+    }
+
+    // Scan local directory recursively for files
+    const localByRelPath = {};
+    function scanDir(dir, relBase) {
+        if (!fs.existsSync(dir)) return;
+        const entries = fs.readdirSync(dir);
+        for (const entry of entries) {
+            if (entry.startsWith('.')) continue;
+            const fullPath = path.join(dir, entry);
+            const relPath = relBase ? relBase + '/' + entry : entry;
+            const stat = fs.statSync(fullPath);
+            if (stat.isDirectory()) {
+                scanDir(fullPath, relPath);
+            } else if (stat.isFile()) {
+                localByRelPath[relPath] = {
+                    fullPath,
+                    content: fs.readFileSync(fullPath, 'utf-8'),
+                    mtime: stat.mtime.toISOString(),
+                    mtimeMs: stat.mtime.getTime()
+                };
+            }
+        }
+    }
+    scanDir(localDir, '');
+
+    // Merge all known relative paths
+    const allRelPaths = new Set([
+        ...Object.keys(remoteByRelPath),
+        ...Object.keys(localByRelPath)
+    ]);
+
+    for (const relPath of allRelPaths) {
+        const remote = remoteByRelPath[relPath];
+        const local = localByRelPath[relPath];
+
+        // Derive the slug from the relative path
+        let slugSuffix = relPath;
+        // Strip .md extension if present — slugs don't include extensions
+        if (slugSuffix.endsWith('.md')) {
+            slugSuffix = slugSuffix.slice(0, -3);
+        }
+        const slug = prefix + slugSuffix;
+        const localPath = local ? local.fullPath : path.join(localDir, relPath);
+
+        if (remote && !local) {
+            // Pull: exists remotely but not locally
+            let fullNote;
+            try {
+                const readResult = await httpPost(config.api_url + '/documents/read', authHeaders, {
+                    namespace, slug: remote.slug
+                });
+                fullNote = readResult;
+            } catch (err) {
+                console.error('  NOTE SYNC ERROR reading ' + remote.slug + ': ' + err.message);
+                continue;
+            }
+            // Ensure parent directories exist
+            const parentDir = path.dirname(localPath);
+            fs.mkdirSync(parentDir, { recursive: true });
+            fs.writeFileSync(localPath, fullNote.content, 'utf-8');
+            if (fullNote.updated_at) {
+                const mtime = new Date(fullNote.updated_at);
+                fs.utimesSync(localPath, mtime, mtime);
+            }
+            console.log('  PULL ' + slug + ' → ' + localPath);
+            result.pulled++;
+        } else if (!remote && local) {
+            // Push: exists locally but not remotely
+            const title = extractSyncTitle(local.content, relPath);
+            try {
+                const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
+                    namespace, slug, title, content: local.content
+                });
+                if (doc.updated_at) {
+                    const mtime = new Date(doc.updated_at);
+                    fs.utimesSync(local.fullPath, mtime, mtime);
+                }
+                console.log('  PUSH ' + slug + ' ← ' + local.fullPath);
+                result.pushed++;
+            } catch (err) {
+                console.error('  NOTE SYNC ERROR saving ' + slug + ': ' + err.message);
+            }
+        } else if (remote && local) {
+            // Both exist — timestamp wins
+            const remoteTime = new Date(remote.updated_at).getTime();
+            const localTime = local.mtimeMs;
+
+            if (remoteTime > localTime) {
+                let fullNote;
+                try {
+                    const readResult = await httpPost(config.api_url + '/documents/read', authHeaders, {
+                        namespace, slug: remote.slug
+                    });
+                    fullNote = readResult;
+                } catch (err) {
+                    console.error('  NOTE SYNC ERROR reading ' + remote.slug + ': ' + err.message);
+                    continue;
+                }
+                fs.writeFileSync(local.fullPath, fullNote.content, 'utf-8');
+                if (fullNote.updated_at) {
+                    const mtime = new Date(fullNote.updated_at);
+                    fs.utimesSync(local.fullPath, mtime, mtime);
+                }
+                console.log('  PULL ' + slug + ' → ' + local.fullPath);
+                result.pulled++;
+            } else if (localTime > remoteTime) {
+                const title = extractSyncTitle(local.content, relPath);
+                try {
+                    const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
+                        namespace, slug, title, content: local.content
+                    });
+                    if (doc.updated_at) {
+                        const mtime = new Date(doc.updated_at);
+                        fs.utimesSync(local.fullPath, mtime, mtime);
+                    }
+                    console.log('  PUSH ' + slug + ' ← ' + local.fullPath);
+                    result.pushed++;
+                } catch (err) {
+                    console.error('  NOTE SYNC ERROR saving ' + slug + ': ' + err.message);
+                }
+            } else {
+                result.unchanged++;
+            }
+        }
+    }
+
+    return result;
+}
+
+// Extract a title from markdown content for pushed notes
+function extractSyncTitle(content, filename) {
+    if (content) {
+        const fmMatch = content.match(/^---\s*\n[\s\S]*?name:\s*(.+)\n[\s\S]*?---/);
+        if (fmMatch) return fmMatch[1].trim();
+        const headingMatch = content.match(/^#\s+(.+)/m);
+        if (headingMatch) return headingMatch[1].trim();
+    }
+    // Fall back to filename without extension and path
+    const base = filename.includes('/') ? filename.slice(filename.lastIndexOf('/') + 1) : filename;
+    return base.replace(/\.md$/, '').replace(/[_-]/g, ' ');
 }
 
 main().catch(err => {
