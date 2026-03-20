@@ -4,7 +4,7 @@ ALTER TABLE actors ADD COLUMN status VARCHAR(20) DEFAULT NULL;
 -- Add config keys for retry and error ping
 INSERT INTO config (key, value, description) VALUES
     ('virtual_agent_max_retries', '3', 'Number of retry attempts for virtual agent provider calls before giving up'),
-    ('virtual_agent_retry_backoff', '60,600,3600', 'Comma-separated backoff delays in seconds between retries'),
+    ('virtual_agent_retry_backoff', '300,600,3600', 'Comma-separated backoff delays in seconds between retries'),
     ('virtual_agent_error_ping_interval', '15', 'Minutes between health-check pings for errored virtual agents');
 
 -- Recreate agent_status view to use actors.status for virtual agents
