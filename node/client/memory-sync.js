@@ -456,27 +456,43 @@ async function main() {
                         }
                     }
 
-                    // Upload via conversations.uploads — server handles slug/namespace
+                    // Upload sessions one at a time to avoid exceeding nginx body size limits.
+                    // Each session can be several MB after preprocessing — batching them would
+                    // compound the size and hit 413 errors.
                     if (conversationFiles.length > 0) {
-                        const uploadResult = await httpPost(config.api_url + '/agent/memory/sync', authHeaders, {
-                            conversations: { uploads: conversationFiles }
-                        });
+                        let uploaded = 0;
+                        let serverErrors = 0;
 
-                        const uploaded = (uploadResult.conversations && uploadResult.conversations.uploaded) || 0;
                         for (const file of conversationFiles) {
-                            console.log('  CONV conversations/' + file.date + '-' + file.session_id);
+                            try {
+                                const uploadResult = await httpPost(config.api_url + '/agent/memory/sync', authHeaders, {
+                                    conversations: { uploads: [file] }
+                                });
+
+                                const count = (uploadResult.conversations && uploadResult.conversations.uploaded) || 0;
+                                uploaded += count;
+
+                                const uploadErrors = uploadResult.conversations && uploadResult.conversations.upload_errors;
+                                if (uploadErrors && uploadErrors.length > 0) {
+                                    for (const ue of uploadErrors) {
+                                        console.error('  CONV SERVER ERROR ' + ue.session_id + ': ' + ue.error);
+                                    }
+                                    serverErrors += uploadErrors.length;
+                                } else {
+                                    console.log('  CONV conversations/' + file.date + '-' + file.session_id);
+                                }
+                            } catch (uploadErr) {
+                                console.error('  CONV UPLOAD ERROR ' + file.session_id + ': ' + uploadErr.message);
+                                conversationErrors++;
+                            }
                         }
 
                         let conversationSummary = 'Conversations: ' + uploaded + ' uploaded';
                         if (conversationErrors > 0) {
                             conversationSummary += ', ' + conversationErrors + ' errors';
                         }
-                        const uploadErrors = uploadResult.conversations && uploadResult.conversations.upload_errors;
-                        if (uploadErrors && uploadErrors.length > 0) {
-                            for (const ue of uploadErrors) {
-                                console.error('  CONV SERVER ERROR ' + ue.session_id + ': ' + ue.error);
-                            }
-                            conversationSummary += ', ' + uploadErrors.length + ' server errors';
+                        if (serverErrors > 0) {
+                            conversationSummary += ', ' + serverErrors + ' server errors';
                         }
                         console.log(conversationSummary);
                     } else if (conversationErrors > 0) {
