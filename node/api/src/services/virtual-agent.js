@@ -19,6 +19,92 @@ const MIN_ACTIVITY_MS = 3000;
 // In-memory rate limiter: agent -> array of call timestamps
 const callHistory = {};
 
+// --- Virtual agent status lifecycle ---
+
+// Set a virtual agent's status (available, degraded, error).
+async function setAgentStatus(agentName, status) {
+    await pool.query("UPDATE actors SET status = $1 WHERE name = $2", [status, agentName]);
+    broadcast('agent_activity', { agent: agentName, status });
+    logVA('status-change', { agent: agentName, status });
+}
+
+// Retry a provider call with exponential backoff.
+// Returns the result on success, or throws after all retries exhausted.
+async function retryWithBackoff(agentName, fn) {
+    const maxRetries = parseInt(config.get('virtual_agent_max_retries')) || 3;
+    const backoffStr = config.get('virtual_agent_retry_backoff') || '60,600,3600';
+    const backoffs = backoffStr.split(',').map(s => parseInt(s.trim()) * 1000);
+
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const result = await fn();
+            // If we had retried (attempt > 0), restore status
+            if (attempt > 0) {
+                await setAgentStatus(agentName, 'available');
+            }
+            return result;
+        } catch (err) {
+            lastError = err;
+            if (attempt < maxRetries) {
+                await setAgentStatus(agentName, 'degraded');
+                const delay = backoffs[Math.min(attempt, backoffs.length - 1)];
+                logVA('retry-backoff', { agent: agentName, attempt: attempt + 1, maxRetries, delayMs: delay, error: err.message });
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+    // All retries exhausted
+    await setAgentStatus(agentName, 'error');
+    throw lastError;
+}
+
+// --- Error recovery ping ---
+// Periodically check errored virtual agents by sending a minimal provider call.
+
+let errorPingTimer = null;
+
+async function startErrorPing() {
+    const intervalMin = parseInt(config.get('virtual_agent_error_ping_interval')) || 15;
+    if (errorPingTimer) clearInterval(errorPingTimer);
+    errorPingTimer = setInterval(pingErroredAgents, intervalMin * 60 * 1000);
+    errorPingTimer.unref();
+}
+
+async function pingErroredAgents() {
+    try {
+        const result = await pool.query(
+            `SELECT ac.name AS agent
+             FROM actors ac
+             JOIN agent_configuration agc ON agc.actor_id = ac.id
+             WHERE agc.virtual = TRUE AND ac.status = 'error'`
+        );
+        for (const row of result.rows) {
+            await pingAgent(row.agent);
+        }
+    } catch (err) {
+        logVA('error-ping-scan-failed', { error: err.message });
+    }
+}
+
+async function pingAgent(agentName) {
+    try {
+        const agent = await loadAgent(agentName);
+        if (!agent || !agent.api_key || !agent.provider || !agent.model) return;
+
+        const apiKey = decryptApiKey(agent.api_key);
+        const conf = buildProviderConf(agent);
+        const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+
+        const { usage } = await provider('Respond with OK.', 'ping');
+        await recordUsage(agent.agent, agent.provider, agent.model, usage, 'ping');
+        await setAgentStatus(agentName, 'available');
+        logVA('error-ping-recovered', { agent: agentName });
+    } catch (err) {
+        logVA('error-ping-still-down', { agent: agentName, error: err.message });
+    }
+}
+
 // Check if an agent is rate-limited. Returns true if the call should be blocked.
 function isRateLimited(agentName) {
     const limit = parseInt(config.get('virtual_agent_rate_limit'));
@@ -656,11 +742,13 @@ async function handleVirtualAgent(payload) {
                 continue;
             }
 
-            // Call provider with activity spinner (minimum 3s visibility).
+            // Call provider with retry+backoff and activity spinner.
             // Pass cache flag for chat-based interactions (discussions have repeated calls).
-            const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+            const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
             recordCall(agent.agent);
-            const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage, { cache: true }));
+            const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
+                withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, { cache: true }))
+            );
             await recordUsage(agent.agent, agent.provider, agent.model, usage, 'discussion');
 
             // Handle vote-proposed: parse response and cast ballot
@@ -686,7 +774,7 @@ async function handleVirtualAgent(payload) {
 
             // Fire-and-forget learning extraction (skip for vote responses)
             if (triggerType !== 'vote-proposed') {
-                extractLearnings(agent, systemPrompt, userMessage, response, 'discussion', discussion.topic, provider).catch(err => {
+                extractLearnings(agent, systemPrompt, userMessage, response, 'discussion', discussion.topic, providerFn).catch(err => {
                     logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
                 });
             }
@@ -755,11 +843,13 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             return;
         }
 
-        // Call provider with activity spinner (minimum 3s visibility).
+        // Call provider with retry+backoff and activity spinner.
         // Pass cache flag — direct chat implies back-and-forth.
-        const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+        const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
-        const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage, { cache: true }));
+        const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
+            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, { cache: true }))
+        );
         await recordUsage(agent.agent, agent.provider, agent.model, usage, 'chat');
 
         // Send response as direct chat back to the sender
@@ -776,7 +866,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         logVA('direct-chat-responded', { agent: agent.agent, to: fromAgent, responseLength: response.length });
 
         // Fire-and-forget learning extraction
-        extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent, provider).catch(err => {
+        extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent, providerFn).catch(err => {
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
@@ -789,7 +879,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Send error feedback to the caller so they know it failed
         try {
             await chatSend(virtualAgentName, [fromAgent], null,
-                `[Error] ${err.message}`, null);
+                `[Error] ${virtualAgentName} is unavailable (${err.message}).`, null);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
@@ -854,10 +944,12 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             return;
         }
 
-        // Call provider with activity spinner (minimum 3s visibility)
-        const provider = createProvider(agent.provider, agent.model, apiKey, conf);
+        // Call provider with retry+backoff and activity spinner
+        const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
-        const { text: response, usage } = await withActivityIndicator(agent.agent, () => provider(systemPrompt, userMessage));
+        const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
+            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage))
+        );
         await recordUsage(agent.agent, agent.provider, agent.model, usage, 'mail');
 
         // Ack the incoming mail (virtual agent "read" it)
@@ -874,7 +966,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         logVA('direct-mail-responded', { agent: agent.agent, to: fromAgent, mailId, responseLength: response.length });
 
         // Fire-and-forget learning extraction
-        extractLearnings(agent, systemPrompt, userMessage, response, 'mail', null, provider).catch(err => {
+        extractLearnings(agent, systemPrompt, userMessage, response, 'mail', null, providerFn).catch(err => {
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
@@ -885,14 +977,18 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             message: err.message,
             detail: err.stack
         });
-        // Send error reply mail so the caller knows it failed
+        // Ack the incoming mail so it doesn't stay stuck
+        await pool.query(
+            'UPDATE mail SET acked_at = NOW() WHERE id = $1 AND to_actor_id = $2 AND acked_at IS NULL',
+            [mailId, agent.actor_id]
+        ).catch(() => {});
+        // Send error reply threaded to the original message
         try {
             const { mailSend: mailSendErr } = require('./mail');
-            const mailResult = await pool.query('SELECT subject FROM mail WHERE id = $1', [mailId]);
-            const subject = mailResult.rows.length > 0 ? mailResult.rows[0].subject : 'Unknown';
-            const errSubject = subject.startsWith('Re: ') ? subject : `Re: ${subject}`;
-            await mailSendErr(fromAgent, virtualAgentName, errSubject,
-                `[Error] ${err.message}`, mailId);
+            await mailSendErr(fromAgent, virtualAgentName,
+                'Delivery failed',
+                `${virtualAgentName} is unavailable (${err.message}). Your message has been acked — resend when the agent is back online.`,
+                mailId);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
@@ -902,5 +998,8 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 // Register with system handler on load.
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
+
+// Start error recovery ping on load.
+startErrorPing();
 
 module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits };
