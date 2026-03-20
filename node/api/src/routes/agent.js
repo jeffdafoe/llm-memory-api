@@ -915,7 +915,17 @@ router.post('/agent/sync-mappings', async (req, res) => {
             WHERE a.name = $1
             ORDER BY ns.namespace, ns.slug
         `, [agent]);
-        res.json({ mappings: result.rows });
+        // Include global exclude list so the sync script can skip matching slugs
+        let excludeSlugs = [];
+        try {
+            const raw = config.get('sync_exclude_slugs');
+            if (raw) {
+                excludeSlugs = raw.split(',').map(s => s.trim()).filter(Boolean);
+            }
+        } catch (e) {
+            // Key not configured — no exclusions
+        }
+        res.json({ mappings: result.rows, exclude_slugs: excludeSlugs });
     } catch (err) {
         logError('agent', 'sync-mappings', { agent, message: err.message, detail: err.stack });
         res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch sync mappings' } });

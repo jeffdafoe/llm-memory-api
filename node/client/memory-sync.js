@@ -521,6 +521,10 @@ async function main() {
             const mappingsResult = await httpPost(config.api_url + '/agent/sync-mappings', authHeaders, {});
             const mappings = mappingsResult.mappings || [];
 
+            // Global exclude list — slug segments that should never be synced.
+            // Matches against the last segment of the slug (the "filename" part).
+            const excludeSlugs = new Set(mappingsResult.exclude_slugs || []);
+
             if (mappings.length > 0) {
                 let totalPulled = 0;
                 let totalPushed = 0;
@@ -540,14 +544,19 @@ async function main() {
                     const isPrefix = slugPrefix === '' || slugPrefix.endsWith('/');
 
                     if (!isPrefix) {
-                        // Single note sync — sync one note to one file
+                        // Single note sync — sync one note to one file.
+                        // Check if the slug's last segment is excluded.
+                        const lastSegment = slugPrefix.split('/').pop();
+                        if (excludeSlugs.has(lastSegment)) {
+                            continue;
+                        }
                         const result = await syncSingleNote(namespace, slugPrefix, localDir, authHeaders);
                         totalPulled += result.pulled;
                         totalPushed += result.pushed;
                         totalUnchanged += result.unchanged;
                     } else {
                         // Prefix sync — sync all notes under the prefix to the directory
-                        const result = await syncNotePrefix(namespace, slugPrefix, localDir, authHeaders);
+                        const result = await syncNotePrefix(namespace, slugPrefix, localDir, authHeaders, excludeSlugs);
                         totalPulled += result.pulled;
                         totalPushed += result.pushed;
                         totalUnchanged += result.unchanged;
@@ -666,7 +675,7 @@ async function syncSingleNote(namespace, slug, localDir, authHeaders) {
 
 // Sync all notes under a slug prefix to files in a local directory.
 // Each note's filename is derived from its slug relative to the prefix.
-async function syncNotePrefix(namespace, prefix, localDir, authHeaders) {
+async function syncNotePrefix(namespace, prefix, localDir, authHeaders, excludeSlugs) {
     const result = { pulled: 0, pushed: 0, unchanged: 0 };
 
     // List remote notes under the prefix
@@ -685,6 +694,11 @@ async function syncNotePrefix(namespace, prefix, localDir, authHeaders) {
     const remoteByRelPath = {};
     for (const note of remoteNotes) {
         if (!note.slug.startsWith(prefix)) continue;
+        // Skip excluded slugs (match against last segment)
+        if (excludeSlugs && excludeSlugs.size > 0) {
+            const lastSegment = note.slug.split('/').pop();
+            if (excludeSlugs.has(lastSegment)) continue;
+        }
         let relPath = note.slug.slice(prefix.length);
         // Convert slug separators to path separators and add .md if no extension
         if (!relPath.includes('.')) {
@@ -700,6 +714,11 @@ async function syncNotePrefix(namespace, prefix, localDir, authHeaders) {
         const entries = fs.readdirSync(dir);
         for (const entry of entries) {
             if (entry.startsWith('.')) continue;
+            // Skip files whose base name (minus extension) matches an excluded slug
+            if (excludeSlugs && excludeSlugs.size > 0) {
+                const baseName = entry.replace(/\.[^.]+$/, '');
+                if (excludeSlugs.has(baseName)) continue;
+            }
             const fullPath = path.join(dir, entry);
             const relPath = relBase ? relBase + '/' + entry : entry;
             const stat = fs.statSync(fullPath);
