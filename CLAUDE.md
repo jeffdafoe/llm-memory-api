@@ -28,7 +28,7 @@ When a session starts from a continuation summary, treat operational details in 
 - No abbreviations (`infrastructure` not `infra`)
 - No ternaries — use if/then
 - All API routes are POST (no GET for anything that takes params)
-- **No PG-specific SQL** — keep queries portable. No `ON CONFLICT`, no partial indexes, no PG-only functions.
+- **PostgreSQL is the target database** — PG-specific syntax (`ON CONFLICT`, partial indexes, PG functions, `USING` in deletes, etc.) is fine.
 
 ## Architecture
 
