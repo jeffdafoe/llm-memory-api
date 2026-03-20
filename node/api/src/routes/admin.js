@@ -1477,8 +1477,8 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), async (req, 
             // Create actor
             const actorResult = await client.query(
                 `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status)
-                 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
-                [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt]
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active']
             );
             actorId = actorResult.rows[0].id;
 

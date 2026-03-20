@@ -152,7 +152,7 @@ router.get('/authorize', async (req, res) => {
         );
     }
 
-    if (agentResult.rows.length === 0 || agentResult.rows[0].status !== 'active') {
+    if (agentResult.rows.length === 0) {
         return res.status(400).json({
             error: 'invalid_request',
             error_description: 'Unknown or inactive agent'

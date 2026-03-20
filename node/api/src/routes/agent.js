@@ -42,8 +42,7 @@ function generateSessionToken() {
 }
 
 // Agent registration is now handled via admin UI (POST /admin/agents/create).
-// The old /agent/register and /agent/register/ack routes have been removed
-// since the CHECK constraint on actors.status only allows 'active'.
+// The old /agent/register and /agent/register/ack routes have been removed.
 
 // POST /agent/login — verify passphrase, create session, return session token.
 // No auth required — the passphrase in the body is the credential.
@@ -80,7 +79,7 @@ router.post('/agent/login', async (req, res) => {
             });
         }
 
-        if (row.status !== 'active' || !verify(passphrase, row.token_salt, row.token_hash)) {
+        if (!verify(passphrase, row.token_salt, row.token_hash)) {
             logAgent('login-failed', { agent });
             return res.status(403).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
