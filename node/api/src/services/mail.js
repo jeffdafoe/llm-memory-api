@@ -88,16 +88,12 @@ async function mailReceive(agent, ids) {
             [ids, actor.id]
         );
     } else {
-        // Fetch all unacked messages (original behavior)
-        result = await pool.query(
-            `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.in_reply_to
-             FROM mail m
-             JOIN actors fa ON fa.id = m.from_actor_id
-             JOIN actors ta ON ta.id = m.to_actor_id
-             WHERE m.to_actor_id = $1 AND m.acked_at IS NULL AND m.deleted_at IS NULL
-             ORDER BY m.sent_at ASC`,
-            [actor.id]
-        );
+        throw Object.assign(new Error(
+            'Required field: ids (array of mail UUIDs). ' +
+            'Use mail_check first to list unread mail with IDs, ' +
+            'then call mail_receive with specific IDs to read full content, ' +
+            'then call mail_ack with those IDs after processing.'
+        ), { statusCode: 400 });
     }
 
     logMail('receive', { agent, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
