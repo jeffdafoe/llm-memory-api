@@ -34,6 +34,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -147,6 +148,11 @@ function isSafeFilename(name) {
 
 // UUID format check for session IDs
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Content hash for change detection — must match Postgres MD5(content)
+function md5(str) {
+    return crypto.createHash('md5').update(str, 'utf-8').digest('hex');
+}
 
 // ---------------------------------------------------------------------------
 // Conversation preprocessing
@@ -651,31 +657,42 @@ async function syncSingleNote(namespace, slug, localDir, authHeaders) {
         console.log('  PUSH ' + slug + ' ← ' + filePath);
         result.pushed++;
     } else if (remoteNote && localExists) {
-        // Both exist — compare timestamps
+        // Both exist — compare timestamps, then hashes if timestamps differ
         const stat = fs.statSync(filePath);
         const remoteTime = new Date(remoteNote.updated_at).getTime();
         const localTime = stat.mtime.getTime();
 
-        if (remoteTime > localTime) {
-            fs.writeFileSync(filePath, remoteNote.content, 'utf-8');
-            const mtime = new Date(remoteNote.updated_at);
-            fs.utimesSync(filePath, mtime, mtime);
-            console.log('  PULL ' + slug + ' → ' + filePath);
-            result.pulled++;
-        } else if (localTime > remoteTime) {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            const title = extractSyncTitle(content, baseName);
-            const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
-                namespace, slug, title, content
-            });
-            if (doc.updated_at) {
-                const mtime = new Date(doc.updated_at);
-                fs.utimesSync(filePath, mtime, mtime);
-            }
-            console.log('  PUSH ' + slug + ' ← ' + filePath);
-            result.pushed++;
-        } else {
+        if (remoteTime === localTime) {
             result.unchanged++;
+        } else {
+            // Timestamps differ — check content hash before syncing
+            const localContent = fs.readFileSync(filePath, 'utf-8');
+            const localHash = md5(localContent);
+            const remoteHash = md5(remoteNote.content);
+
+            if (localHash === remoteHash) {
+                // Content identical — just re-align mtime
+                const mtime = new Date(remoteNote.updated_at);
+                fs.utimesSync(filePath, mtime, mtime);
+                result.unchanged++;
+            } else if (remoteTime > localTime) {
+                fs.writeFileSync(filePath, remoteNote.content, 'utf-8');
+                const mtime = new Date(remoteNote.updated_at);
+                fs.utimesSync(filePath, mtime, mtime);
+                console.log('  PULL ' + slug + ' → ' + filePath);
+                result.pulled++;
+            } else {
+                const title = extractSyncTitle(localContent, baseName);
+                const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
+                    namespace, slug, title, content: localContent
+                });
+                if (doc.updated_at) {
+                    const mtime = new Date(doc.updated_at);
+                    fs.utimesSync(filePath, mtime, mtime);
+                }
+                console.log('  PUSH ' + slug + ' ← ' + filePath);
+                result.pushed++;
+            }
         }
     }
     // Neither exists — nothing to do
@@ -804,45 +821,56 @@ async function syncNotePrefix(namespace, prefix, localDir, authHeaders, excludeS
                 console.error('  NOTE SYNC ERROR saving ' + slug + ': ' + err.message);
             }
         } else if (remote && local) {
-            // Both exist — timestamp wins
+            // Both exist — compare timestamps, then hashes if timestamps differ
             const remoteTime = new Date(remote.updated_at).getTime();
             const localTime = local.mtimeMs;
 
-            if (remoteTime > localTime) {
-                let fullNote;
-                try {
-                    const readResult = await httpPost(config.api_url + '/documents/read', authHeaders, {
-                        namespace, slug: remote.slug
-                    });
-                    fullNote = readResult;
-                } catch (err) {
-                    console.error('  NOTE SYNC ERROR reading ' + remote.slug + ': ' + err.message);
-                    continue;
-                }
-                fs.writeFileSync(local.fullPath, fullNote.content, 'utf-8');
-                if (fullNote.updated_at) {
-                    const mtime = new Date(fullNote.updated_at);
+            if (remoteTime === localTime) {
+                result.unchanged++;
+            } else {
+                // Timestamps differ — check content hash before syncing
+                const localHash = md5(local.content);
+                const remoteHash = remote.content_hash;
+
+                if (remoteHash && localHash === remoteHash) {
+                    // Content identical — just re-align mtime
+                    const mtime = new Date(remote.updated_at);
                     fs.utimesSync(local.fullPath, mtime, mtime);
-                }
-                console.log('  PULL ' + slug + ' → ' + local.fullPath);
-                result.pulled++;
-            } else if (localTime > remoteTime) {
-                const title = extractSyncTitle(local.content, relPath);
-                try {
-                    const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
-                        namespace, slug, title, content: local.content
-                    });
-                    if (doc.updated_at) {
-                        const mtime = new Date(doc.updated_at);
+                    result.unchanged++;
+                } else if (remoteTime > localTime) {
+                    let fullNote;
+                    try {
+                        const readResult = await httpPost(config.api_url + '/documents/read', authHeaders, {
+                            namespace, slug: remote.slug
+                        });
+                        fullNote = readResult;
+                    } catch (err) {
+                        console.error('  NOTE SYNC ERROR reading ' + remote.slug + ': ' + err.message);
+                        continue;
+                    }
+                    fs.writeFileSync(local.fullPath, fullNote.content, 'utf-8');
+                    if (fullNote.updated_at) {
+                        const mtime = new Date(fullNote.updated_at);
                         fs.utimesSync(local.fullPath, mtime, mtime);
                     }
-                    console.log('  PUSH ' + slug + ' ← ' + local.fullPath);
-                    result.pushed++;
-                } catch (err) {
-                    console.error('  NOTE SYNC ERROR saving ' + slug + ': ' + err.message);
+                    console.log('  PULL ' + slug + ' → ' + local.fullPath);
+                    result.pulled++;
+                } else {
+                    const title = extractSyncTitle(local.content, relPath);
+                    try {
+                        const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
+                            namespace, slug, title, content: local.content
+                        });
+                        if (doc.updated_at) {
+                            const mtime = new Date(doc.updated_at);
+                            fs.utimesSync(local.fullPath, mtime, mtime);
+                        }
+                        console.log('  PUSH ' + slug + ' ← ' + local.fullPath);
+                        result.pushed++;
+                    } catch (err) {
+                        console.error('  NOTE SYNC ERROR saving ' + slug + ': ' + err.message);
+                    }
                 }
-            } else {
-                result.unchanged++;
             }
         }
     }
