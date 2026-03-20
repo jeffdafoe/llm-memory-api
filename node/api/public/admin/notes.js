@@ -499,12 +499,11 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         syncDialog.value = { namespace: ctx.namespace, slug: ctx.slug, localPath: '', actorId: null };
         syncContextMenu.value = null;
 
-        // Load agents list for the dropdown
+        // Load agents list for the dropdown (uses agents endpoint which respects visibility)
         if (syncAgents.value.length === 0) {
             try {
-                const data = await api('/admin/actors/list');
-                // Filter to agents only (have is_agent flag)
-                syncAgents.value = (data.actors || []).filter(a => a.is_agent);
+                const data = await api('/admin/agents');
+                syncAgents.value = (data.agents || []).map(a => ({ id: a.actor_id, name: a.agent }));
             } catch (err) {
                 console.error('Failed to load agents:', err);
             }
