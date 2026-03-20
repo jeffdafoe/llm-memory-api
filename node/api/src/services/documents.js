@@ -77,6 +77,15 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         metadataJson = serialized;
     }
 
+    // Sanitize extension: dot + lowercase alphanumeric only, max 20 chars
+    let cleanExtension = null;
+    if (extension) {
+        const extClean = extension.toLowerCase().replace(/^\.?/, '.').replace(/[^a-z0-9.]/g, '');
+        if (extClean.length >= 2 && extClean.length <= 20 && /^\.[a-z0-9]+$/.test(extClean)) {
+            cleanExtension = extClean;
+        }
+    }
+
     // Build optional SET clauses for fields that should only update when provided
     const optionalSets = [];
     const optionalParams = [];
@@ -86,9 +95,9 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         optionalParams.push(metadataJson);
         paramIndex++;
     }
-    if (extension) {
+    if (cleanExtension) {
         optionalSets.push('extension = $' + paramIndex);
-        optionalParams.push(extension);
+        optionalParams.push(cleanExtension);
         paramIndex++;
     }
 
@@ -109,7 +118,7 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
             INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind, metadata, extension)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
-        `, [namespace, resolvedSlug, title, content, createdByActorId, kind, metadataJson, extension || null]);
+        `, [namespace, resolvedSlug, title, content, createdByActorId, kind, metadataJson, cleanExtension]);
     }
 
     const doc = result.rows[0];

@@ -70,6 +70,13 @@ async function mailReceive(agent, ids) {
 
     let result;
     if (ids && Array.isArray(ids) && ids.length > 0) {
+        // Validate UUIDs
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        for (const id of ids) {
+            if (typeof id !== 'string' || !uuidRegex.test(id)) {
+                throw Object.assign(new Error('Invalid UUID in ids array'), { statusCode: 400 });
+            }
+        }
         // Fetch specific messages by ID (must belong to this agent, unacked)
         result = await pool.query(
             `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.in_reply_to

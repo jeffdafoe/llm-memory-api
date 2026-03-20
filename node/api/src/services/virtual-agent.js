@@ -64,9 +64,9 @@ async function retryWithBackoff(agentName, fn) {
 
 let errorPingTimer = null;
 
-async function startErrorPing() {
+function startErrorPing() {
+    if (errorPingTimer) return; // singleton — already started
     const intervalMin = parseInt(config.get('virtual_agent_error_ping_interval')) || 15;
-    if (errorPingTimer) clearInterval(errorPingTimer);
     errorPingTimer = setInterval(pingErroredAgents, intervalMin * 60 * 1000);
     errorPingTimer.unref();
 }
