@@ -250,6 +250,11 @@ function formatConversation(sessionId, messages) {
             const mm = String(d.getMinutes()).padStart(2, '0');
             timeStr = hh + ':' + mm;
         }
+        // Blank line before each message so the [time actor] prefix stands out
+        // visually, especially after long multi-line blocks
+        if (msgLines.length > 0) {
+            msgLines.push('');
+        }
         msgLines.push('[' + timeStr + ' ' + msg.speaker + '] ' + msg.text);
     }
 
