@@ -370,398 +370,328 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
 }));
 
 // POST /admin/agents/instructions/read — read an agent's startup instructions
-router.post('/admin/agents/instructions/read', requirePerm('agents', 'read'), async (req, res) => {
+router.post('/admin/agents/instructions/read', requirePerm('agents', 'read'), adminRoute('agents-instructions-read', async (req, res) => {
     const { agent } = req.body;
     if (!agent) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
         });
     }
-    try {
-        const actor = await requireVisibility(req, res, agent);
-        if (!actor) return;
-        const result = await pool.query(
-            'SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1',
-            [actor.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
-        res.json({ agent, instructions: result.rows[0].startup_instructions || '' });
-    } catch (err) {
-        console.error('Admin agent instructions read error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to read instructions' }
+    const actor = await requireVisibility(req, res, agent);
+    if (!actor) return;
+    const result = await pool.query(
+        'SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1',
+        [actor.id]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Agent not found' }
         });
     }
-});
+    res.json({ agent, instructions: result.rows[0].startup_instructions || '' });
+}));
 
 // POST /admin/agents/instructions/save — save an agent's startup instructions
-router.post('/admin/agents/instructions/save', requirePerm('agents', 'write'), async (req, res) => {
+router.post('/admin/agents/instructions/save', requirePerm('agents', 'write'), adminRoute('agents-instructions-save', async (req, res) => {
     const { agent, content } = req.body;
     if (!agent || content === undefined) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: agent, content' }
         });
     }
-    try {
-        const actor = await requireVisibility(req, res, agent);
-        if (!actor) return;
-        const result = await pool.query(
-            'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id',
-            [content, actor.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
-        logAdmin('agent_instructions_save', { agent, user_id: req.authenticatedUser.id });
-        res.json({ agent, message: 'Instructions saved', length: content.length });
-    } catch (err) {
-        console.error('Admin agent instructions save error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to save instructions' }
+    const actor = await requireVisibility(req, res, agent);
+    if (!actor) return;
+    const result = await pool.query(
+        'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id',
+        [content, actor.id]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Agent not found' }
         });
     }
-});
+    logAdmin('agent_instructions_save', { agent, user_id: req.authenticatedUser.id });
+    res.json({ agent, message: 'Instructions saved', length: content.length });
+}));
 
 // POST /admin/agents/expertise/save — update an agent's expertise list
-router.post('/admin/agents/expertise/save', requirePerm('agents', 'write'), async (req, res) => {
+router.post('/admin/agents/expertise/save', requirePerm('agents', 'write'), adminRoute('agents-expertise-save', async (req, res) => {
     const { agent, expertise } = req.body;
     if (!agent || !Array.isArray(expertise)) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: agent, expertise (array of strings)' }
         });
     }
-    try {
-        const cleaned = expertise
-            .filter(e => typeof e === 'string' && e.trim().length > 0)
-            .map(e => e.trim().toLowerCase());
-        const json = JSON.stringify(cleaned);
+    const cleaned = expertise
+        .filter(e => typeof e === 'string' && e.trim().length > 0)
+        .map(e => e.trim().toLowerCase());
+    const json = JSON.stringify(cleaned);
 
-        const actor = await requireVisibility(req, res, agent);
-        if (!actor) return;
-        const result = await pool.query(
-            'UPDATE actors SET expertise = $1 WHERE id = $2 RETURNING id',
-            [json, actor.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
-        logAdmin('agent_expertise_save', { agent, expertise: cleaned, user_id: req.authenticatedUser.id });
-        res.json({ agent, expertise: cleaned, message: 'Expertise saved' });
-    } catch (err) {
-        console.error('Admin agent expertise save error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to save expertise' }
+    const actor = await requireVisibility(req, res, agent);
+    if (!actor) return;
+    const result = await pool.query(
+        'UPDATE actors SET expertise = $1 WHERE id = $2 RETURNING id',
+        [json, actor.id]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Agent not found' }
         });
     }
-});
+    logAdmin('agent_expertise_save', { agent, expertise: cleaned, user_id: req.authenticatedUser.id });
+    res.json({ agent, expertise: cleaned, message: 'Expertise saved' });
+}));
 
 // POST /admin/agents/reset-passphrase — generate new passphrase, invalidate all sessions
-router.post('/admin/agents/reset-passphrase', requirePerm('agents', 'write'), async (req, res) => {
+router.post('/admin/agents/reset-passphrase', requirePerm('agents', 'write'), adminRoute('agents-reset-passphrase', async (req, res) => {
     const { agent } = req.body;
     if (!agent) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
         });
     }
-    try {
-        // Generate new passphrase
-        const words = generatePassphrase(3);
-        const passphrase = words.join('-');
-        const salt = generateSalt();
-        const hash = hashToken(passphrase, salt);
+    // Generate new passphrase
+    const words = generatePassphrase(3);
+    const passphrase = words.join('-');
+    const salt = generateSalt();
+    const hash = hashToken(passphrase, salt);
 
-        const actor = await requireVisibility(req, res, agent);
-        if (!actor) return;
+    const actor = await requireVisibility(req, res, agent);
+    if (!actor) return;
 
-        const result = await pool.query(
-            'UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3 RETURNING id',
-            [hash, salt, actor.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
-
-        // Invalidate all sessions
-        await pool.query("DELETE FROM sessions WHERE actor_id = $1 AND kind = $2", [actor.id, SESSION_KIND.API]);
-
-        // Clear cached sessions
-        for (const [key, value] of auth.sessionCache.entries()) {
-            if (value.agent === agent) {
-                auth.sessionCache.delete(key);
-            }
-        }
-
-        logAdmin('agent_passphrase_reset', { agent, user_id: req.authenticatedUser.id });
-
-        res.json({
-            agent,
-            passphrase,
-            message: 'Passphrase reset. All sessions invalidated.'
-        });
-    } catch (err) {
-        console.error('Admin agent passphrase reset error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to reset passphrase' }
+    const result = await pool.query(
+        'UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3 RETURNING id',
+        [hash, salt, actor.id]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Agent not found' }
         });
     }
-});
+
+    // Invalidate all sessions
+    await pool.query("DELETE FROM sessions WHERE actor_id = $1 AND kind = $2", [actor.id, SESSION_KIND.API]);
+
+    // Clear cached sessions
+    for (const [key, value] of auth.sessionCache.entries()) {
+        if (value.agent === agent) {
+            auth.sessionCache.delete(key);
+        }
+    }
+
+    logAdmin('agent_passphrase_reset', { agent, user_id: req.authenticatedUser.id });
+
+    res.json({
+        agent,
+        passphrase,
+        message: 'Passphrase reset. All sessions invalidated.'
+    });
+}));
 
 // POST /admin/discussions — list discussions with optional status filter
-router.post('/admin/discussions', requirePerm('comms', 'read'), async (req, res) => {
+router.post('/admin/discussions', requirePerm('comms', 'read'), adminRoute('discussions-list', async (req, res) => {
     const { status } = req.body;
-    try {
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        const hasFilter = visibleIds !== null;
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    const hasFilter = visibleIds !== null;
 
-        let sql = `
-            SELECT d.id, d.topic, d.status, d.mode, d.outcome, ac.name AS created_by, d.created_at, d.concluded_at,
-                   COUNT(dp.actor_id) AS participant_count
-            FROM discussions d
-            LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
-            LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
-        `;
-        const conditions = [];
-        const params = [];
-        if (status) {
-            params.push(status);
-            conditions.push('d.status = $' + params.length);
-        }
-        if (hasFilter) {
-            params.push(Array.from(visibleIds));
-            conditions.push(`NOT EXISTS (
-                SELECT 1 FROM discussion_participants dp2
-                WHERE dp2.discussion_id = d.id AND dp2.actor_id != ALL($${params.length}))`);
-        }
-        if (conditions.length > 0) {
-            sql += ' WHERE ' + conditions.join(' AND ');
-        }
-        sql += ' GROUP BY d.id, ac.name ORDER BY d.created_at DESC';
-
-        const result = await pool.query(sql, params);
-        res.json({ discussions: result.rows });
-    } catch (err) {
-        console.error('Admin discussions error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch discussions' }
-        });
+    let sql = `
+        SELECT d.id, d.topic, d.status, d.mode, d.outcome, ac.name AS created_by, d.created_at, d.concluded_at,
+               COUNT(dp.actor_id) AS participant_count
+        FROM discussions d
+        LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
+        LEFT JOIN discussion_participants dp ON dp.discussion_id = d.id
+    `;
+    const conditions = [];
+    const params = [];
+    if (status) {
+        params.push(status);
+        conditions.push('d.status = $' + params.length);
     }
-});
+    if (hasFilter) {
+        params.push(Array.from(visibleIds));
+        conditions.push(`NOT EXISTS (
+            SELECT 1 FROM discussion_participants dp2
+            WHERE dp2.discussion_id = d.id AND dp2.actor_id != ALL($${params.length}))`);
+    }
+    if (conditions.length > 0) {
+        sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    sql += ' GROUP BY d.id, ac.name ORDER BY d.created_at DESC';
+
+    const result = await pool.query(sql, params);
+    res.json({ discussions: result.rows });
+}));
 
 // POST /admin/discussions/detail — get full discussion details
-router.post('/admin/discussions/detail', requirePerm('comms', 'read'), async (req, res) => {
+router.post('/admin/discussions/detail', requirePerm('comms', 'read'), adminRoute('discussions-detail', async (req, res) => {
     const { discussion_id } = req.body;
     if (!discussion_id) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: discussion_id' }
         });
     }
-    try {
-        // Check visibility: ALL participants must be visible to the viewer
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        if (visibleIds !== null) {
-            const hiddenCheck = await pool.query(
-                `SELECT 1 FROM discussion_participants
-                 WHERE discussion_id = $1 AND actor_id != ALL($2) LIMIT 1`,
-                [discussion_id, Array.from(visibleIds)]
-            );
-            if (hiddenCheck.rows.length > 0) {
-                return res.status(404).json({
-                    error: { code: 'NOT_FOUND', message: 'Discussion not found' }
-                });
-            }
-        }
-
-        const discussion = await pool.query(
-            `SELECT d.*, ac.name AS created_by
-             FROM discussions d
-             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
-             WHERE d.id = $1`,
-            [discussion_id]
+    // Check visibility: ALL participants must be visible to the viewer
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    if (visibleIds !== null) {
+        const hiddenCheck = await pool.query(
+            `SELECT 1 FROM discussion_participants
+             WHERE discussion_id = $1 AND actor_id != ALL($2) LIMIT 1`,
+            [discussion_id, Array.from(visibleIds)]
         );
-        if (discussion.rows.length === 0) {
+        if (hiddenCheck.rows.length > 0) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Discussion not found' }
             });
         }
-        const participants = await pool.query(
-            `SELECT dp.*, ac.name AS agent
-             FROM discussion_participants dp
-             JOIN actors ac ON ac.id = dp.actor_id
-             WHERE dp.discussion_id = $1
-             ORDER BY ac.name`,
-            [discussion_id]
-        );
-        const votes = await pool.query(
-            `SELECT v.*, pac.name AS proposed_by,
-                    json_agg(json_build_object('agent', bac.name, 'choice', b.choice, 'reason', b.reason, 'cast_at', b.cast_at)) AS ballots
-             FROM discussion_votes v
-             LEFT JOIN actors pac ON pac.id = v.proposed_by_actor_id
-             LEFT JOIN discussion_ballots b ON b.vote_id = v.id
-             LEFT JOIN actors bac ON bac.id = b.actor_id
-             WHERE v.discussion_id = $1
-             GROUP BY v.id, pac.name
-             ORDER BY v.id`,
-            [discussion_id]
-        );
-        res.json({
-            discussion: discussion.rows[0],
-            participants: participants.rows,
-            votes: votes.rows
-        });
-    } catch (err) {
-        console.error('Admin discussion detail error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch discussion details' }
+    }
+
+    const discussion = await pool.query(
+        `SELECT d.*, ac.name AS created_by
+         FROM discussions d
+         LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
+         WHERE d.id = $1`,
+        [discussion_id]
+    );
+    if (discussion.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Discussion not found' }
         });
     }
-});
+    const participants = await pool.query(
+        `SELECT dp.*, ac.name AS agent
+         FROM discussion_participants dp
+         JOIN actors ac ON ac.id = dp.actor_id
+         WHERE dp.discussion_id = $1
+         ORDER BY ac.name`,
+        [discussion_id]
+    );
+    const votes = await pool.query(
+        `SELECT v.*, pac.name AS proposed_by,
+                json_agg(json_build_object('agent', bac.name, 'choice', b.choice, 'reason', b.reason, 'cast_at', b.cast_at)) AS ballots
+         FROM discussion_votes v
+         LEFT JOIN actors pac ON pac.id = v.proposed_by_actor_id
+         LEFT JOIN discussion_ballots b ON b.vote_id = v.id
+         LEFT JOIN actors bac ON bac.id = b.actor_id
+         WHERE v.discussion_id = $1
+         GROUP BY v.id, pac.name
+         ORDER BY v.id`,
+        [discussion_id]
+    );
+    res.json({
+        discussion: discussion.rows[0],
+        participants: participants.rows,
+        votes: votes.rows
+    });
+}));
 
 // POST /admin/chat — list recent chat messages
-router.post('/admin/chat', requirePerm('comms', 'read'), async (req, res) => {
+router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list', async (req, res) => {
     const { limit = 50, channel } = req.body;
-    try {
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        const hasFilter = visibleIds !== null;
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    const hasFilter = visibleIds !== null;
 
-        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
-                   FROM chat_messages cm
-                   JOIN actors fa ON fa.id = cm.from_actor_id
-                   JOIN actors ta ON ta.id = cm.to_actor_id`;
-        const conditions = ['cm.deleted_at IS NULL'];
-        const params = [];
-        if (channel) {
-            params.push(channel);
-            conditions.push('cm.channel = $' + params.length);
-        }
-        if (hasFilter) {
-            params.push(Array.from(visibleIds));
-            conditions.push('cm.from_actor_id = ANY($' + params.length + ') AND cm.to_actor_id = ANY($' + params.length + ')');
-        }
-        sql += ' WHERE ' + conditions.join(' AND ');
-        sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
-        params.push(limit);
-
-        const result = await pool.query(sql, params);
-        res.json({ messages: result.rows });
-    } catch (err) {
-        console.error('Admin chat error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch chat messages' }
-        });
+    let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+               FROM chat_messages cm
+               JOIN actors fa ON fa.id = cm.from_actor_id
+               JOIN actors ta ON ta.id = cm.to_actor_id`;
+    const conditions = ['cm.deleted_at IS NULL'];
+    const params = [];
+    if (channel) {
+        params.push(channel);
+        conditions.push('cm.channel = $' + params.length);
     }
-});
+    if (hasFilter) {
+        params.push(Array.from(visibleIds));
+        conditions.push('cm.from_actor_id = ANY($' + params.length + ') AND cm.to_actor_id = ANY($' + params.length + ')');
+    }
+    sql += ' WHERE ' + conditions.join(' AND ');
+    sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+
+    const result = await pool.query(sql, params);
+    res.json({ messages: result.rows });
+}));
 
 // POST /admin/mail — list mail
-router.post('/admin/mail', requirePerm('comms', 'read'), async (req, res) => {
+router.post('/admin/mail', requirePerm('comms', 'read'), adminRoute('mail-list', async (req, res) => {
     const { limit = 50 } = req.body;
-    try {
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        const hasFilter = visibleIds !== null;
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    const hasFilter = visibleIds !== null;
 
-        let sql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at, m.deleted_at
-             FROM mail m
-             JOIN actors fa ON fa.id = m.from_actor_id
-             JOIN actors ta ON ta.id = m.to_actor_id`;
-        const params = [];
-        if (hasFilter) {
-            params.push(Array.from(visibleIds));
-            sql += ' WHERE m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
-        }
-        sql += ` ORDER BY m.sent_at DESC LIMIT $${params.length + 1}`;
-        params.push(limit);
-
-        const result = await pool.query(sql, params);
-        res.json({ messages: result.rows });
-    } catch (err) {
-        console.error('Admin mail error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch mail' }
-        });
+    let sql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at, m.deleted_at
+         FROM mail m
+         JOIN actors fa ON fa.id = m.from_actor_id
+         JOIN actors ta ON ta.id = m.to_actor_id`;
+    const params = [];
+    if (hasFilter) {
+        params.push(Array.from(visibleIds));
+        sql += ' WHERE m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
     }
-});
+    sql += ` ORDER BY m.sent_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+
+    const result = await pool.query(sql, params);
+    res.json({ messages: result.rows });
+}));
 
 // POST /admin/mail/delete — soft-delete a mail message
-router.post('/admin/mail/delete', requirePerm('comms', 'delete'), async (req, res) => {
+router.post('/admin/mail/delete', requirePerm('comms', 'delete'), adminRoute('mail-delete', async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    try {
-        // Scope delete to messages visible to this admin (both sender and recipient must be visible)
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        let sql = 'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
-        const params = [id];
-        if (visibleIds !== null) {
-            const idsArray = Array.from(visibleIds);
-            params.push(idsArray);
-            sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
-        }
-        sql += ' RETURNING id';
-        const result = await pool.query(sql, params);
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Mail not found or already deleted' }
-            });
-        }
-        logAdmin('mail_delete', { mail_id: id, user_id: req.authenticatedUser.id });
-        res.json({ id, message: 'Mail deleted' });
-    } catch (err) {
-        console.error('Admin mail delete error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to delete mail' }
+    // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    let sql = 'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
+    const params = [id];
+    if (visibleIds !== null) {
+        const idsArray = Array.from(visibleIds);
+        params.push(idsArray);
+        sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+    }
+    sql += ' RETURNING id';
+    const result = await pool.query(sql, params);
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Mail not found or already deleted' }
         });
     }
-});
+    logAdmin('mail_delete', { mail_id: id, user_id: req.authenticatedUser.id });
+    res.json({ id, message: 'Mail deleted' });
+}));
 
 // POST /admin/chat/delete — soft-delete a chat message
-router.post('/admin/chat/delete', requirePerm('comms', 'delete'), async (req, res) => {
+router.post('/admin/chat/delete', requirePerm('comms', 'delete'), adminRoute('chat-delete', async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    try {
-        // Scope delete to messages visible to this admin (both sender and recipient must be visible)
-        const visibleIds = await getVisibleActorIds(req.actorId);
-        let sql = 'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
-        const params = [id];
-        if (visibleIds !== null) {
-            const idsArray = Array.from(visibleIds);
-            params.push(idsArray);
-            sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
-        }
-        sql += ' RETURNING id';
-        const result = await pool.query(sql, params);
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Chat message not found or already deleted' }
-            });
-        }
-        logAdmin('chat_delete', { chat_id: id, user_id: req.authenticatedUser.id });
-        res.json({ id, message: 'Chat message deleted' });
-    } catch (err) {
-        console.error('Admin chat delete error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to delete chat message' }
+    // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    let sql = 'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
+    const params = [id];
+    if (visibleIds !== null) {
+        const idsArray = Array.from(visibleIds);
+        params.push(idsArray);
+        sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+    }
+    sql += ' RETURNING id';
+    const result = await pool.query(sql, params);
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Chat message not found or already deleted' }
         });
     }
-});
+    logAdmin('chat_delete', { chat_id: id, user_id: req.authenticatedUser.id });
+    res.json({ id, message: 'Chat message deleted' });
+}));
 
 // POST /admin/mail/send — send mail to an agent from the admin dashboard
-router.post('/admin/mail/send', requirePerm('comms', 'write'), async (req, res) => {
+router.post('/admin/mail/send', requirePerm('comms', 'write'), adminRoute('mail-send', async (req, res) => {
     const { to, subject, body } = req.body;
 
     if (!to || !subject || !body) {
@@ -770,65 +700,44 @@ router.post('/admin/mail/send', requirePerm('comms', 'write'), async (req, res) 
         });
     }
 
-    try {
-        // Verify recipient agent exists and is visible to the sender
-        const toActor = await requireVisibility(req, res, to);
-        if (!toActor) return;
+    // Verify recipient agent exists and is visible to the sender
+    const toActor = await requireVisibility(req, res, to);
+    if (!toActor) return;
 
-        const from = req.authenticatedUser.username;
-        const fromActor = await requireByName(from);
-        const result = await pool.query(
-            'INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-            [toActor.id, fromActor.id, subject, body]
-        );
+    const from = req.authenticatedUser.username;
+    const fromActor = await requireByName(from);
+    const result = await pool.query(
+        'INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
+        [toActor.id, fromActor.id, subject, body]
+    );
 
-        logAdmin('mail_send', { from, to, mail_id: result.rows[0].id, subject, user_id: req.authenticatedUser.id });
+    logAdmin('mail_send', { from, to, mail_id: result.rows[0].id, subject, user_id: req.authenticatedUser.id });
 
-        res.json({
-            id: result.rows[0].id,
-            sent_at: result.rows[0].sent_at,
-            message: 'Mail sent'
-        });
-    } catch (err) {
-        console.error('Admin mail send error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to send mail' }
-        });
-    }
-});
+    res.json({
+        id: result.rows[0].id,
+        sent_at: result.rows[0].sent_at,
+        message: 'Mail sent'
+    });
+}));
 
 // POST /admin/providers/registry — get provider/model registry for admin UI
-router.post('/admin/providers/registry', requirePerm('config', 'read'), async (req, res) => {
-    try {
-        const { getRegistry } = require('../services/provider');
-        res.json(getRegistry());
-    } catch (err) {
-        console.error('Admin providers registry error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch provider registry' }
-        });
-    }
-});
+router.post('/admin/providers/registry', requirePerm('config', 'read'), adminRoute('providers-registry', async (req, res) => {
+    const { getRegistry } = require('../services/provider');
+    res.json(getRegistry());
+}));
 
 // POST /admin/providers/defaults — get default configuration for a provider+model
-router.post('/admin/providers/defaults', requirePerm('config', 'read'), async (req, res) => {
-    try {
-        const { provider, model } = req.body;
-        if (!provider || !model) {
-            return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'provider and model are required' }
-            });
-        }
-        const { getDefaultConfiguration } = require('../services/provider');
-        const defaults = getDefaultConfiguration(provider, model);
-        res.json({ defaults });
-    } catch (err) {
-        console.error('Admin providers defaults error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch model defaults' }
+router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRoute('providers-defaults', async (req, res) => {
+    const { provider, model } = req.body;
+    if (!provider || !model) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'provider and model are required' }
         });
     }
-});
+    const { getDefaultConfiguration } = require('../services/provider');
+    const defaults = getDefaultConfiguration(provider, model);
+    res.json({ defaults });
+}));
 
 // Config keys whose values must never be sent to the client
 const SECRET_CONFIG_KEYS = new Set([
@@ -837,260 +746,155 @@ const SECRET_CONFIG_KEYS = new Set([
 ]);
 
 // POST /admin/config/list — list all config key/value pairs
-router.post('/admin/config/list', requirePerm('config', 'read'), async (req, res) => {
-    try {
-        const result = await pool.query('SELECT key, value, description FROM config ORDER BY key');
-        const redacted = result.rows.map(row =>
-            SECRET_CONFIG_KEYS.has(row.key)
-                ? { ...row, value: '••••••••' }
-                : row
-        );
-        res.json({ config: redacted });
-    } catch (err) {
-        console.error('Admin config list error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch config' }
-        });
-    }
-});
+router.post('/admin/config/list', requirePerm('config', 'read'), adminRoute('config-list', async (req, res) => {
+    const result = await pool.query('SELECT key, value, description FROM config ORDER BY key');
+    const redacted = result.rows.map(row =>
+        SECRET_CONFIG_KEYS.has(row.key)
+            ? { ...row, value: '••••••••' }
+            : row
+    );
+    res.json({ config: redacted });
+}));
 
 // POST /admin/config/update — update a config value by key
-router.post('/admin/config/update', requirePerm('config', 'write'), async (req, res) => {
+router.post('/admin/config/update', requirePerm('config', 'write'), adminRoute('config-update', async (req, res) => {
     const { key, value } = req.body;
     if (!key) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: key' }
         });
     }
-    try {
-        const result = await pool.query(
-            'UPDATE config SET value = $1 WHERE key = $2',
-            [value || '', key]
-        );
-        if (result.rowCount === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Config key not found' }
-            });
-        }
-        logAdmin('config_update', { key });
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Admin config update error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to update config' }
+    const result = await pool.query(
+        'UPDATE config SET value = $1 WHERE key = $2',
+        [value || '', key]
+    );
+    if (result.rowCount === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Config key not found' }
         });
     }
-});
+    logAdmin('config_update', { key });
+    res.json({ success: true });
+}));
 
 // POST /admin/notes/list — list notes in a namespace
-router.post('/admin/notes/list', requirePerm('notes', 'read'), async (req, res) => {
+router.post('/admin/notes/list', requirePerm('notes', 'read'), adminRoute('notes-list', async (req, res) => {
     const { namespace, limit, offset, prefix } = req.body;
     if (!namespace) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: namespace' }
         });
     }
-    try {
-        validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
-        const data = await listNotes(namespace, limit || 200, offset, prefix);
-        res.json(data);
-    } catch (err) {
-        if (err.statusCode === 403) return res.status(403).json({ error: { code: 'FORBIDDEN', message: err.message } });
-        console.error('Admin notes list error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to list notes' }
-        });
-    }
-});
+    validateNamespace(namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
+    const data = await listNotes(namespace, limit || 200, offset, prefix);
+    res.json(data);
+}));
 
 // POST /admin/notes/read — read a single note
-router.post('/admin/notes/read', requirePerm('notes', 'read'), async (req, res) => {
+router.post('/admin/notes/read', requirePerm('notes', 'read'), adminRoute('notes-read', async (req, res) => {
     const { namespace, slug } = req.body;
     if (!namespace || !slug) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug' }
         });
     }
-    try {
-        validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
-        const note = await readNote(namespace, slug);
-        res.json({ note });
-    } catch (err) {
-        if (err.statusCode === 403) return res.status(403).json({ error: { code: 'FORBIDDEN', message: err.message } });
-        if (err.statusCode === 404) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: err.message }
-            });
-        }
-        console.error('Admin notes read error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to read note' }
-        });
-    }
-});
+    validateNamespace(namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
+    const note = await readNote(namespace, slug);
+    res.json({ note });
+}));
 
 // POST /admin/notes/save — save (update) a note
-router.post('/admin/notes/save', requirePerm('notes', 'write'), async (req, res) => {
+router.post('/admin/notes/save', requirePerm('notes', 'write'), adminRoute('notes-save', async (req, res) => {
     const { namespace, slug, title, content, extension } = req.body;
     if (!namespace || !slug || !title || content === undefined) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug, title, content' }
         });
     }
-    try {
-        validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
-        const doc = await saveNote(namespace, title, content, slug, null, null, extension);
-        logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
-        res.json({ note: doc });
-    } catch (err) {
-        if (err.statusCode === 403) {
-            return res.status(403).json({
-                error: { code: 'FORBIDDEN', message: err.message }
-            });
-        }
-        console.error('Admin notes save error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to save note' }
-        });
-    }
-});
+    validateNamespace(namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
+    const doc = await saveNote(namespace, title, content, slug, null, null, extension);
+    logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
+    res.json({ note: doc });
+}));
 
 // POST /admin/notes/delete — delete a note
-router.post('/admin/notes/delete', requirePerm('notes', 'delete'), async (req, res) => {
+router.post('/admin/notes/delete', requirePerm('notes', 'delete'), adminRoute('notes-delete', async (req, res) => {
     const { namespace, slug } = req.body;
     if (!namespace || !slug) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug' }
         });
     }
-    try {
-        validateNamespace(namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'delete');
-        await deleteNote(namespace, slug);
-        logAdmin('note_delete', { namespace, slug, user_id: req.authenticatedUser.id });
-        res.json({ deleted: true, namespace, slug });
-    } catch (err) {
-        if (err.statusCode === 403) {
-            return res.status(403).json({
-                error: { code: 'FORBIDDEN', message: err.message }
-            });
-        }
-        if (err.statusCode === 404) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: err.message }
-            });
-        }
-        console.error('Admin notes delete error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to delete note' }
-        });
-    }
-});
+    validateNamespace(namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'delete');
+    await deleteNote(namespace, slug);
+    logAdmin('note_delete', { namespace, slug, user_id: req.authenticatedUser.id });
+    res.json({ deleted: true, namespace, slug });
+}));
 
 // POST /admin/notes/move — rename a note's slug (and optionally namespace)
-router.post('/admin/notes/move', requirePerm('notes', 'write'), async (req, res) => {
+router.post('/admin/notes/move', requirePerm('notes', 'write'), adminRoute('notes-move', async (req, res) => {
     const { namespace, slug, new_slug, new_namespace } = req.body;
     if (!namespace || !slug || !new_slug) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug, new_slug' }
         });
     }
-    try {
-        validateNamespace(namespace);
-        if (new_namespace) validateNamespace(new_namespace);
-        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
-        if (new_namespace && new_namespace !== namespace) {
-            await requireAccess(req.actorId, req.authenticatedUser.username, 'user', new_namespace, 'write');
-        }
-        const doc = await moveNote(namespace, slug, new_slug, new_namespace);
-        logAdmin('note_move', { namespace, slug, new_slug, new_namespace: new_namespace || namespace, user_id: req.authenticatedUser.id });
-        res.json({ note: doc });
-    } catch (err) {
-        if (err.statusCode === 403) {
-            return res.status(403).json({
-                error: { code: 'FORBIDDEN', message: err.message }
-            });
-        }
-        if (err.statusCode === 404) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: err.message }
-            });
-        }
-        if (err.statusCode === 409) {
-            return res.status(409).json({
-                error: { code: 'ALREADY_EXISTS', message: err.message }
-            });
-        }
-        console.error('Admin notes move error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to move note' }
-        });
+    validateNamespace(namespace);
+    if (new_namespace) validateNamespace(new_namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
+    if (new_namespace && new_namespace !== namespace) {
+        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', new_namespace, 'write');
     }
-});
+    const doc = await moveNote(namespace, slug, new_slug, new_namespace);
+    logAdmin('note_move', { namespace, slug, new_slug, new_namespace: new_namespace || namespace, user_id: req.authenticatedUser.id });
+    res.json({ note: doc });
+}));
 
 // POST /admin/notes/search — semantic search across notes
-router.post('/admin/notes/search', requirePerm('notes', 'read'), async (req, res) => {
+router.post('/admin/notes/search', requirePerm('notes', 'read'), adminRoute('notes-search', async (req, res) => {
     const { query, namespace, limit } = req.body;
     if (!query) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: query' }
         });
     }
-    try {
-        const targetNs = namespace || '*';
-        if (targetNs !== '*') {
-            validateNamespace(targetNs);
-            await requireAccess(req.actorId, req.authenticatedUser.username, 'user', targetNs, 'read');
-        }
-        // For wildcard searches, push namespace filtering into the query
-        let readable = null;
-        if (targetNs === '*') {
-            readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
-        }
-        let data = await searchMemory(query, targetNs, limit || 10, readable);
-        res.json(data);
-    } catch (err) {
-        if (err.statusCode === 403) {
-            return res.status(403).json({
-                error: { code: 'FORBIDDEN', message: err.message }
-            });
-        }
-        console.error('Admin notes search error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Search failed' }
-        });
+    const targetNs = namespace || '*';
+    if (targetNs !== '*') {
+        validateNamespace(targetNs);
+        await requireAccess(req.actorId, req.authenticatedUser.username, 'user', targetNs, 'read');
     }
-});
+    // For wildcard searches, push namespace filtering into the query
+    let readable = null;
+    if (targetNs === '*') {
+        readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    }
+    let data = await searchMemory(query, targetNs, limit || 10, readable);
+    res.json(data);
+}));
 
 // POST /admin/notes/namespaces — get list of namespaces with note counts
-router.post('/admin/notes/namespaces', requirePerm('notes', 'read'), async (req, res) => {
-    try {
-        const result = await pool.query(
-            'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
-        );
-        let namespaces = result.rows;
-        // Filter to readable namespaces
-        const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
-        if (readable !== null) {
-            namespaces = namespaces.filter(r => readable.includes(r.namespace));
-        }
-        res.json({ namespaces });
-    } catch (err) {
-        console.error('Admin notes namespaces error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to fetch namespaces' }
-        });
+router.post('/admin/notes/namespaces', requirePerm('notes', 'read'), adminRoute('notes-namespaces', async (req, res) => {
+    const result = await pool.query(
+        'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
+    );
+    let namespaces = result.rows;
+    // Filter to readable namespaces
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    if (readable !== null) {
+        namespaces = namespaces.filter(r => readable.includes(r.namespace));
     }
-});
+    res.json({ namespaces });
+}));
 
 // In-memory reindex state — survives tab switches and page refreshes, cleared on server restart.
 let reindexState = null; // { running, current, total, chunks_created, errors, result }
 
 // POST /admin/notes/reindex — kick off background reindex, return immediately.
-router.post('/admin/notes/reindex', requirePerm('notes', 'write'), async (req, res) => {
+router.post('/admin/notes/reindex', requirePerm('notes', 'write'), adminRoute('notes-reindex', async (req, res) => {
     if (reindexState && reindexState.running) {
         return res.status(409).json({
             error: { code: 'CONFLICT', message: 'Reindex already in progress' }
@@ -1140,7 +944,7 @@ router.post('/admin/notes/reindex', requirePerm('notes', 'write'), async (req, r
             reindexState.result = { error: err.message };
         }
     })();
-});
+}));
 
 // POST /admin/notes/reindex-status — poll for reindex progress.
 router.post('/admin/notes/reindex-status', requirePerm('notes', 'read'), (req, res) => {
@@ -1249,60 +1053,46 @@ function parseTemplateFrontmatter(content = '') {
 }
 
 // POST /admin/templates/list — list all templates, optionally filtered by kind
-router.post('/admin/templates/list', requirePerm('templates', 'read'), async (req, res) => {
+router.post('/admin/templates/list', requirePerm('templates', 'read'), adminRoute('templates-list', async (req, res) => {
     const { kind } = req.body;
     if (kind && !TEMPLATE_KINDS.has(kind)) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Invalid kind: ' + kind }
         });
     }
-    try {
-        let query = 'SELECT id, name, kind, description, created_at, updated_at FROM templates';
-        const params = [];
-        if (kind) {
-            query += ' WHERE kind = $1';
-            params.push(kind);
-        }
-        query += ' ORDER BY name';
-        const result = await pool.query(query, params);
-        res.json({ templates: result.rows });
-    } catch (err) {
-        console.error('Admin templates list error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to list templates' }
-        });
+    let query = 'SELECT id, name, kind, description, created_at, updated_at FROM templates';
+    const params = [];
+    if (kind) {
+        query += ' WHERE kind = $1';
+        params.push(kind);
     }
-});
+    query += ' ORDER BY name';
+    const result = await pool.query(query, params);
+    res.json({ templates: result.rows });
+}));
 
 // POST /admin/templates/read — read a single template
-router.post('/admin/templates/read', requirePerm('templates', 'read'), async (req, res) => {
+router.post('/admin/templates/read', requirePerm('templates', 'read'), adminRoute('templates-read', async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    try {
-        const result = await pool.query(
-            'SELECT * FROM templates WHERE id = $1',
-            [id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Template not found' }
-            });
-        }
-        res.json({ template: result.rows[0] });
-    } catch (err) {
-        console.error('Admin templates read error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to read template' }
+    const result = await pool.query(
+        'SELECT * FROM templates WHERE id = $1',
+        [id]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Template not found' }
         });
     }
-});
+    res.json({ template: result.rows[0] });
+}));
 
 // POST /admin/templates/save — create or update a template
-router.post('/admin/templates/save', requirePerm('templates', 'write'), async (req, res) => {
+router.post('/admin/templates/save', requirePerm('templates', 'write'), adminRoute('templates-save', async (req, res) => {
     const { id, name, kind, description, content } = req.body;
     if (!name || !content) {
         return res.status(400).json({
@@ -1324,72 +1114,58 @@ router.post('/admin/templates/save', requirePerm('templates', 'write'), async (r
             });
         }
     }
-    try {
-        let result;
-        if (id) {
-            // Update existing
-            result = await pool.query(
-                'UPDATE templates SET name = $1, kind = $2, description = $3, content = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
-                [name, templateKind, description || null, content, id]
-            );
-            if (result.rows.length === 0) {
-                return res.status(404).json({
-                    error: { code: 'NOT_FOUND', message: 'Template not found' }
-                });
-            }
-        } else {
-            // Check for duplicate name
-            const existing = await pool.query(
-                'SELECT id FROM templates WHERE name = $1',
-                [name]
-            );
-            if (existing.rows.length > 0) {
-                return res.status(409).json({
-                    error: { code: 'CONFLICT', message: 'A template with that name already exists' }
-                });
-            }
-            result = await pool.query(
-                'INSERT INTO templates (name, kind, description, content) VALUES ($1, $2, $3, $4) RETURNING *',
-                [name, templateKind, description || null, content]
-            );
-        }
-        logAdmin('template_save', { template_id: result.rows[0].id, name, kind: templateKind, user_id: req.authenticatedUser.id });
-        res.json({ template: result.rows[0] });
-    } catch (err) {
-        console.error('Admin templates save error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to save template' }
-        });
-    }
-});
-
-// POST /admin/templates/delete — delete a template
-router.post('/admin/templates/delete', requirePerm('templates', 'delete'), async (req, res) => {
-    const { id } = req.body;
-    if (!id) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
-        });
-    }
-    try {
-        const result = await pool.query(
-            'DELETE FROM templates WHERE id = $1 RETURNING name',
-            [id]
+    let result;
+    if (id) {
+        // Update existing
+        result = await pool.query(
+            'UPDATE templates SET name = $1, kind = $2, description = $3, content = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
+            [name, templateKind, description || null, content, id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Template not found' }
             });
         }
-        logAdmin('template_delete', { template_id: id, name: result.rows[0].name, user_id: req.authenticatedUser.id });
-        res.json({ deleted: true });
-    } catch (err) {
-        console.error('Admin templates delete error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to delete template' }
+    } else {
+        // Check for duplicate name
+        const existing = await pool.query(
+            'SELECT id FROM templates WHERE name = $1',
+            [name]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(409).json({
+                error: { code: 'CONFLICT', message: 'A template with that name already exists' }
+            });
+        }
+        result = await pool.query(
+            'INSERT INTO templates (name, kind, description, content) VALUES ($1, $2, $3, $4) RETURNING *',
+            [name, templateKind, description || null, content]
+        );
+    }
+    logAdmin('template_save', { template_id: result.rows[0].id, name, kind: templateKind, user_id: req.authenticatedUser.id });
+    res.json({ template: result.rows[0] });
+}));
+
+// POST /admin/templates/delete — delete a template
+router.post('/admin/templates/delete', requirePerm('templates', 'delete'), adminRoute('templates-delete', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-});
+    const result = await pool.query(
+        'DELETE FROM templates WHERE id = $1 RETURNING name',
+        [id]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Template not found' }
+        });
+    }
+    logAdmin('template_delete', { template_id: id, name: result.rows[0].name, user_id: req.authenticatedUser.id });
+    res.json({ deleted: true });
+}));
 
 // Validate a cost budget value. Returns the parsed number, null (for unlimited), or throws on invalid input.
 function parseCostBudget(value, fieldName) {
@@ -1406,7 +1182,7 @@ function parseCostBudget(value, fieldName) {
 // ---- Actor Creation ----
 
 // POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
-router.post('/admin/actors/create', requirePerm('actors', 'write'), async (req, res) => {
+router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('actors-create', async (req, res) => {
     const { name, provider, model, welcome_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
@@ -1446,194 +1222,179 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), async (req, 
         }
     }
 
-    try {
-        // Check if actor already exists
-        const existingActor = await resolveByName(actorName);
-        if (existingActor) {
-            return res.status(409).json({
-                error: { code: 'ALREADY_EXISTS', message: 'Actor already exists: ' + actorName }
-            });
-        }
-
-        // Generate passphrase and hash it (all actors get a passphrase for API auth)
-        const words = generatePassphrase(3);
-        const passphrase = words.join('-');
-        const passphraseSalt = generateSalt();
-        const passphraseHash = hashToken(passphrase, passphraseSalt);
-
-        // Optionally hash the UI password
-        let passwordHash = null;
-        let passwordSalt = null;
-        if (ui_access && password) {
-            passwordSalt = generateSalt();
-            passwordHash = hashToken(password, passwordSalt);
-        }
-
-        const client = await pool.connect();
-        let actorId;
-        try {
-            await client.query('BEGIN');
-
-            // Create actor
-            const actorResult = await client.query(
-                `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status)
-                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active']
-            );
-            actorId = actorResult.rows[0].id;
-
-            // Create agent configuration
-            await client.query(
-                `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-                [actorId, provider || null, model || null,
-                 isVirtual === true, personality || null,
-                 parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
-                 parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
-                 cache_prompts === true, learning_enabled !== false,
-                 max_tokens != null ? parseInt(max_tokens) : null,
-                 temperature != null ? parseFloat(temperature) : null,
-                 configuration ? JSON.stringify(configuration) : null]
-            );
-
-            await client.query('COMMIT');
-        } catch (txErr) {
-            await client.query('ROLLBACK');
-            throw txErr;
-        } finally {
-            client.release();
-        }
-
-        // Apply welcome template if selected (non-virtual only)
-        // Wrapped in its own try/catch — actor is already committed at this point
-        let welcomeMailSent = false;
-        let postCommitError = null;
-        if (welcome_template_id && !isVirtual) {
-            try {
-                const tplResult = await pool.query(
-                    'SELECT content FROM templates WHERE id = $1 AND kind = $2',
-                    [welcome_template_id, 'welcome']
-                );
-                if (tplResult.rows.length > 0) {
-                    const rawContent = tplResult.rows[0].content;
-                    const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
-                    const mailBody = tplBody.replace(/\{agent\}/g, actorName);
-
-                    // Copy template body to startup_instructions (persistent)
-                    await pool.query(
-                        'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2',
-                        [mailBody, actorId]
-                    );
-
-                    // Also send as welcome mail (fallback / immediate context)
-                    const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, actorName);
-                    await mailSend(actorName, 'system', mailSubject, mailBody);
-                    welcomeMailSent = true;
-                }
-            } catch (postErr) {
-                console.error('Post-commit welcome template error:', postErr.message);
-                postCommitError = 'Actor created but welcome template failed: ' + postErr.message;
-            }
-        }
-
-        logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
-
-        const response = {
-            name: actorName,
-            passphrase,
-            virtual: isVirtual === true,
-            ui_access: !!ui_access,
-            status: 'active',
-            welcome_mail_sent: welcomeMailSent,
-            message: isVirtual ? 'Virtual agent created.' : 'Actor created. Save the passphrase — it will not be shown again.'
-        };
-        if (postCommitError) {
-            response.warning = postCommitError;
-        }
-        res.json(response);
-    } catch (err) {
-        if (err.statusCode === 400) {
-            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
-        }
-        console.error('Admin actor create error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to create actor' }
+    // Check if actor already exists
+    const existingActor = await resolveByName(actorName);
+    if (existingActor) {
+        return res.status(409).json({
+            error: { code: 'ALREADY_EXISTS', message: 'Actor already exists: ' + actorName }
         });
     }
-});
+
+    // Generate passphrase and hash it (all actors get a passphrase for API auth)
+    const words = generatePassphrase(3);
+    const passphrase = words.join('-');
+    const passphraseSalt = generateSalt();
+    const passphraseHash = hashToken(passphrase, passphraseSalt);
+
+    // Optionally hash the UI password
+    let passwordHash = null;
+    let passwordSalt = null;
+    if (ui_access && password) {
+        passwordSalt = generateSalt();
+        passwordHash = hashToken(password, passwordSalt);
+    }
+
+    const client = await pool.connect();
+    let actorId;
+    try {
+        await client.query('BEGIN');
+
+        // Create actor
+        const actorResult = await client.query(
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active']
+        );
+        actorId = actorResult.rows[0].id;
+
+        // Create agent configuration
+        await client.query(
+            `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [actorId, provider || null, model || null,
+             isVirtual === true, personality || null,
+             parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
+             parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
+             cache_prompts === true, learning_enabled !== false,
+             max_tokens != null ? parseInt(max_tokens) : null,
+             temperature != null ? parseFloat(temperature) : null,
+             configuration ? JSON.stringify(configuration) : null]
+        );
+
+        await client.query('COMMIT');
+    } catch (txErr) {
+        await client.query('ROLLBACK');
+        throw txErr;
+    } finally {
+        client.release();
+    }
+
+    // Apply welcome template if selected (non-virtual only)
+    // Wrapped in its own try/catch — actor is already committed at this point
+    let welcomeMailSent = false;
+    let postCommitError = null;
+    if (welcome_template_id && !isVirtual) {
+        try {
+            const tplResult = await pool.query(
+                'SELECT content FROM templates WHERE id = $1 AND kind = $2',
+                [welcome_template_id, 'welcome']
+            );
+            if (tplResult.rows.length > 0) {
+                const rawContent = tplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const mailBody = tplBody.replace(/\{agent\}/g, actorName);
+
+                // Copy template body to startup_instructions (persistent)
+                await pool.query(
+                    'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2',
+                    [mailBody, actorId]
+                );
+
+                // Also send as welcome mail (fallback / immediate context)
+                const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, actorName);
+                await mailSend(actorName, 'system', mailSubject, mailBody);
+                welcomeMailSent = true;
+            }
+        } catch (postErr) {
+            console.error('Post-commit welcome template error:', postErr.message);
+            postCommitError = 'Actor created but welcome template failed: ' + postErr.message;
+        }
+    }
+
+    logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
+
+    const response = {
+        name: actorName,
+        passphrase,
+        virtual: isVirtual === true,
+        ui_access: !!ui_access,
+        status: 'active',
+        welcome_mail_sent: welcomeMailSent,
+        message: isVirtual ? 'Virtual agent created.' : 'Actor created. Save the passphrase — it will not be shown again.'
+    };
+    if (postCommitError) {
+        response.warning = postCommitError;
+    }
+    res.json(response);
+}));
 
 // POST /admin/agents/read — get full agent detail (includes configuration JSON)
 // Accepts optional `timezone` (IANA string, e.g. "America/New_York") for local day boundary.
-router.post('/admin/agents/read', requirePerm('agents', 'read'), async (req, res) => {
+router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('agents-read', async (req, res) => {
     const { agent, timezone } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
-    try {
-        const actor = await requireVisibility(req, res, agent);
-        if (!actor) return;
-        const result = await pool.query(
-            `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
-                    agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
-                    agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key
-             FROM agent_configuration agc
-             JOIN actors ac ON ac.id = agc.actor_id
-             WHERE agc.actor_id = $1`,
-            [actor.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
-        }
-        const row = result.rows[0];
-
-        // Validate client timezone — untrusted input, fall back to UTC
-        let tz = 'UTC';
-        if (typeof timezone === 'string' && timezone) {
-            try {
-                Intl.DateTimeFormat(undefined, { timeZone: timezone });
-                tz = timezone;
-            } catch (e) {
-                // Invalid timezone string, use UTC
-            }
-        }
-        const costResult = await pool.query(
-            `SELECT
-                COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE $2) AT TIME ZONE $2 THEN cost ELSE 0 END), 0) AS cost_today,
-                COALESCE(SUM(cost), 0) AS cost_monthly
-             FROM virtual_agent_usage
-             WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
-            [actor.id, tz]
-        );
-        row.cost_today = parseFloat(costResult.rows[0].cost_today);
-        row.cost_monthly = parseFloat(costResult.rows[0].cost_monthly);
-
-        // Resolve effective budget limits (agent override → system default → null)
-        const { dailyLimit, monthlyLimit } = resolveEffectiveLimits(row);
-        row.effective_daily_limit = dailyLimit;
-        row.effective_monthly_limit = monthlyLimit;
-
-        // Add pricing info string for display, accounting for agent's service tier
-        if (row.provider && row.model) {
-            let agentConfig = {};
-            if (row.configuration) {
-                if (typeof row.configuration === 'object') {
-                    agentConfig = row.configuration;
-                } else {
-                    try { agentConfig = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
-                }
-            }
-            row.pricing_info = formatPricing(row.provider, row.model, agentConfig);
-        }
-
-        res.json(row);
-    } catch (err) {
-        console.error('Admin agent read error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to read agent' } });
+    const actor = await requireVisibility(req, res, agent);
+    if (!actor) return;
+    const result = await pool.query(
+        `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
+                agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
+                agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key
+         FROM agent_configuration agc
+         JOIN actors ac ON ac.id = agc.actor_id
+         WHERE agc.actor_id = $1`,
+        [actor.id]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
     }
-});
+    const row = result.rows[0];
+
+    // Validate client timezone — untrusted input, fall back to UTC
+    let tz = 'UTC';
+    if (typeof timezone === 'string' && timezone) {
+        try {
+            Intl.DateTimeFormat(undefined, { timeZone: timezone });
+            tz = timezone;
+        } catch (e) {
+            // Invalid timezone string, use UTC
+        }
+    }
+    const costResult = await pool.query(
+        `SELECT
+            COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE $2) AT TIME ZONE $2 THEN cost ELSE 0 END), 0) AS cost_today,
+            COALESCE(SUM(cost), 0) AS cost_monthly
+         FROM virtual_agent_usage
+         WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
+        [actor.id, tz]
+    );
+    row.cost_today = parseFloat(costResult.rows[0].cost_today);
+    row.cost_monthly = parseFloat(costResult.rows[0].cost_monthly);
+
+    // Resolve effective budget limits (agent override → system default → null)
+    const { dailyLimit, monthlyLimit } = resolveEffectiveLimits(row);
+    row.effective_daily_limit = dailyLimit;
+    row.effective_monthly_limit = monthlyLimit;
+
+    // Add pricing info string for display, accounting for agent's service tier
+    if (row.provider && row.model) {
+        let agentConfig = {};
+        if (row.configuration) {
+            if (typeof row.configuration === 'object') {
+                agentConfig = row.configuration;
+            } else {
+                try { agentConfig = JSON.parse(row.configuration); } catch (e) { /* ignore */ }
+            }
+        }
+        row.pricing_info = formatPricing(row.provider, row.model, agentConfig);
+    }
+
+    res.json(row);
+}));
 
 // POST /admin/agents/update — update virtual agent config
-router.post('/admin/agents/update', requirePerm('agents', 'write'), async (req, res) => {
+router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('agents-update', async (req, res) => {
     const { agent, personality, api_key, configuration, provider, model,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
@@ -1644,120 +1405,105 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), async (req, 
         });
     }
 
-    try {
-        const actor = await requireVisibility(req, res, agent);
-        if (!actor) return;
-        const existing = await pool.query('SELECT actor_id, virtual FROM agent_configuration WHERE actor_id = $1', [actor.id]);
-        if (existing.rows.length === 0) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'Agent not found' }
-            });
-        }
-
-        const updates = [];
-        const params = [];
-        let idx = 1;
-
-        if (personality !== undefined) {
-            params.push(personality || null);
-            updates.push(`personality = $${idx++}`);
-        }
-        if (api_key !== undefined) {
-            // Encrypt the API key before storing
-            if (api_key) {
-                const { encryptApiKey } = require('../services/provider');
-                params.push(encryptApiKey(api_key));
-            } else {
-                params.push(null);
-            }
-            updates.push(`api_key = $${idx++}`);
-        }
-        if (configuration !== undefined) {
-            params.push(configuration ? JSON.stringify(configuration) : null);
-            updates.push(`configuration = $${idx++}`);
-        }
-        if (provider !== undefined) {
-            params.push(provider || null);
-            updates.push(`provider = $${idx++}`);
-        }
-        if (model !== undefined) {
-            params.push(model || null);
-            updates.push(`model = $${idx++}`);
-        }
-        if (cost_budget_daily !== undefined) {
-            params.push(parseCostBudget(cost_budget_daily, 'cost_budget_daily'));
-            updates.push(`cost_budget_daily = $${idx++}`);
-        }
-        if (cost_budget_monthly !== undefined) {
-            params.push(parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'));
-            updates.push(`cost_budget_monthly = $${idx++}`);
-        }
-        if (cache_prompts !== undefined) {
-            params.push(cache_prompts === true);
-            updates.push(`cache_prompts = $${idx++}`);
-        }
-        if (learning_enabled !== undefined) {
-            params.push(learning_enabled !== false);
-            updates.push(`learning_enabled = $${idx++}`);
-        }
-        if (max_tokens !== undefined) {
-            params.push(max_tokens === null || max_tokens === '' ? null : parseInt(max_tokens));
-            updates.push(`max_tokens = $${idx++}`);
-        }
-        if (temperature !== undefined) {
-            params.push(temperature === null || temperature === '' ? null : parseFloat(temperature));
-            updates.push(`temperature = $${idx++}`);
-        }
-
-        if (updates.length === 0) {
-            return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'No fields to update' }
-            });
-        }
-
-        params.push(actor.id);
-        await pool.query(
-            `UPDATE agent_configuration SET ${updates.join(', ')} WHERE actor_id = $${idx}`,
-            params
-        );
-
-        logAdmin('agent_update', { agent, fields: updates.map(u => u.split(' ')[0]), user_id: req.authenticatedUser.id });
-
-        res.json({ agent, updated: true });
-    } catch (err) {
-        if (err.statusCode === 400) {
-            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } });
-        }
-        console.error('Admin agent update error:', err.message);
-        res.status(500).json({
-            error: { code: 'INTERNAL', message: 'Failed to update agent' }
+    const actor = await requireVisibility(req, res, agent);
+    if (!actor) return;
+    const existing = await pool.query('SELECT actor_id, virtual FROM agent_configuration WHERE actor_id = $1', [actor.id]);
+    if (existing.rows.length === 0) {
+        return res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Agent not found' }
         });
     }
-});
+
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (personality !== undefined) {
+        params.push(personality || null);
+        updates.push(`personality = $${idx++}`);
+    }
+    if (api_key !== undefined) {
+        // Encrypt the API key before storing
+        if (api_key) {
+            const { encryptApiKey } = require('../services/provider');
+            params.push(encryptApiKey(api_key));
+        } else {
+            params.push(null);
+        }
+        updates.push(`api_key = $${idx++}`);
+    }
+    if (configuration !== undefined) {
+        params.push(configuration ? JSON.stringify(configuration) : null);
+        updates.push(`configuration = $${idx++}`);
+    }
+    if (provider !== undefined) {
+        params.push(provider || null);
+        updates.push(`provider = $${idx++}`);
+    }
+    if (model !== undefined) {
+        params.push(model || null);
+        updates.push(`model = $${idx++}`);
+    }
+    if (cost_budget_daily !== undefined) {
+        params.push(parseCostBudget(cost_budget_daily, 'cost_budget_daily'));
+        updates.push(`cost_budget_daily = $${idx++}`);
+    }
+    if (cost_budget_monthly !== undefined) {
+        params.push(parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'));
+        updates.push(`cost_budget_monthly = $${idx++}`);
+    }
+    if (cache_prompts !== undefined) {
+        params.push(cache_prompts === true);
+        updates.push(`cache_prompts = $${idx++}`);
+    }
+    if (learning_enabled !== undefined) {
+        params.push(learning_enabled !== false);
+        updates.push(`learning_enabled = $${idx++}`);
+    }
+    if (max_tokens !== undefined) {
+        params.push(max_tokens === null || max_tokens === '' ? null : parseInt(max_tokens));
+        updates.push(`max_tokens = $${idx++}`);
+    }
+    if (temperature !== undefined) {
+        params.push(temperature === null || temperature === '' ? null : parseFloat(temperature));
+        updates.push(`temperature = $${idx++}`);
+    }
+
+    if (updates.length === 0) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'No fields to update' }
+        });
+    }
+
+    params.push(actor.id);
+    await pool.query(
+        `UPDATE agent_configuration SET ${updates.join(', ')} WHERE actor_id = $${idx}`,
+        params
+    );
+
+    logAdmin('agent_update', { agent, fields: updates.map(u => u.split(' ')[0]), user_id: req.authenticatedUser.id });
+
+    res.json({ agent, updated: true });
+}));
 
 // POST /admin/agents/usage — get usage history for an agent
-router.post('/admin/agents/usage', requirePerm('agents', 'read'), async (req, res) => {
+router.post('/admin/agents/usage', requirePerm('agents', 'read'), adminRoute('agents-usage', async (req, res) => {
     const { agent, limit } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
-    try {
-        const actor = await requireVisibility(req, res, agent);
-        if (!actor) return;
-        const result = await pool.query(
-            `SELECT id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context, created_at
-             FROM virtual_agent_usage
-             WHERE actor_id = $1
-             ORDER BY created_at DESC
-             LIMIT $2`,
-            [actor.id, Math.min(parseInt(limit) || 50, 200)]
-        );
-        res.json({ usage: result.rows });
-    } catch (err) {
-        console.error('Admin agent usage error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch usage data' } });
-    }
-});
+    const actor = await requireVisibility(req, res, agent);
+    if (!actor) return;
+    const result = await pool.query(
+        `SELECT id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context, created_at
+         FROM virtual_agent_usage
+         WHERE actor_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [actor.id, Math.min(parseInt(limit) || 50, 200)]
+    );
+    res.json({ usage: result.rows });
+}));
 
 // ─── Actor permissions & visibility management ───
 
@@ -1806,29 +1552,24 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('act
 }));
 
 // POST /admin/actors/permissions/read — get namespace permissions for one actor
-router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), async (req, res) => {
+router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), adminRoute('actors-permissions-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
-    try {
-        // Verify actor exists
-        const actor = await resolveById(actorId);
-        if (!actor) {
-            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
-        }
-        const result = await pool.query(
-            'SELECT namespace, can_read, can_write, can_delete FROM namespace_permissions WHERE actor_id = $1 ORDER BY namespace',
-            [actorId]
-        );
-        res.json({ permissions: result.rows });
-    } catch (err) {
-        console.error('Admin permissions read error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch permissions' } });
+    // Verify actor exists
+    const actor = await resolveById(actorId);
+    if (!actor) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
-});
+    const result = await pool.query(
+        'SELECT namespace, can_read, can_write, can_delete FROM namespace_permissions WHERE actor_id = $1 ORDER BY namespace',
+        [actorId]
+    );
+    res.json({ permissions: result.rows });
+}));
 
 // POST /admin/actors/permissions/save — full replace of namespace permissions for one actor
 // Body: { actor_id, permissions: [{ namespace, can_read, can_write, can_delete }] }
-router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), async (req, res) => {
+router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), adminRoute('actors-permissions-save', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { permissions } = req.body;
@@ -1880,52 +1621,46 @@ router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), as
             );
         }
         await client.query('COMMIT');
-        clearPermissionsCache(actorId);
-        logAdmin('permissions.save', { actor_id: actorId, count: normalized.length });
-        res.json({ ok: true });
-    } catch (err) {
+    } catch (txErr) {
         await client.query('ROLLBACK');
-        console.error('Admin permissions save error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save permissions' } });
+        throw txErr;
     } finally {
         client.release();
     }
-});
+    clearPermissionsCache(actorId);
+    logAdmin('permissions.save', { actor_id: actorId, count: normalized.length });
+    res.json({ ok: true });
+}));
 
 // POST /admin/actors/visibility/read — get visibility grants for one actor
-router.post('/admin/actors/visibility/read', requirePerm('actors', 'read'), async (req, res) => {
+router.post('/admin/actors/visibility/read', requirePerm('actors', 'read'), adminRoute('actors-visibility-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
-    try {
-        // Verify actor exists
-        const actor = await resolveById(actorId);
-        if (!actor) {
-            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
-        }
-        const result = await pool.query(
-            `SELECT avc.target_actor_id, a.name AS target_name,
-                    (ac.actor_id IS NOT NULL) AS target_is_agent,
-                    (a.password_hash IS NOT NULL) AS target_is_user
-             FROM actor_visibility_configuration avc
-             LEFT JOIN actors a ON a.id = avc.target_actor_id
-             LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
-             WHERE avc.actor_id = $1
-             ORDER BY a.name NULLS FIRST`,
-            [actorId]
-        );
-        // A row with target_actor_id = null means wildcard
-        const hasWildcard = result.rows.some(r => r.target_actor_id === null);
-        const grants = result.rows.filter(r => r.target_actor_id !== null);
-        res.json({ wildcard: hasWildcard, grants });
-    } catch (err) {
-        console.error('Admin visibility read error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch visibility' } });
+    // Verify actor exists
+    const actor = await resolveById(actorId);
+    if (!actor) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
-});
+    const result = await pool.query(
+        `SELECT avc.target_actor_id, a.name AS target_name,
+                (ac.actor_id IS NOT NULL) AS target_is_agent,
+                (a.password_hash IS NOT NULL) AS target_is_user
+         FROM actor_visibility_configuration avc
+         LEFT JOIN actors a ON a.id = avc.target_actor_id
+         LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
+         WHERE avc.actor_id = $1
+         ORDER BY a.name NULLS FIRST`,
+        [actorId]
+    );
+    // A row with target_actor_id = null means wildcard
+    const hasWildcard = result.rows.some(r => r.target_actor_id === null);
+    const grants = result.rows.filter(r => r.target_actor_id !== null);
+    res.json({ wildcard: hasWildcard, grants });
+}));
 
 // POST /admin/actors/visibility/save — full replace of visibility grants for one actor
 // Body: { actor_id, wildcard: bool, grants: [actor_id, ...] }
-router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), async (req, res) => {
+router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), adminRoute('actors-visibility-save', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { wildcard, grants } = req.body;
@@ -1973,72 +1708,61 @@ router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), asy
             }
         }
         await client.query('COMMIT');
-        clearVisibilityCache(actorId);
-        logAdmin('visibility.save', { actor_id: actorId, wildcard, count: deduped.length });
-        res.json({ ok: true });
-    } catch (err) {
+    } catch (txErr) {
         await client.query('ROLLBACK');
-        console.error('Admin visibility save error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save visibility' } });
+        throw txErr;
     } finally {
         client.release();
     }
-});
+    clearVisibilityCache(actorId);
+    logAdmin('visibility.save', { actor_id: actorId, wildcard, count: deduped.length });
+    res.json({ ok: true });
+}));
 
 // POST /admin/actors/password — set or clear an actor's UI password
 // Pass { actor_id, password: "string" } to set/change, or { actor_id, password: null } to clear
-router.post('/admin/actors/password', requirePerm('actors', 'write'), async (req, res) => {
+router.post('/admin/actors/password', requirePerm('actors', 'write'), adminRoute('actors-password', async (req, res) => {
     const { actor_id, password } = req.body;
     const actorId = parseActorId(actor_id, res);
     if (!actorId) return;
 
-    try {
-        const actor = await resolveById(actorId);
-        if (!actor) {
-            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
-        }
-
-        if (password === null || password === undefined) {
-            // Clear password — remove UI access
-            await pool.query(
-                'UPDATE actors SET password_hash = NULL, password_salt = NULL WHERE id = $1',
-                [actorId]
-            );
-            logAdmin('actor_password_clear', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
-            res.json({ message: 'UI access removed', is_user: false });
-        } else {
-            if (typeof password !== 'string' || password.length < 4) {
-                return res.status(400).json({
-                    error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
-                });
-            }
-            const salt = generateSalt();
-            const hash = hashToken(password, salt);
-            await pool.query(
-                'UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3',
-                [hash, salt, actorId]
-            );
-            logAdmin('actor_password_set', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
-            res.json({ message: 'Password updated', is_user: true });
-        }
-    } catch (err) {
-        console.error('Admin actor password error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to update password' } });
+    const actor = await resolveById(actorId);
+    if (!actor) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
-});
+
+    if (password === null || password === undefined) {
+        // Clear password — remove UI access
+        await pool.query(
+            'UPDATE actors SET password_hash = NULL, password_salt = NULL WHERE id = $1',
+            [actorId]
+        );
+        logAdmin('actor_password_clear', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
+        res.json({ message: 'UI access removed', is_user: false });
+    } else {
+        if (typeof password !== 'string' || password.length < 4) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+            });
+        }
+        const salt = generateSalt();
+        const hash = hashToken(password, salt);
+        await pool.query(
+            'UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3',
+            [hash, salt, actorId]
+        );
+        logAdmin('actor_password_set', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
+        res.json({ message: 'Password updated', is_user: true });
+    }
+}));
 
 // POST /admin/actors/namespaces — get distinct namespaces from documents (for dropdown)
-router.post('/admin/actors/namespaces', requirePerm('actors', 'read'), async (req, res) => {
-    try {
-        const result = await pool.query(
-            "SELECT DISTINCT namespace FROM documents WHERE namespace != '/' ORDER BY namespace"
-        );
-        res.json({ namespaces: result.rows.map(r => r.namespace) });
-    } catch (err) {
-        console.error('Admin namespaces error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to fetch namespaces' } });
-    }
-});
+router.post('/admin/actors/namespaces', requirePerm('actors', 'read'), adminRoute('actors-namespaces', async (req, res) => {
+    const result = await pool.query(
+        "SELECT DISTINCT namespace FROM documents WHERE namespace != '/' ORDER BY namespace"
+    );
+    res.json({ namespaces: result.rows.map(r => r.namespace) });
+}));
 
 // Admin permission allowlist — server-side authority for valid resource/action pairs
 const ADMIN_PERM_ALLOWLIST = {
@@ -2059,25 +1783,20 @@ function isValidAdminPerm(resource, action) {
 }
 
 // POST /admin/actors/admin-permissions/read — get admin permissions for an actor
-router.post('/admin/actors/admin-permissions/read', requirePerm('actors', 'read'), async (req, res) => {
+router.post('/admin/actors/admin-permissions/read', requirePerm('actors', 'read'), adminRoute('actors-admin-permissions-read', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     if (!Number.isInteger(actorId) || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
     }
-    try {
-        const result = await pool.query(
-            'SELECT resource, action FROM admin_permissions WHERE actor_id = $1 ORDER BY resource, action',
-            [actorId]
-        );
-        res.json({ permissions: result.rows });
-    } catch (err) {
-        console.error('Admin permissions read error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to read admin permissions' } });
-    }
-});
+    const result = await pool.query(
+        'SELECT resource, action FROM admin_permissions WHERE actor_id = $1 ORDER BY resource, action',
+        [actorId]
+    );
+    res.json({ permissions: result.rows });
+}));
 
 // POST /admin/actors/admin-permissions/save — replace all admin permissions for an actor
-router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write'), async (req, res) => {
+router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write'), adminRoute('actors-admin-permissions-save', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     const { permissions } = req.body;
     if (!Number.isInteger(actorId) || actorId <= 0 || !Array.isArray(permissions)) {
@@ -2104,31 +1823,26 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
         validated.push({ resource, action });
     }
 
-    try {
-        // Delete existing permissions
-        await pool.query('DELETE FROM admin_permissions WHERE actor_id = $1', [actorId]);
+    // Delete existing permissions
+    await pool.query('DELETE FROM admin_permissions WHERE actor_id = $1', [actorId]);
 
-        // Insert validated permissions
-        for (const perm of validated) {
-            await pool.query(
-                'INSERT INTO admin_permissions (actor_id, resource, action) VALUES ($1, $2, $3)',
-                [actorId, perm.resource, perm.action]
-            );
-        }
-
-        clearAdminPermissionsCache(actorId);
-        logAdmin('admin_permissions_save', { actor_id: actorId, count: validated.length, user_id: req.authenticatedUser.id });
-
-        // If editing own permissions, return updated map so frontend can refresh
-        const response = { message: 'Admin permissions saved', count: validated.length };
-        if (actorId === req.actorId) {
-            response.updated_permissions = await getPermissionMap(actorId);
-        }
-        res.json(response);
-    } catch (err) {
-        console.error('Admin permissions save error:', err.message);
-        res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to save admin permissions' } });
+    // Insert validated permissions
+    for (const perm of validated) {
+        await pool.query(
+            'INSERT INTO admin_permissions (actor_id, resource, action) VALUES ($1, $2, $3)',
+            [actorId, perm.resource, perm.action]
+        );
     }
-});
+
+    clearAdminPermissionsCache(actorId);
+    logAdmin('admin_permissions_save', { actor_id: actorId, count: validated.length, user_id: req.authenticatedUser.id });
+
+    // If editing own permissions, return updated map so frontend can refresh
+    const response = { message: 'Admin permissions saved', count: validated.length };
+    if (actorId === req.actorId) {
+        response.updated_permissions = await getPermissionMap(actorId);
+    }
+    res.json(response);
+}));
 
 module.exports = router;
