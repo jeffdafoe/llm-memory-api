@@ -72,7 +72,8 @@ app.use((err, req, res, next) => {
 // Load config from DB before accepting requests
 config.init().then(() => {
     // Register virtual agent handler (depends on config being loaded)
-    require('./services/virtual-agent');
+    const { startErrorPing } = require('./services/virtual-agent');
+    startErrorPing();
 
     const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
