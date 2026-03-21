@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,7 +24,7 @@
                         <input type="password" v-model="loginForm.password" required>
                     </label>
                     <p v-if="loginError" class="error">{{ loginError }}</p>
-                    <button type="submit" class="login-btn" :disabled="loggingIn">
+                    <button type="submit" class="btn btn-primary login-btn" :disabled="loggingIn">
                         {{ loggingIn ? 'Logging in...' : 'Log in' }}
                     </button>
                 </form>
@@ -32,28 +32,57 @@
         </main>
 
         <!-- App shell -->
-        <div v-else>
-            <nav class="container-fluid">
-                <ul>
-                    <li><strong>Memory API Admin — {{ viewTitle }}</strong></li>
-                </ul>
-                <ul>
-                    <li v-if="canDo('dashboard', 'read')"><a href="#" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">Dashboard</a></li>
-                    <li v-if="canDo('agents', 'read')"><a href="#" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">Agents</a></li>
-                    <li v-if="canDo('comms', 'read')"><a href="#" :class="{ active: currentView === 'comms' }" @click.prevent="currentView = 'comms'">Communications</a></li>
-                    <li v-if="canDo('notes', 'read')"><a href="#" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">Notes</a></li>
-                    <li v-if="canDo('config', 'read')"><a href="#" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">Configuration</a></li>
-                    <li><a href="#" @click.prevent="showChangePassword = true" title="Change password"><i class="icon-key-round"></i></a></li>
-                    <li><a href="#" @click.prevent="logout">Logout</a></li>
-                </ul>
-            </nav>
+        <div v-else class="app-shell">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h1>llm-memory</h1>
+                    <div class="sidebar-subtitle">Admin Dashboard</div>
+                </div>
 
-            <!-- Global reindex banner -->
-            <div v-if="reindexStatus && reindexStatus.running" class="reindex-banner">
-                Reindexing vectors... {{ reindexStatus.current }}/{{ reindexStatus.total }} docs
-            </div>
+                <nav class="sidebar-nav">
+                    <a v-if="canDo('dashboard', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">
+                        <i class="icon-layout-dashboard"></i> Dashboard
+                    </a>
+                    <a v-if="canDo('agents', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">
+                        <i class="icon-bot"></i> Agents
+                    </a>
+                    <a v-if="canDo('comms', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'comms' }" @click.prevent="currentView = 'comms'">
+                        <i class="icon-messages-square"></i> Communications
+                    </a>
+                    <a v-if="canDo('notes', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">
+                        <i class="icon-file-text"></i> Notes
+                    </a>
+                    <a v-if="canDo('config', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">
+                        <i class="icon-settings"></i> Configuration
+                    </a>
+                </nav>
 
-            <main class="container-fluid">
+                <div class="sidebar-footer">
+                    <button class="theme-toggle" @click="toggleTheme">
+                        <i :class="theme === 'dark' ? 'icon-moon' : 'icon-sun'"></i>
+                        {{ theme === 'dark' ? 'Light Mode' : 'Dark Mode' }}
+                    </button>
+                    <div class="user-info">
+                        <div class="user-avatar">{{ user ? user.charAt(0).toUpperCase() : '?' }}</div>
+                        <div>
+                            <div class="user-name">{{ user }}</div>
+                            <div class="user-role">Administrator</div>
+                        </div>
+                    </div>
+                    <button class="sidebar-logout" @click="logout" title="Log out">
+                        <i class="icon-log-out"></i> Log out
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main content -->
+            <main class="main-content">
+                <!-- Global reindex banner -->
+                <div v-if="reindexStatus && reindexStatus.running" class="reindex-banner">
+                    Reindexing vectors... {{ reindexStatus.current }}/{{ reindexStatus.total }} docs
+                </div>
+
                 <!-- View components -->
                 <dashboard-view v-if="currentView === 'dashboard' && dashboard"></dashboard-view>
                 <agents-view v-if="currentView === 'agents'"></agents-view>
