@@ -1176,6 +1176,7 @@ dialog article header button[aria-label="Close"]::after {
 .stat-value.accent { color: var(--accent-text); }
 .stat-value.success { color: var(--success); }
 .stat-value.error { color: var(--error); }
+.stat-value.muted { color: var(--text-muted); font-style: normal; }
 
 .stat-meta {
     font-size: 11px;
