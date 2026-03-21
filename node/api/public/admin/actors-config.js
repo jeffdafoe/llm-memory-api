@@ -79,6 +79,10 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         actorConfigLoading.value = true;
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
+        // If this actor is an agent, also load agent details (profile, cost, config, expertise, instructions)
+        if (actor.is_agent) {
+            agentsModule.viewAgent({ agent: actor.name, ...actor });
+        }
         try {
             // Load permissions, visibility, namespaces, and admin perms in parallel
             const promises = [
