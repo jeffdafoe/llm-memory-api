@@ -108,6 +108,25 @@ a:hover { text-decoration: underline; }
 ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
+/* ── Timestamp / muted data columns ── */
+.ts {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* ── Mono text ── */
+.mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+/* ── Pulse animation ── */
+@keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    App Layout — sidebar + main
    ═══════════════════════════════════════════════════════════════════ */
@@ -1109,6 +1128,17 @@ dialog article header button[aria-label="Close"]::after {
    Dashboard View
    ═══════════════════════════════════════════════════════════════════ */
 
+/* Dashboard page content — scrollable normally, flex column when live discussion active */
+.dashboard-page-content {
+    overflow-y: auto;
+}
+
+.dashboard-page-content.dashboard-live-active {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
 /* Stat strip — compact horizontal row */
 .stat-strip {
     display: flex;
@@ -1196,7 +1226,7 @@ dialog article header button[aria-label="Close"]::after {
 }
 
 .agents-scroll {
-    max-height: 350px;
+    max-height: 220px;
     overflow-y: auto;
 }
 
@@ -1215,7 +1245,7 @@ h4 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; color: var(--text-pr
 
 /* ── API Log ── */
 .api-log-scroll {
-    max-height: 350px;
+    max-height: 220px;
     overflow-y: auto;
 }
 

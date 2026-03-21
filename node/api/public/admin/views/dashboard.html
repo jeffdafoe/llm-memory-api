@@ -2,7 +2,7 @@
     <div class="page-header">
         <h2>Dashboard</h2>
     </div>
-    <div class="page-content" :style="{ display: 'flex', flexDirection: 'column', overflow: liveDiscussions.length > 0 ? 'hidden' : 'auto' }" v-if="dashboard">
+    <div class="page-content dashboard-page-content" :class="{ 'dashboard-live-active': liveDiscussions.length > 0 }" v-if="dashboard">
 
     <!-- Stat strip -->
     <div class="stat-strip">
@@ -92,7 +92,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="agent in dashboard.agents.slice(0, 5)" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                            <tr v-for="agent in dashboard.agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
                                 <td style="text-align:center; width:30px;">
                                     <span v-if="agent.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                                 </td>
@@ -132,7 +132,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="entry in dashboardApiLog.slice(0, 5)" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
+                            <tr v-for="entry in dashboardApiLog" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
                                 <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                                 <td class="message-cell log-mono">{{ entry.path }}</td>
                                 <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
