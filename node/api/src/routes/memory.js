@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus } = require('../services/memory');
-const { logError } = require('../services/logger');
 const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
+const { apiRoute } = require('../middleware/route-wrapper');
 
 const router = Router();
 
@@ -14,7 +14,7 @@ function getActor(req) {
     };
 }
 
-router.post('/memory/ingest', async (req, res) => {
+router.post('/memory/ingest', apiRoute('memory', 'ingest', async (req, res) => {
     const { namespace, source_file, content } = req.body;
 
     if (!namespace || !source_file || !content) {
@@ -23,52 +23,35 @@ router.post('/memory/ingest', async (req, res) => {
         });
     }
 
-    try {
-        validateNamespace(namespace);
-        const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
-        const result = await ingestContent(namespace, source_file, content);
-        res.json(result);
-    } catch (err) {
-        const status = err.statusCode || 500;
-        if (status >= 500) logError('memory', 'ingest', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(status).json({
-            error: { code: status === 400 ? 'BAD_REQUEST' : status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
-        });
-    }
-});
+    validateNamespace(namespace);
+    const actor = getActor(req);
+    await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
+    const result = await ingestContent(namespace, source_file, content);
+    res.json(result);
+}));
 
-router.post('/memory/ingest/status', async (req, res) => {
+router.post('/memory/ingest/status', apiRoute('memory', 'ingest-status', async (req, res) => {
     const { namespace } = req.body;
+    const actor = getActor(req);
 
-    try {
-        const actor = getActor(req);
-
-        if (namespace) {
-            // Specific namespace — require read access
-            validateNamespace(namespace);
-            await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
-            const result = await ingestStatus(namespace);
-            res.json(result);
-        } else {
-            // No namespace — filter to readable namespaces only
-            const readable = await getReadableNamespaces(actor.actorId, actor.actorType);
-            const allStatus = await ingestStatus(null);
-            const filtered = {
-                files: (allStatus.files || []).filter(f => readable.includes(f.namespace))
-            };
-            res.json(filtered);
-        }
-    } catch (err) {
-        const status = err.statusCode || 500;
-        if (status >= 500) logError('memory', 'ingest-status', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
-        });
+    if (namespace) {
+        // Specific namespace — require read access
+        validateNamespace(namespace);
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
+        const result = await ingestStatus(namespace);
+        res.json(result);
+    } else {
+        // No namespace — filter to readable namespaces only
+        const readable = await getReadableNamespaces(actor.actorId, actor.actorType);
+        const allStatus = await ingestStatus(null);
+        const filtered = {
+            files: (allStatus.files || []).filter(f => readable.includes(f.namespace))
+        };
+        res.json(filtered);
     }
-});
+}));
 
-router.post('/memory/search', async (req, res) => {
+router.post('/memory/search', apiRoute('memory', 'search', async (req, res) => {
     const { query, namespace, limit } = req.body;
 
     if (!query) {
@@ -77,29 +60,21 @@ router.post('/memory/search', async (req, res) => {
         });
     }
 
-    try {
-        const actor = getActor(req);
-        if (namespace && namespace !== '*') {
-            validateNamespace(namespace);
-            await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
-        }
-        // For wildcard searches, push namespace filtering into the query
-        let readable = null;
-        if (!namespace || namespace === '*') {
-            readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
-        }
-        const result = await searchMemory(query, namespace, limit, readable);
-        res.json(result);
-    } catch (err) {
-        const status = err.statusCode || 500;
-        if (status >= 500) logError('memory', 'search', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
-        });
+    const actor = getActor(req);
+    if (namespace && namespace !== '*') {
+        validateNamespace(namespace);
+        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
     }
-});
+    // For wildcard searches, push namespace filtering into the query
+    let readable = null;
+    if (!namespace || namespace === '*') {
+        readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
+    }
+    const result = await searchMemory(query, namespace, limit, readable);
+    res.json(result);
+}));
 
-router.post('/memory/cleanup', async (req, res) => {
+router.post('/memory/cleanup', apiRoute('memory', 'cleanup', async (req, res) => {
     const { namespace, valid_source_files } = req.body;
 
     if (!namespace || !Array.isArray(valid_source_files)) {
@@ -108,22 +83,14 @@ router.post('/memory/cleanup', async (req, res) => {
         });
     }
 
-    try {
-        validateNamespace(namespace);
-        const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'delete');
-        const result = await cleanupMemory(namespace, valid_source_files);
-        res.json(result);
-    } catch (err) {
-        const status = err.statusCode || 500;
-        if (status >= 500) logError('memory', 'cleanup', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
-        });
-    }
-});
+    validateNamespace(namespace);
+    const actor = getActor(req);
+    await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'delete');
+    const result = await cleanupMemory(namespace, valid_source_files);
+    res.json(result);
+}));
 
-router.post('/memory/delete', async (req, res) => {
+router.post('/memory/delete', apiRoute('memory', 'delete', async (req, res) => {
     const { namespace, source_file } = req.body;
 
     if (!namespace || !source_file) {
@@ -132,19 +99,11 @@ router.post('/memory/delete', async (req, res) => {
         });
     }
 
-    try {
-        validateNamespace(namespace);
-        const actor = getActor(req);
-        await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'delete');
-        const result = await deleteMemory(namespace, source_file);
-        res.json(result);
-    } catch (err) {
-        const status = err.statusCode || 500;
-        if (status >= 500) logError('memory', 'delete', { agent: req.authenticatedAgent, message: err.message, detail: err.stack });
-        res.status(status).json({
-            error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: status >= 500 ? 'An internal error occurred' : err.message }
-        });
-    }
-});
+    validateNamespace(namespace);
+    const actor = getActor(req);
+    await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'delete');
+    const result = await deleteMemory(namespace, source_file);
+    res.json(result);
+}));
 
 module.exports = router;

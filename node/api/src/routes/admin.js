@@ -2,7 +2,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
-const { log, logError } = require('../services/logger');
+const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote, moveNote } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
@@ -18,6 +18,7 @@ const { requireAccess, getReadableNamespaces, validateNamespace, clearCache: cle
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
 const { requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
+const { apiRoute } = require('../middleware/route-wrapper');
 
 const router = Router();
 
@@ -49,30 +50,8 @@ async function requireVisibility(req, res, agentName) {
     return actor;
 }
 
-// Wrapper for admin route handlers that provides automatic error logging.
-// Handlers throw on error instead of try/catch — the wrapper catches, logs to
-// both console and the error_log table, and sends the 500 response.
-// Known errors (statusCode < 500) are returned without logging to error_log.
 function adminRoute(label, fn) {
-    return async (req, res) => {
-        try {
-            await fn(req, res);
-        } catch (err) {
-            if (err.statusCode && err.statusCode < 500) {
-                return res.status(err.statusCode).json({
-                    error: { code: err.code || 'ERROR', message: err.message }
-                });
-            }
-            console.error(`Admin ${label} error:`, err.message);
-            logError('admin', label, {
-                message: err.message,
-                detail: err.stack
-            });
-            res.status(500).json({
-                error: { code: 'INTERNAL', message: `Failed: ${label}` }
-            });
-        }
-    };
+    return apiRoute('admin', label, fn);
 }
 
 // Middleware: require authenticated user (not agent) for all admin routes except login
