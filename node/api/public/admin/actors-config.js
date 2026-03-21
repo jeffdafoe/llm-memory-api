@@ -80,8 +80,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
         // If this actor is an agent, also load agent details (profile, cost, config, expertise, instructions)
+        // skipDialog: true prevents the agent detail dialog from opening — data loads into refs only
         if (actor.is_agent) {
-            agentsModule.viewAgent({ agent: actor.name, ...actor });
+            agentsModule.viewAgent({ agent: actor.name, ...actor }, { skipDialog: true });
         }
         try {
             // Load permissions, visibility, namespaces, and admin perms in parallel
