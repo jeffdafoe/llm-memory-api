@@ -802,6 +802,12 @@ dialog[open] {
     justify-content: center;
 }
 
+/* Contain sticky header stacking contexts so they don't bleed through dialogs */
+.table-wrap {
+    position: relative;
+    z-index: 0;
+}
+
 dialog article {
     background: var(--bg-elevated);
     border: 1px solid var(--border-default);
