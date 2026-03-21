@@ -121,9 +121,11 @@ createApp({
 
         // Dashboard API log: deduplicate consecutive /mcp entries
         const dashboardApiLog = computed(() => {
+            var entries = apiLogModule.apiLogEntries.value;
+            if (!entries) return [];
             var result = [];
             var lastWasMcp = false;
-            for (var entry of apiLogModule.apiLogEntries.value) {
+            for (var entry of entries) {
                 var isMcp = entry.path === '/mcp';
                 if (isMcp && lastWasMcp) continue;
                 result.push(entry);
