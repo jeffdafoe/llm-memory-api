@@ -172,13 +172,13 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="msg in dashboard.mail.slice(0, 3)" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
+                    <tr v-for="msg in dashboard.mail.slice(0, 3)" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }" :style="msg.acked_at ? { color: 'var(--text-muted)' } : {}">
                         <td class="icon-cell">
                             <i v-if="msg.acked_at" class="icon-check acked-icon"></i>
                             <span v-else class="status-dot status-dot-online" style="width:6px; height:6px;" title="Unread"></span>
                         </td>
-                        <td :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</td>
-                        <td :style="{ color: agentColor(msg.to_agent) }">{{ msg.to_agent }}</td>
+                        <td :style="{ color: msg.acked_at ? 'var(--text-muted)' : agentColor(msg.from_agent) }">{{ msg.from_agent }}</td>
+                        <td :style="{ color: msg.acked_at ? 'var(--text-muted)' : agentColor(msg.to_agent) }">{{ msg.to_agent }}</td>
                         <td class="message-cell">{{ msg.subject }}</td>
                         <td class="time-cell ts">{{ timeAgo(msg.sent_at) }}</td>
                     </tr>
