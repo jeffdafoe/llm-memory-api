@@ -123,8 +123,9 @@ a:hover { text-decoration: underline; }
 
 /* ── Pulse animation ── */
 @keyframes pulse {
-    0%, 100% { opacity: 0.15; }
+    0% { opacity: 0.1; }
     50% { opacity: 1; }
+    100% { opacity: 0.1; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -696,7 +697,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .badge-online { background: var(--success-subtle); color: var(--success); }
-.badge-available { background: rgba(134, 239, 172, 0.10); color: #86efac; }
+.badge-available { background: rgba(113, 113, 122, 0.10); color: #6b9e7a; }
 .badge-offline { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 .badge-unknown { background: var(--warning-subtle); color: var(--warning); }
 .badge-error { background: var(--error-subtle); color: var(--error); }
@@ -716,7 +717,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .status-dot-online { background: var(--success); }
-.status-dot-available { background: #86efac; }
+.status-dot-available { background: #6b9e7a; }
 .status-dot-offline { background: var(--text-muted); }
 .status-dot-unknown { background: var(--warning); }
 
@@ -1132,6 +1133,7 @@ dialog article header button[aria-label="Close"]::after {
 /* Dashboard page content — scrollable normally, flex column when live discussion active */
 .dashboard-page-content {
     overflow-y: auto;
+    height: 0;
 }
 
 .dashboard-page-content.dashboard-live-active {
@@ -1209,7 +1211,7 @@ dialog article header button[aria-label="Close"]::after {
     height: 8px;
     border-radius: 50%;
     background: var(--accent);
-    animation: pulse 2.5s ease infinite;
+    animation: pulse 3.5s ease-in-out infinite;
     flex-shrink: 0;
 }
 
