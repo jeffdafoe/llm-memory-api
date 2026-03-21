@@ -1635,8 +1635,6 @@ details[open] .summary-chevron { transform: rotate(90deg); }
     font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
 }
 
 .tree-namespace-header:hover { background: var(--bg-hover); color: var(--text-primary); }
