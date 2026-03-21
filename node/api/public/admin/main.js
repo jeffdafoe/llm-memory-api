@@ -169,6 +169,7 @@ createApp({
             } else if (currentView.value === 'config') {
                 configModule.loadConfig();
                 if (configSubTab.value === 'actors') actorsConfigModule.loadActorsConfig();
+                if (configSubTab.value === 'templates') agentsModule.loadTemplates();
                 apiLogModule.startApiLogPolling();
                 errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'agents') {
