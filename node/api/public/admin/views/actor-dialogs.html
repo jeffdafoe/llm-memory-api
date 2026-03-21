@@ -49,7 +49,7 @@
                     <datalist id="ns-suggestions">
                         <option v-for="ns in availableNamespacesFiltered" :key="ns" :value="ns"></option>
                     </datalist>
-                    <button class="inline-button" @click="addPermissionRow">Add</button>
+                    <button class="btn btn-secondary btn-compact" @click="addPermissionRow">Add</button>
                 </div>
             </div>
 
@@ -93,14 +93,14 @@
                             <option value="">Select actor...</option>
                             <option v-for="a in availableVisibilityTargets" :key="a.id" :value="a.id">{{ a.name }} ({{ [a.is_agent ? 'agent' : '', a.is_user ? 'user' : ''].filter(Boolean).join(', ') }})</option>
                         </select>
-                        <button class="inline-button" @click="addVisibilityGrant">Add</button>
+                        <button class="btn btn-secondary btn-compact" @click="addVisibilityGrant">Add</button>
                     </div>
                 </div>
             </div>
 
             <!-- Save permissions + visibility -->
             <div style="margin-top: 1.5rem;">
-                <button @click="saveActorConfig" :disabled="actorConfigSaving">
+                <button class="btn btn-primary" @click="saveActorConfig" :disabled="actorConfigSaving">
                     {{ actorConfigSaving ? 'Saving...' : 'Save' }}
                 </button>
             </div>
@@ -113,10 +113,10 @@
             <p v-else class="muted" style="margin-bottom: 0.5rem;">This actor does not have UI login access. Set a password to enable it.</p>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
                 <input type="password" v-model="actorPasswordInput" :placeholder="selectedActorConfig.is_user ? 'New password' : 'Set password'" style="flex: 1; max-width: 20em;">
-                <button class="inline-button" @click="setActorPassword" :disabled="actorPasswordSaving || !actorPasswordInput">
+                <button class="btn btn-primary btn-compact" @click="setActorPassword" :disabled="actorPasswordSaving || !actorPasswordInput">
                     {{ actorPasswordSaving ? 'Saving...' : (selectedActorConfig.is_user ? 'Change Password' : 'Set Password') }}
                 </button>
-                <button v-if="selectedActorConfig.is_user" class="inline-button" @click="clearActorPassword" :disabled="actorPasswordSaving" style="color: var(--error-color, #e74c3c);">
+                <button v-if="selectedActorConfig.is_user" class="btn btn-ghost btn-compact btn-danger" @click="clearActorPassword" :disabled="actorPasswordSaving">
                     Remove UI Access
                 </button>
             </div>
@@ -169,7 +169,7 @@
                 </div>
 
                 <div style="margin-top: 1rem;">
-                    <button @click="saveActorConfig" :disabled="actorConfigSaving">
+                    <button class="btn btn-primary" @click="saveActorConfig" :disabled="actorConfigSaving">
                         {{ actorConfigSaving ? 'Saving...' : 'Save All' }}
                     </button>
                 </div>
@@ -198,7 +198,7 @@
                 <input type="checkbox" v-model="newActorVirtual">
                 Virtual agent (API-backed, auto-responds)
             </label>
-            <div class="form-row-inline">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                 <label>
                     Provider
                     <select v-model="newActorProvider" @change="onNewActorProviderChange">
@@ -216,7 +216,7 @@
                     </select>
                 </label>
             </div>
-            <small v-if="modelDeprecation(newActorProvider, newActorModel)" style="color: var(--del-color, #c62828); display: block; margin: -0.5em 0 0.5em;">
+            <small v-if="modelDeprecation(newActorProvider, newActorModel)" style="color: var(--error); display: block; margin: -0.5em 0 0.5em;">
                 &#9888; {{ modelDeprecation(newActorProvider, newActorModel) }}
             </small>
             <div v-if="newActorVirtual">
@@ -229,7 +229,7 @@
                     <input type="password" v-model="newActorApiKey" placeholder="Provider API key (encrypted at rest)">
                 </label>
                 <!-- Dynamic capability settings from provider registry -->
-                <div v-if="newActorProvider && newActorModel && Object.keys(capabilitiesFor(newActorProvider, newActorModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--card-sectionning-background-color); border-radius: 4px;">
+                <div v-if="newActorProvider && newActorModel && Object.keys(capabilitiesFor(newActorProvider, newActorModel)).length" style="margin: 0.5em 0; padding: 0.5em; background: var(--bg-input); border-radius: 4px;">
                     <small class="muted"><strong>Configuration</strong></small>
                     <div style="margin-top: 0.3em;">
                         <template v-for="(cap, key) in capabilitiesFor(newActorProvider, newActorModel)" :key="key">
@@ -283,10 +283,10 @@
                 Virtual agent created.
             </div>
             <div class="dialog-actions">
-                <button @click="createActor" :disabled="newActorCreating || !newActorName || newActorPassphrase">
+                <button class="btn btn-secondary" @click="actorCreating = false">{{ newActorPassphrase ? 'Done' : 'Cancel' }}</button>
+                <button class="btn btn-primary" @click="createActor" :disabled="newActorCreating || !newActorName || newActorPassphrase">
                     {{ newActorCreating ? 'Creating...' : 'Create' }}
                 </button>
-                <button class="secondary" @click="actorCreating = false">{{ newActorPassphrase ? 'Done' : 'Cancel' }}</button>
             </div>
         </div>
     </article>
