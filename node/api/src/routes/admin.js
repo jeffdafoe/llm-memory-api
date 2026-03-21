@@ -303,13 +303,24 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
         noteTotal += parseInt(nc.count, 10);
     }
 
+    // Error count (last 24h), filtered by agent visibility
+    let errorCountSql = `SELECT COUNT(*) AS count FROM error_log WHERE created_at > NOW() - INTERVAL '24 hours'`;
+    const errorCountParams = [];
+    if (hasFilter) {
+        errorCountSql += ' AND actor_id = ANY($1)';
+        errorCountParams.push(idsArray);
+    }
+    const errorCountResult = await pool.query(errorCountSql, errorCountParams);
+    const errorCount24h = parseInt(errorCountResult.rows[0].count, 10);
+
     res.json({
         agents: agents.rows,
         discussions: discussions.rows,
         chat: chat.rows,
         mail: mail.rows,
         system_messages: systemMessages.rows,
-        notes: { total: noteTotal, namespaces: noteCounts.length }
+        notes: { total: noteTotal, namespaces: noteCounts.length },
+        error_count_24h: errorCount24h
     });
 }));
 
