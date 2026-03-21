@@ -799,6 +799,40 @@ dialog article header h3 {
     margin: 0;
 }
 
+dialog article header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+/* Close button in dialog headers — replaces Pico's [aria-label="Close"][rel="prev"] */
+dialog article header button[aria-label="Close"] {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 20px;
+    line-height: 1;
+    padding: 4px;
+    border-radius: 6px;
+    transition: background 150ms ease, color 150ms ease;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+dialog article header button[aria-label="Close"]:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+dialog article header button[aria-label="Close"]::after {
+    content: '✕';
+}
+
 .dialog-body {
     flex: 1;
     overflow-y: auto;
