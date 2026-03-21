@@ -1,4 +1,4 @@
-<div>
+<div style="flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden;">
     <div class="page-header">
         <h2>Configuration</h2>
     </div>
@@ -38,13 +38,13 @@
                 </thead>
                 <tbody>
                     <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="openActorConfig(actor)">
-                        <td class="icon-cell">
+                        <td style="text-align:center; width:30px;">
                             <template v-if="actor.is_agent">
-                                <i v-if="actor.active_since" class="icon-loader activity-spinner" title="Active"></i>
+                                <span v-if="actor.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                                 <span v-else :class="'status-dot status-dot-' + actor.status" :title="actor.status"></span>
                             </template>
                         </td>
-                        <td class="nowrap" :title="actor.name">
+                        <td class="nowrap" :style="{ color: agentColor(actor.name) }" :title="actor.name">
                             {{ shortAgentName(actor.name) }}
                             <i v-if="actor.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
                         </td>
@@ -57,10 +57,10 @@
                             {{ [actor.provider, actor.model].filter(Boolean).join(' / ') || '—' }}
                             <br v-if="actor.pricing_info"><small v-if="actor.pricing_info" style="opacity: 0.7;">{{ actor.pricing_info }}</small>
                         </td>
-                        <td class="time-cell">
+                        <td class="time-cell ts">
                             <template v-if="actor.is_agent">
-                                {{ formatDate(actor.last_seen) }}
-                                <br><small class="muted" style="opacity: 0.7;">reg. {{ formatDate(actor.registered_at) }}</small>
+                                {{ timeAgo(actor.last_seen) }}
+                                <br><small style="opacity: 0.6;">reg. {{ formatShortDate(actor.registered_at) }}</small>
                             </template>
                             <template v-else>—</template>
                         </td>
