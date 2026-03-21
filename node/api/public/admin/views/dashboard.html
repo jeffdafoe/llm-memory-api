@@ -98,7 +98,7 @@
                                 </td>
                                 <td class="nowrap" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
                                 <td><span :class="'badge badge-' + agent.status"><span :class="'status-dot status-dot-' + agent.status"></span> {{ agent.status }}</span></td>
-                                <td class="time-cell nowrap" :class="agent.status === 'online' ? '' : 'ts'">{{ timeAgo(agent.last_seen) }}</td>
+                                <td class="time-cell nowrap" :style="{ color: lastSeenColor(agent) }">{{ timeAgo(agent.last_seen) }}</td>
                             </tr>
                         </tbody>
                     </table>

@@ -331,6 +331,21 @@ function useCore() {
         return { question: text, choices: [] };
     }
 
+    // Fade last-seen text from primary to muted over 15 minutes (online threshold)
+    function lastSeenColor(agent) {
+        if (!agent.last_seen) return 'var(--text-muted)';
+        var elapsed = (Date.now() - new Date(agent.last_seen).getTime()) / 1000;
+        var threshold = 900; // 15 minutes
+        if (elapsed <= 0) return 'var(--text-primary)';
+        if (elapsed >= threshold) return 'var(--text-muted)';
+        // Interpolate between primary (#e4e4e7) and muted (#71717a)
+        var t = elapsed / threshold;
+        var r = Math.round(228 - t * (228 - 113));
+        var g = Math.round(228 - t * (228 - 113));
+        var b = Math.round(231 - t * (231 - 122));
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
     return {
         authenticated, sessionToken, user, permissions, canDo,
         loginForm, loginError, loggingIn,
@@ -339,7 +354,7 @@ function useCore() {
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatDuration, formatTime,
-        statusIcon, outcomeIcon, agentColor, shortAgentName, voteQuestion
+        statusIcon, outcomeIcon, agentColor, shortAgentName, voteQuestion, lastSeenColor
     };
 }
 
