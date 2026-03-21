@@ -9,7 +9,7 @@
         <div class="stat-item">
             <div class="stat-label">Agents Online</div>
             <div class="stat-value" :class="{ success: dashboard.agents.filter(a => a.status === 'online').length > 0 }">{{ dashboard.agents.filter(a => a.status === 'online').length }}</div>
-            <div class="stat-meta">{{ dashboard.agents.filter(a => a.status === 'online').map(a => shortAgentName(a.agent)).join(', ') || 'none' }}</div>
+            <div class="stat-meta"><template v-if="dashboard.agents.filter(a => a.status === 'online').length === 0">none</template><template v-for="(a, i) in dashboard.agents.filter(a => a.status === 'online')" :key="a.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(a.agent) }">{{ shortAgentName(a.agent) }}</span></template></div>
         </div>
         <div class="stat-item">
             <div class="stat-label">Discussions</div>
