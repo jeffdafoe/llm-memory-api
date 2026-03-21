@@ -254,10 +254,10 @@
                 </thead>
                 <tbody>
                     <tr v-for="entry in errorLogEntries.slice(0, 5)" :key="entry.id">
-                        <td class="ts">{{ formatTime(entry.timestamp) }}</td>
-                        <td class="log-mono" style="color: var(--error);">{{ entry.category }}</td>
+                        <td class="ts">{{ formatTime(entry.created_at) }}</td>
+                        <td class="log-mono" style="color: var(--error);">{{ entry.subsystem }}</td>
                         <td class="log-mono">{{ entry.action }}</td>
-                        <td class="message-cell">{{ entry.message }}</td>
+                        <td class="message-cell">{{ entry.error_message }}</td>
                     </tr>
                 </tbody>
             </table>
