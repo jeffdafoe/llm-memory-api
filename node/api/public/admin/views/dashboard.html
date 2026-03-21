@@ -198,8 +198,8 @@
                 <colgroup>
                     <col style="width: 3.5em;">
                     <col style="width: 3.5em;">
-                    <col>
                     <col class="col-agent">
+                    <col>
                     <col style="width: 3em;">
                     <col class="col-time">
                 </colgroup>
@@ -207,8 +207,8 @@
                     <tr>
                         <th></th>
                         <th>ID</th>
-                        <th>Topic</th>
                         <th>Created By</th>
+                        <th>Topic</th>
                         <th>Agents</th>
                         <th class="time-cell">Created</th>
                     </tr>
@@ -217,8 +217,8 @@
                     <tr v-for="d in dashboard.discussions.slice(0, 3)" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
                         <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
                         <td>{{ d.id }}</td>
-                        <td class="message-cell">{{ d.topic }}</td>
                         <td :style="{ color: agentColor(d.created_by) }">{{ shortAgentName(d.created_by) }}</td>
+                        <td class="message-cell">{{ d.topic }}</td>
                         <td>{{ d.participant_count }}</td>
                         <td class="time-cell ts">{{ timeAgo(d.created_at) }}</td>
                     </tr>
