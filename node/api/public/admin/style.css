@@ -1208,7 +1208,8 @@ h4 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; color: var(--text-pr
 .log-status-pending { color: var(--text-muted); }
 
 .status-row-server { background: var(--error-subtle); }
-.status-row-client { background: var(--warning-subtle); }
+/* No background highlight for client errors — too noisy */
+.status-row-client { /* no background — text color is enough */ }
 
 .log-toggle {
     font-size: 10px;
