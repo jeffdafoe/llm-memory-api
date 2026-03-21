@@ -2,7 +2,7 @@
     <div class="page-header">
         <h2>Dashboard</h2>
     </div>
-    <div class="page-content" style="display:flex; flex-direction:column; overflow:hidden;">
+    <div class="page-content" style="display:flex; flex-direction:column;">
 
     <!-- Stat strip -->
     <div class="stat-strip">
@@ -28,7 +28,7 @@
         </div>
     </div>
 
-    <!-- Live Discussion — full width, fills remaining height when active -->
+    <!-- Live Discussion — fills remaining height when active -->
     <template v-if="liveDiscussions.length > 0">
         <div v-for="live in liveDiscussions" :key="live.discussion.id" class="live-discussion-panel" style="flex:1; min-height:0;">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
@@ -93,7 +93,7 @@
                                     <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
                                 </td>
                                 <td class="nowrap" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
-                                <td><span :class="'badge badge-' + agent.status"><span v-if="agent.status === 'online' || agent.status === 'available'" :class="'status-dot status-dot-' + agent.status"></span><span v-else-if="agent.status === 'offline'" class="status-dot status-dot-offline"></span>{{ agent.status }}</span></td>
+                                <td><span :class="'badge badge-' + agent.status"><span :class="'status-dot status-dot-' + agent.status"></span> {{ agent.status }}</span></td>
                                 <td class="time-cell nowrap">{{ timeAgo(agent.last_seen) }}</td>
                             </tr>
                         </tbody>
@@ -339,7 +339,7 @@
         </details>
     </div>
 
-    </div><!-- end normal dashboard -->
+    </div><!-- end normal dashboard (v-else) -->
 
     </div><!-- end page-content -->
 </div>
