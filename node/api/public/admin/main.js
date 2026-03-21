@@ -1,5 +1,4 @@
 // main.js — Entry point for the admin dashboard (replaces app.js + CDN scripts)
-import '@picocss/pico/css/pico.min.css';
 import 'lucide-static/font/lucide.css';
 import './style.css';
 
@@ -34,6 +33,16 @@ createApp({
 
         const configSubTab = ref('actors');
         const commSubTab = ref('mail');
+
+        // Theme
+        const theme = ref(localStorage.getItem('admin_theme') || 'dark');
+        document.documentElement.setAttribute('data-theme', theme.value);
+
+        function toggleTheme() {
+            theme.value = theme.value === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', theme.value);
+            localStorage.setItem('admin_theme', theme.value);
+        }
 
         // ─── Hash-based tab persistence ───
         const validViews = new Set(['dashboard', 'agents', 'comms', 'notes', 'config']);
@@ -305,6 +314,8 @@ createApp({
             viewTitle,
             configSubTab,
             commSubTab,
+            theme,
+            toggleTheme,
             // Core
             ...core,
             login,

@@ -1,4 +1,9 @@
-<div class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
+<div>
+    <div class="page-header">
+        <h2>Notes</h2>
+    </div>
+    <div class="page-content" style="padding-bottom: 0;">
+    <div class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
     <div class="notes-sidebar">
         <div class="notes-sidebar-header">
             <form @submit.prevent="searchNotes" class="notes-search-form">
@@ -126,4 +131,6 @@
             </div>
         </article>
     </dialog>
+    </div>
+    </div>
 </div>

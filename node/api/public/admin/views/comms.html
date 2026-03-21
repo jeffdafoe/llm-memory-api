@@ -1,10 +1,14 @@
 <div>
-    <div class="sub-tabs">
+    <div class="page-header">
+        <h2>Communications</h2>
+    </div>
+    <div class="sub-tabs" style="padding: 0 24px;">
         <a href="#" :class="{ active: commSubTab === 'mail' }" @click.prevent="commSubTab = 'mail'">Mail</a>
         <a href="#" :class="{ active: commSubTab === 'chat' }" @click.prevent="commSubTab = 'chat'">Chat</a>
         <a href="#" :class="{ active: commSubTab === 'discussions' }" @click.prevent="commSubTab = 'discussions'">Discussions</a>
     </div>
 
+    <div class="page-content">
     <!-- Mail sub-tab -->
     <div v-if="commSubTab === 'mail'">
         <div class="mail-toolbar">
@@ -141,5 +145,6 @@
                 </tbody>
             </table>
         </div>
+    </div>
     </div>
 </div>
