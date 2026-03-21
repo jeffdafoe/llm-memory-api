@@ -328,10 +328,9 @@ a:hover { text-decoration: underline; }
 }
 
 .page-content {
-    flex: 1;
+    flex: 1 1 0;
     padding: 20px 24px 24px;
     overflow-y: auto;
-    min-height: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1132,8 +1131,7 @@ dialog article header button[aria-label="Close"]::after {
 
 /* Dashboard page content — scrollable normally, flex column when live discussion active */
 .dashboard-page-content {
-    overflow-y: auto;
-    height: 0;
+    overflow-y: auto !important;
 }
 
 .dashboard-page-content.dashboard-live-active {
