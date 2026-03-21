@@ -2,7 +2,7 @@
     <div class="page-header">
         <h2>Dashboard</h2>
     </div>
-    <div class="page-content" style="display:flex; flex-direction:column;">
+    <div class="page-content" style="display:flex; flex-direction:column; overflow:hidden;">
 
     <!-- Stat strip -->
     <div class="stat-strip">
@@ -20,6 +20,11 @@
             <div class="stat-label">Unread Mail</div>
             <div class="stat-value" :class="{ accent: dashboard.mail.filter(m => !m.acked_at).length > 0 }">{{ dashboard.mail.filter(m => !m.acked_at).length }}</div>
             <div class="stat-meta">of {{ dashboard.mail.length }} total</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Notes</div>
+            <div class="stat-value">{{ dashboard.notes ? dashboard.notes.total : '—' }}</div>
+            <div class="stat-meta">{{ dashboard.notes ? dashboard.notes.namespaces + ' namespaces' : '' }}</div>
         </div>
         <div class="stat-item">
             <div class="stat-label">Errors (24h)</div>
@@ -80,7 +85,7 @@
                     <table>
                         <thead>
                             <tr>
-                                <th class="col-activity"></th>
+                                <th style="width:30px"></th>
                                 <th>Agent</th>
                                 <th>Status</th>
                                 <th class="time-cell nowrap">Last Seen</th>
@@ -88,13 +93,12 @@
                         </thead>
                         <tbody>
                             <tr v-for="agent in dashboard.agents.slice(0, 6)" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
-                                <td class="icon-cell">
-                                    <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
-                                    <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
+                                <td style="text-align:center; width:30px;">
+                                    <span v-if="agent.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                                 </td>
-                                <td class="nowrap" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
+                                <td class="nowrap" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
                                 <td><span :class="'badge badge-' + agent.status"><span :class="'status-dot status-dot-' + agent.status"></span> {{ agent.status }}</span></td>
-                                <td class="time-cell nowrap">{{ timeAgo(agent.last_seen) }}</td>
+                                <td class="time-cell nowrap ts">{{ timeAgo(agent.last_seen) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -120,7 +124,7 @@
                         <thead>
                             <tr>
                                 <th class="nowrap">Agent</th>
-                                <th>Path</th>
+                                <th>Endpoint</th>
                                 <th class="nowrap">Status</th>
                                 <th class="num nowrap">Size</th>
                                 <th class="num nowrap">Duration</th>
@@ -129,7 +133,7 @@
                         </thead>
                         <tbody>
                             <tr v-for="entry in dashboardApiLog.slice(0, 8)" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
-                                <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                                <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                                 <td class="message-cell log-mono">{{ entry.path }}</td>
                                 <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
                                 <td class="log-mono num">{{ formatBytes(entry.response_length) }}</td>
@@ -176,7 +180,7 @@
                         <td :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</td>
                         <td :style="{ color: agentColor(msg.to_agent) }">{{ msg.to_agent }}</td>
                         <td class="message-cell">{{ msg.subject }}</td>
-                        <td class="time-cell">{{ timeAgo(msg.sent_at) }}</td>
+                        <td class="time-cell ts">{{ timeAgo(msg.sent_at) }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -216,7 +220,7 @@
                         <td class="message-cell">{{ d.topic }}</td>
                         <td :style="{ color: agentColor(d.created_by) }">{{ shortAgentName(d.created_by) }}</td>
                         <td>{{ d.participant_count }}</td>
-                        <td class="time-cell">{{ timeAgo(d.created_at) }}</td>
+                        <td class="time-cell ts">{{ timeAgo(d.created_at) }}</td>
                     </tr>
                 </tbody>
             </table>
