@@ -62,9 +62,26 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
 
     // Build a flat tree structure from a list of slugs
     function buildTree(notes) {
+        // Sort notes so folders appear before files at each level:
+        // notes with deeper paths (containing more /) sort first within their parent,
+        // then alphabetically within the same depth
+        const sorted = [...notes].sort((a, b) => {
+            var aParts = a.slug.split('/');
+            var bParts = b.slug.split('/');
+            // Compare common path segments
+            var minLen = Math.min(aParts.length, bParts.length);
+            for (var i = 0; i < minLen - 1; i++) {
+                var cmp = aParts[i].localeCompare(bParts[i]);
+                if (cmp !== 0) return cmp;
+            }
+            // At the divergence point: deeper paths (folders) come first
+            if (aParts.length !== bParts.length) return bParts.length - aParts.length;
+            // Same depth: alphabetical
+            return a.slug.localeCompare(b.slug);
+        });
+
         const tree = [];
         const folders = new Set();
-        const sorted = [...notes].sort((a, b) => a.slug.localeCompare(b.slug));
 
         for (const note of sorted) {
             const parts = note.slug.split('/');
