@@ -72,7 +72,7 @@
                         <col>
                         <col style="width: 4.5em;">
                         <col style="width: 5em;">
-                        <col style="width: 3em;">
+                        <col style="width: 5em;">
                         <col style="width: 6.5em;">
                     </colgroup>
                     <thead>
@@ -91,7 +91,7 @@
                             <td class="message-cell log-mono">{{ entry.path }}</td>
                             <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
                             <td class="log-mono time-cell">{{ formatBytes(entry.response_length) }}</td>
-                            <td class="log-mono time-cell">{{ entry.duration !== null ? entry.duration : '' }}</td>
+                            <td class="log-mono time-cell">{{ formatDuration(entry.duration) }}</td>
                             <td class="log-mono nowrap">{{ formatTime(entry.timestamp) }}</td>
                         </tr>
                     </tbody>

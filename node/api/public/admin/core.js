@@ -227,6 +227,12 @@ function useCore() {
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
+    function formatDuration(ms) {
+        if (ms === null || ms === undefined) return '';
+        if (ms < 1000) return ms + ' ms';
+        return (ms / 1000).toFixed(2) + ' s';
+    }
+
     function formatTime(dateStr) {
         if (!dateStr) return '';
         const d = new Date(dateStr);
@@ -323,7 +329,7 @@ function useCore() {
         login, logout, restoreSession,
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
-        formatDate, formatShortDate, timeAgo, formatBytes, formatTime,
+        formatDate, formatShortDate, timeAgo, formatBytes, formatDuration, formatTime,
         statusIcon, outcomeIcon, agentColor, shortAgentName, voteQuestion
     };
 }
