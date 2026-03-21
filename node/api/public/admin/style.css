@@ -24,15 +24,15 @@
 
 /* ── Dark Theme (default) ── */
 html, [data-theme="dark"] {
-    --bg-base: #1a1a2e;
-    --bg-surface: #1e1e34;
-    --bg-elevated: #252542;
-    --bg-input: #12121f;
-    --bg-hover: #2a2a4a;
+    --bg-base: #131320;
+    --bg-surface: #1c1c30;
+    --bg-elevated: #2f2f52;
+    --bg-input: #0f0f1a;
+    --bg-hover: #2e2e50;
 
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-default: rgba(255, 255, 255, 0.12);
-    --border-strong: rgba(255, 255, 255, 0.18);
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.16);
 
     --text-primary: #e4e4e7;
     --text-secondary: #a1a1aa;
@@ -57,15 +57,15 @@ html, [data-theme="dark"] {
 
 /* ── Light Theme ── */
 [data-theme="light"] {
-    --bg-base: #f8f8fa;
+    --bg-base: #f3f3f6;
     --bg-surface: #ffffff;
     --bg-elevated: #ffffff;
-    --bg-input: #f1f1f5;
-    --bg-hover: #f1f1f5;
+    --bg-input: #eaeaef;
+    --bg-hover: #ededf2;
 
-    --border-subtle: rgba(0, 0, 0, 0.06);
-    --border-default: rgba(0, 0, 0, 0.12);
-    --border-strong: rgba(0, 0, 0, 0.20);
+    --border-subtle: rgba(0, 0, 0, 0.05);
+    --border-default: rgba(0, 0, 0, 0.10);
+    --border-strong: rgba(0, 0, 0, 0.18);
 
     --text-primary: #18181b;
     --text-secondary: #52525b;
@@ -181,8 +181,6 @@ a:hover { text-decoration: underline; }
 .nav-item.active {
     background: var(--accent-subtle);
     color: var(--accent-text);
-    border-left: 3px solid var(--accent);
-    padding-left: 9px;
 }
 
 .nav-item i {
@@ -584,22 +582,26 @@ table {
 }
 
 thead th {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 10px 12px;
+    letter-spacing: 0.06em;
+    padding: 8px 12px;
     text-align: left;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-default);
     background: var(--bg-surface);
 }
 
 tbody td {
-    padding: 8px 12px;
+    padding: 7px 12px;
     border-bottom: 1px solid var(--border-subtle);
     font-size: 13px;
+    vertical-align: middle;
 }
+
+/* Numeric alignment */
+.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 tbody tr:last-child td { border-bottom: none; }
 
@@ -666,10 +668,11 @@ tbody tr:last-child td { border-bottom: none; }
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 500;
+    letter-spacing: 0.01em;
 }
 
 .badge-online, .badge-available { background: var(--success-subtle); color: var(--success); }
