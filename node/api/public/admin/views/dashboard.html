@@ -2,139 +2,157 @@
     <div class="page-header">
         <h2>Dashboard</h2>
     </div>
-    <div class="page-content">
+    <div class="page-content" style="display:flex; flex-direction:column; overflow:hidden;">
 
-    <!-- Live Discussions -->
-    <div v-for="live in liveDiscussions" :key="live.discussion.id" class="live-discussion">
-        <h4><i class="icon-radio"></i> Live Discussion #{{ live.discussion.id }}</h4>
-        <p class="live-topic">{{ live.discussion.topic }}</p>
-        <p class="live-meta">
-            <strong>Created by:</strong> <span :style="{ color: agentColor(live.discussion.created_by) }" :title="live.discussion.created_by">{{ shortAgentName(live.discussion.created_by) }}</span>
-            · <strong>Participants:</strong> <template v-for="(p, i) in live.participants" :key="p.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(p.agent) }" :title="p.agent">{{ shortAgentName(p.agent) }}</span></template>
-            · <strong>Started:</strong> {{ formatDate(live.discussion.created_at) }}
-        </p>
-        <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
-            <div v-for="v in live.votes.filter(v => v.status === 'open')" :key="v.id" class="live-vote-card">
-                <strong>Open Vote #{{ v.id }}:</strong> {{ voteQuestion(v.question).question }} <strong v-for="c in voteQuestion(v.question).choices" :key="c" class="vote-choice">{{ c }}</strong>
-            </div>
+    <!-- Stat strip -->
+    <div class="stat-strip">
+        <div class="stat-item">
+            <div class="stat-label">Agents Online</div>
+            <div class="stat-value" :class="{ success: dashboard.agents.filter(a => a.status === 'online').length > 0 }">{{ dashboard.agents.filter(a => a.status === 'online').length }}</div>
+            <div class="stat-meta">{{ dashboard.agents.filter(a => a.status === 'online').map(a => shortAgentName(a.agent)).join(', ') || 'none' }}</div>
         </div>
-        <div class="live-chat-transcript">
-            <div v-if="live.chat.length === 0" class="muted">No messages yet.</div>
-            <template v-for="msg in live.chat" :key="msg.id">
-                <div v-if="msg.from_agent === 'system'" class="chat-event">
-                    {{ msg.message }}
-                    <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
+        <div class="stat-item">
+            <div class="stat-label">Discussions</div>
+            <div class="stat-value" :class="{ accent: dashboard.discussions.filter(d => d.status === 'active').length > 0 }">{{ dashboard.discussions.filter(d => d.status === 'active').length }}</div>
+            <div class="stat-meta">active</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Unread Mail</div>
+            <div class="stat-value" :class="{ accent: dashboard.mail.filter(m => !m.acked_at).length > 0 }">{{ dashboard.mail.filter(m => !m.acked_at).length }}</div>
+            <div class="stat-meta">of {{ dashboard.mail.length }} total</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Errors (24h)</div>
+            <div class="stat-value" :class="{ error: errorLogEntries.length > 0 }">{{ errorLogEntries.length }}</div>
+            <div class="stat-meta">{{ errorLogEntries.length === 0 ? 'All clear' : 'recent' }}</div>
+        </div>
+    </div>
+
+    <!-- Live Discussion — full width, fills remaining height when active -->
+    <template v-if="liveDiscussions.length > 0">
+        <div v-for="live in liveDiscussions" :key="live.discussion.id" class="live-discussion-panel" style="flex:1; min-height:0;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
+                <span class="live-pulse-dot"></span>
+                <h3 class="section-title" style="color: var(--success); margin:0;">Live Discussion #{{ live.discussion.id }}</h3>
+            </div>
+            <div style="margin-bottom: 6px; font-size: 15px;">{{ live.discussion.topic }}</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                <strong>Created by:</strong> <span :style="{ color: agentColor(live.discussion.created_by) }" :title="live.discussion.created_by">{{ shortAgentName(live.discussion.created_by) }}</span>
+                · <strong>Participants:</strong> <template v-for="(p, i) in live.participants" :key="p.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(p.agent) }" :title="p.agent">{{ shortAgentName(p.agent) }}</span></template>
+                · <strong>Started:</strong> {{ timeAgo(live.discussion.created_at) }}
+            </div>
+            <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
+                <div v-for="v in live.votes.filter(v => v.status === 'open')" :key="v.id" class="live-vote-card">
+                    <strong>Open Vote #{{ v.id }}:</strong> {{ voteQuestion(v.question).question }} <strong v-for="c in voteQuestion(v.question).choices" :key="c" class="vote-choice">{{ c }}</strong>
                 </div>
-                <div v-else class="chat-bubble">
-                    <div class="chat-meta">
-                        <strong :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</strong>
-                        <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
+            </div>
+            <div class="live-discussion-transcript live-chat-transcript">
+                <div v-if="live.chat.length === 0" class="muted">No messages yet.</div>
+                <template v-for="msg in live.chat" :key="msg.id">
+                    <div v-if="msg.from_agent === 'system'" class="chat-event">
+                        {{ msg.message }}
+                        <span class="chat-time">{{ timeAgo(msg.sent_at) }}</span>
                     </div>
-                    <div class="chat-text">{{ msg.message }}</div>
+                    <div v-else class="chat-bubble">
+                        <div class="chat-meta">
+                            <strong :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</strong>
+                            <span class="chat-time">{{ timeAgo(msg.sent_at) }}</span>
+                        </div>
+                        <div class="chat-text">{{ msg.message }}</div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    <!-- Normal dashboard (no live discussion) -->
+    <div v-else style="flex:1; overflow-y:auto; min-height:0;">
+
+    <!-- Agents + API Log side by side -->
+    <div class="dashboard-columns">
+        <div class="section">
+            <div class="section-header">
+                <h3 class="section-title">Agent Status</h3>
+                <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'agents'">View all</a>
+            </div>
+            <div class="table-wrap">
+                <div class="agents-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="col-activity"></th>
+                                <th>Agent</th>
+                                <th>Status</th>
+                                <th class="time-cell nowrap">Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="agent in dashboard.agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                                <td class="icon-cell">
+                                    <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
+                                    <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
+                                </td>
+                                <td class="nowrap" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
+                                <td><span :class="'badge badge-' + agent.status"><span v-if="agent.status === 'online' || agent.status === 'available'" :class="'status-dot status-dot-' + agent.status"></span><span v-else-if="agent.status === 'offline'" class="status-dot status-dot-offline"></span>{{ agent.status }}</span></td>
+                                <td class="time-cell nowrap">{{ timeAgo(agent.last_seen) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
-            </template>
-        </div>
-    </div>
-
-    <div class="dashboard-top">
-        <div class="dashboard-agents">
-            <h4><i class="icon-bot"></i> Agents</h4>
-            <div class="agents-scroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="col-activity"></th>
-                            <th>Agent</th>
-                            <th>Status</th>
-                            <th class="time-cell nowrap">Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="agent in dashboard.agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
-                            <td class="icon-cell">
-                                <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
-                                <i v-if="agent.active_since" class="icon-loader activity-spinner" title="Active"></i>
-                            </td>
-                            <td class="nowrap" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
-                            <td><span :class="'badge badge-' + agent.status">{{ agent.status }}</span></td>
-                            <td class="time-cell nowrap">{{ formatDate(agent.last_seen) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
             </div>
         </div>
-        <div class="dashboard-apilog">
-            <h4><i class="icon-activity"></i> API Log</h4>
-            <div class="api-log-scroll" ref="apiLogContainer">
-                <table class="fixed-table">
-                    <colgroup>
-                        <col style="width: 9em;">
-                        <col>
-                        <col style="width: 4.5em;">
-                        <col style="width: 5em;">
-                        <col style="width: 5em;">
-                        <col style="width: 6.5em;">
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th class="nowrap">Agent</th>
-                            <th>Path</th>
-                            <th class="nowrap">Status</th>
-                            <th class="time-cell nowrap">Size</th>
-                            <th class="time-cell nowrap">ms</th>
-                            <th class="nowrap">Time</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="entry in apiLogEntries" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
-                            <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
-                            <td class="message-cell log-mono">{{ entry.path }}</td>
-                            <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
-                            <td class="log-mono time-cell">{{ formatBytes(entry.response_length) }}</td>
-                            <td class="log-mono time-cell">{{ formatDuration(entry.duration) }}</td>
-                            <td class="log-mono nowrap">{{ formatTime(entry.timestamp) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+        <div class="section">
+            <div class="section-header">
+                <h3 class="section-title">Recent API Activity</h3>
+                <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'config'; configSubTab = 'apilog'">View all</a>
+            </div>
+            <div class="table-wrap">
+                <div class="api-log-scroll" ref="apiLogContainer">
+                    <table class="fixed-table">
+                        <colgroup>
+                            <col style="width: 9em;">
+                            <col>
+                            <col style="width: 4.5em;">
+                            <col style="width: 5em;">
+                            <col style="width: 5em;">
+                            <col style="width: 6.5em;">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th class="nowrap">Agent</th>
+                                <th>Path</th>
+                                <th class="nowrap">Status</th>
+                                <th class="num nowrap">Size</th>
+                                <th class="num nowrap">Duration</th>
+                                <th class="nowrap">Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="entry in apiLogEntries" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
+                                <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                                <td class="message-cell log-mono">{{ entry.path }}</td>
+                                <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
+                                <td class="log-mono num">{{ formatBytes(entry.response_length) }}</td>
+                                <td class="log-mono num">{{ formatDuration(entry.duration) }}</td>
+                                <td class="log-mono nowrap">{{ formatTime(entry.timestamp) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
-    <h4><i class="icon-mail"></i> Mail <span class="unread-count">({{ dashboard.mail.filter(m => !m.acked_at).length }} unread)</span></h4>
-    <div class="table-wrap" v-if="dashboard.mail.filter(m => !m.acked_at).length">
-        <table class="fixed-table">
-            <colgroup>
-                <col class="col-icon">
-                <col class="col-agent">
-                <col class="col-agent">
-                <col>
-                <col class="col-time">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th></th>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Subject</th>
-                    <th class="time-cell">Time</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="msg in dashboard.mail.filter(m => !m.acked_at)" :key="msg.id" @click="viewMail(msg)" class="clickable unread">
-                    <td class="icon-cell"><i class="icon-circle unacked-icon"></i></td>
-                    <td>{{ msg.from_agent }}</td>
-                    <td>{{ msg.to_agent }}</td>
-                    <td class="message-cell">{{ msg.subject }}</td>
-                    <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    <details v-if="dashboard.mail.filter(m => m.acked_at).length">
-        <summary><i class="icon-chevron-right summary-chevron"></i> All mail</summary>
+    <!-- Recent Mail -->
+    <div class="section">
+        <div class="section-header">
+            <h3 class="section-title">Recent Mail</h3>
+            <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'comms'; commSubTab = 'mail'">View all</a>
+        </div>
         <div class="table-wrap">
             <table class="fixed-table">
                 <colgroup>
+                    <col class="col-icon">
                     <col class="col-agent">
                     <col class="col-agent">
                     <col>
@@ -142,6 +160,7 @@
                 </colgroup>
                 <thead>
                     <tr>
+                        <th></th>
                         <th>From</th>
                         <th>To</th>
                         <th>Subject</th>
@@ -149,80 +168,108 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="msg in dashboard.mail.filter(m => m.acked_at)" :key="msg.id" @click="viewMail(msg)" class="clickable">
-                        <td>{{ msg.from_agent }}</td>
-                        <td>{{ msg.to_agent }}</td>
+                    <tr v-for="msg in dashboard.mail" :key="msg.id" @click="viewMail(msg)" class="clickable" :class="{ unread: !msg.acked_at }">
+                        <td class="icon-cell">
+                            <i v-if="msg.acked_at" class="icon-check acked-icon"></i>
+                            <span v-else class="status-dot status-dot-online" style="width:6px; height:6px;" title="Unread"></span>
+                        </td>
+                        <td :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</td>
+                        <td :style="{ color: agentColor(msg.to_agent) }">{{ msg.to_agent }}</td>
                         <td class="message-cell">{{ msg.subject }}</td>
-                        <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
+                        <td class="time-cell">{{ timeAgo(msg.sent_at) }}</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-    </details>
-
-    <h4><i class="icon-messages-square"></i> Discussions</h4>
-    <div class="table-wrap">
-        <table class="fixed-table">
-            <colgroup>
-                <col style="width: 3.5em;">
-                <col style="width: 3.5em;">
-                <col>
-                <col class="col-time">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th></th>
-                    <th>ID</th>
-                    <th>Topic</th>
-                    <th class="time-cell">Created</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="d in dashboard.discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
-                    <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
-                    <td>{{ d.id }}</td>
-                    <td class="message-cell">{{ d.topic }}</td>
-                    <td class="time-cell">{{ formatDate(d.created_at) }}</td>
-                </tr>
-            </tbody>
-        </table>
     </div>
 
-    <h4><i class="icon-message-square"></i> Chat <span class="unread-count">({{ dashboard.chat.filter(m => !m.acked_at).length }} unread)</span></h4>
-    <div class="table-wrap" v-if="dashboard.chat.filter(m => !m.acked_at).length">
-        <table class="fixed-table">
-            <colgroup>
-                <col class="col-icon">
-                <col class="col-agent">
-                <col class="col-agent">
-                <col>
-                <col class="col-time">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th></th>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Message</th>
-                    <th class="time-cell">Time</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="msg in dashboard.chat.filter(m => !m.acked_at)" :key="msg.id" @click="selectedMessage = msg" class="clickable unread">
-                    <td class="icon-cell"><i class="icon-circle unacked-icon"></i></td>
-                    <td>{{ msg.from_agent }}</td>
-                    <td>{{ msg.to_agent }}</td>
-                    <td class="message-cell">{{ msg.message }}</td>
-                    <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    <details v-if="dashboard.chat.filter(m => m.acked_at).length">
-        <summary><i class="icon-chevron-right summary-chevron"></i> All chat</summary>
+    <!-- Recent Discussions -->
+    <div class="section">
+        <div class="section-header">
+            <h3 class="section-title">Recent Discussions</h3>
+            <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'comms'; commSubTab = 'discussions'">View all</a>
+        </div>
         <div class="table-wrap">
             <table class="fixed-table">
                 <colgroup>
+                    <col style="width: 3.5em;">
+                    <col style="width: 3.5em;">
+                    <col>
+                    <col class="col-agent">
+                    <col style="width: 3em;">
+                    <col class="col-time">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>ID</th>
+                        <th>Topic</th>
+                        <th>Created By</th>
+                        <th>#</th>
+                        <th class="time-cell">Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="d in dashboard.discussions" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
+                        <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
+                        <td>{{ d.id }}</td>
+                        <td class="message-cell">{{ d.topic }}</td>
+                        <td :style="{ color: agentColor(d.created_by) }">{{ shortAgentName(d.created_by) }}</td>
+                        <td>{{ d.participant_count }}</td>
+                        <td class="time-cell">{{ timeAgo(d.created_at) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Recent Errors -->
+    <div class="section">
+        <div class="section-header">
+            <h3 class="section-title">Recent Errors</h3>
+            <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'config'; configSubTab = 'errorlog'">View all</a>
+        </div>
+        <div v-if="errorLogEntries.length === 0" class="table-wrap" style="padding: 24px; text-align: center; color: var(--text-muted);">
+            No errors in the last 24 hours
+        </div>
+        <div v-else class="table-wrap">
+            <table class="fixed-table">
+                <colgroup>
+                    <col style="width: 6em;">
+                    <col style="width: 8em;">
+                    <col style="width: 10em;">
+                    <col>
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Category</th>
+                        <th>Action</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="entry in errorLogEntries.slice(0, 5)" :key="entry.id">
+                        <td class="ts">{{ formatTime(entry.timestamp) }}</td>
+                        <td class="log-mono" style="color: var(--error);">{{ entry.category }}</td>
+                        <td class="log-mono">{{ entry.action }}</td>
+                        <td class="message-cell">{{ entry.message }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="section">
+        <div class="section-header">
+            <h3 class="section-title">Recent Chat</h3>
+            <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'comms'; commSubTab = 'chat'">View all</a>
+        </div>
+        <div class="table-wrap">
+            <table class="fixed-table">
+                <colgroup>
+                    <col class="col-icon">
                     <col class="col-agent">
                     <col class="col-agent">
                     <col>
@@ -230,6 +277,7 @@
                 </colgroup>
                 <thead>
                     <tr>
+                        <th></th>
                         <th>From</th>
                         <th>To</th>
                         <th>Message</th>
@@ -237,49 +285,61 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="msg in dashboard.chat.filter(m => m.acked_at)" :key="msg.id" @click="selectedMessage = msg" class="clickable">
-                        <td>{{ msg.from_agent }}</td>
-                        <td>{{ msg.to_agent }}</td>
+                    <tr v-for="msg in dashboard.chat" :key="msg.id" @click="selectedMessage = msg" class="clickable" :class="{ unread: !msg.acked_at }">
+                        <td class="icon-cell">
+                            <i v-if="msg.acked_at" class="icon-check acked-icon"></i>
+                            <span v-else class="status-dot status-dot-online" style="width:6px; height:6px;" title="Unread"></span>
+                        </td>
+                        <td :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</td>
+                        <td :style="{ color: agentColor(msg.to_agent) }">{{ msg.to_agent }}</td>
                         <td class="message-cell">{{ msg.message }}</td>
-                        <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
+                        <td class="time-cell">{{ timeAgo(msg.sent_at) }}</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-    </details>
-
-    <h4><i class="icon-radio"></i> System Messages <span class="unread-count">({{ dashboard.system_messages.filter(m => !m.acked_at).length }} unread)</span></h4>
-    <details>
-        <summary><i class="icon-chevron-right summary-chevron"></i> Show</summary>
-        <div class="table-wrap">
-            <table class="fixed-table">
-                <colgroup>
-                    <col class="col-icon">
-                    <col class="col-agent">
-                    <col class="col-channel">
-                    <col>
-                    <col class="col-time">
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th></th>
-                        <th>To</th>
-                        <th>Channel</th>
-                        <th>Message</th>
-                        <th class="time-cell">Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="msg in dashboard.system_messages" :key="msg.id" :class="{ unread: !msg.acked_at }">
-                        <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
-                        <td>{{ msg.to_agent }}</td>
-                        <td>{{ msg.channel || '—' }}</td>
-                        <td class="message-cell">{{ msg.message }}</td>
-                        <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </details>
     </div>
+
+    <!-- System Messages -->
+    <div class="section">
+        <div class="section-header">
+            <h3 class="section-title">System Messages <span class="unread-count">({{ dashboard.system_messages.filter(m => !m.acked_at).length }} unread)</span></h3>
+        </div>
+        <details>
+            <summary><i class="icon-chevron-right summary-chevron"></i> Show</summary>
+            <div class="table-wrap">
+                <table class="fixed-table">
+                    <colgroup>
+                        <col class="col-icon">
+                        <col class="col-agent">
+                        <col class="col-channel">
+                        <col>
+                        <col class="col-time">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>To</th>
+                            <th>Channel</th>
+                            <th>Message</th>
+                            <th class="time-cell">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="msg in dashboard.system_messages" :key="msg.id" :class="{ unread: !msg.acked_at }">
+                            <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                            <td>{{ msg.to_agent }}</td>
+                            <td>{{ msg.channel || '—' }}</td>
+                            <td class="message-cell">{{ msg.message }}</td>
+                            <td class="time-cell">{{ timeAgo(msg.sent_at) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    </div>
+
+    </div><!-- end normal dashboard -->
+
+    </div><!-- end page-content -->
 </div>
