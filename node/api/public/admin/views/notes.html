@@ -41,7 +41,7 @@
                                 {{ node.name }}
                             </div>
                         </div>
-                        <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
+                        <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2 + 1.2) + 'em' }">
                             <i class="icon-file-text"></i>
                             <span class="tree-file-name">{{ node.name }}</span>
                             <span v-if="node.updated_at" class="tree-file-time">{{ timeAgo(node.updated_at) }}</span>
