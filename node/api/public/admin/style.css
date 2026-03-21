@@ -123,7 +123,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Pulse animation ── */
 @keyframes pulse {
-    0%, 100% { opacity: 0.4; }
+    0%, 100% { opacity: 0.15; }
     50% { opacity: 1; }
 }
 
@@ -330,6 +330,7 @@ a:hover { text-decoration: underline; }
     flex: 1;
     padding: 20px 24px 24px;
     overflow-y: auto;
+    min-height: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -695,7 +696,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .badge-online { background: var(--success-subtle); color: var(--success); }
-.badge-available { background: rgba(74, 222, 128, 0.12); color: #4ade80; }
+.badge-available { background: rgba(134, 239, 172, 0.10); color: #86efac; }
 .badge-offline { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 .badge-unknown { background: var(--warning-subtle); color: var(--warning); }
 .badge-error { background: var(--error-subtle); color: var(--error); }
@@ -715,7 +716,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .status-dot-online { background: var(--success); }
-.status-dot-available { background: #4ade80; }
+.status-dot-available { background: #86efac; }
 .status-dot-offline { background: var(--text-muted); }
 .status-dot-unknown { background: var(--warning); }
 
@@ -1208,7 +1209,7 @@ dialog article header button[aria-label="Close"]::after {
     height: 8px;
     border-radius: 50%;
     background: var(--accent);
-    animation: pulse 1.5s ease infinite;
+    animation: pulse 2.5s ease infinite;
     flex-shrink: 0;
 }
 
