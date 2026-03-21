@@ -915,22 +915,185 @@ dialog article header button[aria-label="Close"]::after {
 }
 
 /* Agent detail dialog */
-.agent-detail-dialog { max-width: 700px; }
-
-.agent-detail-dialog h3 {
-    font-size: 16px;
-    margin-bottom: 4px;
+.agent-detail-dialog {
+    max-width: 700px;
+    border-radius: 16px;
+    padding: 0;
 }
 
-.agent-detail-dialog h4 {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-    margin-top: 20px;
+.agent-detail-dialog header {
+    padding: 24px 24px 0;
+    margin-bottom: 0;
+}
+
+.agent-detail-dialog .dialog-body {
+    padding: 0 24px 24px;
+}
+
+/* Identity header */
+.agent-identity {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 18px;
     border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 6px;
+    margin-bottom: 20px;
+}
+
+.agent-avatar-lg {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.agent-identity-info { flex: 1; min-width: 0; }
+
+.agent-identity-name {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.agent-identity-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Key facts strip */
+.agent-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.agent-fact {
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border-radius: 10px;
+}
+
+.agent-fact-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+}
+
+.agent-fact-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* Content cards */
+.agent-card {
+    background: #242440;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 16px;
+}
+
+.agent-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.agent-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.agent-card-title i {
+    font-size: 14px;
+    margin-right: 6px;
+    opacity: 0.6;
+}
+
+/* Thin progress rail */
+.progress-rail {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 300ms ease, background-color 300ms ease;
+}
+
+.progress-fill-ok { background: var(--accent); }
+.progress-fill-warn { background: var(--warning); }
+.progress-fill-over { background: var(--error); }
+
+/* Section headers in agent dialog */
+.agent-detail-dialog h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    margin-top: 24px;
+}
+
+.agent-detail-dialog h4 i {
+    font-size: 14px;
+    opacity: 0.6;
+    margin-right: 6px;
+}
+
+/* Instructions section */
+.instructions-collapsed {
+    position: relative;
+    max-height: 140px;
+    overflow: hidden;
+}
+
+.instructions-collapsed::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: linear-gradient(transparent, var(--bg-elevated));
+    pointer-events: none;
+}
+
+.instructions-expand-btn {
+    display: block;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--accent-text);
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: var(--font-sans);
+}
+
+.instructions-expand-btn:hover {
+    text-decoration: underline;
 }
 
 .agent-detail-dialog p { margin-bottom: 6px; font-size: 13px; }
