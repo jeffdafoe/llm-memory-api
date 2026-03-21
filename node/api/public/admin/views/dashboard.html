@@ -2,7 +2,7 @@
     <div class="page-header">
         <h2>Dashboard</h2>
     </div>
-    <div class="page-content" style="display:flex; flex-direction:column; overflow:hidden;" v-if="dashboard">
+    <div class="page-content" :style="{ display: 'flex', flexDirection: 'column', overflow: liveDiscussions.length > 0 ? 'hidden' : 'auto' }" v-if="dashboard">
 
     <!-- Stat strip -->
     <div class="stat-strip">
@@ -71,7 +71,7 @@
     </template>
 
     <!-- Normal dashboard (no live discussion) -->
-    <div v-else style="flex:1; overflow-y:auto; min-height:0;">
+    <div v-else>
 
     <!-- Agents + API Log side by side -->
     <div class="dashboard-columns">
@@ -92,7 +92,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="agent in dashboard.agents.slice(0, 6)" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                            <tr v-for="agent in dashboard.agents.slice(0, 5)" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
                                 <td style="text-align:center; width:30px;">
                                     <span v-if="agent.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                                 </td>
@@ -132,13 +132,13 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="entry in dashboardApiLog.slice(0, 8)" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
+                            <tr v-for="entry in dashboardApiLog.slice(0, 5)" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
                                 <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                                 <td class="message-cell log-mono">{{ entry.path }}</td>
                                 <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
-                                <td class="log-mono num">{{ formatBytes(entry.response_length) }}</td>
-                                <td class="log-mono num">{{ formatDuration(entry.duration) }}</td>
-                                <td class="log-mono nowrap">{{ formatTime(entry.timestamp) }}</td>
+                                <td class="log-mono num ts">{{ formatBytes(entry.response_length) }}</td>
+                                <td class="log-mono num ts">{{ formatDuration(entry.duration) }}</td>
+                                <td class="log-mono nowrap ts">{{ formatTime(entry.timestamp) }}</td>
                             </tr>
                         </tbody>
                     </table>

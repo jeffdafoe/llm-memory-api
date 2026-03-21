@@ -675,7 +675,8 @@ tbody tr:last-child td { border-bottom: none; }
     letter-spacing: 0.01em;
 }
 
-.badge-online, .badge-available { background: var(--success-subtle); color: var(--success); }
+.badge-online { background: var(--success-subtle); color: var(--success); }
+.badge-available { background: rgba(74, 222, 128, 0.12); color: #4ade80; }
 .badge-offline { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 .badge-unknown { background: var(--warning-subtle); color: var(--warning); }
 .badge-error { background: var(--error-subtle); color: var(--error); }
@@ -694,7 +695,8 @@ tbody tr:last-child td { border-bottom: none; }
     vertical-align: middle;
 }
 
-.status-dot-online, .status-dot-available { background: var(--success); }
+.status-dot-online { background: var(--success); }
+.status-dot-available { background: #4ade80; }
 .status-dot-offline { background: var(--text-muted); }
 .status-dot-unknown { background: var(--warning); }
 
@@ -1169,12 +1171,13 @@ dialog article header button[aria-label="Close"]::after {
     min-height: 0;
 }
 
+/* Activity pulse dot — blue, not green (green = online status, blue = actively working) */
 .live-pulse-dot {
     display: inline-block;
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--success);
+    background: var(--accent);
     animation: pulse 1.5s ease infinite;
     flex-shrink: 0;
 }
