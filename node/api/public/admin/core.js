@@ -300,7 +300,11 @@ function useCore() {
         work: '#e07b53',
         system: '#888'
     };
-    const fallbackColors = ['#8e6bbf', '#4caf88', '#c9a83e', '#d46a8e'];
+    const fallbackColors = [
+        '#8e6bbf', '#4caf88', '#c9a83e', '#d46a8e',
+        '#e06c75', '#56b6c2', '#c678dd', '#98c379',
+        '#d19a66', '#61afef', '#be5046', '#e5c07b'
+    ];
 
     // Strip common prefixes from agent names for display.
     // Full name available via title attribute on hover.
