@@ -230,7 +230,11 @@ function useCore() {
     function formatDuration(ms) {
         if (ms === null || ms === undefined) return '';
         if (ms < 1000) return ms + ' ms';
-        return (ms / 1000).toFixed(2) + ' s';
+        var s = ms / 1000;
+        if (s < 10) return s.toFixed(2) + ' s';
+        if (s < 60) return s.toFixed(1) + ' s';
+        var m = s / 60;
+        return m.toFixed(1) + ' m';
     }
 
     function formatTime(dateStr) {
