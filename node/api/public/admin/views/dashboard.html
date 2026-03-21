@@ -28,8 +28,8 @@
         </div>
         <div class="stat-item">
             <div class="stat-label">Errors (24h)</div>
-            <div class="stat-value" :class="{ error: errorLogEntries.length > 0 }">{{ errorLogEntries.length }}</div>
-            <div class="stat-meta">{{ errorLogEntries.length === 0 ? 'All clear' : 'recent' }}</div>
+            <div class="stat-value" :class="{ error: dashboard.error_count_24h > 0 }">{{ dashboard.error_count_24h }}</div>
+            <div class="stat-meta">{{ dashboard.error_count_24h === 0 ? 'All clear' : '' }}</div>
         </div>
     </div>
 
