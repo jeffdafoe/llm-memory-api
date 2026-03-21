@@ -13,12 +13,12 @@
         </div>
         <div class="stat-item">
             <div class="stat-label">Discussions</div>
-            <div class="stat-value" :class="{ accent: dashboard.discussions.filter(d => d.status === 'active').length > 0 }">{{ dashboard.discussions.filter(d => d.status === 'active').length }}</div>
+            <div class="stat-value" :class="dashboard.discussions.filter(d => d.status === 'active').length > 0 ? 'accent' : 'muted'">{{ dashboard.discussions.filter(d => d.status === 'active').length }}</div>
             <div class="stat-meta">active</div>
         </div>
         <div class="stat-item">
             <div class="stat-label">Unread Mail</div>
-            <div class="stat-value" :class="{ accent: dashboard.mail.filter(m => !m.acked_at).length > 0 }">{{ dashboard.mail.filter(m => !m.acked_at).length }}</div>
+            <div class="stat-value" :class="dashboard.mail.filter(m => !m.acked_at).length > 0 ? 'accent' : 'muted'">{{ dashboard.mail.filter(m => !m.acked_at).length }}</div>
             <div class="stat-meta">of {{ dashboard.mail.length }} total</div>
         </div>
         <div class="stat-item">
