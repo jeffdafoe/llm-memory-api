@@ -1866,7 +1866,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 }
 
 .notes-mermaid .messageLine0,
-.notes-mermaid .messageLine1 { stroke-width: 1.5 !important; }
+.notes-mermaid .messageLine1 { stroke-width: 2 !important; }
 
 /* Notes editor */
 .notes-editor {
