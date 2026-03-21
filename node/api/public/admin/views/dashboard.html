@@ -239,9 +239,9 @@
         <div v-else class="table-wrap">
             <table class="fixed-table">
                 <colgroup>
-                    <col style="width: 6em;">
                     <col style="width: 8em;">
-                    <col style="width: 10em;">
+                    <col style="width: 8em;">
+                    <col style="width: 14em;">
                     <col>
                 </colgroup>
                 <thead>
@@ -254,9 +254,9 @@
                 </thead>
                 <tbody>
                     <tr v-for="entry in errorLogEntries.slice(0, 5)" :key="entry.id">
-                        <td class="ts">{{ formatTime(entry.created_at) }}</td>
-                        <td class="log-mono" style="color: var(--error);">{{ entry.subsystem }}</td>
-                        <td class="log-mono">{{ entry.action }}</td>
+                        <td class="ts nowrap">{{ formatTime(entry.created_at) }}</td>
+                        <td class="log-mono nowrap" style="color: var(--error);">{{ entry.subsystem }}</td>
+                        <td class="log-mono nowrap">{{ entry.action }}</td>
                         <td class="message-cell">{{ entry.error_message }}</td>
                     </tr>
                 </tbody>
