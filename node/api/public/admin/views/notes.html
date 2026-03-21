@@ -65,13 +65,13 @@
                     <div class="notes-meta ts" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
                 </div>
                 <div class="notes-actions">
-                    <button v-if="!notesEditing" class="inline-button" @click="downloadNote" title="Download"><i class="icon-download"></i></button>
-                    <label v-if="!notesEditing && canDo('notes', 'write')" class="inline-button" title="Upload"><i class="icon-upload"></i><input type="file" @change="uploadNote" style="display:none"></label>
-                    <button v-if="!notesEditing" class="inline-button" @click="toggleFullscreen" :title="notesFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'"><i :class="notesFullscreen ? 'icon-minimize-2' : 'icon-maximize-2'"></i></button>
-                    <button v-if="!notesEditing && canDo('notes', 'write')" class="inline-button" @click="startEditNote">Edit</button>
-                    <button v-if="notesEditing" class="inline-button" @click="saveEditedNote" :disabled="notesSaving">{{ notesSaving ? 'Saving...' : 'Save' }}</button>
-                    <button v-if="notesEditing" class="inline-button secondary" @click="cancelEditNote">Cancel</button>
-                    <button v-if="!notesEditing && canDo('notes', 'delete')" class="inline-button danger" @click="confirmDeleteNote">Delete</button>
+                    <button v-if="!notesEditing" class="btn btn-ghost btn-compact" @click="downloadNote" title="Download"><i class="icon-download"></i></button>
+                    <label v-if="!notesEditing && canDo('notes', 'write')" class="btn btn-ghost btn-compact" style="cursor:pointer;" title="Upload"><i class="icon-upload"></i><input type="file" @change="uploadNote" style="display:none"></label>
+                    <button v-if="!notesEditing" class="btn btn-ghost btn-compact" @click="toggleFullscreen" :title="notesFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'"><i :class="notesFullscreen ? 'icon-minimize-2' : 'icon-maximize-2'"></i></button>
+                    <button v-if="!notesEditing && canDo('notes', 'write')" class="btn btn-secondary btn-compact" @click="startEditNote">Edit</button>
+                    <button v-if="notesEditing" class="btn btn-primary btn-compact" @click="saveEditedNote" :disabled="notesSaving">{{ notesSaving ? 'Saving...' : 'Save' }}</button>
+                    <button v-if="notesEditing" class="btn btn-secondary btn-compact" @click="cancelEditNote">Cancel</button>
+                    <button v-if="!notesEditing && canDo('notes', 'delete')" class="btn btn-ghost btn-compact btn-danger" @click="confirmDeleteNote"><i class="icon-trash-2"></i></button>
                 </div>
             </div>
             <div v-if="notesEditing" class="notes-editor">
