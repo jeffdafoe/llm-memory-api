@@ -2,7 +2,7 @@
 <dialog :open="selectedAgent !== null" @close="selectedAgent = null">
     <article v-if="selectedAgent" class="agent-detail-dialog">
         <header>
-            <h3 :style="{ color: agentColor(selectedAgent.agent) }">{{ shortAgentName(selectedAgent.agent) }} <i v-if="selectedAgent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i><span v-if="shortAgentName(selectedAgent.agent) !== selectedAgent.agent" class="ts" style="margin-left: 8px;">{{ selectedAgent.agent }}</span></h3>
+            <div></div>
             <div style="display:flex; gap:4px;">
                 <button v-if="!agentPassphraseConfirming && !agentNewPassphrase && canDo('agents', 'write')" class="btn btn-ghost btn-compact" @click="agentPassphraseConfirming = true" title="Reset Passphrase"><i class="icon-key"></i></button>
                 <button aria-label="Close" rel="prev" @click="selectedAgent = null"></button>
@@ -19,22 +19,33 @@
                 <button class="btn btn-secondary btn-compact" @click="agentNewPassphrase = null">Dismiss</button>
             </div>
 
-            <p style="margin-bottom: 12px;">
-                <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
-                <span v-if="!agentProfileEditing && (selectedAgent.provider || selectedAgent.model)" class="ts" style="margin-left: 8px;">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
-                <button v-if="!agentProfileEditing && canDo('agents', 'write')" class="btn btn-ghost btn-compact" @click="startEditProfile" title="Edit provider/model"><i class="icon-edit"></i></button>
-            </p>
-            <div v-if="agentProfileEditing" style="margin-bottom: 16px;">
+            <!-- 1. Identity header -->
+            <div class="agent-identity">
+                <div class="agent-avatar-lg" :style="{ background: agentColor(selectedAgent.agent) + '22', color: agentColor(selectedAgent.agent) }">
+                    <i v-if="selectedAgent.virtual" class="icon-cpu"></i>
+                    <template v-else>{{ shortAgentName(selectedAgent.agent).charAt(0).toUpperCase() }}</template>
+                </div>
+                <div class="agent-identity-info">
+                    <h3 class="agent-identity-name" :style="{ color: agentColor(selectedAgent.agent) }">{{ shortAgentName(selectedAgent.agent) }}</h3>
+                    <div class="agent-identity-meta">
+                        <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
+                        <span v-if="selectedAgent.provider || selectedAgent.model">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
+                        <button v-if="!agentProfileEditing && canDo('agents', 'write')" class="btn btn-ghost btn-compact" @click="startEditProfile" title="Edit"><i class="icon-edit"></i></button>
+                    </div>
+                    <div v-if="selectedAgent.personality" class="agent-identity-meta" style="font-style: italic; margin-top: 2px;">{{ selectedAgent.personality }}</div>
+                </div>
+            </div>
+
+            <!-- Profile edit form -->
+            <div v-if="agentProfileEditing" class="agent-card" style="margin-bottom: 20px;">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <label>
-                        Provider
+                    <label>Provider
                         <select v-model="agentProfileProvider" @change="onProfileProviderChange">
                             <option value="">None</option>
                             <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
                         </select>
                     </label>
-                    <label>
-                        Model
+                    <label>Model
                         <select v-model="agentProfileModel">
                             <option value="">None</option>
                             <option v-for="m in modelsForProvider(agentProfileProvider)" :key="m.id" :value="m.id">
@@ -46,53 +57,75 @@
                 <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
                     &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
                 </small>
-                <label>
-                    Personality
+                <label>Personality
                     <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
                 </label>
-                <label v-if="selectedAgent.virtual">
-                    API Key
+                <label v-if="selectedAgent.virtual">API Key
                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
                 </label>
-                <div class="dialog-actions">
-                    <button class="btn btn-secondary" @click="agentProfileEditing = false">Cancel</button>
-                    <button class="btn btn-primary" @click="saveProfile" :disabled="agentProfileSaving">Save</button>
+                <div class="dialog-actions" style="margin-top: 12px;">
+                    <button class="btn btn-secondary btn-compact" @click="agentProfileEditing = false">Cancel</button>
+                    <button class="btn btn-primary btn-compact" @click="saveProfile" :disabled="agentProfileSaving">Save</button>
                 </div>
             </div>
-            <p v-if="!agentProfileEditing && selectedAgent.personality" class="ts" style="font-style: italic; margin-bottom: 12px;">{{ selectedAgent.personality }}</p>
 
-            <!-- Cost Budget -->
-            <div v-if="selectedAgent.virtual" style="margin: 12px 0; padding: 12px; background: var(--bg-input); border-radius: 8px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-                    <small class="ts" style="font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Cost Budget</small>
-                    <div v-if="!costBudgetEditing" style="display:flex; gap:4px;">
-                        <button class="btn btn-ghost btn-compact" @click="loadUsageHistory" title="View usage history"><i class="icon-list"></i></button>
-                        <button class="btn btn-ghost btn-compact" @click="startEditCostBudget" title="Edit budgets"><i class="icon-edit"></i></button>
+            <!-- 2. Key facts strip -->
+            <div class="agent-facts">
+                <div class="agent-fact">
+                    <div class="agent-fact-label">Last seen</div>
+                    <div class="agent-fact-value">{{ timeAgo(selectedAgent.last_seen) || '—' }}</div>
+                </div>
+                <div class="agent-fact">
+                    <div class="agent-fact-label">Registered</div>
+                    <div class="agent-fact-value">{{ formatShortDate(selectedAgent.registered_at) }}</div>
+                </div>
+                <div v-if="agentExpertise.length > 0" class="agent-fact">
+                    <div class="agent-fact-label">Expertise</div>
+                    <div class="agent-fact-value">{{ agentExpertise.length }} area{{ agentExpertise.length !== 1 ? 's' : '' }}</div>
+                </div>
+                <div v-if="selectedAgent.virtual" class="agent-fact">
+                    <div class="agent-fact-label">Spend today</div>
+                    <div class="agent-fact-value">${{ (selectedAgent.cost_today ?? 0).toFixed(4) }}</div>
+                </div>
+            </div>
+
+            <!-- 3. Cost Budget card (virtual agents) -->
+            <div v-if="selectedAgent.virtual" class="agent-card">
+                <div class="agent-card-header">
+                    <span class="agent-card-title"><i class="icon-trending-up"></i>Cost Budget</span>
+                    <div style="display:flex; gap:4px;">
+                        <button v-if="!costBudgetEditing" class="btn btn-ghost btn-compact" @click="loadUsageHistory" title="Usage history"><i class="icon-list"></i></button>
+                        <button v-if="!costBudgetEditing" class="btn btn-ghost btn-compact" @click="startEditCostBudget" title="Edit budgets"><i class="icon-edit"></i></button>
                     </div>
                 </div>
-                <!-- Display mode -->
                 <div v-if="!costBudgetEditing" style="font-size: 13px;">
-                    <div style="margin-bottom: 6px;">
-                        <span>Today: <strong>${{ (selectedAgent.cost_today ?? 0).toFixed(4) }}</strong></span>
-                        <span class="ts"> / {{ selectedAgent.effective_daily_limit != null ? (selectedAgent.cost_budget_daily != null ? '$' + Number(selectedAgent.effective_daily_limit).toFixed(2) : 'default ($' + Number(selectedAgent.effective_daily_limit).toFixed(2) + ')') : 'unlimited' }}</span>
-                        <meter :value="selectedAgent.cost_today ?? 0" :max="selectedAgent.effective_daily_limit ?? 1" style="width: 100%; margin-top: 4px;"></meter>
+                    <div style="margin-bottom: 12px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                            <span>Today: <strong>${{ (selectedAgent.cost_today ?? 0).toFixed(4) }}</strong></span>
+                            <span class="ts">{{ selectedAgent.effective_daily_limit != null ? (selectedAgent.cost_budget_daily != null ? '$' + Number(selectedAgent.effective_daily_limit).toFixed(2) : 'default ($' + Number(selectedAgent.effective_daily_limit).toFixed(2) + ')') : 'unlimited' }}</span>
+                        </div>
+                        <div class="progress-rail">
+                            <div class="progress-fill" :class="(selectedAgent.cost_today ?? 0) / (selectedAgent.effective_daily_limit ?? 1) > 0.9 ? 'progress-fill-over' : (selectedAgent.cost_today ?? 0) / (selectedAgent.effective_daily_limit ?? 1) > 0.7 ? 'progress-fill-warn' : 'progress-fill-ok'" :style="{ width: Math.min(100, ((selectedAgent.cost_today ?? 0) / (selectedAgent.effective_daily_limit ?? 1)) * 100) + '%' }"></div>
+                        </div>
                     </div>
                     <div>
-                        <span>30-day: <strong>${{ (selectedAgent.cost_monthly ?? 0).toFixed(4) }}</strong></span>
-                        <span class="ts"> / {{ selectedAgent.effective_monthly_limit != null ? (selectedAgent.cost_budget_monthly != null ? '$' + Number(selectedAgent.effective_monthly_limit).toFixed(2) : 'default ($' + Number(selectedAgent.effective_monthly_limit).toFixed(2) + ')') : 'unlimited' }}</span>
-                        <meter :value="selectedAgent.cost_monthly ?? 0" :max="selectedAgent.effective_monthly_limit ?? 10" style="width: 100%; margin-top: 4px;"></meter>
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                            <span>30-day: <strong>${{ (selectedAgent.cost_monthly ?? 0).toFixed(4) }}</strong></span>
+                            <span class="ts">{{ selectedAgent.effective_monthly_limit != null ? (selectedAgent.cost_budget_monthly != null ? '$' + Number(selectedAgent.effective_monthly_limit).toFixed(2) : 'default ($' + Number(selectedAgent.effective_monthly_limit).toFixed(2) + ')') : 'unlimited' }}</span>
+                        </div>
+                        <div class="progress-rail">
+                            <div class="progress-fill" :class="(selectedAgent.cost_monthly ?? 0) / (selectedAgent.effective_monthly_limit ?? 10) > 0.9 ? 'progress-fill-over' : (selectedAgent.cost_monthly ?? 0) / (selectedAgent.effective_monthly_limit ?? 10) > 0.7 ? 'progress-fill-warn' : 'progress-fill-ok'" :style="{ width: Math.min(100, ((selectedAgent.cost_monthly ?? 0) / (selectedAgent.effective_monthly_limit ?? 10)) * 100) + '%' }"></div>
+                        </div>
                     </div>
-                    <small v-if="selectedAgent.pricing_info" class="ts" style="display: block; margin-top: 6px;">{{ selectedAgent.pricing_info }}</small>
+                    <small v-if="selectedAgent.pricing_info" class="ts" style="display: block; margin-top: 10px;">{{ selectedAgent.pricing_info }}</small>
                 </div>
                 <!-- Edit mode -->
-                <div v-if="costBudgetEditing" style="margin-top: 6px;">
+                <div v-if="costBudgetEditing">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <label>
-                            Daily limit ($)
+                        <label>Daily limit ($)
                             <input type="number" v-model="costBudgetDailyValue" placeholder="blank = default" step="0.01">
                         </label>
-                        <label>
-                            Monthly limit ($)
+                        <label>Monthly limit ($)
                             <input type="number" v-model="costBudgetMonthlyValue" placeholder="blank = default" step="0.01">
                         </label>
                     </div>
@@ -102,31 +135,33 @@
                     </div>
                 </div>
                 <!-- Usage history -->
-                <div v-if="agentUsageHistory.length > 0" style="margin-top: 8px; max-height: 200px; overflow-y: auto;">
-                    <table style="width: 100%; font-size: 11px;">
-                        <thead><tr><th>Time</th><th>Model</th><th>Context</th><th>Tokens</th><th>Cost</th></tr></thead>
-                        <tbody>
-                            <tr v-for="u in agentUsageHistory" :key="u.id">
-                                <td class="ts">{{ formatDate(u.created_at) }}</td>
-                                <td class="ts">{{ u.model }}</td>
-                                <td>{{ u.context || '-' }}</td>
-                                <td class="num">{{ (u.input_tokens + (u.cache_read_tokens || 0) + u.output_tokens).toLocaleString() }}</td>
-                                <td class="num">${{ Number(u.cost).toFixed(4) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <details v-if="agentUsageHistory.length > 0" style="margin-top: 10px;">
+                    <summary style="font-size: 12px; color: var(--accent-text); cursor: pointer;">Recent usage ({{ agentUsageHistory.length }})</summary>
+                    <div style="max-height: 180px; overflow-y: auto; margin-top: 6px;">
+                        <table style="width: 100%; font-size: 11px;">
+                            <thead><tr><th>Time</th><th>Model</th><th>Context</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+                            <tbody>
+                                <tr v-for="u in agentUsageHistory" :key="u.id">
+                                    <td class="ts nowrap">{{ formatShortDate(u.created_at) }}</td>
+                                    <td class="ts">{{ u.model }}</td>
+                                    <td>{{ u.context || '-' }}</td>
+                                    <td class="num ts">{{ (u.input_tokens + (u.cache_read_tokens || 0) + u.output_tokens).toLocaleString() }}</td>
+                                    <td class="num ts">${{ Number(u.cost).toFixed(4) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
                 <small v-if="agentUsageLoading" class="ts">Loading usage...</small>
             </div>
 
-            <!-- Configuration -->
-            <div v-if="selectedAgent.virtual" style="margin: 12px 0; padding: 12px; background: var(--bg-input); border-radius: 8px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-                    <small class="ts" style="font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Configuration</small>
-                    <button v-if="!agentSettingsEditing" class="btn btn-ghost btn-compact" @click="startEditSettings" title="Edit configuration"><i class="icon-edit"></i></button>
+            <!-- Configuration card (virtual agents) -->
+            <div v-if="selectedAgent.virtual" class="agent-card">
+                <div class="agent-card-header">
+                    <span class="agent-card-title"><i class="icon-settings"></i>Configuration</span>
+                    <button v-if="!agentSettingsEditing" class="btn btn-ghost btn-compact" @click="startEditSettings" title="Edit"><i class="icon-edit"></i></button>
                 </div>
-                <!-- Display mode -->
-                <div v-if="!agentSettingsEditing" style="font-size: 13px;">
+                <div v-if="!agentSettingsEditing" style="font-size: 13px; line-height: 1.8;">
                     <span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span>
                     <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
                         <br><span>{{ cap.label }}: <strong>{{ formatConfigValue(key, parseAgentConfig(selectedAgent)[key], cap) }}</strong></span>
@@ -136,7 +171,7 @@
                     </template>
                 </div>
                 <!-- Edit mode -->
-                <div v-if="agentSettingsEditing" style="margin-top: 6px;">
+                <div v-if="agentSettingsEditing">
                     <label class="checkbox-label">
                         <input type="checkbox" v-model="agentSettingsLearningEnabled"> Learning enabled
                     </label>
@@ -147,14 +182,14 @@
                                 <br><small class="ts">{{ cap.description }}</small>
                             </label>
                             <label v-else-if="cap.type === 'select'">
-                                <small>{{ cap.label }}</small>
+                                {{ cap.label }}
                                 <select v-model="agentSettingsConfig[key]">
                                     <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
                                 </select>
                                 <small class="ts" style="display: block;">{{ cap.description }}</small>
                             </label>
                             <label v-else>
-                                <small>{{ cap.label }}</small>
+                                {{ cap.label }}
                                 <input type="number" v-model.number="agentSettingsConfig[key]"
                                     :min="cap.min" :max="cap.max" :step="cap.step || 1"
                                     :placeholder="'default (' + cap.default + ')'">
@@ -162,9 +197,6 @@
                             </label>
                         </div>
                     </template>
-                    <div v-if="!selectedAgent.provider || !selectedAgent.model" class="ts" style="margin: 8px 0; font-size: 13px;">
-                        Set a provider and model to see configuration options.
-                    </div>
                     <div class="dialog-actions" style="margin-top: 8px;">
                         <button class="btn btn-secondary btn-compact" @click="agentSettingsEditing = false">Cancel</button>
                         <button class="btn btn-primary btn-compact" @click="saveSettings" :disabled="agentSettingsSaving">Save</button>
@@ -172,39 +204,45 @@
                 </div>
             </div>
 
-            <p class="ts" style="margin: 12px 0;">
-                Last seen: {{ formatDate(selectedAgent.last_seen) }}<br>
-                Registered: {{ formatDate(selectedAgent.registered_at) }}
-            </p>
-
+            <!-- Expertise -->
             <h4>
                 Expertise
                 <button v-if="!agentExpertiseEditing" class="btn btn-ghost btn-compact" @click="startEditExpertise"><i class="icon-edit"></i></button>
             </h4>
-            <div v-if="agentExpertiseEditing">
+            <div v-if="agentExpertiseEditing" style="margin-bottom: 16px;">
                 <input type="text" v-model="agentExpertiseEditText" placeholder="comma-separated areas">
-                <div class="dialog-actions">
+                <div class="dialog-actions" style="margin-top: 8px;">
                     <button class="btn btn-secondary btn-compact" @click="cancelEditExpertise">Cancel</button>
                     <button class="btn btn-primary btn-compact" @click="saveExpertise" :disabled="agentExpertiseSaving">Save</button>
                 </div>
             </div>
-            <div v-else>
+            <div v-else style="margin-bottom: 16px;">
                 <span v-if="agentExpertise.length === 0" class="ts">None set</span>
                 <span v-for="area in agentExpertise" :key="area" class="expertise-tag">{{ area }}</span>
             </div>
 
+            <!-- Startup Instructions (collapsed by default) -->
             <h4>
                 Startup Instructions
                 <button v-if="!agentInstructionsEditing" class="btn btn-ghost btn-compact" @click="startEditInstructions"><i class="icon-edit"></i></button>
             </h4>
             <div v-if="agentInstructionsEditing">
-                <textarea v-model="agentInstructionsEditContent" rows="10" class="agent-instructions-textarea"></textarea>
+                <textarea v-model="agentInstructionsEditContent" rows="12" class="agent-instructions-textarea"></textarea>
                 <div class="dialog-actions">
                     <button class="btn btn-secondary btn-compact" @click="cancelEditInstructions">Cancel</button>
                     <button class="btn btn-primary btn-compact" @click="saveInstructions" :disabled="agentInstructionsSaving">Save</button>
                 </div>
             </div>
-            <pre v-else class="instructions-pre">{{ agentInstructions || '(none)' }}</pre>
+            <div v-else>
+                <div v-if="!agentInstructions" class="ts">(none)</div>
+                <template v-else>
+                    <div :class="{ 'instructions-collapsed': !agentInstructionsExpanded }">
+                        <pre class="instructions-pre">{{ agentInstructions }}</pre>
+                    </div>
+                    <button v-if="!agentInstructionsExpanded" class="instructions-expand-btn" @click="agentInstructionsExpanded = true">Show full instructions</button>
+                    <button v-else class="instructions-expand-btn" @click="agentInstructionsExpanded = false">Collapse</button>
+                </template>
+            </div>
         </div>
     </article>
 </dialog>

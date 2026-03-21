@@ -12,6 +12,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     // Agent detail
     const agentInstructions = ref('');
     const agentInstructionsEditing = ref(false);
+    const agentInstructionsExpanded = ref(false);
     const agentInstructionsEditContent = ref('');
     const agentInstructionsSaving = ref(false);
     const agentExpertise = ref([]);
@@ -317,6 +318,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         selectedAgent.value = agent;
         const selectedName = agent.agent;
         agentInstructionsEditing.value = false;
+        agentInstructionsExpanded.value = false;
         agentExpertiseEditing.value = false;
         agentProfileEditing.value = false;
         costBudgetEditing.value = false;
@@ -521,7 +523,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, configVersionFor, modelDeprecation,
         parseAgentConfig, capabilityVisible, formatConfigValue,
         // Agent detail
-        agentInstructions, agentInstructionsEditing, agentInstructionsEditContent, agentInstructionsSaving,
+        agentInstructions, agentInstructionsEditing, agentInstructionsExpanded, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
         agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileSaving,
