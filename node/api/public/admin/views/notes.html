@@ -1,8 +1,8 @@
-<div>
+<div style="flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden;">
     <div class="page-header">
         <h2>Notes</h2>
     </div>
-    <div class="page-content" style="padding-bottom: 0;">
+    <div class="page-content" style="padding-bottom: 0; overflow: hidden;">
     <div class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
     <div class="notes-sidebar">
         <div class="notes-sidebar-header">
@@ -60,9 +60,9 @@
                 <div class="notes-title-bar">
                     <h4 v-if="!notesEditing">{{ selectedNote.title }}</h4>
                     <input v-else type="text" v-model="notesEditTitle" class="notes-edit-title" placeholder="Title">
-                    <div v-if="!notesEditing" class="notes-meta">[{{ selectedNote.namespace }}] {{ selectedNote.slug }}</div>
+                    <div v-if="!notesEditing" class="notes-meta"><span class="badge badge-accent" style="font-size:10px; padding:1px 6px; margin-right:6px;">{{ selectedNote.namespace }}</span><span class="mono">{{ selectedNote.slug }}</span></div>
                     <div v-else class="notes-meta notes-slug-edit">[{{ selectedNote.namespace }}] <input type="text" v-model="notesEditSlug" class="notes-edit-slug" placeholder="slug" spellcheck="false"></div>
-                    <div class="notes-meta" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
+                    <div class="notes-meta ts" v-if="selectedNote.created_at">Created {{ formatShortDate(selectedNote.created_at) }}<template v-if="selectedNote.updated_at"> · Updated {{ formatShortDate(selectedNote.updated_at) }}</template></div>
                 </div>
                 <div class="notes-actions">
                     <button v-if="!notesEditing" class="inline-button" @click="downloadNote" title="Download"><i class="icon-download"></i></button>
@@ -124,9 +124,9 @@
                 <label>Local path
                     <input type="text" v-model="syncDialog.localPath" placeholder="C:/path/to/local/directory" spellcheck="false">
                 </label>
-                <div class="button-row">
-                    <button @click="saveSyncMapping" :disabled="syncSaving || !syncDialog.actorId || !syncDialog.localPath">{{ syncSaving ? 'Saving...' : 'Add Mapping' }}</button>
-                    <button class="secondary" @click="closeSyncDialog">Close</button>
+                <div class="dialog-actions">
+                    <button class="btn btn-secondary" @click="closeSyncDialog">Close</button>
+                    <button class="btn btn-primary" @click="saveSyncMapping" :disabled="syncSaving || !syncDialog.actorId || !syncDialog.localPath">{{ syncSaving ? 'Saving...' : 'Add Mapping' }}</button>
                 </div>
             </div>
         </article>
