@@ -202,8 +202,8 @@
             </thead>
             <tbody>
                 <template v-for="entry in errorLogFiltered" :key="entry.id">
-                    <tr class="status-row-server" style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
-                        <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                    <tr style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
+                        <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                         <td class="log-mono nowrap">{{ entry.subsystem }}</td>
                         <td class="log-mono nowrap">{{ entry.action }}</td>
                         <td class="message-cell log-mono">{{ entry.error_message }}</td>
