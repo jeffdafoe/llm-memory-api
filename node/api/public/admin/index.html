@@ -64,9 +64,9 @@
                         {{ theme === 'dark' ? 'Light Mode' : 'Dark Mode' }}
                     </button>
                     <div class="user-info">
-                        <div class="user-avatar">{{ user ? user.charAt(0).toUpperCase() : '?' }}</div>
+                        <div class="user-avatar">{{ user ? (typeof user === 'string' ? user : user.username || '?').charAt(0).toUpperCase() : '?' }}</div>
                         <div>
-                            <div class="user-name">{{ user }}</div>
+                            <div class="user-name">{{ typeof user === 'string' ? user : (user && user.username) || '?' }}</div>
                             <div class="user-role">Administrator</div>
                         </div>
                     </div>
