@@ -119,6 +119,19 @@ createApp({
         const configModule = useConfig(deps);
         const actorsConfigModule = useActorsConfig({ ...deps, agentsModule, user: core.user, permissions: core.permissions });
 
+        // Dashboard API log: deduplicate consecutive /mcp entries
+        const dashboardApiLog = computed(() => {
+            var result = [];
+            var lastWasMcp = false;
+            for (var entry of apiLogModule.apiLogEntries.value) {
+                var isMcp = entry.path === '/mcp';
+                if (isMcp && lastWasMcp) continue;
+                result.push(entry);
+                lastWasMcp = isMcp;
+            }
+            return result;
+        });
+
         // Navigate to the first permitted view (used on login/restore)
         function navigateToFirstPermitted() {
             const viewPerms = [
@@ -340,6 +353,7 @@ createApp({
             ...actorsConfigModule,
             // Dashboard
             ...dashboardModule,
+            dashboardApiLog,
         };
 
         // Provide to child view components

@@ -128,7 +128,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="entry in apiLogEntries.slice(0, 8)" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
+                            <tr v-for="entry in dashboardApiLog.slice(0, 8)" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
                                 <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
                                 <td class="message-cell log-mono">{{ entry.path }}</td>
                                 <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
