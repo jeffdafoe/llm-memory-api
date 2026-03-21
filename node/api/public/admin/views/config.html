@@ -226,38 +226,30 @@
             <button v-if="!templateEditing" class="inline-button" @click="startNewTemplate"><i class="icon-plus"></i> New Template</button>
         </div>
 
-        <div v-if="templateEditing" class="compose-form">
-            <div class="form-row">
-                <label>
-                    Name
-                    <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
-                </label>
+        <div v-if="templateEditing" class="mail-compose">
+            <div class="mail-compose-row">
+                <label>Name</label>
+                <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
             </div>
-            <div class="form-row">
-                <label>
-                    Kind
-                    <select v-model="templateEditKind">
-                        <option value="welcome">welcome</option>
-                    </select>
-                </label>
+            <div class="mail-compose-row">
+                <label>Kind</label>
+                <select v-model="templateEditKind">
+                    <option value="welcome">welcome</option>
+                </select>
             </div>
-            <div class="form-row">
-                <label>
-                    Description (optional)
-                    <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
-                </label>
+            <div class="mail-compose-row">
+                <label>Description (optional)</label>
+                <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
             </div>
-            <div class="form-row">
-                <label>
-                    Content
-                    <textarea v-model="templateEditContent" rows="12" placeholder="Use {agent} as a placeholder for the agent's name. Welcome templates can use YAML frontmatter for subject: ---&#10;subject: Welcome, {agent}&#10;---"></textarea>
-                </label>
+            <div class="mail-compose-row">
+                <label>Content</label>
+                <textarea v-model="templateEditContent" rows="12" placeholder="Use {agent} as a placeholder for the agent's name."></textarea>
             </div>
             <div class="dialog-actions">
-                <button @click="saveTemplate" :disabled="templateSaving || !templateEditName || !templateEditContent">
+                <button class="btn btn-secondary" @click="templateEditing = false">Cancel</button>
+                <button class="btn btn-primary" @click="saveTemplate" :disabled="templateSaving || !templateEditName || !templateEditContent">
                     {{ templateSaving ? 'Saving...' : (templateEditId ? 'Update' : 'Create') }}
                 </button>
-                <button class="secondary" @click="templateEditing = false">Cancel</button>
             </div>
         </div>
 
