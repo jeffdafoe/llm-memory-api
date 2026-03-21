@@ -289,12 +289,27 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
     sysMsgSql += ' ORDER BY cm.sent_at DESC LIMIT 15';
     const systemMessages = await pool.query(sysMsgSql, sysMsgParams);
 
+    // Note counts by namespace, filtered by readable namespaces
+    const noteCountsResult = await pool.query(
+        'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
+    );
+    let noteCounts = noteCountsResult.rows;
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    if (readable !== null) {
+        noteCounts = noteCounts.filter(r => readable.includes(r.namespace));
+    }
+    var noteTotal = 0;
+    for (var nc of noteCounts) {
+        noteTotal += parseInt(nc.count, 10);
+    }
+
     res.json({
         agents: agents.rows,
         discussions: discussions.rows,
         chat: chat.rows,
         mail: mail.rows,
-        system_messages: systemMessages.rows
+        system_messages: systemMessages.rows,
+        notes: { total: noteTotal, namespaces: noteCounts.length }
     });
 }));
 
