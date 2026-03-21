@@ -1844,7 +1844,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 .notes-fullscreen {
     position: fixed;
     inset: 0;
-    z-index: 9999;
+    z-index: 99999;
     background: var(--bg-base);
     display: flex;
     flex-direction: column;
