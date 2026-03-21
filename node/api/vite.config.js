@@ -67,8 +67,16 @@ export default defineConfig({
     build: {
         outDir: 'dist',
         emptyOutDir: true,
+        chunkSizeWarningLimit: 600,
         rollupOptions: {
-            input: 'public/admin/index.html'
+            input: 'public/admin/index.html',
+            output: {
+                manualChunks: {
+                    vue: ['vue'],
+                    mermaid: ['mermaid'],
+                    markdown: ['marked', 'dompurify']
+                }
+            }
         }
     }
 });
