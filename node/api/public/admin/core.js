@@ -310,6 +310,7 @@ function useCore() {
     }
 
     function agentColor(agent) {
+        if (!agent) return 'var(--text-secondary)';
         if (agentColors[agent]) return agentColors[agent];
         let hash = 0;
         for (let i = 0; i < agent.length; i++) {
