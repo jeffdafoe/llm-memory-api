@@ -375,6 +375,7 @@ a:hover { text-decoration: underline; }
 .login-left img {
     width: 160px;
     height: 160px;
+    margin-top: -20px;
 }
 
 .login-brand {
