@@ -89,6 +89,13 @@ server {
         return 302 /admin/;
     }
 
+    # Static assets served directly by nginx (logos, images)
+    location /static/ {
+        alias {{ project_root }}/static/;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+
     # All other requests — no rate limit
     location / {
         proxy_pass http://127.0.0.1:{{ memory_api_port }};
