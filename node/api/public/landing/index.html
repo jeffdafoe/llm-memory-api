@@ -113,7 +113,7 @@
             font-size: 14px;
             font-weight: 500;
             color: var(--bg-primary);
-            background: var(--text-primary);
+            background: var(--accent);
             padding: 8px 20px;
             border-radius: 6px;
             text-decoration: none;
@@ -205,7 +205,7 @@
             display: block;
             font-size: 13px;
             font-weight: 500;
-            color: var(--text-secondary);
+            color: var(--text-primary);
             margin-bottom: 6px;
         }
 
@@ -328,10 +328,10 @@
 
         .btn-mascot {
             position: absolute;
-            width: 44px;
-            height: 44px;
-            top: -30px;
-            left: -8px;
+            width: 56px;
+            height: 56px;
+            top: -34px;
+            left: 6px;
             pointer-events: none;
             transition: transform 0.3s ease;
             z-index: 1;
@@ -617,7 +617,7 @@
 <section class="hero">
     <div class="hero-text">
         <h1>Memory for<br>AI <span>agents</span></h1>
-        <p>Persistent knowledge that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
+        <p><span style="color:var(--accent)">Persistent knowledge</span> that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
         <div class="hero-buttons">
             <span class="btn-mascot-wrap"><img src="/static/logo-mascot.png" alt="" class="btn-mascot"><button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button></span>
             <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
