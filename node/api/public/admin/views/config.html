@@ -84,9 +84,13 @@
                 <tr v-for="entry in configEntries" :key="entry.key">
                     <td><span class="log-mono">{{ entry.key }}</span><br v-if="entry.description"><small v-if="entry.description" class="muted">{{ entry.description }}</small></td>
                     <td v-if="configEditKey === entry.key">
-                        <input type="text" v-model="configEditValue" class="config-edit-input" @keyup.enter="saveConfig" @keyup.escape="cancelEditConfig">
+                        <textarea v-if="entry.key === 'global_bootstrap'" v-model="configEditValue" class="config-edit-textarea" rows="10" @keyup.escape="cancelEditConfig"></textarea>
+                        <input v-else type="text" v-model="configEditValue" class="config-edit-input" @keyup.enter="saveConfig" @keyup.escape="cancelEditConfig">
                     </td>
-                    <td v-else class="log-mono config-value-cell">{{ entry.value || '(empty)' }}</td>
+                    <td v-else class="log-mono config-value-cell">
+                        <pre v-if="entry.key === 'global_bootstrap' && entry.value" class="instructions-pre" style="max-height: 200px; overflow-y: auto;">{{ entry.value }}</pre>
+                        <template v-else>{{ entry.value || '(empty)' }}</template>
+                    </td>
                     <td>
                         <template v-if="configEditKey === entry.key">
                             <button class="inline-button compact" @click="saveConfig" :disabled="configSaving">Save</button>

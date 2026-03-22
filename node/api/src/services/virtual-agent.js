@@ -454,6 +454,12 @@ async function loadRAGContext(agentName, query) {
 function buildSystemPrompt(agent, discussion, ragContext) {
     let staticPart = '';
 
+    // Global bootstrap (prepended to all agents)
+    var globalBootstrap = config.get('global_bootstrap') || '';
+    if (globalBootstrap) {
+        staticPart += globalBootstrap + '\n\n';
+    }
+
     // Agent's own instructions (set via save_instructions)
     if (agent.startup_instructions) {
         staticPart += agent.startup_instructions + '\n\n';
@@ -519,6 +525,10 @@ function formatRelativeTime(sentAt) {
 // Returns { static, dynamic } — static content is cacheable across calls.
 function buildDirectChatSystemPrompt(agent, ragContext) {
     let staticPart = '';
+    var globalBootstrap = config.get('global_bootstrap') || '';
+    if (globalBootstrap) {
+        staticPart += globalBootstrap + '\n\n';
+    }
     if (agent.startup_instructions) {
         staticPart += agent.startup_instructions + '\n\n';
     }
@@ -570,6 +580,10 @@ function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
 // Returns { static, dynamic } for consistency, though mail is one-shot (no caching benefit).
 function buildMailSystemPrompt(agent, ragContext) {
     let staticPart = '';
+    var globalBootstrap = config.get('global_bootstrap') || '';
+    if (globalBootstrap) {
+        staticPart += globalBootstrap + '\n\n';
+    }
     if (agent.startup_instructions) {
         staticPart += agent.startup_instructions + '\n\n';
     }
