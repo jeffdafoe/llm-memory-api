@@ -24,7 +24,7 @@
     certbot certonly --standalone
     --non-interactive --agree-tos
     --email {{ certbot_email }}
-    -d {{ item.item }}
+    -d {{ item.item }} -d www.{{ item.item }}
   when: not item.stat.exists
   loop: "{{ ssl_certs.results }}"
   loop_control:
