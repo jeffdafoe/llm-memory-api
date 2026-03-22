@@ -46,6 +46,9 @@
                     <a v-if="canDo('dashboard', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'dashboard' }" @click.prevent="currentView = 'dashboard'">
                         <i class="icon-layout-dashboard"></i> Dashboard
                     </a>
+                    <a v-if="canDo('agents', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'access' }" @click.prevent="currentView = 'access'">
+                        <i class="icon-user-plus"></i> Access
+                    </a>
                     <a v-if="canDo('agents', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'agents' }" @click.prevent="currentView = 'agents'">
                         <i class="icon-bot"></i> Agents
                     </a>
@@ -54,9 +57,6 @@
                     </a>
                     <a v-if="canDo('notes', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">
                         <i class="icon-file-text"></i> Notes
-                    </a>
-                    <a v-if="canDo('agents', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'access' }" @click.prevent="currentView = 'access'">
-                        <i class="icon-user-plus"></i> Access
                     </a>
                     <a v-if="canDo('config', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">
                         <i class="icon-settings"></i> Configuration
