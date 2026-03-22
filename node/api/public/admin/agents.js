@@ -314,11 +314,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
 
     // ── Agent detail view ────────────────────────────────────────────────────
 
-    async function viewAgent(agent, options) {
-        var skipDialog = options && options.skipDialog;
-        if (!skipDialog) {
-            selectedAgent.value = agent;
-        }
+    async function viewAgent(agent) {
+        selectedAgent.value = agent;
         const selectedName = agent.agent;
         agentInstructionsEditing.value = false;
         agentInstructionsExpanded.value = false;
@@ -339,13 +336,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
                 api('/admin/agents/instructions/read', { agent: selectedName })
             ]);
             // Guard against selection changing while requests were in flight
-            if (!skipDialog && (!selectedAgent.value || selectedAgent.value.agent !== selectedName)) return;
-            // Merge full detail onto the agent ref (or create one for skipDialog mode)
-            if (skipDialog) {
-                selectedAgent.value = Object.assign({}, agent, detail);
-            } else {
-                Object.assign(selectedAgent.value, detail);
-            }
+            if (!selectedAgent.value || selectedAgent.value.agent !== selectedName) return;
+            // Merge full detail onto the list item
+            Object.assign(selectedAgent.value, detail);
             try {
                 agentExpertise.value = typeof detail.expertise === 'string' ? JSON.parse(detail.expertise) : (detail.expertise || []);
             } catch (e) {

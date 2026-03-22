@@ -37,7 +37,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="openActorConfig(actor)">
+                    <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="actor.is_agent ? viewAgent({ agent: actor.name, ...actor }) : openActorConfig(actor)">
                         <td style="text-align:center; width:30px;">
                             <template v-if="actor.is_agent">
                                 <span v-if="actor.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
