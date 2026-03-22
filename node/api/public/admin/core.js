@@ -133,7 +133,8 @@ function useCore() {
         localStorage.removeItem('admin_session');
     }
 
-    // Change password
+    // Profile / Change password
+    const showProfile = ref(false);
     const showChangePassword = ref(false);
     const changePasswordForm = ref({ current: '', newPassword: '', confirm: '' });
     const changePasswordError = ref('');
@@ -159,6 +160,7 @@ function useCore() {
                 current_password: changePasswordForm.value.current,
                 new_password: changePasswordForm.value.newPassword
             });
+            showProfile.value = false;
             showChangePassword.value = false;
             changePasswordForm.value = { current: '', newPassword: '', confirm: '' };
             showToast('Password changed', 'success');
@@ -349,7 +351,7 @@ function useCore() {
     return {
         authenticated, sessionToken, user, permissions, canDo,
         loginForm, loginError, loggingIn,
-        showChangePassword, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
+        showProfile, showChangePassword, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
         login, logout, restoreSession,
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
