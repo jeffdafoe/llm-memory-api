@@ -744,6 +744,102 @@ tbody tr:last-child td { border-bottom: none; }
 .badge-type-agent { background: var(--success-subtle); color: var(--success); }
 .badge-type-system { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 
+/* ── Access view ── */
+.sub-tabs button {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: none;
+    cursor: pointer;
+    transition: color 150ms ease;
+}
+.sub-tabs button.active {
+    color: var(--accent-text);
+    border-bottom-color: var(--accent);
+}
+.sub-tabs button:hover {
+    color: var(--text-primary);
+}
+.sub-tabs button .badge {
+    margin-left: 6px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.data-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-default);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+}
+.data-table tr:hover td {
+    background: var(--bg-hover);
+}
+.usage-cell {
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.code-cell code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: var(--bg-base);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.status-badge.pending { background: var(--warning-subtle); color: var(--warning); }
+.status-badge.approved { background: var(--success-subtle); color: var(--success); }
+.status-badge.rejected { background: var(--error-subtle); color: var(--error); }
+.status-badge.available { background: var(--success-subtle); color: var(--success); }
+.status-badge.used { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
+.status-badge.expired { background: var(--error-subtle); color: var(--error); }
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1rem;
+}
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    height: auto;
+}
+
 /* ── Status dots ── */
 .status-dot {
     display: inline-block;

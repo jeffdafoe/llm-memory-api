@@ -16,6 +16,7 @@ const memoryRoutes = require('./routes/memory');
 const documentRoutes = require('./routes/documents');
 const systemRoutes = require('./routes/system');
 const adminRoutes = require('./routes/admin');
+const registrationRoutes = require('./routes/registration');
 
 const app = express();
 const port = process.env.PORT || 3100;
@@ -50,6 +51,14 @@ app.use('/v1', memoryRoutes);
 app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
 app.use('/v1', adminRoutes);
+
+// Registration endpoints (public, no auth)
+app.use(registrationRoutes);
+
+// Registration page
+app.get('/register', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'landing', 'register.html'));
+});
 
 // Landing page for public domains, admin redirect for internal domains
 app.get('/', (req, res) => {

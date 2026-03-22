@@ -15,6 +15,7 @@ import { useErrorLog } from './errorlog.js';
 import { useConfig } from './config.js';
 import { useActorsConfig } from './actors-config.js';
 import { useDashboard } from './dashboard.js';
+import { useAccess } from './access.js';
 
 // View components
 import DashboardView from './views/DashboardView.js';
@@ -25,9 +26,10 @@ import NotesView from './views/NotesView.js';
 import ActorDialogs from './views/ActorDialogs.js';
 import AgentDialog from './views/AgentDialog.js';
 import MiscDialogs from './views/MiscDialogs.js';
+import AccessView from './views/AccessView.js';
 
 createApp({
-    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs },
+    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView },
     setup() {
         const currentView = ref('dashboard');
 
@@ -45,7 +47,7 @@ createApp({
         }
 
         // ─── Hash-based tab persistence ───
-        const validViews = new Set(['dashboard', 'agents', 'comms', 'notes', 'config']);
+        const validViews = new Set(['dashboard', 'agents', 'comms', 'notes', 'config', 'access']);
         const validConfigSubs = new Set(['actors', 'system', 'apilog', 'errorlog', 'templates']);
         const validCommSubs = new Set(['mail', 'chat', 'discussions']);
         let suppressHashUpdate = false;
@@ -96,6 +98,7 @@ createApp({
             comms: 'Communications',
             notes: 'Notes',
             config: 'Configuration',
+            access: 'Access',
         };
         const viewTitle = computed(() => viewTitles[currentView.value] || currentView.value);
 
@@ -118,6 +121,7 @@ createApp({
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
         const actorsConfigModule = useActorsConfig({ ...deps, agentsModule, user: core.user, permissions: core.permissions });
+        const accessModule = useAccess(deps);
 
         // Dashboard API log: deduplicate consecutive /mcp entries
         const dashboardApiLog = computed(() => {
@@ -141,7 +145,8 @@ createApp({
                 ['agents', 'agents'],
                 ['comms', 'comms'],
                 ['notes', 'notes'],
-                ['config', 'config']
+                ['config', 'config'],
+                ['access', 'agents']
             ];
             for (const [view, resource] of viewPerms) {
                 if (core.canDo(resource, 'read')) {
@@ -182,6 +187,8 @@ createApp({
                     mailModule.loadMail();
                     if (agentsModule.agents.value.length === 0) agentsModule.loadAgents();
                 }
+            } else if (currentView.value === 'access') {
+                accessModule.loadAccess();
             } else if (currentView.value === 'notes') {
                 notesModule.loadNotes().then(() => {
                     if (pendingNoteLink) {
@@ -357,6 +364,8 @@ createApp({
             // Dashboard
             ...dashboardModule,
             dashboardApiLog,
+            // Access
+            ...accessModule,
         };
 
         // Provide to child view components
