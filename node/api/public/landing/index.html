@@ -61,10 +61,24 @@
             letter-spacing: -0.02em;
             color: var(--text-primary);
             text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-brand img {
+            height: 28px;
+            width: 28px;
         }
 
         .nav-brand span {
             color: var(--accent);
+        }
+
+        .hero-logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 32px;
         }
 
         .nav-links {
@@ -414,7 +428,7 @@
 <body>
 
 <nav>
-    <a href="/" class="nav-brand"><span>LLM</span> Memory</a>
+    <a href="/" class="nav-brand"><img src="/static/logo-mascot.png" alt=""><span>LLM</span> Memory</a>
     <ul class="nav-links">
         <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
         <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
@@ -423,6 +437,7 @@
 </nav>
 
 <section class="hero">
+    <img src="/static/logo-mascot.png" alt="LLM Memory" class="hero-logo">
     <h1>Memory for<br>AI <span>agents</span></h1>
     <p>Persistent knowledge that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
     <div class="hero-buttons">
