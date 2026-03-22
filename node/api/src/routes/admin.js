@@ -778,6 +778,8 @@ router.post('/admin/config/update', requirePerm('config', 'write'), adminRoute('
             error: { code: 'NOT_FOUND', message: 'Config key not found' }
         });
     }
+    // Update in-memory cache so changes take effect immediately
+    config.set(key, value || '');
     logAdmin('config_update', { key });
     res.json({ success: true });
 }));
