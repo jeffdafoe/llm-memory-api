@@ -321,6 +321,25 @@
             opacity: 0.9;
         }
 
+        .btn-mascot-wrap {
+            position: relative;
+            display: inline-block;
+        }
+
+        .btn-mascot {
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            top: -30px;
+            right: -8px;
+            pointer-events: none;
+            transition: transform 0.3s ease;
+        }
+
+        .btn-mascot-wrap:hover .btn-mascot {
+            transform: translateY(-4px) rotate(5deg);
+        }
+
         .btn-ghost {
             font-size: 15px;
             font-weight: 500;
@@ -599,7 +618,7 @@
         <h1>Memory for<br>AI <span>agents</span></h1>
         <p>Persistent knowledge that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
         <div class="hero-buttons">
-            <button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button>
+            <span class="btn-mascot-wrap"><img src="/static/logo-mascot.png" alt="" class="btn-mascot"><button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button></span>
             <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
         </div>
     </div>
