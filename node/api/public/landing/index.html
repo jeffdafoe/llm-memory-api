@@ -67,8 +67,10 @@
         }
 
         .nav-brand img {
-            height: 28px;
-            width: 28px;
+            height: 24px;
+            width: 24px;
+            vertical-align: middle;
+            margin-top: -2px;
         }
 
         .nav-brand span {
@@ -79,6 +81,7 @@
             width: 560px;
             height: auto;
             justify-self: end;
+            margin-right: -40px;
         }
 
         .nav-links {
@@ -108,18 +111,6 @@
         .nav-login {
             font-size: 14px;
             font-weight: 500;
-            color: var(--text-secondary);
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-
-        .nav-login:hover {
-            color: var(--text-primary);
-        }
-
-        .nav-cta {
-            font-size: 14px;
-            font-weight: 500;
             color: var(--bg-primary);
             background: var(--text-primary);
             padding: 8px 20px;
@@ -128,8 +119,25 @@
             transition: opacity 0.2s;
         }
 
-        .nav-cta:hover {
+        .nav-login:hover {
             opacity: 0.9;
+        }
+
+        .nav-cta {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            text-decoration: none;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .nav-cta:hover {
+            color: var(--text-primary);
+            border-color: rgba(255, 255, 255, 0.2);
         }
 
         /* Sections */
