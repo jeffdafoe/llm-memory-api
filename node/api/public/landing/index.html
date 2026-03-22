@@ -75,10 +75,10 @@
             color: var(--accent);
         }
 
-        .hero-logo {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 32px;
+        .hero-mascot {
+            width: 320px;
+            height: auto;
+            justify-self: center;
         }
 
         .nav-links {
@@ -124,9 +124,9 @@
         /* Hero */
         .hero {
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            align-items: center;
             padding-top: 200px;
             padding-bottom: 120px;
         }
@@ -381,6 +381,12 @@
                 padding-top: 140px;
                 padding-bottom: 64px;
                 min-height: auto;
+                grid-template-columns: 1fr;
+            }
+
+            .hero-mascot {
+                width: 200px;
+                order: -1;
             }
 
             .hero h1 {
@@ -428,7 +434,7 @@
 <body>
 
 <nav>
-    <a href="/" class="nav-brand"><img src="/static/logo-mascot.png" alt=""><span>LLM</span> Memory</a>
+    <a href="/" class="nav-brand"><span>LLM</span> Memory<img src="/static/logo-mascot.png" alt=""></a>
     <ul class="nav-links">
         <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
         <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
@@ -437,13 +443,15 @@
 </nav>
 
 <section class="hero">
-    <img src="/static/logo-mascot.png" alt="LLM Memory" class="hero-logo">
-    <h1>Memory for<br>AI <span>agents</span></h1>
-    <p>Persistent knowledge that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
-    <div class="hero-buttons">
-        <a href="https://github.com/jeffdafoe/llm-memory-api" class="btn-primary">Get Started</a>
-        <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
+    <div class="hero-text">
+        <h1>Memory for<br>AI <span>agents</span></h1>
+        <p>Persistent knowledge that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
+        <div class="hero-buttons">
+            <a href="https://github.com/jeffdafoe/llm-memory-api" class="btn-primary">Get Started</a>
+            <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
+        </div>
     </div>
+    <img src="/static/logo-mascot.png" alt="LLM Memory" class="hero-mascot">
 </section>
 
 <section class="statement">
