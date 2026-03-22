@@ -352,9 +352,9 @@ a:hover { text-decoration: underline; }
 }
 
 .login-card {
-    max-width: 720px;
+    max-width: 800px;
     width: 100%;
-    padding: 2.5rem;
+    padding: 3rem;
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
     border-radius: 12px;
@@ -373,9 +373,9 @@ a:hover { text-decoration: underline; }
 }
 
 .login-left img {
-    width: 240px;
-    height: 240px;
-    margin-top: -50px;
+    width: 300px;
+    height: 300px;
+    margin-top: -60px;
 }
 
 .login-brand {
