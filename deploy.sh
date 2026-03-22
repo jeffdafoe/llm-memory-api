@@ -49,10 +49,11 @@ if ! pg_lsclusters -h | grep -q 'online'; then
     fi
 fi
 
-# Pull latest if git repo exists
+# Pull latest (fetch + reset to handle force pushes cleanly)
 echo -e "\033[1m[1/3] Updating code...\033[0m"
 cd /opt/llm-memory-api
-git pull
+git fetch origin
+git reset --hard origin/main
 
 # Run deploy playbook
 echo -e "\033[1m[2/3] Running deploy...\033[0m"
