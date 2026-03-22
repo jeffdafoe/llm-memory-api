@@ -326,25 +326,6 @@
             display: inline-block;
         }
 
-        .btn-mascot-wrap {
-            overflow: visible;
-        }
-
-        .btn-mascot {
-            position: absolute;
-            width: 56px;
-            height: 56px;
-            top: -20px;
-            left: -30px;
-            pointer-events: none;
-            z-index: -1;
-            transition: left 3s ease, top 3s ease, transform 3s ease, z-index 0s 0.5s;
-        }
-
-        .btn-mascot-wrap:hover .btn-mascot {
-            z-index: 1;
-            transition: left 3s ease, top 3s ease, transform 3s ease, z-index 0s 0s;
-        }
 
         .btn-ghost {
             font-size: 15px;
@@ -624,7 +605,7 @@
         <h1>Memory for<br>AI <span>agents</span></h1>
         <p><span style="color:var(--accent)">Persistent knowledge</span> that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
         <div class="hero-buttons">
-            <span class="btn-mascot-wrap"><img src="/static/logo-mascot.png" alt="" class="btn-mascot"><button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button></span>
+            <button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button>
             <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
         </div>
     </div>
@@ -770,25 +751,6 @@ async function submitAccessForm() {
         errorEl.style.display = '';
     }
 }
-
-// Mascot follows mouse on button hover (capped at 75% across)
-document.querySelectorAll('.btn-mascot-wrap').forEach(wrap => {
-    const mascot = wrap.querySelector('.btn-mascot');
-    wrap.addEventListener('mousemove', (e) => {
-        const rect = wrap.getBoundingClientRect();
-        const maxX = rect.width * 0.75 - 28;
-        const x = Math.min(e.clientX - rect.left - 28, maxX);
-        const y = e.clientY - rect.top - 56;
-        mascot.style.left = x + 'px';
-        mascot.style.top = y + 'px';
-        mascot.style.transform = 'rotate(6deg)';
-    });
-    wrap.addEventListener('mouseleave', () => {
-        mascot.style.left = '-30px';
-        mascot.style.top = '-20px';
-        mascot.style.transform = 'rotate(0deg)';
-    });
-});
 
 // Close on overlay click
 document.getElementById('accessModal').addEventListener('click', function(e) {
