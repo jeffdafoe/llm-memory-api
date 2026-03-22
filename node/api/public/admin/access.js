@@ -43,6 +43,14 @@ export function useAccess({ api, showToast }) {
         }
     }
 
+    async function deleteCode(id) {
+        const res = await api('/admin/invite-codes/delete', { id });
+        if (res && res.ok) {
+            showToast('Invite code deleted', 'info');
+            await loadInviteCodes();
+        }
+    }
+
     function copyCode(code) {
         navigator.clipboard.writeText(code);
         showToast('Copied to clipboard', 'info');
@@ -51,6 +59,6 @@ export function useAccess({ api, showToast }) {
     return {
         accessRequests, inviteCodes, accessSubTab,
         loadAccess, loadAccessRequests, loadInviteCodes,
-        approveRequest, rejectRequest, generateCodes, copyCode
+        approveRequest, rejectRequest, generateCodes, copyCode, deleteCode
     };
 }

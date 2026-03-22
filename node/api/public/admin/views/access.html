@@ -79,6 +79,7 @@
                     <td>{{ c.expires_at ? new Date(c.expires_at).toLocaleDateString() : '—' }}</td>
                     <td>
                         <button v-if="!c.used_by" class="btn btn-sm btn-secondary" @click="copyCode(c.code)">Copy</button>
+                        <button v-if="!c.used_by" class="btn btn-sm btn-danger" @click="deleteCode(c.id)">Delete</button>
                     </td>
                 </tr>
             </tbody>
