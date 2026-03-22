@@ -1885,7 +1885,6 @@ router.post('/admin/access-requests/approve', requirePerm('agents', 'write'), ad
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Request already ' + request.rows[0].status } });
     }
 
-    // Generate invite code
     const code = crypto.randomBytes(16).toString('hex');
 
     const client = await pool.connect();
@@ -1908,8 +1907,9 @@ router.post('/admin/access-requests/approve', requirePerm('agents', 'write'), ad
         client.release();
     }
 
+    const registerUrl = 'https://llm-memory.net/register?code=' + code;
     logAdmin('access_request_approved', { request_id: id, email: request.rows[0].email, user_id: req.authenticatedUser.id });
-    res.json({ ok: true, invite_code: code, email: request.rows[0].email });
+    res.json({ ok: true, invite_code: code, register_url: registerUrl, email: request.rows[0].email });
 }));
 
 // POST /admin/access-requests/reject — reject request

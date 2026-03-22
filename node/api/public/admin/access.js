@@ -22,7 +22,8 @@ export function useAccess({ api, showToast }) {
     async function approveRequest(id) {
         const res = await api('/admin/access-requests/approve', { id });
         if (res && res.ok) {
-            showToast('Approved — invite code: ' + res.invite_code, 'success');
+            navigator.clipboard.writeText(res.register_url);
+            showToast('Approved! Registration link copied to clipboard. Send to: ' + res.email, 'success');
             await loadAccess();
         }
     }
