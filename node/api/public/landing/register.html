@@ -166,6 +166,42 @@
             text-decoration: none;
         }
         .back-link:hover { color: var(--text-secondary); }
+
+        .guide { max-width: 520px; width: 100%; }
+        .guide-step {
+            margin-bottom: 28px;
+        }
+        .guide-step-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: var(--bg-primary);
+            font-size: 13px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        .guide-step h3 {
+            display: inline;
+            font-size: 15px;
+            font-weight: 500;
+        }
+        .guide-step p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin: 8px 0 8px 32px;
+            line-height: 1.5;
+        }
+        .guide-step .config-block {
+            margin-left: 32px;
+            margin-right: 0;
+        }
+        .guide-step .copy-btn {
+            margin-left: 32px;
+        }
     </style>
 </head>
 <body>
@@ -198,19 +234,42 @@
         <button class="btn btn-secondary" onclick="goBack()">Back</button>
     </div>
 
-    <!-- Step 3: Show passphrase -->
-    <div id="step3" class="step">
-        <h2>Your account is ready</h2>
+    <!-- Step 3: Getting started guide -->
+    <div id="step3" class="step guide">
+        <h2>You're in!</h2>
         <div class="passphrase-warning">Save this passphrase now — it will never be shown again.</div>
         <div class="passphrase-display">
             <code id="passphraseValue"></code>
         </div>
         <div class="copy-row">
             <button class="copy-btn" onclick="copyPassphrase()">Copy Passphrase</button>
+        </div>
+
+        <div class="guide-step">
+            <span class="guide-step-num">1</span>
+            <h3>Save your credentials</h3>
+            <p>Create a file called <code>.agent.json</code> in your project root. This tells your agent how to connect.</p>
+            <div class="config-block" id="configBlock"></div>
             <button class="copy-btn" onclick="copyConfig()">Copy .agent.json</button>
         </div>
-        <div class="subtitle">Put this in your project's <code>.agent.json</code>:</div>
-        <div class="config-block" id="configBlock"></div>
+
+        <div class="guide-step">
+            <span class="guide-step-num">2</span>
+            <h3>Add the MCP server</h3>
+            <p>Add LLM Memory to your <code>.mcp.json</code> so Claude can use it as a tool.</p>
+            <div class="config-block" id="mcpBlock"></div>
+            <button class="copy-btn" onclick="copyMcp()">Copy .mcp.json</button>
+        </div>
+
+        <div class="guide-step">
+            <span class="guide-step-num">3</span>
+            <h3>Try it out</h3>
+            <p>Start a Claude Code session in your project directory. Claude will automatically connect to LLM Memory. Try asking it to save a note:</p>
+            <div class="config-block">"Save a note called hello-world with the content 'My memory is working!'"</div>
+            <p>Then in a new session, ask Claude to search for it:</p>
+            <div class="config-block">"Search my memory for hello world"</div>
+        </div>
+
         <button class="btn btn-primary" onclick="window.location='/'">Done</button>
     </div>
 </div>
@@ -304,6 +363,13 @@ async function register() {
             passphrase: data.passphrase,
             api_url: 'https://llm-memory.net/v1'
         }, null, 2);
+        document.getElementById('mcpBlock').textContent = JSON.stringify({
+            mcpServers: {
+                'llm-memory': {
+                    url: 'https://llm-memory.net/mcp'
+                }
+            }
+        }, null, 2);
         showStep(3);
     } catch (err) {
         showError(2, 'Something went wrong. Try again.');
@@ -314,6 +380,19 @@ function copyPassphrase() {
     navigator.clipboard.writeText(registeredPassphrase);
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy Passphrase', 2000);
+}
+
+function copyMcp() {
+    const mcp = JSON.stringify({
+        mcpServers: {
+            'llm-memory': {
+                url: 'https://llm-memory.net/mcp'
+            }
+        }
+    }, null, 2);
+    navigator.clipboard.writeText(mcp);
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy .mcp.json', 2000);
 }
 
 function copyConfig() {
