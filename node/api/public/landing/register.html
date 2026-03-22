@@ -327,6 +327,13 @@ function copyConfig() {
     setTimeout(() => event.target.textContent = 'Copy .agent.json', 2000);
 }
 
+// Auto-fill invite code from URL
+const urlCode = new URLSearchParams(window.location.search).get('code');
+if (urlCode) {
+    document.getElementById('inviteCode').value = urlCode;
+    validateCode();
+}
+
 function showError(step, msg) {
     const el = document.getElementById('error' + step);
     el.textContent = msg;
