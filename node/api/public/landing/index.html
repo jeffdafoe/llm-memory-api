@@ -154,8 +154,130 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             align-items: center;
-            padding-top: 200px;
-            padding-bottom: 120px;
+            padding-top: 140px;
+            padding-bottom: 80px;
+        }
+
+        /* Access request modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 480px;
+            width: 100%;
+            margin: 24px;
+        }
+
+        .modal h2 {
+            font-size: 24px;
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .modal p {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+
+        .modal label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .modal input,
+        .modal textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            margin-bottom: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .modal input:focus,
+        .modal textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .modal textarea {
+            height: 120px;
+            resize: vertical;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .modal-buttons .btn-primary {
+            flex: 1;
+            text-align: center;
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .modal-buttons .btn-cancel {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            padding: 12px 28px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            transition: color 0.2s;
+        }
+
+        .modal-buttons .btn-cancel:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-success {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .modal-success h2 {
+            margin-bottom: 12px;
+        }
+
+        .modal-error {
+            color: #e55;
+            font-size: 14px;
+            margin-bottom: 12px;
         }
 
         .hero h1 {
@@ -468,7 +590,7 @@
     </ul>
     <div class="nav-right">
         <a href="/admin/" class="nav-login">Log in</a>
-        <a href="https://github.com/jeffdafoe/llm-memory-api" class="nav-cta">Get Started</a>
+        <a href="javascript:openAccessForm()" class="nav-cta">Get Access</a>
     </div>
 </nav>
 
@@ -477,7 +599,7 @@
         <h1>Memory for<br>AI <span>agents</span></h1>
         <p>Persistent knowledge that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
         <div class="hero-buttons">
-            <a href="https://github.com/jeffdafoe/llm-memory-api" class="btn-primary">Get Started</a>
+            <button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Ask for Free Access</button>
             <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
         </div>
     </div>
@@ -543,7 +665,7 @@
     <h2>Start building</h2>
     <p>Open source. Self-hostable. Free.</p>
     <div class="hero-buttons">
-        <a href="https://github.com/jeffdafoe/llm-memory-api" class="btn-primary">View on GitHub</a>
+        <button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Ask for Free Access</button>
         <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Read the docs</a>
     </div>
 </section>
@@ -555,6 +677,79 @@
         <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
     </ul>
 </footer>
+
+<!-- Access Request Modal -->
+<div class="modal-overlay" id="accessModal">
+    <div class="modal" id="accessForm">
+        <h2>Ask for Free Access</h2>
+        <p>Tell us a bit about how you'd use LLM Memory and we'll get you set up.</p>
+        <div id="formError" class="modal-error" style="display:none"></div>
+        <label for="accessEmail">Email</label>
+        <input type="email" id="accessEmail" placeholder="you@example.com" required>
+        <label for="accessUsage">Explain your usage</label>
+        <textarea id="accessUsage" placeholder="What are you building? How would persistent memory help your agents?"></textarea>
+        <div class="modal-buttons">
+            <button class="btn-cancel" onclick="closeAccessForm()">Cancel</button>
+            <button class="btn-primary" onclick="submitAccessForm()">Submit</button>
+        </div>
+    </div>
+    <div class="modal" id="accessSuccess" style="display:none">
+        <div class="modal-success">
+            <h2>Request received</h2>
+            <p>We'll review your request and get back to you soon.</p>
+            <button class="btn-primary" onclick="closeAccessForm()" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;margin-top:16px;">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openAccessForm() {
+    document.getElementById('accessModal').classList.add('active');
+    document.getElementById('accessForm').style.display = '';
+    document.getElementById('accessSuccess').style.display = 'none';
+    document.getElementById('formError').style.display = 'none';
+    document.getElementById('accessEmail').value = '';
+    document.getElementById('accessUsage').value = '';
+}
+
+function closeAccessForm() {
+    document.getElementById('accessModal').classList.remove('active');
+}
+
+async function submitAccessForm() {
+    const email = document.getElementById('accessEmail').value.trim();
+    const usage = document.getElementById('accessUsage').value.trim();
+    const errorEl = document.getElementById('formError');
+
+    if (!email || !usage) {
+        errorEl.textContent = 'Please fill in both fields.';
+        errorEl.style.display = '';
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/access-request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, usage })
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Something went wrong');
+        }
+        document.getElementById('accessForm').style.display = 'none';
+        document.getElementById('accessSuccess').style.display = '';
+    } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = '';
+    }
+}
+
+// Close on overlay click
+document.getElementById('accessModal').addEventListener('click', function(e) {
+    if (e.target === this) closeAccessForm();
+});
+</script>
 
 </body>
 </html>

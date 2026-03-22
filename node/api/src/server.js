@@ -59,6 +59,27 @@ app.get('/', (req, res) => {
     });
 });
 
+// Access request form submission (public, no auth)
+app.post('/api/access-request', async (req, res) => {
+    const { email, usage } = req.body;
+    if (!email || !usage) {
+        return res.status(400).json({ error: 'Email and usage description are required' });
+    }
+    if (email.length > 255 || usage.length > 5000) {
+        return res.status(400).json({ error: 'Input too long' });
+    }
+    try {
+        await pool.query(
+            'INSERT INTO access_requests (email, usage_description) VALUES ($1, $2)',
+            [email.trim(), usage.trim()]
+        );
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('Access request error:', err.message);
+        res.status(500).json({ error: 'Something went wrong' });
+    }
+});
+
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
