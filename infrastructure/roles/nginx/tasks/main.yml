@@ -10,6 +10,11 @@
     state: absent
   notify: Reload nginx
 
+- name: Remove legacy catch-all page
+  file:
+    path: /var/www/index.html
+    state: absent
+
 - name: Deploy rate limiting configuration
   template:
     src: rate-limiting.conf.j2
