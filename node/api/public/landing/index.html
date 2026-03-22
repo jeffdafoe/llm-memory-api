@@ -334,12 +334,7 @@
             left: -12px;
             pointer-events: none;
             z-index: 1;
-            animation: crawl 4s ease-in-out infinite;
-        }
-
-        @keyframes crawl {
-            0%, 100% { left: -12px; transform: rotate(0deg); }
-            50% { left: 50px; transform: rotate(6deg); }
+            transition: top 3s ease, left 3s ease, transform 3s ease;
         }
 
         .btn-ghost {
@@ -766,6 +761,24 @@ async function submitAccessForm() {
         errorEl.style.display = '';
     }
 }
+
+// Mascot follows mouse on button hover
+document.querySelectorAll('.btn-mascot-wrap').forEach(wrap => {
+    const mascot = wrap.querySelector('.btn-mascot');
+    wrap.addEventListener('mousemove', (e) => {
+        const rect = wrap.getBoundingClientRect();
+        const x = e.clientX - rect.left - 28;
+        const y = e.clientY - rect.top - 56;
+        mascot.style.left = x + 'px';
+        mascot.style.top = y + 'px';
+        mascot.style.transform = 'rotate(6deg)';
+    });
+    wrap.addEventListener('mouseleave', () => {
+        mascot.style.left = '-12px';
+        mascot.style.top = '-32px';
+        mascot.style.transform = 'rotate(0deg)';
+    });
+});
 
 // Close on overlay click
 document.getElementById('accessModal').addEventListener('click', function(e) {
