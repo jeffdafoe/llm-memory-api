@@ -87,6 +87,7 @@
                             <tr>
                                 <th style="width:30px"></th>
                                 <th>Agent</th>
+                                <th class="ts">Provider</th>
                                 <th>Status</th>
                                 <th class="time-cell nowrap">Last Seen</th>
                             </tr>
@@ -97,6 +98,7 @@
                                     <span v-if="agent.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                                 </td>
                                 <td class="nowrap" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
+                                <td class="ts nowrap">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') }}</td>
                                 <td><span :class="'badge badge-' + agent.status"><span :class="'status-dot status-dot-' + agent.status"></span> {{ agent.status }}</span></td>
                                 <td class="time-cell nowrap" :style="{ color: lastSeenColor(agent) }">{{ timeAgo(agent.last_seen) }}</td>
                             </tr>
