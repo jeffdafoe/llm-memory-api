@@ -10,10 +10,10 @@
         <!-- Login screen -->
         <main v-if="!authenticated" class="login-page">
             <div class="login-card">
+                <img src="/static/logo-mascot.png" alt="LLM Memory" style="width: 80px; height: 80px; display: block; margin: 0 auto 16px;">
                 <div class="login-brand">
                     <span class="login-brand-accent">LLM</span> Memory
                 </div>
-                <div class="login-subtitle">Admin Dashboard</div>
                 <form @submit.prevent="login">
                     <label>
                         Username
