@@ -328,17 +328,18 @@
 
         .btn-mascot {
             position: absolute;
-            width: 64px;
-            height: 64px;
-            top: -36px;
-            left: 20px;
+            width: 56px;
+            height: 56px;
+            top: -32px;
+            left: -12px;
             pointer-events: none;
-            transition: transform 0.3s ease;
             z-index: 1;
+            animation: crawl 4s ease-in-out infinite;
         }
 
-        .btn-mascot-wrap:hover .btn-mascot {
-            transform: translateY(-4px) rotate(5deg);
+        @keyframes crawl {
+            0%, 100% { left: -12px; transform: rotate(0deg); }
+            50% { left: 50px; transform: rotate(6deg); }
         }
 
         .btn-ghost {
