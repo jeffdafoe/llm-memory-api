@@ -1,21 +1,6 @@
 # {{ project_name }} — managed by Ansible
 # Multi-domain reverse proxy for the memory API
 
-# Catch-all: drop connections for unknown domains
-server {
-    listen 80 default_server;
-    server_name _;
-    return 444;
-}
-
-server {
-    listen 443 ssl default_server;
-    server_name _;
-    ssl_certificate /etc/letsencrypt/live/{{ server_name_list[0] }}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/{{ server_name_list[0] }}/privkey.pem;
-    return 444;
-}
-
 {% for domain in server_name_list %}
 # HTTP → HTTPS redirect for {{ domain }}
 server {
