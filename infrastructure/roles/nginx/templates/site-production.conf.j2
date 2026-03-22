@@ -5,8 +5,8 @@
 # HTTP → HTTPS redirect for {{ domain }}
 server {
     listen 80;
-    server_name {{ domain }};
-    return 301 https://$host$request_uri;
+    server_name {{ domain }} www.{{ domain }};
+    return 301 https://{{ domain }}$request_uri;
 }
 
 # HTTPS server for {{ domain }}
