@@ -10,6 +10,7 @@ const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontext
 const mcpAuth = require('../middleware/mcp-auth');
 const pool = require('../db');
 const { logError } = require('../services/logger');
+const config = require('../services/config');
 
 // Services
 const { searchMemory, deleteMemory } = require('../services/memory');
@@ -738,7 +739,16 @@ const TOOL_HANDLERS = {
         if (result.rows.length === 0) {
             throw new Error('Agent not found');
         }
-        return result.rows[0].startup_instructions || '(no instructions set)';
+        const agentInstructions = result.rows[0].startup_instructions || '';
+        const globalBootstrap = config.get('global_bootstrap') || '';
+        var parts = [];
+        if (globalBootstrap) {
+            parts.push(globalBootstrap);
+        }
+        if (agentInstructions) {
+            parts.push(agentInstructions);
+        }
+        return parts.length > 0 ? parts.join('\n\n') : '(no instructions set)';
     },
 
     async save_instructions(args, agent, namespace, actorId) {
@@ -1148,8 +1158,17 @@ async function createMcpServer(req) {
     let instructions = 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.';
     try {
         const result = await pool.query('SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1', [req.mcpActorId]);
-        if (result.rows.length > 0 && result.rows[0].startup_instructions) {
-            instructions = result.rows[0].startup_instructions;
+        var agentInst = (result.rows.length > 0 && result.rows[0].startup_instructions) ? result.rows[0].startup_instructions : '';
+        var globalBootstrap = config.get('global_bootstrap') || '';
+        var parts = [];
+        if (globalBootstrap) {
+            parts.push(globalBootstrap);
+        }
+        if (agentInst) {
+            parts.push(agentInst);
+        }
+        if (parts.length > 0) {
+            instructions = parts.join('\n\n');
         }
     } catch (err) {
         // Fall back to generic instructions if DB query fails

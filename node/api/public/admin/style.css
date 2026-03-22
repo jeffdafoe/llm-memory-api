@@ -2086,6 +2086,15 @@ details[open] .summary-chevron { transform: rotate(90deg); }
     font-size: 12px;
 }
 
+.config-edit-textarea {
+    margin: 0;
+    padding: 6px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    width: 100%;
+    resize: vertical;
+}
+
 .config-value-cell { word-break: break-all; }
 
 .filters {
