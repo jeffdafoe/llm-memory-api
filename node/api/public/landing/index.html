@@ -76,9 +76,9 @@
         }
 
         .hero-mascot {
-            width: 480px;
+            width: 560px;
             height: auto;
-            justify-self: center;
+            justify-self: end;
         }
 
         .nav-links {
@@ -96,6 +96,24 @@
         }
 
         .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .nav-login {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .nav-login:hover {
             color: var(--text-primary);
         }
 
@@ -439,7 +457,10 @@
         <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
         <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
     </ul>
-    <a href="https://github.com/jeffdafoe/llm-memory-api" class="nav-cta">Get Started</a>
+    <div class="nav-right">
+        <a href="/admin/" class="nav-login">Log in</a>
+        <a href="https://github.com/jeffdafoe/llm-memory-api" class="nav-cta">Get Started</a>
+    </div>
 </nav>
 
 <section class="hero">
