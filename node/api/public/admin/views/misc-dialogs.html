@@ -107,27 +107,43 @@
     </article>
 </dialog>
 
-<!-- Change password dialog -->
-<dialog :open="showChangePassword" @close="showChangePassword = false">
-    <article v-if="showChangePassword" class="confirm-dialog">
+<!-- User profile dialog -->
+<dialog :open="showProfile" @close="showProfile = false">
+    <article v-if="showProfile" class="agent-detail-dialog" style="max-width: 480px;">
         <header>
-            <h3>Change Password</h3>
-            <button aria-label="Close" rel="prev" @click="showChangePassword = false"></button>
+            <h3>Profile</h3>
+            <button aria-label="Close" rel="prev" @click="showProfile = false"></button>
         </header>
         <div class="dialog-body">
-            <label>Current password
-                <input type="password" v-model="changePasswordForm.current" placeholder="Current password">
-            </label>
-            <label>New password
-                <input type="password" v-model="changePasswordForm.newPassword" placeholder="New password">
-            </label>
-            <label>Confirm new password
-                <input type="password" v-model="changePasswordForm.confirm" placeholder="Confirm new password">
-            </label>
-            <p v-if="changePasswordError" class="error">{{ changePasswordError }}</p>
-            <div class="dialog-actions">
-                <button class="btn btn-secondary" @click="showChangePassword = false">Cancel</button>
-                <button class="btn btn-primary" @click="changePassword" :disabled="changePasswordSaving">{{ changePasswordSaving ? 'Saving...' : 'Change Password' }}</button>
+            <div class="agent-identity" style="margin-bottom: 20px;">
+                <div class="agent-avatar-lg" style="background: rgba(99,164,255,0.15); color: #63a4ff;">
+                    {{ user ? (typeof user === 'string' ? user : user.username || '?').charAt(0).toUpperCase() : '?' }}
+                </div>
+                <div class="agent-identity-info">
+                    <h3 class="agent-identity-name">{{ typeof user === 'string' ? user : (user && user.username) || '?' }}</h3>
+                    <div class="agent-identity-meta">
+                        <span class="badge badge-online">Administrator</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card-header">
+                    <span class="agent-card-title"><i class="icon-key"></i>Change Password</span>
+                </div>
+                <label>Current password
+                    <input type="password" v-model="changePasswordForm.current" placeholder="Current password">
+                </label>
+                <label>New password
+                    <input type="password" v-model="changePasswordForm.newPassword" placeholder="New password (min 4 characters)">
+                </label>
+                <label>Confirm new password
+                    <input type="password" v-model="changePasswordForm.confirm" placeholder="Confirm new password">
+                </label>
+                <p v-if="changePasswordError" class="error">{{ changePasswordError }}</p>
+                <div class="dialog-actions" style="margin-top: 12px;">
+                    <button class="btn btn-primary btn-compact" @click="changePassword" :disabled="changePasswordSaving">{{ changePasswordSaving ? 'Saving...' : 'Update Password' }}</button>
+                </div>
             </div>
         </div>
     </article>

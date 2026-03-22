@@ -201,6 +201,7 @@ createApp({
             actorsConfigModule.closeDialogs();
             core.cancelConfirm();
             core.showChangePassword.value = false;
+            core.showProfile.value = false;
         }
 
         // Auto-refresh polling
