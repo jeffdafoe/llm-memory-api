@@ -1,18 +1,21 @@
 # {{ project_name }} — managed by Ansible
-# Rate limiting and reverse proxy for the memory API
+# Multi-domain reverse proxy for the memory API
 
+{% for domain in server_name_list %}
+# HTTP → HTTPS redirect for {{ domain }}
 server {
     listen 80;
-    server_name {{ server_name }};
+    server_name {{ domain }};
     return 301 https://$host$request_uri;
 }
 
+# HTTPS server for {{ domain }}
 server {
     listen 443 ssl;
-    server_name {{ server_name }};
+    server_name {{ domain }};
 
-    ssl_certificate /etc/letsencrypt/live/{{ server_name }}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/{{ server_name }}/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/{{ domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ domain }}/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
@@ -84,16 +87,16 @@ server {
         proxy_read_timeout 86400s;
     }
 
-    # Root URL → admin dashboard
-    location = / {
-        return 302 /admin/;
-    }
-
     # Static assets served directly by nginx (logos, images)
     location /static/ {
         alias {{ project_root }}/static/;
         expires 7d;
         add_header Cache-Control "public, immutable";
+    }
+
+    # Root URL → admin dashboard
+    location = / {
+        return 302 /admin/;
     }
 
     # All other requests — no rate limit
@@ -112,6 +115,8 @@ server {
         proxy_set_header Connection "";
     }
 
-    access_log /var/log/nginx/{{ project_name }}_access.log;
-    error_log /var/log/nginx/{{ project_name }}_error.log;
+    access_log /var/log/nginx/{{ project_name }}_{{ domain }}_access.log;
+    error_log /var/log/nginx/{{ project_name }}_{{ domain }}_error.log;
 }
+
+{% endfor %}
