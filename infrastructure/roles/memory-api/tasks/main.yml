@@ -47,6 +47,14 @@
   delegate_to: "{{ inventory_hostname }}"
   when: repo_root != project_root
 
+- name: Deploy static assets
+  synchronize:
+    src: "{{ repo_root }}/static/"
+    dest: "{{ project_root }}/static/"
+    delete: yes
+  delegate_to: "{{ inventory_hostname }}"
+  when: repo_root != project_root
+
 - name: Deploy migrations
   synchronize:
     src: "{{ repo_root }}/migrations/"
