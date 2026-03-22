@@ -326,15 +326,24 @@
             display: inline-block;
         }
 
+        .btn-mascot-wrap {
+            overflow: visible;
+        }
+
         .btn-mascot {
             position: absolute;
             width: 56px;
             height: 56px;
-            top: -32px;
-            left: -12px;
+            top: -20px;
+            left: -30px;
             pointer-events: none;
+            z-index: -1;
+            transition: left 3s ease, top 3s ease, transform 3s ease, z-index 0s 0.5s;
+        }
+
+        .btn-mascot-wrap:hover .btn-mascot {
             z-index: 1;
-            transition: top 3s ease, left 3s ease, transform 3s ease;
+            transition: left 3s ease, top 3s ease, transform 3s ease, z-index 0s 0s;
         }
 
         .btn-ghost {
@@ -762,20 +771,21 @@ async function submitAccessForm() {
     }
 }
 
-// Mascot follows mouse on button hover
+// Mascot follows mouse on button hover (capped at 75% across)
 document.querySelectorAll('.btn-mascot-wrap').forEach(wrap => {
     const mascot = wrap.querySelector('.btn-mascot');
     wrap.addEventListener('mousemove', (e) => {
         const rect = wrap.getBoundingClientRect();
-        const x = e.clientX - rect.left - 28;
+        const maxX = rect.width * 0.75 - 28;
+        const x = Math.min(e.clientX - rect.left - 28, maxX);
         const y = e.clientY - rect.top - 56;
         mascot.style.left = x + 'px';
         mascot.style.top = y + 'px';
         mascot.style.transform = 'rotate(6deg)';
     });
     wrap.addEventListener('mouseleave', () => {
-        mascot.style.left = '-12px';
-        mascot.style.top = '-32px';
+        mascot.style.left = '-30px';
+        mascot.style.top = '-20px';
         mascot.style.transform = 'rotate(0deg)';
     });
 });
