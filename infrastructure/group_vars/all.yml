@@ -13,5 +13,7 @@ repo_root: /opt/llm-memory-api
 project_root: /var/www/memory-api
 git_repository: "https://github.com/jeffdafoe/llm-memory-api.git"
 
-# SSL — certbot_email and server_name are prompted during install
+# SSL — certbot_email and server_names are prompted during install
 # and stored in local-secrets.yml (gitignored)
+# server_names is comma-separated (e.g. "memory.example.com,memory2.example.com")
+# First domain is primary, all domains get their own SSL cert and nginx server block

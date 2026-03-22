@@ -6,25 +6,29 @@
       - python3-certbot-nginx
     state: present
 
-- name: Check if SSL certificate exists
+- name: Check if SSL certificates exist
   stat:
-    path: "/etc/letsencrypt/live/{{ server_name }}/fullchain.pem"
-  register: ssl_cert
+    path: "/etc/letsencrypt/live/{{ item }}/fullchain.pem"
+  register: ssl_certs
+  loop: "{{ server_name_list }}"
 
 - name: Stop nginx for initial cert generation
   service:
     name: nginx
     state: stopped
-  when: not ssl_cert.stat.exists
+  when: ssl_certs.results | selectattr('stat.exists', 'equalto', false) | list | length > 0
   ignore_errors: yes
 
-- name: Generate SSL certificate
+- name: Generate SSL certificates
   command: >
     certbot certonly --standalone
     --non-interactive --agree-tos
     --email {{ certbot_email }}
-    -d {{ server_name }}
-  when: not ssl_cert.stat.exists
+    -d {{ item.item }}
+  when: not item.stat.exists
+  loop: "{{ ssl_certs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
 
 - name: Ensure Let's Encrypt SSL options file exists
   command: >
