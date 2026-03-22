@@ -22,4 +22,9 @@ function get(key) {
     return cache[key];
 }
 
-module.exports = { init, get };
+// Update a single cached value after a DB write.
+function set(key, value) {
+    cache[key] = value;
+}
+
+module.exports = { init, get, set };
