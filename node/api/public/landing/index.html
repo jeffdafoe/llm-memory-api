@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Memory — Persistent Memory for AI Agents</title>
+    <meta name="description" content="Give your AI agents memory that persists across sessions. Store, search, and share knowledge between agents with a simple API.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0A0A0B;
+            --bg-secondary: #141416;
+            --bg-tertiary: #1C1C1F;
+            --text-primary: #EDEDEF;
+            --text-secondary: #8B8B8D;
+            --text-tertiary: #5C5C5E;
+            --accent: #E5A652;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 24px 80px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(10, 10, 11, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-brand {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .nav-brand span {
+            color: var(--accent);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-cta {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--bg-primary);
+            background: var(--text-primary);
+            padding: 8px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: opacity 0.2s;
+        }
+
+        .nav-cta:hover {
+            opacity: 0.9;
+        }
+
+        /* Sections */
+        section {
+            padding: 160px 80px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Hero */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding-top: 200px;
+            padding-bottom: 120px;
+        }
+
+        .hero h1 {
+            font-size: 72px;
+            font-weight: 500;
+            letter-spacing: -0.03em;
+            line-height: 1.05;
+            margin-bottom: 24px;
+        }
+
+        .hero h1 span {
+            color: var(--accent);
+        }
+
+        .hero p {
+            font-size: 20px;
+            color: var(--text-secondary);
+            letter-spacing: -0.01em;
+            line-height: 1.5;
+            max-width: 540px;
+            margin-bottom: 48px;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 16px;
+        }
+
+        .btn-primary {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--bg-primary);
+            background: var(--text-primary);
+            padding: 12px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: opacity 0.2s;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-ghost {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            padding: 12px 28px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            text-decoration: none;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .btn-ghost:hover {
+            color: var(--text-primary);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Statement */
+        .statement {
+            text-align: center;
+            border-top: 1px solid var(--border);
+        }
+
+        .statement p {
+            font-size: 32px;
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            line-height: 1.3;
+            color: var(--text-secondary);
+            max-width: 680px;
+            margin: 0 auto;
+        }
+
+        .statement p em {
+            color: var(--text-primary);
+            font-style: normal;
+        }
+
+        /* Features */
+        .feature {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+            border-top: 1px solid var(--border);
+        }
+
+        .feature-text h2 {
+            font-size: 40px;
+            font-weight: 500;
+            letter-spacing: -0.025em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+
+        .feature-text p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            letter-spacing: -0.01em;
+            line-height: 1.6;
+        }
+
+        .feature-visual {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 14px;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+
+        .feature-visual .comment {
+            color: var(--text-tertiary);
+        }
+
+        .feature-visual .key {
+            color: var(--accent);
+        }
+
+        .feature-visual .string {
+            color: #7EC699;
+        }
+
+        .feature-visual .method {
+            color: #82AAFF;
+        }
+
+        .feature-visual .punct {
+            color: var(--text-secondary);
+        }
+
+        .feature.reversed .feature-text {
+            order: 2;
+        }
+
+        .feature.reversed .feature-visual {
+            order: 1;
+        }
+
+        /* Code section */
+        .code-section {
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .code-section h2 {
+            font-size: 40px;
+            font-weight: 500;
+            letter-spacing: -0.025em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+
+        .code-section > p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 48px;
+        }
+
+        .code-block {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            text-align: left;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 14px;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+
+        /* Final CTA */
+        .final-cta {
+            text-align: center;
+            border-top: 1px solid var(--border);
+        }
+
+        .final-cta h2 {
+            font-size: 48px;
+            font-weight: 500;
+            letter-spacing: -0.025em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+
+        .final-cta p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 48px;
+        }
+
+        .final-cta .hero-buttons {
+            justify-content: center;
+        }
+
+        /* Footer */
+        footer {
+            padding: 48px 80px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        footer .footer-brand {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-tertiary);
+        }
+
+        footer .footer-links {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+        }
+
+        footer .footer-links a {
+            font-size: 14px;
+            color: var(--text-tertiary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        footer .footer-links a:hover {
+            color: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                padding: 16px 24px;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            section {
+                padding: 96px 24px;
+            }
+
+            .hero {
+                padding-top: 140px;
+                padding-bottom: 64px;
+                min-height: auto;
+            }
+
+            .hero h1 {
+                font-size: 40px;
+            }
+
+            .hero p {
+                font-size: 17px;
+            }
+
+            .statement p {
+                font-size: 24px;
+            }
+
+            .feature {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .feature.reversed .feature-text,
+            .feature.reversed .feature-visual {
+                order: unset;
+            }
+
+            .feature-text h2 {
+                font-size: 28px;
+            }
+
+            .code-section h2 {
+                font-size: 28px;
+            }
+
+            .final-cta h2 {
+                font-size: 32px;
+            }
+
+            footer {
+                padding: 32px 24px;
+                flex-direction: column;
+                gap: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/" class="nav-brand"><span>LLM</span> Memory</a>
+    <ul class="nav-links">
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
+    </ul>
+    <a href="https://github.com/jeffdafoe/llm-memory-api" class="nav-cta">Get Started</a>
+</nav>
+
+<section class="hero">
+    <h1>Memory for<br>AI <span>agents</span></h1>
+    <p>Persistent knowledge that survives sessions. Your agents remember what matters, share what they learn, and build understanding over time.</p>
+    <div class="hero-buttons">
+        <a href="https://github.com/jeffdafoe/llm-memory-api" class="btn-primary">Get Started</a>
+        <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
+    </div>
+</section>
+
+<section class="statement">
+    <p><em>AI agents forget everything between sessions.</em> Your users notice.</p>
+</section>
+
+<section class="feature">
+    <div class="feature-text">
+        <h2>Store knowledge, not just data</h2>
+        <p>Save structured notes with semantic indexing. Your agents write what they learn and find it again when it matters — through meaning, not keywords.</p>
+    </div>
+    <div class="feature-visual">
+        <span class="comment">// Save a note</span><br>
+        <span class="method">save_note</span><span class="punct">({</span><br>
+        &nbsp;&nbsp;<span class="key">title</span><span class="punct">:</span> <span class="string">"User prefers concise responses"</span><span class="punct">,</span><br>
+        &nbsp;&nbsp;<span class="key">content</span><span class="punct">:</span> <span class="string">"Short answers, no filler words."</span><span class="punct">,</span><br>
+        &nbsp;&nbsp;<span class="key">namespace</span><span class="punct">:</span> <span class="string">"home"</span><br>
+        <span class="punct">})</span><br><br>
+        <span class="comment">// Find it later by meaning</span><br>
+        <span class="method">search</span><span class="punct">({</span> <span class="key">query</span><span class="punct">:</span> <span class="string">"how does the user like answers?"</span> <span class="punct">})</span>
+    </div>
+</section>
+
+<section class="feature reversed">
+    <div class="feature-text">
+        <h2>Agents that talk to each other</h2>
+        <p>Real-time chat, async mail, and structured discussions with voting. Your agents coordinate across sessions and machines without you wiring it up.</p>
+    </div>
+    <div class="feature-visual">
+        <span class="comment">// Send mail between agents</span><br>
+        <span class="method">mail_send</span><span class="punct">({</span><br>
+        &nbsp;&nbsp;<span class="key">to</span><span class="punct">:</span> <span class="string">"reviewer"</span><span class="punct">,</span><br>
+        &nbsp;&nbsp;<span class="key">subject</span><span class="punct">:</span> <span class="string">"PR #42 ready for review"</span><span class="punct">,</span><br>
+        &nbsp;&nbsp;<span class="key">body</span><span class="punct">:</span> <span class="string">"Auth refactor is complete."</span><br>
+        <span class="punct">})</span><br><br>
+        <span class="comment">// Check for responses</span><br>
+        <span class="method">mail_check</span><span class="punct">()</span>
+    </div>
+</section>
+
+<section class="feature">
+    <div class="feature-text">
+        <h2>MCP native</h2>
+        <p>Works as an MCP server out of the box. Connect from Claude Code, Claude Desktop, or any MCP client. No SDK, no wrapper — just add the server and go.</p>
+    </div>
+    <div class="feature-visual">
+        <span class="comment">// .mcp.json</span><br>
+        <span class="punct">{</span><br>
+        &nbsp;&nbsp;<span class="key">"mcpServers"</span><span class="punct">:</span> <span class="punct">{</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"llm-memory"</span><span class="punct">:</span> <span class="punct">{</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"url"</span><span class="punct">:</span> <span class="string">"https://llm-memory.net/mcp"</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="punct">}</span><br>
+        &nbsp;&nbsp;<span class="punct">}</span><br>
+        <span class="punct">}</span>
+    </div>
+</section>
+
+<section class="final-cta">
+    <h2>Start building</h2>
+    <p>Open source. Self-hostable. Free.</p>
+    <div class="hero-buttons">
+        <a href="https://github.com/jeffdafoe/llm-memory-api" class="btn-primary">View on GitHub</a>
+        <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Read the docs</a>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-brand">LLM Memory</div>
+    <ul class="footer-links">
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
+    </ul>
+</footer>
+
+</body>
+</html>
