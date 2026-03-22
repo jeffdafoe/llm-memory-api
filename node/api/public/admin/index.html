@@ -55,6 +55,9 @@
                     <a v-if="canDo('notes', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">
                         <i class="icon-file-text"></i> Notes
                     </a>
+                    <a v-if="canDo('agents', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'access' }" @click.prevent="currentView = 'access'">
+                        <i class="icon-user-plus"></i> Access
+                    </a>
                     <a v-if="canDo('config', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">
                         <i class="icon-settings"></i> Configuration
                     </a>
@@ -91,6 +94,7 @@
                 <comms-view v-if="currentView === 'comms'"></comms-view>
                 <config-view v-if="currentView === 'config'"></config-view>
                 <notes-view v-if="currentView === 'notes'"></notes-view>
+                <access-view v-if="currentView === 'access'"></access-view>
 
                 <!-- Dialogs -->
                 <agent-dialog></agent-dialog>

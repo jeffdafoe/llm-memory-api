@@ -1852,4 +1852,124 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
     res.json(response);
 }));
 
+// ═══════════════════════════════════════════════════════════════════
+//   Access Requests
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /admin/access-requests — list access requests
+router.post('/admin/access-requests', requirePerm('agents', 'read'), adminRoute('access-requests-list', async (req, res) => {
+    const { status } = req.body;
+    let sql = 'SELECT id, email, usage_description, status, created_at, reviewed_at, reviewer_notes FROM access_requests';
+    const params = [];
+    if (status) {
+        sql += ' WHERE status = $1';
+        params.push(status);
+    }
+    sql += ' ORDER BY created_at DESC';
+    const result = await pool.query(sql, params);
+    res.json({ requests: result.rows });
+}));
+
+// POST /admin/access-requests/approve — approve request, generate invite code
+router.post('/admin/access-requests/approve', requirePerm('agents', 'write'), adminRoute('access-requests-approve', async (req, res) => {
+    const { id, notes } = req.body;
+    if (!id) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: id' } });
+    }
+
+    const request = await pool.query('SELECT id, status, email FROM access_requests WHERE id = $1', [id]);
+    if (request.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Access request not found' } });
+    }
+    if (request.rows[0].status !== 'pending') {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Request already ' + request.rows[0].status } });
+    }
+
+    // Generate invite code
+    const code = crypto.randomBytes(16).toString('hex');
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query(
+            `UPDATE access_requests SET status = 'approved', reviewed_at = NOW(), reviewer_notes = $1 WHERE id = $2`,
+            [notes || null, id]
+        );
+        await client.query(
+            `INSERT INTO invite_codes (code, created_by, access_request_id, expires_at)
+             VALUES ($1, $2, $3, NOW() + INTERVAL '30 days')`,
+            [code, req.authenticatedUser.username, id]
+        );
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    logAdmin('access_request_approved', { request_id: id, email: request.rows[0].email, user_id: req.authenticatedUser.id });
+    res.json({ ok: true, invite_code: code, email: request.rows[0].email });
+}));
+
+// POST /admin/access-requests/reject — reject request
+router.post('/admin/access-requests/reject', requirePerm('agents', 'write'), adminRoute('access-requests-reject', async (req, res) => {
+    const { id, notes } = req.body;
+    if (!id) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: id' } });
+    }
+
+    const request = await pool.query('SELECT id, status FROM access_requests WHERE id = $1', [id]);
+    if (request.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Access request not found' } });
+    }
+    if (request.rows[0].status !== 'pending') {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Request already ' + request.rows[0].status } });
+    }
+
+    await pool.query(
+        `UPDATE access_requests SET status = 'rejected', reviewed_at = NOW(), reviewer_notes = $1 WHERE id = $2`,
+        [notes || null, id]
+    );
+
+    logAdmin('access_request_rejected', { request_id: id, user_id: req.authenticatedUser.id });
+    res.json({ ok: true });
+}));
+
+// ═══════════════════════════════════════════════════════════════════
+//   Invite Codes
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /admin/invite-codes — list invite codes
+router.post('/admin/invite-codes', requirePerm('agents', 'read'), adminRoute('invite-codes-list', async (req, res) => {
+    const result = await pool.query(
+        `SELECT ic.id, ic.code, ic.created_at, ic.created_by, ic.used_by, ic.used_at, ic.expires_at,
+                ar.email AS request_email
+         FROM invite_codes ic
+         LEFT JOIN access_requests ar ON ar.id = ic.access_request_id
+         ORDER BY ic.created_at DESC`
+    );
+    res.json({ codes: result.rows });
+}));
+
+// POST /admin/invite-codes/generate — generate invite codes (batch)
+router.post('/admin/invite-codes/generate', requirePerm('agents', 'write'), adminRoute('invite-codes-generate', async (req, res) => {
+    const { count = 1, expires_days } = req.body;
+    const num = Math.min(Math.max(parseInt(count) || 1, 1), 50);
+    const codes = [];
+
+    for (let i = 0; i < num; i++) {
+        const code = crypto.randomBytes(16).toString('hex');
+        const expiresAt = expires_days ? `NOW() + INTERVAL '${parseInt(expires_days)} days'` : 'NULL';
+        await pool.query(
+            `INSERT INTO invite_codes (code, created_by, expires_at) VALUES ($1, $2, ${expiresAt})`,
+            [code, req.authenticatedUser.username]
+        );
+        codes.push(code);
+    }
+
+    logAdmin('invite_codes_generated', { count: num, user_id: req.authenticatedUser.id });
+    res.json({ ok: true, codes });
+}));
+
 module.exports = router;

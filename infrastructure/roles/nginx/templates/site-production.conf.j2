@@ -87,6 +87,18 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Rate-limited public endpoints (registration, access requests)
+    location /api/ {
+        limit_req zone=auth_limit burst=10 nodelay;
+        limit_req_status 429;
+
+        proxy_pass http://127.0.0.1:{{ memory_api_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # WebSocket upgrade for admin real-time events
     location /admin/ws {
         proxy_pass http://127.0.0.1:{{ memory_api_port }};

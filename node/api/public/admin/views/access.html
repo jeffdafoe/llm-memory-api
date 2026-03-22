@@ -1,0 +1,83 @@
+<div class="view-access">
+    <div class="sub-tabs">
+        <button :class="{ active: accessSubTab === 'requests' }" @click="accessSubTab = 'requests'">
+            Access Requests
+            <span v-if="accessRequests.filter(r => r.status === 'pending').length" class="badge">
+                {{ accessRequests.filter(r => r.status === 'pending').length }}
+            </span>
+        </button>
+        <button :class="{ active: accessSubTab === 'codes' }" @click="accessSubTab = 'codes'">Invite Codes</button>
+    </div>
+
+    <!-- Access Requests -->
+    <div v-if="accessSubTab === 'requests'">
+        <div v-if="!accessRequests.length" class="empty-state">No access requests yet.</div>
+        <table v-else class="data-table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Usage</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="r in accessRequests" :key="r.id">
+                    <td>{{ r.email }}</td>
+                    <td class="usage-cell" :title="r.usage_description">{{ r.usage_description }}</td>
+                    <td>
+                        <span class="status-badge" :class="r.status">{{ r.status }}</span>
+                    </td>
+                    <td>{{ new Date(r.created_at).toLocaleDateString() }}</td>
+                    <td>
+                        <template v-if="r.status === 'pending'">
+                            <button class="btn btn-sm btn-primary" @click="approveRequest(r.id)">Approve</button>
+                            <button class="btn btn-sm btn-danger" @click="rejectRequest(r.id)">Reject</button>
+                        </template>
+                        <span v-else-if="r.reviewer_notes" class="muted">{{ r.reviewer_notes }}</span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Invite Codes -->
+    <div v-if="accessSubTab === 'codes'">
+        <div class="toolbar">
+            <button class="btn btn-primary" @click="generateCodes(1)">Generate Code</button>
+            <button class="btn btn-secondary" @click="generateCodes(5)">Generate 5</button>
+        </div>
+        <div v-if="!inviteCodes.length" class="empty-state">No invite codes yet.</div>
+        <table v-else class="data-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>For</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Expires</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="c in inviteCodes" :key="c.id">
+                    <td class="code-cell">
+                        <code>{{ c.code.substring(0, 8) }}...</code>
+                    </td>
+                    <td>{{ c.request_email || '—' }}</td>
+                    <td>
+                        <span v-if="c.used_by" class="status-badge used">used by {{ c.used_by }}</span>
+                        <span v-else-if="c.expires_at && new Date(c.expires_at) < new Date()" class="status-badge expired">expired</span>
+                        <span v-else class="status-badge available">available</span>
+                    </td>
+                    <td>{{ new Date(c.created_at).toLocaleDateString() }}</td>
+                    <td>{{ c.expires_at ? new Date(c.expires_at).toLocaleDateString() : '—' }}</td>
+                    <td>
+                        <button v-if="!c.used_by" class="btn btn-sm btn-secondary" @click="copyCode(c.code)">Copy</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

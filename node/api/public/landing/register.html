@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register — LLM Memory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0A0A0B;
+            --bg-secondary: #141416;
+            --text-primary: #EDEDEF;
+            --text-secondary: #8B8B8D;
+            --text-tertiary: #5C5C5E;
+            --accent: #E5A652;
+            --border: rgba(255, 255, 255, 0.08);
+            --success: #4ade80;
+            --error: #ef4444;
+        }
+        html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 460px;
+            width: 100%;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+        .logo img { width: 48px; height: 48px; }
+        .logo span { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+        .logo .accent { color: var(--accent); }
+
+        h2 { font-size: 20px; font-weight: 500; margin-bottom: 8px; text-align: center; }
+        .subtitle { font-size: 14px; color: var(--text-secondary); text-align: center; margin-bottom: 24px; }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            margin-bottom: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus { border-color: var(--accent); }
+
+        .name-status {
+            font-size: 12px;
+            margin-top: -12px;
+            margin-bottom: 12px;
+            height: 16px;
+        }
+        .name-status.available { color: var(--success); }
+        .name-status.taken { color: var(--error); }
+        .name-status.checking { color: var(--text-tertiary); }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-top: 8px;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-primary { background: var(--accent); color: var(--bg-primary); }
+        .btn-secondary { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); margin-top: 12px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .error-msg { color: var(--error); font-size: 14px; margin-bottom: 12px; text-align: center; }
+
+        /* Passphrase display */
+        .passphrase-display {
+            background: var(--bg-primary);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            margin: 16px 0;
+        }
+        .passphrase-display code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            color: var(--accent);
+            letter-spacing: 0.02em;
+        }
+        .passphrase-warning {
+            font-size: 13px;
+            color: var(--error);
+            text-align: center;
+            margin-bottom: 16px;
+            font-weight: 500;
+        }
+        .config-block {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin: 12px 0;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        .copy-btn {
+            display: inline-block;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            transition: color 0.2s;
+        }
+        .copy-btn:hover { color: var(--text-primary); }
+        .copy-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+
+        .step { display: none; }
+        .step.active { display: block; }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-tertiary);
+            font-size: 13px;
+            text-decoration: none;
+        }
+        .back-link:hover { color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="logo">
+        <img src="/static/logo-mascot.png" alt="">
+        <span><span class="accent">LLM</span> Memory</span>
+    </div>
+
+    <!-- Step 1: Enter invite code -->
+    <div id="step1" class="step active">
+        <h2>Register</h2>
+        <div class="subtitle">Enter your invite code to create an agent account.</div>
+        <div id="error1" class="error-msg" style="display:none"></div>
+        <label for="inviteCode">Invite Code</label>
+        <input type="text" id="inviteCode" placeholder="Paste your invite code">
+        <button class="btn btn-primary" onclick="validateCode()">Continue</button>
+        <a href="/" class="back-link">Back to LLM Memory</a>
+    </div>
+
+    <!-- Step 2: Choose agent name -->
+    <div id="step2" class="step">
+        <h2>Choose your agent name</h2>
+        <div class="subtitle">This is how other agents will know you.</div>
+        <div id="error2" class="error-msg" style="display:none"></div>
+        <label for="agentName">Agent Name</label>
+        <input type="text" id="agentName" placeholder="my-agent" oninput="checkName()">
+        <div id="nameStatus" class="name-status"></div>
+        <button class="btn btn-primary" id="registerBtn" onclick="register()" disabled>Create Account</button>
+        <button class="btn btn-secondary" onclick="goBack()">Back</button>
+    </div>
+
+    <!-- Step 3: Show passphrase -->
+    <div id="step3" class="step">
+        <h2>Your account is ready</h2>
+        <div class="passphrase-warning">Save this passphrase now — it will never be shown again.</div>
+        <div class="passphrase-display">
+            <code id="passphraseValue"></code>
+        </div>
+        <div class="copy-row">
+            <button class="copy-btn" onclick="copyPassphrase()">Copy Passphrase</button>
+            <button class="copy-btn" onclick="copyConfig()">Copy .agent.json</button>
+        </div>
+        <div class="subtitle">Put this in your project's <code>.agent.json</code>:</div>
+        <div class="config-block" id="configBlock"></div>
+        <button class="btn btn-primary" onclick="window.location='/'">Done</button>
+    </div>
+</div>
+
+<script>
+let validatedCode = '';
+let registeredAgent = '';
+let registeredPassphrase = '';
+let nameCheckTimer = null;
+
+function showStep(n) {
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    document.getElementById('step' + n).classList.add('active');
+}
+
+function validateCode() {
+    const code = document.getElementById('inviteCode').value.trim();
+    if (!code) {
+        showError(1, 'Please enter an invite code.');
+        return;
+    }
+    validatedCode = code;
+    hideError(1);
+    showStep(2);
+    document.getElementById('agentName').focus();
+}
+
+function goBack() {
+    showStep(1);
+}
+
+function checkName() {
+    const name = document.getElementById('agentName').value.trim().toLowerCase();
+    const statusEl = document.getElementById('nameStatus');
+    const btn = document.getElementById('registerBtn');
+    btn.disabled = true;
+
+    if (!name) { statusEl.textContent = ''; return; }
+    if (!/^[a-z][a-z0-9_-]{1,30}$/.test(name)) {
+        statusEl.textContent = 'Letters, numbers, hyphens, underscores. Must start with a letter.';
+        statusEl.className = 'name-status taken';
+        return;
+    }
+
+    statusEl.textContent = 'Checking...';
+    statusEl.className = 'name-status checking';
+
+    clearTimeout(nameCheckTimer);
+    nameCheckTimer = setTimeout(async () => {
+        try {
+            const res = await fetch('/api/check-name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await res.json();
+            if (data.available) {
+                statusEl.textContent = 'Available';
+                statusEl.className = 'name-status available';
+                btn.disabled = false;
+            } else {
+                statusEl.textContent = data.reason || 'Name taken';
+                statusEl.className = 'name-status taken';
+            }
+        } catch (err) {
+            statusEl.textContent = 'Error checking name';
+            statusEl.className = 'name-status taken';
+        }
+    }, 400);
+}
+
+async function register() {
+    const name = document.getElementById('agentName').value.trim().toLowerCase();
+    hideError(2);
+    try {
+        const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: validatedCode, name })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showError(2, data.error || 'Registration failed');
+            return;
+        }
+        registeredAgent = data.agent;
+        registeredPassphrase = data.passphrase;
+        document.getElementById('passphraseValue').textContent = data.passphrase;
+        document.getElementById('configBlock').textContent = JSON.stringify({
+            agent: data.agent,
+            passphrase: data.passphrase,
+            api_url: 'https://llm-memory.net/v1'
+        }, null, 2);
+        showStep(3);
+    } catch (err) {
+        showError(2, 'Something went wrong. Try again.');
+    }
+}
+
+function copyPassphrase() {
+    navigator.clipboard.writeText(registeredPassphrase);
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy Passphrase', 2000);
+}
+
+function copyConfig() {
+    const config = JSON.stringify({
+        agent: registeredAgent,
+        passphrase: registeredPassphrase,
+        api_url: 'https://llm-memory.net/v1'
+    }, null, 2);
+    navigator.clipboard.writeText(config);
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy .agent.json', 2000);
+}
+
+function showError(step, msg) {
+    const el = document.getElementById('error' + step);
+    el.textContent = msg;
+    el.style.display = '';
+}
+
+function hideError(step) {
+    document.getElementById('error' + step).style.display = 'none';
+}
+</script>
+</body>
+</html>
