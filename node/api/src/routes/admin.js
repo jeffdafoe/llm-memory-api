@@ -1972,4 +1972,22 @@ router.post('/admin/invite-codes/generate', requirePerm('agents', 'write'), admi
     res.json({ ok: true, codes });
 }));
 
+// POST /admin/invite-codes/delete — delete an unused invite code
+router.post('/admin/invite-codes/delete', requirePerm('agents', 'write'), adminRoute('invite-codes-delete', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: id' } });
+    }
+    const code = await pool.query('SELECT id, used_by FROM invite_codes WHERE id = $1', [id]);
+    if (code.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Invite code not found' } });
+    }
+    if (code.rows[0].used_by) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Cannot delete a used invite code' } });
+    }
+    await pool.query('DELETE FROM invite_codes WHERE id = $1', [id]);
+    logAdmin('invite_code_deleted', { code_id: id, user_id: req.authenticatedUser.id });
+    res.json({ ok: true });
+}));
+
 module.exports = router;
