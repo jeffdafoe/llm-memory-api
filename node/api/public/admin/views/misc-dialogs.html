@@ -131,18 +131,23 @@
                 <div class="agent-card-header">
                     <span class="agent-card-title"><i class="icon-key"></i>Change Password</span>
                 </div>
-                <label>Current password
-                    <input type="password" v-model="changePasswordForm.current" placeholder="Current password">
-                </label>
-                <label>New password
-                    <input type="password" v-model="changePasswordForm.newPassword" placeholder="New password (min 4 characters)">
-                </label>
-                <label>Confirm new password
-                    <input type="password" v-model="changePasswordForm.confirm" placeholder="Confirm new password">
-                </label>
-                <p v-if="changePasswordError" class="error">{{ changePasswordError }}</p>
-                <div class="dialog-actions" style="margin-top: 12px;">
-                    <button class="btn btn-primary btn-compact" @click="changePassword" :disabled="changePasswordSaving">{{ changePasswordSaving ? 'Saving...' : 'Update Password' }}</button>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <div class="ts" style="margin-bottom: 4px;">Current password</div>
+                        <input type="password" v-model="changePasswordForm.current" placeholder="Current password" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <div class="ts" style="margin-bottom: 4px;">New password</div>
+                        <input type="password" v-model="changePasswordForm.newPassword" placeholder="Min 4 characters" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <div class="ts" style="margin-bottom: 4px;">Confirm new password</div>
+                        <input type="password" v-model="changePasswordForm.confirm" placeholder="Confirm new password" style="width: 100%; margin: 0;">
+                    </div>
+                    <p v-if="changePasswordError" class="error" style="margin: 0;">{{ changePasswordError }}</p>
+                    <div class="dialog-actions" style="margin-top: 4px;">
+                        <button class="btn btn-primary btn-compact" @click="changePassword" :disabled="changePasswordSaving">{{ changePasswordSaving ? 'Saving...' : 'Update Password' }}</button>
+                    </div>
                 </div>
             </div>
         </div>
