@@ -107,10 +107,12 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
-    # Root URL → admin dashboard
+{% if domain not in public_domains %}
+    # Root URL → admin dashboard (internal domain only)
     location = / {
         return 302 /admin/;
     }
+{% endif %}
 
     # All other requests — no rate limit
     location / {

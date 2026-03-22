@@ -51,6 +51,14 @@ app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
 app.use('/v1', adminRoutes);
 
+// Landing page for public domains, admin redirect for internal domains
+app.get('/', (req, res) => {
+    const landingPage = path.join(__dirname, '..', 'public', 'landing', 'index.html');
+    res.sendFile(landingPage, (err) => {
+        if (err) res.redirect('/admin/');
+    });
+});
+
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
