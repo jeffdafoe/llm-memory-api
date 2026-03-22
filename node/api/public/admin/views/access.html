@@ -39,6 +39,14 @@
                             <button class="btn btn-sm btn-primary" @click="approveRequest(r.id)">Approve</button>
                             <button class="btn btn-sm btn-danger" @click="rejectRequest(r.id)">Reject</button>
                         </template>
+                        <template v-else-if="r.status === 'approved' && r.register_url">
+                            <div class="approved-info">
+                                <div class="approved-link">
+                                    <code class="register-url">{{ r.register_url }}</code>
+                                    <button class="btn btn-sm btn-secondary" @click="copyUrl(r.register_url)">Copy Link</button>
+                                </div>
+                            </div>
+                        </template>
                         <span v-else-if="r.reviewer_notes" class="muted">{{ r.reviewer_notes }}</span>
                     </td>
                 </tr>

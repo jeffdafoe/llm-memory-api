@@ -1859,14 +1859,22 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
 // POST /admin/access-requests — list access requests
 router.post('/admin/access-requests', requirePerm('agents', 'read'), adminRoute('access-requests-list', async (req, res) => {
     const { status } = req.body;
-    let sql = 'SELECT id, email, usage_description, status, created_at, reviewed_at, reviewer_notes FROM access_requests';
+    let sql = `SELECT ar.id, ar.email, ar.usage_description, ar.status, ar.created_at, ar.reviewed_at, ar.reviewer_notes,
+                       ic.code AS invite_code
+                FROM access_requests ar
+                LEFT JOIN invite_codes ic ON ic.access_request_id = ar.id`;
     const params = [];
     if (status) {
-        sql += ' WHERE status = $1';
+        sql += ' WHERE ar.status = $1';
         params.push(status);
     }
-    sql += ' ORDER BY created_at DESC';
+    sql += ' ORDER BY ar.created_at DESC';
     const result = await pool.query(sql, params);
+    result.rows.forEach(r => {
+        if (r.invite_code) {
+            r.register_url = 'https://llm-memory.net/register?code=' + r.invite_code;
+        }
+    });
     res.json({ requests: result.rows });
 }));
 

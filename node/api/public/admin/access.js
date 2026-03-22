@@ -22,10 +22,14 @@ export function useAccess({ api, showToast }) {
     async function approveRequest(id) {
         const res = await api('/admin/access-requests/approve', { id });
         if (res && res.ok) {
-            navigator.clipboard.writeText(res.register_url);
-            showToast('Approved! Registration link copied to clipboard. Send to: ' + res.email, 'success');
+            showToast('Approved! Registration link is in the table.', 'success');
             await loadAccess();
         }
+    }
+
+    function copyUrl(url) {
+        navigator.clipboard.writeText(url);
+        showToast('Registration link copied to clipboard', 'info');
     }
 
     async function rejectRequest(id) {
@@ -60,6 +64,6 @@ export function useAccess({ api, showToast }) {
     return {
         accessRequests, inviteCodes, accessSubTab,
         loadAccess, loadAccessRequests, loadInviteCodes,
-        approveRequest, rejectRequest, generateCodes, copyCode, deleteCode
+        approveRequest, rejectRequest, generateCodes, copyCode, copyUrl, deleteCode
     };
 }

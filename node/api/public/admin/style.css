@@ -821,6 +821,24 @@ tbody tr:last-child td { border-bottom: none; }
 .status-badge.used { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 .status-badge.expired { background: var(--error-subtle); color: var(--error); }
 
+.approved-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.approved-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.register-url {
+    font-size: 11px;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 3px 6px;
+    border-radius: 4px;
+    word-break: break-all;
+}
+
 .empty-state {
     text-align: center;
     padding: 3rem;
