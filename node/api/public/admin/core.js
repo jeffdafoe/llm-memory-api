@@ -140,6 +140,13 @@ function useCore() {
     const changePasswordError = ref('');
     const changePasswordSaving = ref(false);
 
+    function closeProfile() {
+        showProfile.value = false;
+        changePasswordForm.value = { current: '', newPassword: '', confirm: '' };
+        changePasswordError.value = '';
+        changePasswordSaving.value = false;
+    }
+
     async function changePassword() {
         changePasswordError.value = '';
         if (!changePasswordForm.value.current || !changePasswordForm.value.newPassword) {
@@ -160,9 +167,7 @@ function useCore() {
                 current_password: changePasswordForm.value.current,
                 new_password: changePasswordForm.value.newPassword
             });
-            showProfile.value = false;
-            showChangePassword.value = false;
-            changePasswordForm.value = { current: '', newPassword: '', confirm: '' };
+            closeProfile();
             showToast('Password changed', 'success');
         } catch (err) {
             changePasswordError.value = err.message;
@@ -351,7 +356,7 @@ function useCore() {
     return {
         authenticated, sessionToken, user, permissions, canDo,
         loginForm, loginError, loggingIn,
-        showProfile, showChangePassword, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
+        showProfile, showChangePassword, closeProfile, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
         login, logout, restoreSession,
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,

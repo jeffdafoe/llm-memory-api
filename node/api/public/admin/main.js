@@ -200,8 +200,7 @@ createApp({
             mailModule.closeDialogs();
             actorsConfigModule.closeDialogs();
             core.cancelConfirm();
-            core.showChangePassword.value = false;
-            core.showProfile.value = false;
+            core.closeProfile();
         }
 
         // Auto-refresh polling

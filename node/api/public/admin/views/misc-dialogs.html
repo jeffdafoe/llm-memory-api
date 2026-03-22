@@ -108,11 +108,11 @@
 </dialog>
 
 <!-- User profile dialog -->
-<dialog :open="showProfile" @close="showProfile = false">
+<dialog :open="showProfile" @close="closeProfile()">
     <article v-if="showProfile" class="agent-detail-dialog" style="max-width: 480px;">
         <header>
             <h3>Profile</h3>
-            <button aria-label="Close" rel="prev" @click="showProfile = false"></button>
+            <button aria-label="Close" rel="prev" @click="closeProfile()"></button>
         </header>
         <div class="dialog-body">
             <div class="agent-identity" style="margin-bottom: 20px;">
