@@ -75,15 +75,19 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     }
 
     async function openActorConfig(actor) {
+        // Accept actor object or name string
+        if (typeof actor === 'string') {
+            // Load actors list if needed, then find by name
+            if (!actorsConfigList.value.length) {
+                await loadActorsConfig();
+            }
+            actor = actorsConfigList.value.find(a => a.name === actor);
+            if (!actor) return;
+        }
         selectedActorConfig.value = actor;
         actorConfigLoading.value = true;
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
-        // If this actor is an agent, also load agent details (profile, cost, config, expertise, instructions)
-        // skipDialog: true prevents the agent detail dialog from opening — data loads into refs only
-        if (actor.is_agent) {
-            agentsModule.viewAgent({ agent: actor.name, ...actor }, { skipDialog: true });
-        }
         try {
             // Load permissions, visibility, namespaces, and admin perms in parallel
             const promises = [
