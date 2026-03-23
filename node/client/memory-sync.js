@@ -545,6 +545,7 @@ async function main() {
                 let totalPulled = 0;
                 let totalPushed = 0;
                 let totalUnchanged = 0;
+                let totalDeleted = 0;
 
                 for (const mapping of mappings) {
                     const localDir = mapping.local_path;
@@ -576,11 +577,16 @@ async function main() {
                         totalPulled += result.pulled;
                         totalPushed += result.pushed;
                         totalUnchanged += result.unchanged;
+                        totalDeleted += result.deleted || 0;
                     }
                 }
 
-                if (totalPulled > 0 || totalPushed > 0) {
-                    console.log('Note sync: ' + totalPulled + ' pulled, ' + totalPushed + ' pushed, ' + totalUnchanged + ' unchanged');
+                if (totalPulled > 0 || totalPushed > 0 || totalDeleted > 0) {
+                    let summary = 'Note sync: ' + totalPulled + ' pulled, ' + totalPushed + ' pushed, ' + totalUnchanged + ' unchanged';
+                    if (totalDeleted > 0) {
+                        summary += ', ' + totalDeleted + ' deleted';
+                    }
+                    console.log(summary);
                 }
             }
         } catch (err) {
@@ -705,11 +711,12 @@ async function syncSingleNote(namespace, slug, localDir, authHeaders) {
 async function syncNotePrefix(namespace, prefix, localDir, authHeaders, excludeSlugs) {
     const result = { pulled: 0, pushed: 0, unchanged: 0 };
 
-    // List remote notes under the prefix
+    // List remote notes under the prefix, including soft-deleted ones
+    // so we can detect remote deletes and propagate them locally.
     let remoteNotes = [];
     try {
         const data = await httpPost(config.api_url + '/documents/list', authHeaders, {
-            namespace, prefix, limit: 500
+            namespace, prefix, limit: 500, include_deleted: true
         });
         remoteNotes = data.notes || [];
     } catch (err) {
@@ -718,7 +725,9 @@ async function syncNotePrefix(namespace, prefix, localDir, authHeaders, excludeS
     }
 
     // Build remote map: relative path → note metadata
+    // Also track which slugs were deleted remotely
     const remoteByRelPath = {};
+    const deletedRelPaths = new Set();
     for (const note of remoteNotes) {
         if (!note.slug.startsWith(prefix)) continue;
         // Skip excluded slugs (match against last segment)
@@ -731,7 +740,11 @@ async function syncNotePrefix(namespace, prefix, localDir, authHeaders, excludeS
         if (!relPath.includes('.')) {
             relPath = relPath + '.md';
         }
-        remoteByRelPath[relPath] = note;
+        if (note.deleted_at) {
+            deletedRelPaths.add(relPath);
+        } else {
+            remoteByRelPath[relPath] = note;
+        }
     }
 
     // Scan local directory recursively for files
@@ -805,20 +818,27 @@ async function syncNotePrefix(namespace, prefix, localDir, authHeaders, excludeS
             console.log('  PULL ' + slug + ' → ' + localPath);
             result.pulled++;
         } else if (!remote && local) {
-            // Push: exists locally but not remotely
-            const title = extractSyncTitle(local.content, relPath);
-            try {
-                const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
-                    namespace, slug, title, content: local.content
-                });
-                if (doc.updated_at) {
-                    const mtime = new Date(doc.updated_at);
-                    fs.utimesSync(local.fullPath, mtime, mtime);
+            if (deletedRelPaths.has(relPath)) {
+                // Deleted remotely — propagate the delete to local
+                fs.unlinkSync(local.fullPath);
+                console.log('  DELETE (remote deleted) ' + local.fullPath);
+                result.deleted = (result.deleted || 0) + 1;
+            } else {
+                // Push: exists locally but not remotely (never existed)
+                const title = extractSyncTitle(local.content, relPath);
+                try {
+                    const doc = await httpPost(config.api_url + '/documents/save', authHeaders, {
+                        namespace, slug, title, content: local.content
+                    });
+                    if (doc.updated_at) {
+                        const mtime = new Date(doc.updated_at);
+                        fs.utimesSync(local.fullPath, mtime, mtime);
+                    }
+                    console.log('  PUSH ' + slug + ' ← ' + local.fullPath);
+                    result.pushed++;
+                } catch (err) {
+                    console.error('  NOTE SYNC ERROR saving ' + slug + ': ' + err.message);
                 }
-                console.log('  PUSH ' + slug + ' ← ' + local.fullPath);
-                result.pushed++;
-            } catch (err) {
-                console.error('  NOTE SYNC ERROR saving ' + slug + ': ' + err.message);
             }
         } else if (remote && local) {
             // Both exist — compare timestamps, then hashes if timestamps differ
