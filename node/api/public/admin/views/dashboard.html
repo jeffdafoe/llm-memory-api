@@ -12,6 +12,11 @@
             <div class="stat-meta"><template v-if="dashboard.agents.filter(a => a.status === 'online').length === 0">none</template><template v-for="(a, i) in dashboard.agents.filter(a => a.status === 'online')" :key="a.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(a.agent) }">{{ a.agent }}</span></template></div>
         </div>
         <div class="stat-item">
+            <div class="stat-label">Virtual Agents</div>
+            <div class="stat-value" :class="dashboard.agents.filter(a => a.virtual && (a.status === 'degraded' || a.status === 'error')).length > 0 ? 'error' : 'success'">{{ dashboard.agents.filter(a => a.virtual && a.status === 'available').length }}/{{ dashboard.agents.filter(a => a.virtual).length }}</div>
+            <div class="stat-meta"><template v-if="dashboard.agents.filter(a => a.virtual && (a.status === 'degraded' || a.status === 'error')).length === 0">all healthy</template><template v-for="(a, i) in dashboard.agents.filter(a => a.virtual && (a.status === 'degraded' || a.status === 'error'))" :key="a.agent"><span v-if="i > 0">, </span><span :style="{ color: a.status === 'error' ? 'var(--error)' : 'var(--degraded)' }">{{ a.agent }}</span></template></div>
+        </div>
+        <div class="stat-item">
             <div class="stat-label">Discussions</div>
             <div class="stat-value" :class="dashboard.discussions.filter(d => d.status === 'active').length > 0 ? 'accent' : 'muted'">{{ dashboard.discussions.filter(d => d.status === 'active').length }}</div>
             <div class="stat-meta">active</div>
