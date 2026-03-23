@@ -31,7 +31,7 @@
             <div class="stat-value">{{ dashboard.notes ? dashboard.notes.total : '—' }}</div>
             <div class="stat-meta">{{ dashboard.notes ? dashboard.notes.namespaces + ' namespaces' : '' }}</div>
         </div>
-        <div class="stat-item">
+        <div v-if="canDo('logs', 'read')" class="stat-item">
             <div class="stat-label">Errors (24h)</div>
             <div class="stat-value" :class="{ error: dashboard.error_count_24h > 0 }">{{ dashboard.error_count_24h }}</div>
             <div class="stat-meta">{{ dashboard.error_count_24h === 0 ? 'All clear' : '' }}</div>
@@ -234,8 +234,8 @@
         </div>
     </div>
 
-    <!-- Recent Errors -->
-    <div class="section">
+    <!-- Recent Errors (requires logs:read) -->
+    <div v-if="canDo('logs', 'read')" class="section">
         <div class="section-header">
             <h3 class="section-title">Recent Errors</h3>
             <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'config'; configSubTab = 'errorlog'">View all</a>
