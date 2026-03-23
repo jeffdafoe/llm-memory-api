@@ -1857,7 +1857,7 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
 // ═══════════════════════════════════════════════════════════════════
 
 // POST /admin/access-requests — list access requests
-router.post('/admin/access-requests', requirePerm('agents', 'read'), adminRoute('access-requests-list', async (req, res) => {
+router.post('/admin/access-requests', requirePerm('access', 'read'), adminRoute('access-requests-list', async (req, res) => {
     const { status } = req.body;
     let sql = `SELECT ar.id, ar.email, ar.usage_description, ar.status, ar.created_at, ar.reviewed_at, ar.reviewer_notes,
                        ic.code AS invite_code
@@ -1879,7 +1879,7 @@ router.post('/admin/access-requests', requirePerm('agents', 'read'), adminRoute(
 }));
 
 // POST /admin/access-requests/approve — approve request, generate invite code
-router.post('/admin/access-requests/approve', requirePerm('agents', 'write'), adminRoute('access-requests-approve', async (req, res) => {
+router.post('/admin/access-requests/approve', requirePerm('access', 'write'), adminRoute('access-requests-approve', async (req, res) => {
     const { id, notes } = req.body;
     if (!id) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: id' } });
@@ -1921,7 +1921,7 @@ router.post('/admin/access-requests/approve', requirePerm('agents', 'write'), ad
 }));
 
 // POST /admin/access-requests/reject — reject request
-router.post('/admin/access-requests/reject', requirePerm('agents', 'write'), adminRoute('access-requests-reject', async (req, res) => {
+router.post('/admin/access-requests/reject', requirePerm('access', 'write'), adminRoute('access-requests-reject', async (req, res) => {
     const { id, notes } = req.body;
     if (!id) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: id' } });
@@ -1949,7 +1949,7 @@ router.post('/admin/access-requests/reject', requirePerm('agents', 'write'), adm
 // ═══════════════════════════════════════════════════════════════════
 
 // POST /admin/invite-codes — list invite codes
-router.post('/admin/invite-codes', requirePerm('agents', 'read'), adminRoute('invite-codes-list', async (req, res) => {
+router.post('/admin/invite-codes', requirePerm('access', 'read'), adminRoute('invite-codes-list', async (req, res) => {
     const result = await pool.query(
         `SELECT ic.id, ic.code, ic.created_at, ic.created_by, ic.used_by, ic.used_at, ic.expires_at,
                 ar.email AS request_email
@@ -1961,7 +1961,7 @@ router.post('/admin/invite-codes', requirePerm('agents', 'read'), adminRoute('in
 }));
 
 // POST /admin/invite-codes/generate — generate invite codes (batch)
-router.post('/admin/invite-codes/generate', requirePerm('agents', 'write'), adminRoute('invite-codes-generate', async (req, res) => {
+router.post('/admin/invite-codes/generate', requirePerm('access', 'write'), adminRoute('invite-codes-generate', async (req, res) => {
     const { count = 1, expires_days } = req.body;
     const num = Math.min(Math.max(parseInt(count) || 1, 1), 50);
     const codes = [];
@@ -1981,7 +1981,7 @@ router.post('/admin/invite-codes/generate', requirePerm('agents', 'write'), admi
 }));
 
 // POST /admin/invite-codes/delete — delete an unused invite code
-router.post('/admin/invite-codes/delete', requirePerm('agents', 'write'), adminRoute('invite-codes-delete', async (req, res) => {
+router.post('/admin/invite-codes/delete', requirePerm('access', 'write'), adminRoute('invite-codes-delete', async (req, res) => {
     const { id } = req.body;
     if (!id) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: id' } });

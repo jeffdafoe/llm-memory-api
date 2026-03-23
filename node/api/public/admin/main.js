@@ -146,7 +146,7 @@ createApp({
                 ['comms', 'comms'],
                 ['notes', 'notes'],
                 ['config', 'config'],
-                ['access', 'agents']
+                ['access', 'access']
             ];
             for (const [view, resource] of viewPerms) {
                 if (core.canDo(resource, 'read')) {
