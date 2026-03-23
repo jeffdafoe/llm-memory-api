@@ -9,7 +9,7 @@
         <div class="stat-item">
             <div class="stat-label">Agents Online</div>
             <div class="stat-value" :class="{ success: dashboard.agents.filter(a => a.status === 'online').length > 0 }">{{ dashboard.agents.filter(a => a.status === 'online').length }}</div>
-            <div class="stat-meta"><template v-if="dashboard.agents.filter(a => a.status === 'online').length === 0">none</template><template v-for="(a, i) in dashboard.agents.filter(a => a.status === 'online')" :key="a.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(a.agent) }">{{ shortAgentName(a.agent) }}</span></template></div>
+            <div class="stat-meta"><template v-if="dashboard.agents.filter(a => a.status === 'online').length === 0">none</template><template v-for="(a, i) in dashboard.agents.filter(a => a.status === 'online')" :key="a.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(a.agent) }">{{ a.agent }}</span></template></div>
         </div>
         <div class="stat-item">
             <div class="stat-label">Discussions</div>
@@ -42,8 +42,8 @@
             </div>
             <div style="margin-bottom: 6px; font-size: 15px;">{{ live.discussion.topic }}</div>
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-                <strong>Created by:</strong> <span :style="{ color: agentColor(live.discussion.created_by) }" :title="live.discussion.created_by">{{ shortAgentName(live.discussion.created_by) }}</span>
-                · <strong>Participants:</strong> <template v-for="(p, i) in live.participants" :key="p.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(p.agent) }" :title="p.agent">{{ shortAgentName(p.agent) }}</span></template>
+                <strong>Created by:</strong> <span :style="{ color: agentColor(live.discussion.created_by) }" :title="live.discussion.created_by">{{ live.discussion.created_by }}</span>
+                · <strong>Participants:</strong> <template v-for="(p, i) in live.participants" :key="p.agent"><span v-if="i > 0">, </span><span :style="{ color: agentColor(p.agent) }" :title="p.agent">{{ p.agent }}</span></template>
                 · <strong>Started:</strong> {{ timeAgo(live.discussion.created_at) }}
             </div>
             <div v-if="live.votes.filter(v => v.status === 'open').length" class="live-votes">
@@ -97,7 +97,7 @@
                                 <td style="text-align:center; width:30px;">
                                     <span v-if="agent.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                                 </td>
-                                <td class="nowrap" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">{{ shortAgentName(agent.agent) }}</td>
+                                <td class="nowrap" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">{{ agent.agent }}</td>
                                 <td class="ts nowrap">{{ [agent.provider, agent.model].filter(Boolean).join(' / ') }}</td>
                                 <td><span :class="'badge badge-' + agent.status"><span :class="'status-dot status-dot-' + agent.status"></span> {{ agent.status }}</span></td>
                                 <td class="time-cell nowrap" :style="{ color: lastSeenColor(agent) }">{{ timeAgo(agent.last_seen) }}</td>
@@ -135,7 +135,7 @@
                         </thead>
                         <tbody>
                             <tr v-for="entry in dashboardApiLog.slice(0, 20)" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
-                                <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                                <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ entry.agent }}</td>
                                 <td class="message-cell log-mono">{{ entry.path }}</td>
                                 <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '…' }}</td>
                                 <td class="log-mono num ts">{{ formatBytes(entry.response_length) }}</td>
@@ -219,7 +219,7 @@
                     <tr v-for="d in dashboard.discussions.slice(0, 3)" :key="d.id" @click="viewDiscussion(d.id)" class="clickable">
                         <td class="icon-cell"><i :class="'status-' + d.status + ' ' + statusIcon(d.status)" :title="d.status"></i><i v-if="d.outcome" :class="'outcome-' + d.outcome + ' ' + outcomeIcon(d.outcome)" :title="d.outcome" style="margin-left: 4px;"></i></td>
                         <td>{{ d.id }}</td>
-                        <td :style="{ color: agentColor(d.created_by) }">{{ shortAgentName(d.created_by) }}</td>
+                        <td :style="{ color: agentColor(d.created_by) }">{{ d.created_by }}</td>
                         <td :style="d.status !== 'active' ? { color: 'var(--text-muted)' } : {}">{{ d.participant_count }}</td>
                         <td class="message-cell" :style="d.status !== 'active' ? { color: 'var(--text-muted)' } : {}">{{ d.topic }}</td>
                         <td class="time-cell ts">{{ timeAgo(d.created_at) }}</td>

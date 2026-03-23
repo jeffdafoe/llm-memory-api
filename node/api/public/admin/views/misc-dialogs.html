@@ -20,7 +20,7 @@
                     <strong>Participants:</strong>
                     <ul style="margin-top: 4px; padding-left: 16px;">
                         <li v-for="p in selectedDiscussion.participants" :key="p.agent" :title="p.agent">
-                            <span :style="{ color: agentColor(p.agent) }">{{ shortAgentName(p.agent) }}</span> <span class="ts">({{ p.status }})</span>
+                            <span :style="{ color: agentColor(p.agent) }">{{ p.agent }}</span> <span class="ts">({{ p.status }})</span>
                         </li>
                     </ul>
                 </div>
@@ -34,7 +34,7 @@
                         <strong>Ballots:</strong>
                         <ul style="padding-left: 16px; margin-top: 4px;">
                             <li v-for="b in v.ballots" :key="b.agent" :title="b.agent">
-                                <span :style="{ color: agentColor(b.agent) }">{{ shortAgentName(b.agent) }}</span>: choice {{ b.choice }}
+                                <span :style="{ color: agentColor(b.agent) }">{{ b.agent }}</span>: choice {{ b.choice }}
                                 <span v-if="b.reason" class="ts"> — {{ b.reason }}</span>
                             </li>
                         </ul>

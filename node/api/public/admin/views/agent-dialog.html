@@ -24,10 +24,10 @@
             <div class="agent-identity">
                 <div class="agent-avatar-lg" :style="{ background: agentColor(selectedAgent.agent) + '22', color: agentColor(selectedAgent.agent) }">
                     <i v-if="selectedAgent.virtual" class="icon-cpu"></i>
-                    <template v-else>{{ shortAgentName(selectedAgent.agent).charAt(0).toUpperCase() }}</template>
+                    <template v-else>{{ selectedAgent.agent.charAt(0).toUpperCase() }}</template>
                 </div>
                 <div class="agent-identity-info">
-                    <h3 class="agent-identity-name" :style="{ color: agentColor(selectedAgent.agent) }">{{ shortAgentName(selectedAgent.agent) }}</h3>
+                    <h3 class="agent-identity-name" :style="{ color: agentColor(selectedAgent.agent) }">{{ selectedAgent.agent }}</h3>
                     <div class="agent-identity-meta">
                         <span :class="'badge badge-' + selectedAgent.status">{{ selectedAgent.status }}</span>
                         <span v-if="selectedAgent.provider || selectedAgent.model">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>

@@ -45,7 +45,7 @@
                             </template>
                         </td>
                         <td class="nowrap" :style="{ color: agentColor(actor.name) }" :title="actor.name">
-                            {{ shortAgentName(actor.name) }}
+                            {{ actor.name }}
                             <i v-if="actor.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
                         </td>
                         <td>
@@ -152,7 +152,7 @@
             </thead>
             <tbody>
                 <tr v-for="entry in apiLogFiltered" :key="entry.id" :class="'status-row-' + statusCategory(entry.status)">
-                    <td class="nowrap" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                    <td class="nowrap" :title="entry.agent">{{ entry.agent }}</td>
                     <td class="log-mono">{{ entry.method }}</td>
                     <td class="message-cell log-mono">{{ entry.path }}</td>
                     <td class="log-mono" :class="'log-status-' + statusCategory(entry.status)">{{ entry.status || '...' }}</td>
@@ -207,7 +207,7 @@
             <tbody>
                 <template v-for="entry in errorLogFiltered" :key="entry.id">
                     <tr style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
-                        <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ shortAgentName(entry.agent) }}</td>
+                        <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ entry.agent }}</td>
                         <td class="log-mono nowrap">{{ entry.subsystem }}</td>
                         <td class="log-mono nowrap">{{ entry.action }}</td>
                         <td class="message-cell log-mono">{{ entry.error_message }}</td>
