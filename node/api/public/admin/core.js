@@ -313,13 +313,6 @@ function useCore() {
         '#d19a66', '#61afef', '#be5046', '#e5c07b'
     ];
 
-    // Strip common prefixes from agent names for display.
-    // Full name available via title attribute on hover.
-    function shortAgentName(name) {
-        if (!name) return '';
-        return name.replace(/^llm-memory-api-/, '');
-    }
-
     function agentColor(agent) {
         if (!agent) return 'var(--text-secondary)';
         if (agentColors[agent]) return agentColors[agent];
@@ -361,7 +354,7 @@ function useCore() {
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatDuration, formatTime,
-        statusIcon, outcomeIcon, agentColor, shortAgentName, voteQuestion, lastSeenColor
+        statusIcon, outcomeIcon, agentColor, voteQuestion, lastSeenColor
     };
 }
 
