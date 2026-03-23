@@ -189,7 +189,13 @@ const models = {
                 default: 1.0,
                 min: 0,
                 max: 2.0,
-                step: 0.1
+                step: 0.1,
+                disabledWhen: {
+                    field: 'reasoning_effort',
+                    condition: 'notEquals',
+                    value: 'none',
+                    message: 'Not supported when reasoning is active'
+                }
             },
             reasoning_effort: {
                 type: 'select',
@@ -227,7 +233,13 @@ const models = {
                 default: 1.0,
                 min: 0,
                 max: 2.0,
-                step: 0.1
+                step: 0.1,
+                disabledWhen: {
+                    field: 'reasoning_effort',
+                    condition: 'notEquals',
+                    value: 'none',
+                    message: 'Not supported when reasoning is active'
+                }
             },
             reasoning_effort: {
                 type: 'select',
@@ -408,16 +420,19 @@ function createCall(model, apiKey, configuration) {
             body.max_completion_tokens = maxTokens;
         }
 
+        // Reasoning models (o-series) always use reasoning_effort, never temperature.
+        // Non-reasoning models (gpt-5.x) support both, but temperature is only allowed
+        // when reasoning_effort is "none" or unset — OpenAI rejects the combination.
         if (reasoning) {
             if (conf.reasoning_effort) {
                 body.reasoning_effort = conf.reasoning_effort;
             }
         } else {
-            if (conf.temperature !== undefined) {
-                body.temperature = conf.temperature;
-            }
-            if (conf.reasoning_effort && conf.reasoning_effort !== 'none') {
+            var activeReasoning = conf.reasoning_effort && conf.reasoning_effort !== 'none';
+            if (activeReasoning) {
                 body.reasoning_effort = conf.reasoning_effort;
+            } else if (conf.temperature !== undefined) {
+                body.temperature = conf.temperature;
             }
         }
 

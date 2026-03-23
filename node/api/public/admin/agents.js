@@ -138,6 +138,26 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         return !!config[cap.depends_on];
     }
 
+    // Check if a capability should be disabled based on another field's value.
+    // Returns the message string if disabled, or null if enabled.
+    // Supports conditions: equals, notEquals, in, notIn.
+    function capabilityDisabled(cap, config) {
+        if (!cap.disabledWhen) return null;
+        var rule = cap.disabledWhen;
+        var fieldValue = config[rule.field];
+        var disabled = false;
+        if (rule.condition === 'equals') {
+            disabled = fieldValue === rule.value;
+        } else if (rule.condition === 'notEquals') {
+            disabled = fieldValue !== undefined && fieldValue !== rule.value;
+        } else if (rule.condition === 'in') {
+            disabled = Array.isArray(rule.value) && rule.value.indexOf(fieldValue) !== -1;
+        } else if (rule.condition === 'notIn') {
+            disabled = Array.isArray(rule.value) && rule.value.indexOf(fieldValue) === -1;
+        }
+        return disabled ? (rule.message || 'Disabled') : null;
+    }
+
     // Format a config value for display
     function formatConfigValue(key, value, cap) {
         if (value === undefined || value === null) {
@@ -521,7 +541,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agents, selectedAgent,
         // Provider registry
         providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, configVersionFor, modelDeprecation,
-        parseAgentConfig, capabilityVisible, formatConfigValue,
+        parseAgentConfig, capabilityVisible, capabilityDisabled, formatConfigValue,
         // Agent detail
         agentInstructions, agentInstructionsEditing, agentInstructionsExpanded, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
