@@ -145,9 +145,14 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     return doc;
 }
 
-async function listNotes(namespace, limit, offset, prefix) {
+async function listNotes(namespace, limit, offset, prefix, opts) {
     const maxResults = limit || 50;
     const skip = offset || 0;
+    // When include_deleted is true, return soft-deleted notes alongside live ones.
+    // Deleted notes have a non-null deleted_at field so callers can distinguish them.
+    const includeDeleted = opts && opts.include_deleted;
+    const deletedFilter = includeDeleted ? '' : ' AND d.deleted_at IS NULL';
+    const deletedCol = includeDeleted ? ', d.deleted_at' : '';
 
     let sql, params;
     if (prefix) {
@@ -156,10 +161,10 @@ async function listNotes(namespace, limit, offset, prefix) {
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
                    MD5(d.content) AS content_hash,
-                   ac.name AS created_by, d.created_at, d.updated_at
+                   ac.name AS created_by, d.created_at, d.updated_at${deletedCol}
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
-            WHERE d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4) AND d.deleted_at IS NULL
+            WHERE d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4)${deletedFilter}
             ORDER BY d.updated_at DESC, d.slug ASC
             LIMIT $2 OFFSET $3
         `;
@@ -169,10 +174,10 @@ async function listNotes(namespace, limit, offset, prefix) {
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
                    MD5(d.content) AS content_hash,
-                   ac.name AS created_by, d.created_at, d.updated_at
+                   ac.name AS created_by, d.created_at, d.updated_at${deletedCol}
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
-            WHERE d.namespace = $1 AND d.deleted_at IS NULL
+            WHERE d.namespace = $1${deletedFilter}
             ORDER BY d.updated_at DESC
             LIMIT $2 OFFSET $3
         `;

@@ -31,7 +31,7 @@ router.post('/documents/save', apiRoute('documents', 'save', async (req, res) =>
 }));
 
 router.post('/documents/list', apiRoute('documents', 'list', async (req, res) => {
-    const { namespace, limit, offset, prefix } = req.body;
+    const { namespace, limit, offset, prefix, include_deleted } = req.body;
 
     if (!namespace) {
         return res.status(400).json({
@@ -42,7 +42,7 @@ router.post('/documents/list', apiRoute('documents', 'list', async (req, res) =>
     validateNamespace(namespace);
     const actor = getActor(req);
     await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
-    const result = await listNotes(namespace, limit, offset, prefix);
+    const result = await listNotes(namespace, limit, offset, prefix, { include_deleted: !!include_deleted });
     res.json(result);
 }));
 
