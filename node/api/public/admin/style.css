@@ -1865,8 +1865,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 
 .notes-content {
     flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
     min-width: 0;
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
@@ -2091,6 +2090,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 /* Notes body */
 .notes-body {
     flex: 1;
+    min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
 }
@@ -2191,6 +2191,9 @@ details[open] .summary-chevron { transform: rotate(90deg); }
     flex-direction: column;
     gap: 8px;
     padding: 20px 24px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .notes-edit-title { margin-bottom: 0; width: 100%; }
@@ -2216,7 +2219,8 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 
 .notes-edit-textarea {
     width: 100%;
-    min-height: calc(100vh - 18rem);
+    flex: 1;
+    min-height: 0;
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.6;
