@@ -1221,7 +1221,12 @@ async function createMcpServer(req) {
             const result = await handler(args || {}, agent, defaultNamespace, req.mcpActorId);
             return { content: [{ type: 'text', text: result }] };
         } catch (err) {
-            logError('mcp', `tool-${name}`, { agent, message: err.message, detail: err.stack });
+            // Only log to error_log for unexpected errors (5xx / no status code).
+            // Known errors (4xx) like "note not found" or "old_string not found"
+            // are normal operational results, not worth alerting on.
+            if (!err.statusCode || err.statusCode >= 500) {
+                logError('mcp', `tool-${name}`, { agent, message: err.message, detail: err.stack });
+            }
             return {
                 content: [{ type: 'text', text: `Error: ${err.message}` }],
                 isError: true
