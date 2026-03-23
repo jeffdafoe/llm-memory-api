@@ -50,6 +50,8 @@ html, [data-theme="dark"] {
     --warning-subtle: rgba(234, 179, 8, 0.15);
     --error: #ef4444;
     --error-subtle: rgba(239, 68, 68, 0.15);
+    --degraded: #f97316;
+    --degraded-subtle: rgba(249, 115, 22, 0.15);
     --info: #3b82f6;
 
     color-scheme: dark;
@@ -83,6 +85,8 @@ html, [data-theme="dark"] {
     --warning-subtle: rgba(202, 138, 4, 0.12);
     --error: #dc2626;
     --error-subtle: rgba(220, 38, 38, 0.12);
+    --degraded: #ea580c;
+    --degraded-subtle: rgba(234, 88, 12, 0.12);
     --info: #2563eb;
 
     color-scheme: light;
@@ -738,6 +742,7 @@ tbody tr:last-child td { border-bottom: none; }
 .badge-offline { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 .badge-unknown { background: var(--warning-subtle); color: var(--warning); }
 .badge-error { background: var(--error-subtle); color: var(--error); }
+.badge-degraded { background: var(--degraded-subtle); color: var(--degraded); }
 .badge-accent { background: var(--accent-subtle); color: var(--accent-text); }
 
 .badge-type-user { background: rgba(74, 124, 155, 0.2); color: #6ab0e0; }
@@ -871,6 +876,8 @@ tbody tr:last-child td { border-bottom: none; }
 .status-dot-available { background: #6b9e7a; }
 .status-dot-offline { background: var(--text-muted); }
 .status-dot-unknown { background: var(--warning); }
+.status-dot-degraded { background: var(--degraded); }
+.status-dot-error { background: var(--error); }
 
 /* ── Status & outcome icons ── */
 .status-active { color: var(--success); font-size: 0.5em; }

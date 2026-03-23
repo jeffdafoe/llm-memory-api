@@ -928,7 +928,7 @@ const TOOL_HANDLERS = {
                 WHERE ml.to_actor_id = $1 AND ml.acked_at IS NULL AND ml.deleted_at IS NULL
                 GROUP BY ml.from_actor_id
             ) m ON m.from_actor_id = a.actor_id
-            ORDER BY a.agent`,
+            ORDER BY CASE a.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'degraded' THEN 2 WHEN 'offline' THEN 3 ELSE 4 END, a.last_seen DESC NULLS LAST`,
             [actorId]
         );
 
