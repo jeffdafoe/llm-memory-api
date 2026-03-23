@@ -40,7 +40,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         { id: 'config', label: 'Configuration', actions: ['read', 'write'] },
         { id: 'actors', label: 'Actors', actions: ['read', 'write'] },
         { id: 'templates', label: 'Templates', actions: ['read', 'write', 'delete'] },
-        { id: 'logs', label: 'Logs', actions: ['read'] }
+        { id: 'logs', label: 'Logs', actions: ['read'] },
+        { id: 'access', label: 'Access', actions: ['read', 'write'] }
     ];
 
     // UI Access (password) state
