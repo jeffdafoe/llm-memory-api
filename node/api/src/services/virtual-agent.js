@@ -16,6 +16,16 @@ const { requireByName } = require('./actors');
 
 const MIN_ACTIVITY_MS = 3000;
 
+// Format seconds into a human-readable duration string (e.g. "5 minutes", "1 hour 10 minutes")
+function formatDuration(totalSeconds) {
+    if (totalSeconds < 60) return totalSeconds + ' seconds';
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.ceil((totalSeconds % 3600) / 60);
+    if (hours > 0 && minutes > 0) return hours + ' hour(s) ' + minutes + ' minutes';
+    if (hours > 0) return hours + ' hour(s)';
+    return minutes + ' minutes';
+}
+
 // In-memory rate limiter: agent -> array of call timestamps
 const callHistory = {};
 
@@ -30,7 +40,10 @@ async function setAgentStatus(agentName, status) {
 
 // Retry a provider call with exponential backoff.
 // Returns the result on success, or throws after all retries exhausted.
-async function retryWithBackoff(agentName, fn) {
+// Optional onFirstFailure(err, retryInfo) callback fires once after the first
+// attempt fails, before the backoff sleep — lets callers send immediate feedback
+// (e.g. "retrying, please wait") so the sender isn't left in the dark.
+async function retryWithBackoff(agentName, fn, onFirstFailure) {
     const maxRetries = parseInt(config.get('virtual_agent_max_retries')) || 3;
     const backoffStr = config.get('virtual_agent_retry_backoff') || '60,600,3600';
     const backoffs = backoffStr.split(',').map(s => parseInt(s.trim()) * 1000);
@@ -50,6 +63,18 @@ async function retryWithBackoff(agentName, fn) {
                 await setAgentStatus(agentName, 'degraded');
                 const delay = backoffs[Math.min(attempt, backoffs.length - 1)];
                 logVA('retry-backoff', { agent: agentName, attempt: attempt + 1, maxRetries, delayMs: delay, error: err.message });
+
+                // Notify caller on first failure so they can send feedback to the sender
+                if (attempt === 0 && onFirstFailure) {
+                    const remainingDelays = backoffs.slice(0, maxRetries);
+                    const totalSeconds = Math.ceil(remainingDelays.reduce((a, b) => a + b, 0) / 1000);
+                    try {
+                        await onFirstFailure(err, { retriesRemaining: maxRetries, totalSeconds });
+                    } catch (cbErr) {
+                        logVA('first-failure-callback-error', { agent: agentName, error: cbErr.message });
+                    }
+                }
+
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
@@ -860,10 +885,15 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
 
         // Call provider with retry+backoff and activity spinner.
         // Pass cache flag — direct chat implies back-and-forth.
+        // On first failure, send an immediate chat message so the sender knows retries are in progress.
         const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
         const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
-            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, { cache: true }))
+            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, { cache: true })),
+            async (err, retryInfo) => {
+                await chatSend(virtualAgentName, [fromAgent], null,
+                    `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, null);
+            }
         );
         await recordUsage(agent.agent, agent.provider, agent.model, usage, 'chat');
 
@@ -960,11 +990,19 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             return;
         }
 
-        // Call provider with retry+backoff and activity spinner
+        // Call provider with retry+backoff and activity spinner.
+        // On first failure, send an immediate ack mail so the sender knows retries are in progress.
         const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
+        const replySubjectPrefix = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
         const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
-            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage))
+            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage)),
+            async (err, retryInfo) => {
+                const { mailSend: mailSendAck } = require('./mail');
+                await mailSendAck(fromAgent, virtualAgentName, replySubjectPrefix,
+                    `[Retrying] Initial attempt failed: ${err.message}\n\nRetrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}. You'll receive the final response or a failure notice.`,
+                    mailId);
+            }
         );
         await recordUsage(agent.agent, agent.provider, agent.model, usage, 'mail');
 
@@ -975,9 +1013,8 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         );
 
         // Send reply mail (threaded via in_reply_to)
-        const replySubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
         const { mailSend } = require('./mail');
-        await mailSend(fromAgent, agent.agent, replySubject, response, mailId);
+        await mailSend(fromAgent, agent.agent, replySubjectPrefix, response, mailId);
 
         logVA('direct-mail-responded', { agent: agent.agent, to: fromAgent, mailId, responseLength: response.length });
 
