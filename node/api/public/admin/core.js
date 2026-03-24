@@ -3,6 +3,10 @@ import { ref, computed } from 'vue';
 
 const API_BASE = '/v1';
 
+// User role label — displayed in sidebar and profile dialog.
+// Hardcoded for now; will be database-driven per user eventually.
+const USER_ROLE_LABEL = 'Chipkeeper';
+
 function useCore() {
     const authenticated = ref(false);
     const sessionToken = ref(null);
@@ -354,7 +358,8 @@ function useCore() {
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatDuration, formatTime,
-        statusIcon, outcomeIcon, agentColor, voteQuestion, lastSeenColor
+        statusIcon, outcomeIcon, agentColor, voteQuestion, lastSeenColor,
+        USER_ROLE_LABEL
     };
 }
 
