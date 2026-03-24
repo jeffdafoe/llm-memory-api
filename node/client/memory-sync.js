@@ -382,7 +382,7 @@ async function main() {
         if (result.conversations && result.conversations.retention_days) {
             const retentionDays = result.conversations.retention_days;
             const cutoffMs = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
-            const activeThresholdMs = 5 * 60 * 1000; // 5 minutes — skip active sessions
+            const activeThresholdMs = 1 * 60 * 1000; // 1 minute — skip active sessions
 
             // Scan for JSONL session files in the project directory
             const allEntries = fs.readdirSync(projectDir);
