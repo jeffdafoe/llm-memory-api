@@ -223,7 +223,7 @@ async function handleClientCredentials(req, res) {
             expires_in: TOKEN_TTL_SECONDS
         });
     } catch (err) {
-        logError('oauth', 'client-credentials', { agent: req.body.client_id, message: err.message, detail: err.stack });
+        logError('oauth', 'client-credentials', { agent: req.body.client_id, message: err.message, detail: err.stack, statusCode: 500 });
         res.status(500).json({
             error: 'server_error',
             error_description: 'Token generation failed'
@@ -300,7 +300,7 @@ async function handleAuthorizationCode(req, res) {
             expires_in: TOKEN_TTL_SECONDS
         });
     } catch (err) {
-        logError('oauth', 'authorization-code', { agent: req.body.client_id, message: err.message, detail: err.stack });
+        logError('oauth', 'authorization-code', { agent: req.body.client_id, message: err.message, detail: err.stack, statusCode: 500 });
         res.status(500).json({
             error: 'server_error',
             error_description: 'Token generation failed'

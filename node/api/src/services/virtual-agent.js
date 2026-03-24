@@ -799,7 +799,8 @@ async function handleVirtualAgent(payload) {
                 context: 'discussion',
                 contextId: String(discussionId),
                 message: err.message,
-                detail: err.stack
+                detail: err.stack,
+                statusCode: 500
             });
             await postError(agent.agent, discussionId, channel, err.message);
         }
@@ -888,7 +889,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             agent: virtualAgentName,
             context: 'chat',
             message: err.message,
-            detail: err.stack
+            detail: err.stack,
+            statusCode: 500
         });
         // Send error feedback to the caller so they know it failed
         try {
@@ -989,7 +991,8 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             context: 'mail',
             contextId: mailId,
             message: err.message,
-            detail: err.stack
+            detail: err.stack,
+            statusCode: 500
         });
         // Ack the incoming mail so it doesn't stay stuck
         await pool.query(

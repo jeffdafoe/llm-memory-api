@@ -41,7 +41,7 @@ function log(subsystem, action, details) {
 //   opts: { agent?, context?, contextId?, message, detail? }
 
 function logError(subsystem, action, opts) {
-    const { agent, context, contextId, message, detail } = opts;
+    const { agent, context, contextId, message, detail, statusCode } = opts;
 
     // Always log to stdout + file via the regular logger
     log(subsystem, action, { agent, context, contextId, error: message });
@@ -57,9 +57,9 @@ function logError(subsystem, action, opts) {
             if (actor) actorId = actor.id;
         }
         await pool.query(
-            `INSERT INTO error_log (subsystem, action, actor_id, context, context_id, error_message, error_detail)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [subsystem, action, actorId, context || null, contextId || null, message, detail || null]
+            `INSERT INTO error_log (subsystem, action, actor_id, context, context_id, error_message, error_detail, status_code)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [subsystem, action, actorId, context || null, contextId || null, message, detail || null, statusCode || null]
         );
     };
     doInsert().catch(err => {
@@ -73,7 +73,7 @@ function logError(subsystem, action, opts) {
 async function getErrorLogEntries(sinceId, limit, visibleActorIds) {
     const pool = require('../db');
     const cols = `e.id, e.created_at, e.subsystem, e.action, ac.name AS agent,
-                  e.context, e.context_id, e.error_message, e.error_detail`;
+                  e.context, e.context_id, e.error_message, e.error_detail, e.status_code`;
     // Build optional visibility filter
     let visFilter = '';
     const params = [];
