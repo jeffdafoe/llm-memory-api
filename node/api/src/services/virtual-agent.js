@@ -781,12 +781,13 @@ async function handleVirtualAgent(payload) {
                 continue;
             }
 
-            // Call provider with retry+backoff and activity spinner.
-            // Pass cache flag for chat-based interactions (discussions have repeated calls).
+            // Single attempt — no retries for discussions. If the provider fails,
+            // the agent is removed from the discussion immediately rather than
+            // stalling other participants with a long retry cycle.
             const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
             recordCall(agent.agent);
-            const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
-                withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, { cache: true }))
+            const { text: response, usage } = await withActivityIndicator(agent.agent, () =>
+                providerFn(systemPrompt, userMessage, { cache: true })
             );
             await recordUsage(agent.agent, agent.provider, agent.model, usage, 'discussion');
 
@@ -819,6 +820,8 @@ async function handleVirtualAgent(payload) {
             }
 
         } catch (err) {
+            // Provider failed — remove the agent from the discussion so it
+            // doesn't block other participants. Error ping will recover it later.
             logError('virtual-agent', 'discussion-agent-error', {
                 agent: agent.agent,
                 context: 'discussion',
@@ -827,7 +830,15 @@ async function handleVirtualAgent(payload) {
                 detail: err.stack,
                 statusCode: 500
             });
-            await postError(agent.agent, discussionId, channel, err.message);
+            await chatSend(agent.agent, null, discussionId,
+                `[Malfunction] ${agent.agent} encountered an error and is leaving the discussion: ${err.message}`, channel);
+            try {
+                const { discussionLeave } = require('./discussion');
+                await discussionLeave(discussionId, agent.agent);
+            } catch (leaveErr) {
+                logVA('discussion-leave-failed', { agent: agent.agent, discussionId, error: leaveErr.message });
+            }
+            await setAgentStatus(agent.agent, 'error');
         }
     }
 }
