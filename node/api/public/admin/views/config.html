@@ -177,6 +177,11 @@
                 <option value="">All subsystems</option>
                 <option v-for="s in errorLogSubsystems" :key="s" :value="s">{{ s }}</option>
             </select>
+            <select v-model="errorLogFilterStatus" class="apilog-filter-select">
+                <option value="">All statuses</option>
+                <option value="5xx">5xx only</option>
+                <option value="4xx">4xx only</option>
+            </select>
         </div>
         <div class="apilog-controls">
             <span class="apilog-count">{{ errorLogFiltered.length }} errors</span>
@@ -190,6 +195,7 @@
         <table class="fixed-table">
             <colgroup>
                 <col style="width: 9em;">
+                <col style="width: 3.5em;">
                 <col style="width: 7em;">
                 <col style="width: 14em;">
                 <col>
@@ -198,6 +204,7 @@
             <thead>
                 <tr>
                     <th class="nowrap">Agent</th>
+                    <th class="nowrap">Status</th>
                     <th class="nowrap">Subsystem</th>
                     <th class="nowrap">Action</th>
                     <th>Error</th>
@@ -206,15 +213,17 @@
             </thead>
             <tbody>
                 <template v-for="entry in errorLogFiltered" :key="entry.id">
-                    <tr style="cursor: pointer;" @click="toggleErrorDetail(entry.id)">
+                    <tr style="cursor: pointer;" @click="toggleErrorDetail(entry.id)"
+                        :class="{ 'error-row-server': !entry.status_code || entry.status_code >= 500 }">
                         <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ entry.agent }}</td>
-                        <td class="log-mono nowrap">{{ entry.subsystem }}</td>
+                        <td class="log-mono nowrap" :style="{ color: (!entry.status_code || entry.status_code >= 500) ? 'var(--error)' : 'var(--degraded)' }">{{ entry.status_code || '—' }}</td>
+                        <td class="log-mono nowrap" :style="{ color: (!entry.status_code || entry.status_code >= 500) ? 'var(--error)' : 'var(--degraded)' }">{{ entry.subsystem }}</td>
                         <td class="log-mono nowrap">{{ entry.action }}</td>
                         <td class="message-cell log-mono">{{ entry.error_message }}</td>
-                        <td class="log-mono time-cell nowrap">{{ formatTime(entry.created_at) }}</td>
+                        <td class="log-mono time-cell nowrap">{{ formatShortDate(entry.created_at) }}</td>
                     </tr>
                     <tr v-if="errorLogExpandedId === entry.id && entry.error_detail">
-                        <td colspan="5" class="error-detail-cell">
+                        <td colspan="6" class="error-detail-cell">
                             <pre class="error-detail-pre">{{ entry.error_detail }}</pre>
                         </td>
                     </tr>

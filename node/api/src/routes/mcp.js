@@ -1221,12 +1221,14 @@ async function createMcpServer(req) {
             const result = await handler(args || {}, agent, defaultNamespace, req.mcpActorId);
             return { content: [{ type: 'text', text: result }] };
         } catch (err) {
-            // Only log to error_log for unexpected errors (5xx / no status code).
-            // Known errors (4xx) like "note not found" or "old_string not found"
-            // are normal operational results, not worth alerting on.
-            if (!err.statusCode || err.statusCode >= 500) {
-                logError('mcp', `tool-${name}`, { agent, message: err.message, detail: err.stack });
-            }
+            // Log all errors with status code so the dashboard can distinguish
+            // expected 4xx (note not found, old_string not found) from real 5xx failures.
+            logError('mcp', `tool-${name}`, {
+                agent,
+                message: err.message,
+                detail: err.stack,
+                statusCode: err.statusCode || 500
+            });
             return {
                 content: [{ type: 'text', text: `Error: ${err.message}` }],
                 isError: true
@@ -1302,7 +1304,7 @@ router.post('/mcp', mcpAuth, async (req, res) => {
             await session.transport.handleRequest(req, res, req.body);
             return;
         } catch (err) {
-            logError('mcp', 'session-rehydrate', { agent: req.mcpAgent, message: err.message, detail: err.stack });
+            logError('mcp', 'session-rehydrate', { agent: req.mcpAgent, message: err.message, detail: err.stack, statusCode: 500 });
             return res.status(500).json({
                 jsonrpc: '2.0',
                 error: { code: -32000, message: 'Session rehydration failed' },
@@ -1349,7 +1351,7 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         pool.query(
             'INSERT INTO mcp_sessions (session_id, actor_id, tools_hash) VALUES ($1, $2, $3)',
             [newSessionId, req.mcpActorId, TOOLS_HASH]
-        ).catch(err => logError('mcp', 'session-persist', { agent: req.mcpAgent, message: err.message, detail: err.stack }));
+        ).catch(err => logError('mcp', 'session-persist', { agent: req.mcpAgent, message: err.message, detail: err.stack, statusCode: 500 }));
 
         // Activate the activity spinner on new MCP session.
         // Agents that don't explicitly call activity_start (e.g. ChatGPT, third-party clients)
@@ -1382,7 +1384,7 @@ router.get('/mcp', mcpAuth, async (req, res) => {
                 ON CONFLICT (session_id) DO UPDATE SET tools_hash = $3
             `, [sessionId, req.mcpActorId, TOOLS_HASH]).catch(() => {});
         } catch (err) {
-            logError('mcp', 'session-rehydrate-sse', { agent: req.mcpAgent, message: err.message, detail: err.stack });
+            logError('mcp', 'session-rehydrate-sse', { agent: req.mcpAgent, message: err.message, detail: err.stack, statusCode: 500 });
             return res.status(500).json({
                 jsonrpc: '2.0',
                 error: { code: -32000, message: 'Session rehydration failed' },

@@ -246,7 +246,9 @@
         <div v-else class="table-wrap">
             <table class="fixed-table">
                 <colgroup>
-                    <col style="width: 8em;">
+                    <col style="width: 9em;">
+                    <col style="width: 3.5em;">
+                    <col style="width: 9em;">
                     <col style="width: 8em;">
                     <col style="width: 14em;">
                     <col>
@@ -254,15 +256,20 @@
                 <thead>
                     <tr>
                         <th>Time</th>
+                        <th>Status</th>
+                        <th>Agent</th>
                         <th>Category</th>
                         <th>Action</th>
                         <th>Message</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="entry in errorLogEntries.slice(0, 5)" :key="entry.id">
-                        <td class="ts nowrap">{{ formatTime(entry.created_at) }}</td>
-                        <td class="log-mono nowrap" style="color: var(--error);">{{ entry.subsystem }}</td>
+                    <tr v-for="entry in errorLogEntries.slice(0, 5)" :key="entry.id"
+                        :class="{ 'error-row-server': !entry.status_code || entry.status_code >= 500 }">
+                        <td class="ts nowrap">{{ formatShortDate(entry.created_at) }}</td>
+                        <td class="log-mono nowrap" :style="{ color: (!entry.status_code || entry.status_code >= 500) ? 'var(--error)' : 'var(--degraded)' }">{{ entry.status_code || '—' }}</td>
+                        <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ entry.agent }}</td>
+                        <td class="log-mono nowrap" :style="{ color: (!entry.status_code || entry.status_code >= 500) ? 'var(--error)' : 'var(--degraded)' }">{{ entry.subsystem }}</td>
                         <td class="log-mono nowrap">{{ entry.action }}</td>
                         <td class="message-cell">{{ entry.error_message }}</td>
                     </tr>

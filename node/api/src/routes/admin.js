@@ -303,8 +303,9 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
         noteTotal += parseInt(nc.count, 10);
     }
 
-    // Error count (last 24h), filtered by agent visibility
-    let errorCountSql = `SELECT COUNT(*) AS count FROM error_log WHERE created_at > NOW() - INTERVAL '24 hours'`;
+    // Error count (last 24h), only 5xx — 4xx are expected client errors, not alarm-worthy.
+    // status_code IS NULL covers legacy rows logged before the column was added.
+    let errorCountSql = `SELECT COUNT(*) AS count FROM error_log WHERE created_at > NOW() - INTERVAL '24 hours' AND (status_code IS NULL OR status_code >= 500)`;
     const errorCountParams = [];
     if (hasFilter) {
         errorCountSql += ' AND actor_id = ANY($1)';

@@ -1671,6 +1671,8 @@ h4 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; color: var(--text-pr
 }
 
 /* ── Error Log ── */
+.error-row-server { background: var(--error-subtle); }
+
 .error-detail-cell {
     padding: 6px 12px !important;
     background: var(--error-subtle);

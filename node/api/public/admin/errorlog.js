@@ -7,6 +7,7 @@ function useErrorLog({ api, authenticated }) {
     const errorLogLastId = ref(0);
     const errorLogFilterAgent = ref('');
     const errorLogFilterSubsystem = ref('');
+    const errorLogFilterStatus = ref('');
     const errorLogExpandedId = ref(null);
     let errorLogTimer = null;
     let errorLogPolling = false;
@@ -37,6 +38,11 @@ function useErrorLog({ api, authenticated }) {
         }
         if (errorLogFilterSubsystem.value) {
             entries = entries.filter(e => e.subsystem === errorLogFilterSubsystem.value);
+        }
+        if (errorLogFilterStatus.value === '5xx') {
+            entries = entries.filter(e => !e.status_code || e.status_code >= 500);
+        } else if (errorLogFilterStatus.value === '4xx') {
+            entries = entries.filter(e => e.status_code && e.status_code >= 400 && e.status_code < 500);
         }
         return entries;
     });
@@ -87,7 +93,7 @@ function useErrorLog({ api, authenticated }) {
 
     return {
         errorLogEntries, errorLogPaused, errorLogLastId,
-        errorLogFilterAgent, errorLogFilterSubsystem,
+        errorLogFilterAgent, errorLogFilterSubsystem, errorLogFilterStatus,
         errorLogAgents, errorLogSubsystems, errorLogFiltered,
         errorLogExpandedId, toggleErrorDetail,
         pollErrorLog, startErrorLogPolling, stopErrorLogPolling
