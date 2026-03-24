@@ -72,7 +72,7 @@
                         <div class="user-avatar">{{ user ? (typeof user === 'string' ? user : user.username || '?').charAt(0).toUpperCase() : '?' }}</div>
                         <div>
                             <div class="user-name">{{ typeof user === 'string' ? user : (user && user.username) || '?' }}</div>
-                            <div class="user-role">Chipkeeper</div>
+                            <div class="user-role">{{ USER_ROLE_LABEL }}</div>
                         </div>
                     </div>
                     <button class="sidebar-logout" @click="logout" title="Log out">
