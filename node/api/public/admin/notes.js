@@ -189,7 +189,8 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         });
     }
 
-    watch([selectedNote, isMermaid], async () => {
+    // Watch note identity AND content — property mutations (e.g. after save) must re-render
+    watch([selectedNote, isMermaid, () => selectedNote.value?.content], async () => {
         destroyPanZoom();
         if (!selectedNote.value || !selectedNote.value.content) {
             renderedNoteContent.value = '';
