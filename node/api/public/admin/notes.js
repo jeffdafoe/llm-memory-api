@@ -59,6 +59,9 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     // ---- Inline rename ----
     const renameTarget = ref(null);          // { namespace, slug, type: 'file'|'folder', originalName }
     const renameValue = ref('');
+    const renameConflict = ref(null);        // { namespace, old_prefix, new_prefix, would_move, conflicts: [{slug, title, action}] }
+    const renameConflictBulkAction = ref('');
+    const renameConflictExecuting = ref(false);
 
     const notesSidebarCollapsed = ref(false);
     const notesFullscreen = ref(false);
@@ -441,27 +444,97 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                 if (selectedNote.value && selectedNote.value.namespace === target.namespace && selectedNote.value.slug === target.slug) {
                     selectedNote.value.slug = newSlug;
                 }
+                await loadNotes();
             } else {
-                // Folder rename: update the prefix for all children
-                // target.slug is the folder path ending with '/'
+                // Folder rename: dry-run first to check for conflicts
                 const oldPrefix = target.slug;
                 const parts = oldPrefix.slice(0, -1).split('/');
                 parts[parts.length - 1] = newName;
                 const newPrefix = parts.join('/') + '/';
 
-                await api('/admin/notes/move-prefix', {
+                const result = await api('/admin/notes/move-prefix', {
                     namespace: target.namespace,
                     old_prefix: oldPrefix,
-                    new_prefix: newPrefix
+                    new_prefix: newPrefix,
+                    dry_run: true
                 });
-                showToast('Folder renamed', 'success');
+
+                if (result.conflicts.length > 0) {
+                    // Show conflict resolution dialog
+                    renameConflict.value = {
+                        namespace: target.namespace,
+                        old_prefix: oldPrefix,
+                        new_prefix: newPrefix,
+                        would_move: result.would_move,
+                        conflicts: result.conflicts.map(c => ({ ...c, action: 'skip' }))
+                    };
+                    renameConflictBulkAction.value = '';
+                } else {
+                    // No conflicts — execute directly
+                    await api('/admin/notes/move-prefix', {
+                        namespace: target.namespace,
+                        old_prefix: oldPrefix,
+                        new_prefix: newPrefix
+                    });
+                    showToast('Folder renamed: ' + result.would_move + ' notes moved', 'success');
+                    await loadNotes();
+                }
             }
-            await loadNotes();
         } catch (err) {
             console.error('Failed to rename:', err);
             showToast('Failed to rename: ' + err.message, 'error');
         } finally {
             renameValue.value = '';
+        }
+    }
+
+    // Set all conflict actions at once (skip all / overwrite all)
+    function applyBulkConflictAction() {
+        const action = renameConflictBulkAction.value;
+        if (!action || !renameConflict.value) return;
+        for (const c of renameConflict.value.conflicts) {
+            c.action = action;
+        }
+    }
+
+    function cancelRenameConflict() {
+        renameConflict.value = null;
+        renameConflictBulkAction.value = '';
+        renameConflictExecuting.value = false;
+    }
+
+    // Execute the folder rename with the user's conflict resolution choices
+    async function executeRenameWithConflicts() {
+        const data = renameConflict.value;
+        if (!data) return;
+        renameConflictExecuting.value = true;
+
+        try {
+            const overwriteSlugs = data.conflicts
+                .filter(c => c.action === 'overwrite')
+                .map(c => c.slug);
+
+            const result = await api('/admin/notes/move-prefix', {
+                namespace: data.namespace,
+                old_prefix: data.old_prefix,
+                new_prefix: data.new_prefix,
+                overwrite_slugs: overwriteSlugs
+            });
+
+            let msg = result.moved + ' notes moved';
+            if (result.overwritten > 0) {
+                msg += ', ' + result.overwritten + ' overwritten';
+            }
+            if (result.skipped > 0) {
+                msg += ', ' + result.skipped + ' skipped';
+            }
+            showToast(msg, 'success');
+            cancelRenameConflict();
+            await loadNotes();
+        } catch (err) {
+            console.error('Failed to rename folder:', err);
+            showToast('Failed to rename: ' + err.message, 'error');
+            renameConflictExecuting.value = false;
         }
     }
 
@@ -735,10 +808,12 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesReindexing, reindexStatus,
         isSynced, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving,
         renameTarget, renameValue,
+        renameConflict, renameConflictBulkAction, renameConflictExecuting,
         loadNotes, toggleNamespace, toggleFolder,
         openNote, openNoteFromSearch,
         startEditNote, cancelEditNote, saveEditedNote, confirmDeleteNote,
         startRename, cancelRename, commitRename, renameKeydown, startRenameFromContext,
+        applyBulkConflictAction, cancelRenameConflict, executeRenameWithConflicts,
         downloadNote, uploadNote,
         searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling,
         showSyncContextMenu, closeSyncContextMenu, openSyncDialog,

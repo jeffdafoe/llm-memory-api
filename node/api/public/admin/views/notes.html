@@ -142,6 +142,54 @@
             </div>
         </article>
     </dialog>
+
+    <!-- Conflict resolution dialog for folder rename -->
+    <dialog :open="renameConflict !== null" @close="cancelRenameConflict">
+        <article v-if="renameConflict" class="confirm-dialog" style="min-width: 550px;">
+            <header>
+                <button aria-label="Close" rel="prev" @click="cancelRenameConflict"></button>
+                <h3>Folder Rename</h3>
+            </header>
+            <div class="dialog-body">
+                <p>Renaming <code>{{ renameConflict.old_prefix }}</code> to <code>{{ renameConflict.new_prefix }}</code></p>
+                <p>{{ renameConflict.would_move }} notes will be moved.</p>
+                <p v-if="renameConflict.conflicts.length > 0"><strong>{{ renameConflict.conflicts.length }} notes already exist at the destination:</strong></p>
+                <table v-if="renameConflict.conflicts.length > 0" class="fixed-table" style="margin-bottom: 12px;">
+                    <colgroup>
+                        <col>
+                        <col style="width: 10em;">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>Note</th>
+                            <th>
+                                <select v-model="renameConflictBulkAction" @change="applyBulkConflictAction" style="margin:0; padding:2px 4px; font-size:12px;">
+                                    <option value="">Action...</option>
+                                    <option value="skip">Skip All</option>
+                                    <option value="overwrite">Overwrite All</option>
+                                </select>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="c in renameConflict.conflicts" :key="c.slug">
+                            <td><span class="mono" style="font-size: 12px;">{{ c.slug }}</span><br><span class="muted" style="font-size: 12px;">{{ c.title }}</span></td>
+                            <td>
+                                <select v-model="c.action" style="margin:0; padding:2px 4px; font-size:12px;">
+                                    <option value="skip">Skip</option>
+                                    <option value="overwrite">Overwrite</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="dialog-actions">
+                    <button class="btn btn-secondary" @click="cancelRenameConflict">Cancel</button>
+                    <button class="btn btn-primary" @click="executeRenameWithConflicts" :disabled="renameConflictExecuting">{{ renameConflictExecuting ? 'Moving...' : 'Move Notes' }}</button>
+                </div>
+            </div>
+        </article>
+    </dialog>
     </div>
     </div>
 </div>

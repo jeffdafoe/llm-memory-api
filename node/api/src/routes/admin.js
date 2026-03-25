@@ -862,9 +862,11 @@ router.post('/admin/notes/move', requirePerm('notes', 'write'), adminRoute('note
     res.json({ note: doc });
 }));
 
-// POST /admin/notes/move-prefix — rename a folder by updating all slugs with a given prefix
+// POST /admin/notes/move-prefix — rename a folder by updating all slugs with a given prefix.
+// Supports dry_run mode to preview conflicts, and overwrite_slugs to soft-delete specific
+// conflicting notes before moving.
 router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRoute('notes-move-prefix', async (req, res) => {
-    const { namespace, old_prefix, new_prefix } = req.body;
+    const { namespace, old_prefix, new_prefix, dry_run, overwrite_slugs } = req.body;
     if (!namespace || !old_prefix || !new_prefix) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, old_prefix, new_prefix' }
@@ -873,36 +875,93 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
     validateNamespace(namespace);
     await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
 
-    // Check for collisions: any existing notes under the new prefix that aren't being renamed
-    const conflict = await pool.query(`
-        SELECT slug FROM documents
+    // Count notes that would be moved
+    const sourceNotes = await pool.query(`
+        SELECT slug, title FROM documents
+        WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
+    `, [namespace, old_prefix]);
+
+    // Find conflicting notes at the destination (exist under new prefix, not part of the rename)
+    const conflicts = await pool.query(`
+        SELECT slug, title FROM documents
         WHERE namespace = $1
           AND slug LIKE $3 || '%'
           AND slug NOT LIKE $2 || '%'
           AND deleted_at IS NULL
-        LIMIT 1
+        ORDER BY slug
     `, [namespace, old_prefix, new_prefix]);
-    if (conflict.rows.length > 0) {
-        return res.status(409).json({
-            error: { code: 'CONFLICT', message: 'Target prefix conflicts with existing note: ' + conflict.rows[0].slug }
+
+    // Dry run: return what would happen without changing anything
+    if (dry_run) {
+        return res.json({
+            dry_run: true,
+            would_move: sourceNotes.rowCount,
+            conflicts: conflicts.rows.map(r => ({ slug: r.slug, title: r.title }))
         });
     }
 
-    // Update document slugs: replace the prefix portion
-    const docResult = await pool.query(`
-        UPDATE documents
-        SET slug = $3 || substring(slug FROM length($2) + 1),
-            updated_at = NOW()
-        WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
-        RETURNING id, slug
-    `, [namespace, old_prefix, new_prefix]);
+    // Determine which conflicts to overwrite vs skip
+    const overwriteSet = new Set(overwrite_slugs || []);
+    const toSkip = conflicts.rows.filter(r => !overwriteSet.has(r.slug));
+    const toOverwrite = conflicts.rows.filter(r => overwriteSet.has(r.slug));
 
-    // Update vector chunks to match
-    await pool.query(`
-        UPDATE memory_chunks
-        SET source_file = $3 || substring(source_file FROM length($2) + 1)
-        WHERE namespace = $1 AND source_file LIKE $2 || '%'
-    `, [namespace, old_prefix, new_prefix]);
+    // Soft-delete notes the user chose to overwrite
+    if (toOverwrite.length > 0) {
+        const overwriteSlugs = toOverwrite.map(r => r.slug);
+        await pool.query(`
+            UPDATE documents SET deleted_at = NOW()
+            WHERE namespace = $1 AND slug = ANY($2) AND deleted_at IS NULL
+        `, [namespace, overwriteSlugs]);
+        // Also remove their vector chunks so they don't appear in search
+        await pool.query(`
+            DELETE FROM memory_chunks
+            WHERE namespace = $1 AND source_file = ANY($2)
+        `, [namespace, overwriteSlugs]);
+    }
+
+    // Build the list of slugs to skip (conflicts the user didn't choose to overwrite).
+    // These stay in their old location — exclude them from the UPDATE.
+    const skipSlugs = toSkip.map(r => {
+        // Convert destination slug back to the source slug it would collide with
+        return old_prefix + r.slug.substring(new_prefix.length);
+    });
+
+    // Update document slugs: replace the prefix portion, excluding skipped notes
+    let docResult;
+    if (skipSlugs.length > 0) {
+        docResult = await pool.query(`
+            UPDATE documents
+            SET slug = $3 || substring(slug FROM length($2) + 1),
+                updated_at = NOW()
+            WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
+              AND slug != ALL($4)
+            RETURNING id, slug
+        `, [namespace, old_prefix, new_prefix, skipSlugs]);
+    } else {
+        docResult = await pool.query(`
+            UPDATE documents
+            SET slug = $3 || substring(slug FROM length($2) + 1),
+                updated_at = NOW()
+            WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
+            RETURNING id, slug
+        `, [namespace, old_prefix, new_prefix]);
+    }
+
+    // Update vector chunks to match (same skip logic)
+    if (skipSlugs.length > 0) {
+        await pool.query(`
+            UPDATE memory_chunks
+            SET source_file = $3 || substring(source_file FROM length($2) + 1)
+            WHERE namespace = $1 AND source_file LIKE $2 || '%'
+              AND source_file != ALL($4)
+        `, [namespace, old_prefix, new_prefix, skipSlugs]);
+    } else {
+        await pool.query(`
+            UPDATE memory_chunks
+            SET source_file = $3 || substring(source_file FROM length($2) + 1)
+            WHERE namespace = $1 AND source_file LIKE $2 || '%'
+        `, [namespace, old_prefix, new_prefix]);
+    }
 
     // Update sync mappings that point to the old prefix
     await pool.query(`
@@ -911,8 +970,12 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
         WHERE namespace = $1 AND slug LIKE $2 || '%'
     `, [namespace, old_prefix, new_prefix]);
 
-    logAdmin('note_move_prefix', { namespace, old_prefix, new_prefix, count: docResult.rowCount, user_id: req.authenticatedUser.id });
-    res.json({ moved: docResult.rowCount });
+    logAdmin('note_move_prefix', {
+        namespace, old_prefix, new_prefix,
+        moved: docResult.rowCount, skipped: toSkip.length, overwritten: toOverwrite.length,
+        user_id: req.authenticatedUser.id
+    });
+    res.json({ moved: docResult.rowCount, skipped: toSkip.length, overwritten: toOverwrite.length });
 }));
 
 // POST /admin/notes/search — semantic search across notes
