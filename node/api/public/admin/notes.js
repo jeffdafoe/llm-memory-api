@@ -421,7 +421,12 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         renameTarget.value = null;
 
         const newName = renameValue.value.trim();
-        if (!newName || newName === target.originalName) {
+        if (newName === target.originalName) {
+            renameValue.value = '';
+            return;
+        }
+        // Empty name on a file is invalid; on a folder it means "collapse into parent"
+        if (!newName && target.type === 'file') {
             renameValue.value = '';
             return;
         }
@@ -446,11 +451,21 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                 }
                 await loadNotes();
             } else {
-                // Folder rename: dry-run first to check for conflicts
+                // Folder rename: dry-run first to check for conflicts.
+                // Empty name means "collapse into parent" (move contents up one level).
                 const oldPrefix = target.slug;
-                const parts = oldPrefix.slice(0, -1).split('/');
-                parts[parts.length - 1] = newName;
-                const newPrefix = parts.join('/') + '/';
+                let newPrefix;
+                if (!newName) {
+                    // Collapse: parent prefix is everything before the last segment
+                    // e.g. "notes/archive/" -> "notes/"
+                    const trimmed = oldPrefix.slice(0, -1);
+                    const lastSlash = trimmed.lastIndexOf('/');
+                    newPrefix = lastSlash >= 0 ? trimmed.substring(0, lastSlash + 1) : '';
+                } else {
+                    const parts = oldPrefix.slice(0, -1).split('/');
+                    parts[parts.length - 1] = newName;
+                    newPrefix = parts.join('/') + '/';
+                }
 
                 const result = await api('/admin/notes/move-prefix', {
                     namespace: target.namespace,
