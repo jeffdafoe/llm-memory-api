@@ -368,7 +368,7 @@ async function main() {
             }
         }
 
-        let summary = 'Sync complete: ' + pulled + ' pulled, ' + pushed + ' pushed, ' + unchanged + ' unchanged';
+        let summary = 'Memory sync complete: ' + pulled + ' pulled, ' + pushed + ' pushed, ' + unchanged + ' unchanged';
         if (skipped > 0) {
             summary += ', ' + skipped + ' skipped (unsafe filenames)';
         }
