@@ -10,11 +10,13 @@
 // into a single blocking command.
 //
 // Usage:
-//   node discuss-launch.js create --config <path> --topic "..." --other <agent> [--context-file <path>]
-//   node discuss-launch.js join --config <path> [discussion-id]
+//   node discuss-launch.js create --config .agent.json --topic "..." --other <agent> [--context-file <path>]
+//   node discuss-launch.js join --config .agent.json [discussion-id]
 //
 // All flags are passed through to discuss.js. The --config flag is also read
 // here to determine the work_dir (for the log file location).
+// The config file is typically .agent.json which contains agent, passphrase,
+// api_url, and work_dir.
 // ---------------------------------------------------------------------------
 
 const fs = require('fs');

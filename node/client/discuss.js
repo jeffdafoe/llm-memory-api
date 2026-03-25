@@ -97,13 +97,13 @@ for (let i = 1; i < args.length; i++) {
 }
 
 // ---------------------------------------------------------------------------
-// Config files — .agent.json provides auth (agent, passphrase, api_url),
-// .discuss.json provides discuss-specific fields (work_dir, launcher_path).
-// The old combined format (all fields in .discuss.json) still works for
-// backwards compatibility. CLI flags take precedence over config file values.
+// Config files — --config points to .agent.json which provides all fields:
+// agent, passphrase, api_url, work_dir. --agent-config is a legacy alias
+// that reads auth fields from a separate file (takes precedence over --config
+// for auth). CLI flags take precedence over all config file values.
 // ---------------------------------------------------------------------------
 
-// Read .agent.json first for auth credentials
+// Read --agent-config file for auth credentials (legacy, optional)
 if (agentConfigFilePath) {
     try {
         const agentConfig = JSON.parse(fs.readFileSync(agentConfigFilePath, 'utf-8'));
@@ -116,8 +116,7 @@ if (agentConfigFilePath) {
     }
 }
 
-// Read .discuss.json for discuss-specific fields (and auth fallback for
-// backwards compatibility with the old combined format)
+// Read --config file (.agent.json) for all fields
 if (configFilePath) {
     try {
         const fileConfig = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'));
