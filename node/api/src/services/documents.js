@@ -17,8 +17,8 @@ function validateSlug(slug, { allowTrailingSlash = false } = {}) {
     if (slug.length > 500) {
         throw Object.assign(new Error('Slug too long (max 500 characters)'), { statusCode: 400 });
     }
-    // No control characters or null bytes
-    if (/[\x00-\x1f\x7f]/.test(slug)) {
+    // No control characters, null bytes, or backslashes
+    if (/[\x00-\x1f\x7f\\]/.test(slug)) {
         throw Object.assign(new Error('Slug contains invalid characters'), { statusCode: 400 });
     }
     // No leading slash
@@ -40,6 +40,13 @@ function validateSlug(slug, { allowTrailingSlash = false } = {}) {
             throw Object.assign(new Error('Slug must not contain empty path segments'), { statusCode: 400 });
         }
     }
+}
+
+// Escape special characters for use in SQL LIKE patterns.
+// Backslash is the LIKE escape char, so it must be escaped first,
+// then % and _ which are LIKE wildcards.
+function escapeLike(str) {
+    return str.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 function slugToKind(slug) {
@@ -505,4 +512,4 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
     return doc;
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, titleToSlug, validateSlug };
+module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, titleToSlug, validateSlug, escapeLike };
