@@ -4,7 +4,7 @@ const pool = require('../db');
 const config = require('../services/config');
 const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
-const { listNotes, readNote, saveNote, deleteNote, moveNote, validateSlug } = require('../services/documents');
+const { listNotes, readNote, saveNote, deleteNote, moveNote, validateSlug, escapeLike } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
 const { getErrorLogEntries } = require('../services/logger');
@@ -879,11 +879,15 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
     }
     await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
 
+    // Escape prefixes for use in LIKE patterns (backslash, %, _ are special)
+    const oldLike = escapeLike(old_prefix);
+    const newLike = escapeLike(new_prefix);
+
     // Count notes that would be moved
     const sourceNotes = await pool.query(`
         SELECT slug, title FROM documents
         WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
-    `, [namespace, old_prefix]);
+    `, [namespace, oldLike]);
 
     // Find conflicting notes at the destination (exist under new prefix, not part of the rename)
     const conflicts = await pool.query(`
@@ -893,7 +897,7 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
           AND slug NOT LIKE $2 || '%'
           AND deleted_at IS NULL
         ORDER BY slug
-    `, [namespace, old_prefix, new_prefix]);
+    `, [namespace, oldLike, newLike]);
 
     // Dry run: return what would happen without changing anything
     if (dry_run) {
@@ -930,25 +934,27 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
         return old_prefix + r.slug.substring(new_prefix.length);
     });
 
-    // Update document slugs: replace the prefix portion, excluding skipped notes
+    // Update document slugs: replace the prefix portion, excluding skipped notes.
+    // $2 = raw old_prefix (for length/substring), $3 = new_prefix (for concat),
+    // $4 = escaped old_prefix (for LIKE)
     let docResult;
     if (skipSlugs.length > 0) {
         docResult = await pool.query(`
             UPDATE documents
             SET slug = $3 || substring(slug FROM length($2) + 1),
                 updated_at = NOW()
-            WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
-              AND slug != ALL($4)
+            WHERE namespace = $1 AND slug LIKE $4 || '%' AND deleted_at IS NULL
+              AND slug != ALL($5)
             RETURNING id, slug
-        `, [namespace, old_prefix, new_prefix, skipSlugs]);
+        `, [namespace, old_prefix, new_prefix, oldLike, skipSlugs]);
     } else {
         docResult = await pool.query(`
             UPDATE documents
             SET slug = $3 || substring(slug FROM length($2) + 1),
                 updated_at = NOW()
-            WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
+            WHERE namespace = $1 AND slug LIKE $4 || '%' AND deleted_at IS NULL
             RETURNING id, slug
-        `, [namespace, old_prefix, new_prefix]);
+        `, [namespace, old_prefix, new_prefix, oldLike]);
     }
 
     // Update vector chunks to match (same skip logic)
@@ -956,23 +962,23 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
         await pool.query(`
             UPDATE memory_chunks
             SET source_file = $3 || substring(source_file FROM length($2) + 1)
-            WHERE namespace = $1 AND source_file LIKE $2 || '%'
-              AND source_file != ALL($4)
-        `, [namespace, old_prefix, new_prefix, skipSlugs]);
+            WHERE namespace = $1 AND source_file LIKE $4 || '%'
+              AND source_file != ALL($5)
+        `, [namespace, old_prefix, new_prefix, oldLike, skipSlugs]);
     } else {
         await pool.query(`
             UPDATE memory_chunks
             SET source_file = $3 || substring(source_file FROM length($2) + 1)
-            WHERE namespace = $1 AND source_file LIKE $2 || '%'
-        `, [namespace, old_prefix, new_prefix]);
+            WHERE namespace = $1 AND source_file LIKE $4 || '%'
+        `, [namespace, old_prefix, new_prefix, oldLike]);
     }
 
     // Update sync mappings that point to the old prefix
     await pool.query(`
         UPDATE note_synchronization
         SET slug = $3 || substring(slug FROM length($2) + 1)
-        WHERE namespace = $1 AND slug LIKE $2 || '%'
-    `, [namespace, old_prefix, new_prefix]);
+        WHERE namespace = $1 AND slug LIKE $4 || '%'
+    `, [namespace, old_prefix, new_prefix, oldLike]);
 
     logAdmin('note_move_prefix', {
         namespace, old_prefix, new_prefix,
