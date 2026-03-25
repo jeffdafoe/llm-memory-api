@@ -889,15 +889,19 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
         WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
     `, [namespace, oldLike]);
 
-    // Find conflicting notes at the destination (exist under new prefix, not part of the rename)
+    // Find actual conflicts: existing notes whose slug matches a computed destination slug.
+    // Joins source notes (being moved) to destination notes where the renamed slug collides.
     const conflicts = await pool.query(`
-        SELECT slug, title FROM documents
-        WHERE namespace = $1
-          AND slug LIKE $3 || '%'
-          AND slug NOT LIKE $2 || '%'
-          AND deleted_at IS NULL
-        ORDER BY slug
-    `, [namespace, oldLike, newLike]);
+        SELECT d2.slug, d2.title FROM documents d1
+        JOIN documents d2
+          ON d2.namespace = d1.namespace
+          AND d2.slug = $3 || substring(d1.slug FROM length($2) + 1)
+          AND d2.deleted_at IS NULL
+        WHERE d1.namespace = $1
+          AND d1.slug LIKE $4 || '%'
+          AND d1.deleted_at IS NULL
+        ORDER BY d2.slug
+    `, [namespace, old_prefix, new_prefix, oldLike]);
 
     // Dry run: return what would happen without changing anything
     if (dry_run) {
