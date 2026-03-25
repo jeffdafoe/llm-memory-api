@@ -152,9 +152,10 @@
             </header>
             <div class="dialog-body">
                 <p>Renaming <code>{{ renameConflict.old_prefix }}</code> to <code>{{ renameConflict.new_prefix }}</code></p>
-                <p>{{ renameConflict.would_move }} notes will be moved.</p>
-                <p v-if="renameConflict.conflicts.length > 0"><strong>{{ renameConflict.conflicts.length }} notes already exist at the destination:</strong></p>
-                <table v-if="renameConflict.conflicts.length > 0" class="fixed-table" style="margin-bottom: 12px;">
+                <p>{{ renameConflict.would_move }} {{ renameConflict.would_move === 1 ? 'note' : 'notes' }} will be moved.</p>
+                <p v-if="renameConflict.conflicts.length > 0"><strong>{{ renameConflict.conflicts.length }} {{ renameConflict.conflicts.length === 1 ? 'note already exists' : 'notes already exist' }} at the destination:</strong></p>
+                <div v-if="renameConflict.conflicts.length > 0" style="max-height: 300px; overflow-y: auto; margin-bottom: 12px;">
+                <table class="fixed-table">
                     <colgroup>
                         <col>
                         <col style="width: 10em;">
@@ -183,6 +184,7 @@
                         </tr>
                     </tbody>
                 </table>
+                </div>
                 <div class="dialog-actions">
                     <button class="btn btn-secondary" @click="cancelRenameConflict">Cancel</button>
                     <button class="btn btn-primary" @click="executeRenameWithConflicts" :disabled="renameConflictExecuting">{{ renameConflictExecuting ? 'Moving...' : 'Move Notes' }}</button>
