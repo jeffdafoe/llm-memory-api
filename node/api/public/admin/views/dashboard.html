@@ -240,8 +240,8 @@
             <h3 class="section-title">Recent Errors</h3>
             <a href="#" class="btn btn-ghost btn-compact" @click.prevent="currentView = 'config'; configSubTab = 'errorlog'">View all</a>
         </div>
-        <div v-if="errorLogEntries.length === 0" class="table-wrap" style="padding: 24px; text-align: center; color: var(--text-muted);">
-            No errors in the last 24 hours
+        <div v-if="errorLogServerErrors.length === 0" class="table-wrap" style="padding: 24px; text-align: center; color: var(--text-muted);">
+            No server errors in the last 24 hours
         </div>
         <div v-else class="table-wrap">
             <table class="fixed-table">
@@ -264,12 +264,11 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="entry in errorLogEntries.slice(0, 5)" :key="entry.id"
-                        :class="{ 'error-row-server': !entry.status_code || entry.status_code >= 500 }">
+                    <tr v-for="entry in errorLogServerErrors.slice(0, 5)" :key="entry.id" class="error-row-server">
                         <td class="ts nowrap">{{ formatShortDate(entry.created_at) }}</td>
-                        <td class="log-mono nowrap" :style="{ color: (!entry.status_code || entry.status_code >= 500) ? 'var(--error)' : 'var(--degraded)' }">{{ entry.status_code || '—' }}</td>
+                        <td class="log-mono nowrap">{{ entry.status_code || '—' }}</td>
                         <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ entry.agent }}</td>
-                        <td class="log-mono nowrap" :style="{ color: (!entry.status_code || entry.status_code >= 500) ? 'var(--error)' : 'var(--degraded)' }">{{ entry.subsystem }}</td>
+                        <td class="log-mono nowrap">{{ entry.subsystem }}</td>
                         <td class="log-mono nowrap">{{ entry.action }}</td>
                         <td class="message-cell">{{ entry.error_message }}</td>
                     </tr>

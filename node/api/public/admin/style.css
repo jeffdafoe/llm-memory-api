@@ -342,6 +342,12 @@ a:hover { text-decoration: underline; }
     overflow-y: auto;
 }
 
+.page-content-flex {
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Login Page
    ═══════════════════════════════════════════════════════════════════ */
@@ -1820,6 +1826,61 @@ tr.unread {
     margin-top: 8px;
 }
 
+/* ── Template editor (fills viewport height) ── */
+
+.template-tab-editing {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.template-compose {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.template-compose-row { margin-bottom: 8px; }
+
+.template-compose-row label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.template-compose-row select,
+.template-compose-row input,
+.template-compose-row textarea {
+    margin-bottom: 0;
+    width: 100%;
+}
+
+.template-compose-row textarea {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.template-compose-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.template-compose-content textarea {
+    flex: 1;
+    min-height: 100px;
+    resize: none;
+}
+
 /* ── Details/summary ── */
 details summary {
     list-style: none;
@@ -1845,9 +1906,33 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 
 .notes-layout {
     display: flex;
-    gap: 16px;
+    gap: 0;
     height: calc(100vh - 8rem);
     overflow: hidden;
+}
+
+.notes-resize-handle {
+    width: 8px;
+    cursor: col-resize;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.notes-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 32px;
+    background: var(--border-default);
+    border-radius: 1px;
+    transition: background 150ms ease;
+}
+
+.notes-resize-handle:hover::after {
+    background: var(--text-muted);
 }
 
 .notes-sidebar {
@@ -1868,6 +1953,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
     overflow: hidden;
 }
 
+.notes-sidebar-collapsed .notes-resize-handle { display: none; }
 .notes-sidebar-collapsed .notes-sidebar > *:not(.notes-sidebar-header) { display: none; }
 .notes-sidebar-collapsed .notes-sidebar-header > *:not(:last-child) { display: none; }
 .notes-sidebar-collapsed .notes-sidebar-header { justify-content: center; }
@@ -2178,6 +2264,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 }
 
 .notes-fullscreen .notes-sidebar { display: none; }
+.notes-fullscreen .notes-resize-handle { display: none; }
 .notes-fullscreen .notes-content { max-height: 100vh; border: none; }
 .notes-fullscreen .notes-markdown,
 .notes-fullscreen .notes-mermaid { max-height: calc(100vh - 5rem); height: calc(100vh - 5rem); }
@@ -2207,24 +2294,6 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 
 .notes-edit-title { margin-bottom: 0; width: 100%; }
 
-.notes-edit-slug {
-    display: inline;
-    width: auto;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 2px 6px;
-    margin: 0;
-    border: 1px solid var(--border-default);
-    border-radius: 4px;
-    color: var(--text-muted);
-    background: transparent;
-}
-
-.notes-slug-edit {
-    display: flex;
-    align-items: center;
-    gap: 0;
-}
 
 .notes-edit-textarea {
     width: 100%;

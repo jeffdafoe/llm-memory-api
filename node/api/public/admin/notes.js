@@ -60,7 +60,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const notesEditing = ref(false);
     const notesEditTitle = ref('');
     const notesEditContent = ref('');
-    const notesEditSlug = ref('');
+
     const notesSaving = ref(false);
     const notesSearchQuery = ref('');
     const notesSearchResults = ref(null);
@@ -331,7 +331,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesEditing.value = true;
         notesEditTitle.value = selectedNote.value.title;
         notesEditContent.value = selectedNote.value.content;
-        notesEditSlug.value = selectedNote.value.slug;
+
     }
 
     function cancelEditNote() {
@@ -341,19 +341,6 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     async function saveEditedNote() {
         notesSaving.value = true;
         try {
-            const slugChanged = notesEditSlug.value !== selectedNote.value.slug;
-
-            // If slug changed, move first
-            if (slugChanged) {
-                await api('/admin/notes/move', {
-                    namespace: selectedNote.value.namespace,
-                    slug: selectedNote.value.slug,
-                    new_slug: notesEditSlug.value
-                });
-                selectedNote.value.slug = notesEditSlug.value;
-            }
-
-            // Save content (uses the new slug if moved)
             await api('/admin/notes/save', {
                 namespace: selectedNote.value.namespace,
                 slug: selectedNote.value.slug,
@@ -363,11 +350,6 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
             selectedNote.value.title = notesEditTitle.value;
             selectedNote.value.content = notesEditContent.value;
             notesEditing.value = false;
-
-            // Refresh tree if slug changed
-            if (slugChanged) {
-                await loadNotes();
-            }
         } catch (err) {
             console.error('Failed to save note:', err);
             showToast('Failed to save: ' + err.message, 'error');
@@ -594,10 +576,38 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     // Close context menu on any click anywhere
     document.addEventListener('click', closeSyncContextMenu);
 
+    // Sidebar resize via drag handle
+    function startSidebarResize(e) {
+        e.preventDefault();
+        const sidebar = e.target.previousElementSibling;
+        const startX = e.clientX;
+        const startWidth = sidebar.getBoundingClientRect().width;
+
+        function onMouseMove(ev) {
+            const newWidth = startWidth + (ev.clientX - startX);
+            if (newWidth >= 150 && newWidth <= 800) {
+                sidebar.style.width = newWidth + 'px';
+                sidebar.style.minWidth = newWidth + 'px';
+            }
+        }
+
+        function onMouseUp() {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }
+
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
         selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
-        notesEditing, notesEditTitle, notesEditContent, notesEditSlug, notesSaving,
+        notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
         syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving,
@@ -607,7 +617,8 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         downloadNote, uploadNote,
         searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling,
         showSyncContextMenu, closeSyncContextMenu, openSyncDialog,
-        saveSyncMapping, deleteSyncMapping, closeSyncDialog
+        saveSyncMapping, deleteSyncMapping, closeSyncDialog,
+        startSidebarResize
     };
 }
 

@@ -10,7 +10,7 @@
         <a v-if="canDo('templates', 'read')" href="#" :class="{ active: configSubTab === 'templates' }" @click.prevent="configSubTab = 'templates'; loadTemplates()">Templates</a>
     </div>
 
-    <div class="page-content">
+    <div class="page-content" :class="{ 'page-content-flex': configSubTab === 'templates' && templateEditing }">
     <!-- Actors sub-tab -->
     <div v-if="configSubTab === 'actors'">
         <div style="margin-bottom: 0.75rem;">
@@ -234,29 +234,29 @@
     </div>
 
     <!-- Templates sub-tab -->
-    <div v-if="configSubTab === 'templates'">
+    <div v-if="configSubTab === 'templates'" :class="{ 'template-tab-editing': templateEditing }">
         <div class="mail-toolbar">
             <button v-if="!templateEditing" class="inline-button" @click="startNewTemplate"><i class="icon-plus"></i> New Template</button>
         </div>
 
-        <div v-if="templateEditing" class="mail-compose">
-            <div class="mail-compose-row">
+        <div v-if="templateEditing" class="template-compose">
+            <div class="template-compose-row">
                 <label>Name</label>
                 <input type="text" v-model="templateEditName" placeholder="e.g. developer-agent">
             </div>
-            <div class="mail-compose-row">
+            <div class="template-compose-row">
                 <label>Kind</label>
                 <select v-model="templateEditKind">
                     <option value="welcome">welcome</option>
                 </select>
             </div>
-            <div class="mail-compose-row">
+            <div class="template-compose-row">
                 <label>Description (optional)</label>
                 <input type="text" v-model="templateEditDescription" placeholder="Brief description of when to use this template">
             </div>
-            <div class="mail-compose-row">
+            <div class="template-compose-row template-compose-content">
                 <label>Content</label>
-                <textarea v-model="templateEditContent" rows="12" placeholder="Use {agent} as a placeholder for the agent's name."></textarea>
+                <textarea v-model="templateEditContent" placeholder="Use {agent} as a placeholder for the agent's name."></textarea>
             </div>
             <div class="dialog-actions">
                 <button class="btn btn-secondary" @click="templateEditing = false">Cancel</button>

@@ -31,6 +31,11 @@ function useErrorLog({ api, authenticated }) {
         return [...subs].sort();
     });
 
+    // Server errors only (5xx + unknown status) — used by dashboard panel
+    const errorLogServerErrors = computed(() => {
+        return errorLogEntries.value.filter(e => !e.status_code || e.status_code >= 500);
+    });
+
     const errorLogFiltered = computed(() => {
         let entries = errorLogEntries.value;
         if (errorLogFilterAgent.value) {
@@ -94,7 +99,7 @@ function useErrorLog({ api, authenticated }) {
     return {
         errorLogEntries, errorLogPaused, errorLogLastId,
         errorLogFilterAgent, errorLogFilterSubsystem, errorLogFilterStatus,
-        errorLogAgents, errorLogSubsystems, errorLogFiltered,
+        errorLogAgents, errorLogSubsystems, errorLogFiltered, errorLogServerErrors,
         errorLogExpandedId, toggleErrorDetail,
         pollErrorLog, startErrorLogPolling, stopErrorLogPolling
     };
