@@ -106,8 +106,8 @@
     <dialog :open="syncDialog !== null" @close="closeSyncDialog">
         <article v-if="syncDialog" class="confirm-dialog" style="min-width: 500px;">
             <header>
-                <button aria-label="Close" rel="prev" @click="closeSyncDialog"></button>
                 <h3>Sync Mapping</h3>
+                <button aria-label="Close" rel="prev" @click="closeSyncDialog"></button>
             </header>
             <div class="dialog-body">
                 <p class="muted">{{ syncDialog.namespace ? '[' + syncDialog.namespace + '] ' : '' }}{{ syncDialog.slug || '(entire namespace)' }}</p>
@@ -147,8 +147,8 @@
     <dialog :open="renameConflict !== null" @close="cancelRenameConflict">
         <article v-if="renameConflict" class="confirm-dialog" style="min-width: 550px;">
             <header>
-                <button aria-label="Close" rel="prev" @click="cancelRenameConflict"></button>
                 <h3>Folder Rename</h3>
+                <button aria-label="Close" rel="prev" @click="cancelRenameConflict"></button>
             </header>
             <div class="dialog-body">
                 <p>Renaming <code>{{ renameConflict.old_prefix }}</code> to <code>{{ renameConflict.new_prefix }}</code></p>
