@@ -2120,6 +2120,27 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 
 .tree-file i, .tree-folder-header i, .tree-namespace-header i { font-size: 14px; opacity: 0.6; }
 
+.tree-sync-icon {
+    font-size: 10px !important;
+    opacity: 0.5 !important;
+    color: var(--accent-text) !important;
+    margin-left: -2px;
+    margin-right: -2px;
+}
+
+.tree-rename-input {
+    font-size: 13px;
+    padding: 1px 4px;
+    margin: 0;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
+    min-width: 80px;
+    flex: 1;
+}
+
 /* Context menu */
 .context-menu {
     position: fixed;

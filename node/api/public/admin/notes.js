@@ -42,11 +42,12 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const expandedFolders = ref({});
     const selectedNote = ref(null);
 
-    // ---- Sync mappings (context menu) ----
+    // ---- Sync mappings ----
+    const allSyncMappings = ref([]);         // all mappings for sync indicator icons
     const syncContextMenu = ref(null);       // { x, y, namespace, slug }
     const syncDialog = ref(null);            // { namespace, slug, localPath, actorId }
     const syncAgents = ref([]);              // agents list for dropdown
-    const syncMappings = ref([]);            // current mappings for display
+    const syncMappings = ref([]);            // current mappings for dialog display
     const syncSaving = ref(false);
     const isMermaid = computed(() => {
         if (!selectedNote.value) return false;
@@ -55,6 +56,10 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         const content = (selectedNote.value.content || '').trim();
         return content.startsWith('```mermaid') && content.endsWith('```');
     });
+    // ---- Inline rename ----
+    const renameTarget = ref(null);          // { namespace, slug, type: 'file'|'folder', originalName }
+    const renameValue = ref('');
+
     const notesSidebarCollapsed = ref(false);
     const notesFullscreen = ref(false);
     const notesEditing = ref(false);
@@ -299,9 +304,29 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
             for (const { namespace, notes } of results) {
                 notesTreesRaw.value[namespace] = buildTree(notes);
             }
+            // Load sync mappings for tree indicators
+            await loadAllSyncMappings();
         } catch (err) {
             console.error('Failed to load notes:', err);
         }
+    }
+
+    // Load all sync mappings for displaying sync indicators in the tree
+    async function loadAllSyncMappings() {
+        try {
+            const data = await api('/admin/notes/sync/list');
+            allSyncMappings.value = data.mappings || [];
+        } catch (err) {
+            console.error('Failed to load sync mappings:', err);
+            allSyncMappings.value = [];
+        }
+    }
+
+    // Check if a note or folder has a sync mapping configured.
+    // For folders (slug ends with '/'), checks exact match on the folder prefix.
+    // For notes, checks exact match on the slug.
+    function isSynced(namespace, slug) {
+        return allSyncMappings.value.some(m => m.namespace === namespace && m.slug === slug);
     }
 
     function toggleNamespace(namespace) {
@@ -372,6 +397,83 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                 showToast('Failed to delete: ' + err.message, 'error');
             }
         });
+    }
+
+    // Start inline rename for a file or folder in the tree
+    function startRename(namespace, slug, type, name) {
+        renameTarget.value = { namespace, slug, type, originalName: name };
+        renameValue.value = name;
+    }
+
+    function cancelRename() {
+        renameTarget.value = null;
+        renameValue.value = '';
+    }
+
+    async function commitRename() {
+        const target = renameTarget.value;
+        if (!target) return;
+
+        // Clear immediately to prevent double-fire from blur after Enter
+        renameTarget.value = null;
+
+        const newName = renameValue.value.trim();
+        if (!newName || newName === target.originalName) {
+            renameValue.value = '';
+            return;
+        }
+
+        try {
+            if (target.type === 'file') {
+                // Replace the last segment of the slug with the new name
+                const parts = target.slug.split('/');
+                parts[parts.length - 1] = newName;
+                const newSlug = parts.join('/');
+
+                await api('/admin/notes/move', {
+                    namespace: target.namespace,
+                    slug: target.slug,
+                    new_slug: newSlug
+                });
+                showToast('Note renamed', 'success');
+
+                // Update selected note if it was the renamed one
+                if (selectedNote.value && selectedNote.value.namespace === target.namespace && selectedNote.value.slug === target.slug) {
+                    selectedNote.value.slug = newSlug;
+                }
+            } else {
+                // Folder rename: update the prefix for all children
+                // target.slug is the folder path ending with '/'
+                const oldPrefix = target.slug;
+                const parts = oldPrefix.slice(0, -1).split('/');
+                parts[parts.length - 1] = newName;
+                const newPrefix = parts.join('/') + '/';
+
+                await api('/admin/notes/move-prefix', {
+                    namespace: target.namespace,
+                    old_prefix: oldPrefix,
+                    new_prefix: newPrefix
+                });
+                showToast('Folder renamed', 'success');
+            }
+            await loadNotes();
+        } catch (err) {
+            console.error('Failed to rename:', err);
+            showToast('Failed to rename: ' + err.message, 'error');
+        } finally {
+            renameValue.value = '';
+        }
+    }
+
+    // Handle keydown in rename input
+    function renameKeydown(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commitRename();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelRename();
+        }
     }
 
     async function searchNotes() {
@@ -500,6 +602,25 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         syncContextMenu.value = null;
     }
 
+    // Start rename from context menu
+    function startRenameFromContext() {
+        const ctx = syncContextMenu.value;
+        if (!ctx) return;
+        syncContextMenu.value = null;
+
+        // Determine the type and name from the slug
+        if (ctx.slug.endsWith('/')) {
+            // Folder: slug is like "path/to/folder/", name is last segment
+            const trimmed = ctx.slug.slice(0, -1);
+            const name = trimmed.split('/').pop();
+            startRename(ctx.namespace, ctx.slug, 'folder', name);
+        } else {
+            // File: name is last segment of slug
+            const name = ctx.slug.split('/').pop();
+            startRename(ctx.namespace, ctx.slug, 'file', name);
+        }
+    }
+
     // Open the sync dialog from the context menu
     async function openSyncDialog() {
         const ctx = syncContextMenu.value;
@@ -544,8 +665,9 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                 local_path: dlg.localPath
             });
             showToast('Sync mapping saved', 'success');
-            // Reload mappings to show the new one
+            // Reload mappings to show the new one + update tree indicators
             await loadSyncMappings(dlg.namespace, dlg.slug);
+            await loadAllSyncMappings();
             // Reset form fields but keep dialog open
             dlg.localPath = '';
             dlg.actorId = null;
@@ -563,6 +685,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
             if (syncDialog.value) {
                 await loadSyncMappings(syncDialog.value.namespace, syncDialog.value.slug);
             }
+            await loadAllSyncMappings();
         } catch (err) {
             showToast('Failed to delete: ' + err.message, 'error');
         }
@@ -610,10 +733,12 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
-        syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving,
+        isSynced, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving,
+        renameTarget, renameValue,
         loadNotes, toggleNamespace, toggleFolder,
         openNote, openNoteFromSearch,
         startEditNote, cancelEditNote, saveEditedNote, confirmDeleteNote,
+        startRename, cancelRename, commitRename, renameKeydown, startRenameFromContext,
         downloadNote, uploadNote,
         searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling,
         showSyncContextMenu, closeSyncContextMenu, openSyncDialog,

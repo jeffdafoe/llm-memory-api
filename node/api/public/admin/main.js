@@ -373,4 +373,7 @@ createApp({
 
         return appState;
     }
+}).directive('focus', {
+    // Auto-focus an element when it's mounted (used by inline rename inputs)
+    mounted(el) { el.focus(); el.select(); }
 }).mount('#app');

@@ -862,6 +862,44 @@ router.post('/admin/notes/move', requirePerm('notes', 'write'), adminRoute('note
     res.json({ note: doc });
 }));
 
+// POST /admin/notes/move-prefix — rename a folder by updating all slugs with a given prefix
+router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRoute('notes-move-prefix', async (req, res) => {
+    const { namespace, old_prefix, new_prefix } = req.body;
+    if (!namespace || !old_prefix || !new_prefix) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, old_prefix, new_prefix' }
+        });
+    }
+    validateNamespace(namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
+
+    // Update document slugs: replace the prefix portion
+    const docResult = await pool.query(`
+        UPDATE documents
+        SET slug = $3 || substring(slug FROM length($2) + 1),
+            updated_at = NOW()
+        WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
+        RETURNING id, slug
+    `, [namespace, old_prefix, new_prefix]);
+
+    // Update vector chunks to match
+    await pool.query(`
+        UPDATE memory_chunks
+        SET source_file = $3 || substring(source_file FROM length($2) + 1)
+        WHERE namespace = $1 AND source_file LIKE $2 || '%'
+    `, [namespace, old_prefix, new_prefix]);
+
+    // Update sync mappings that point to the old prefix
+    await pool.query(`
+        UPDATE note_synchronization
+        SET slug = $3 || substring(slug FROM length($2) + 1)
+        WHERE namespace = $1 AND slug LIKE $2 || '%'
+    `, [namespace, old_prefix, new_prefix]);
+
+    logAdmin('note_move_prefix', { namespace, old_prefix, new_prefix, count: docResult.rowCount, user_id: req.authenticatedUser.id });
+    res.json({ moved: docResult.rowCount });
+}));
+
 // POST /admin/notes/search — semantic search across notes
 router.post('/admin/notes/search', requirePerm('notes', 'read'), adminRoute('notes-search', async (req, res) => {
     const { query, namespace, limit } = req.body;
