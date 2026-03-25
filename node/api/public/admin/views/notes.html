@@ -29,6 +29,7 @@
                 <div class="tree-namespace-header" @click="toggleNamespace(ns.namespace)" @contextmenu="showSyncContextMenu($event, ns.namespace, '')">
                     <i :class="expandedNamespaces[ns.namespace] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
                     <i class="icon-folder"></i>
+                    <i v-if="isSynced(ns.namespace, '')" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
                     <strong>{{ ns.namespace }}</strong>
                     <span class="tree-count">({{ ns.count }})</span>
                 </div>
@@ -38,13 +39,19 @@
                             <div class="tree-folder-header" @click="toggleFolder(ns.namespace, node.path)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.path + '/')" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
                                 <i :class="expandedFolders[ns.namespace + '/' + node.path] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
                                 <i class="icon-folder"></i>
-                                {{ node.name }}
+                                <i v-if="isSynced(ns.namespace, node.path + '/')" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
+                                <input v-if="renameTarget && renameTarget.namespace === ns.namespace && renameTarget.slug === node.path + '/'" v-model="renameValue" class="tree-rename-input" @keydown="renameKeydown" @blur="commitRename" @click.stop v-focus>
+                                <template v-else>{{ node.name }}</template>
                             </div>
                         </div>
                         <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2 + 1.2) + 'em' }">
                             <i class="icon-file-text"></i>
-                            <span class="tree-file-name">{{ node.name }}</span>
-                            <span v-if="node.updated_at" class="tree-file-time">{{ timeAgo(node.updated_at) }}</span>
+                            <i v-if="isSynced(ns.namespace, node.slug)" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
+                            <input v-if="renameTarget && renameTarget.namespace === ns.namespace && renameTarget.slug === node.slug" v-model="renameValue" class="tree-rename-input" @keydown="renameKeydown" @blur="commitRename" @click.stop v-focus>
+                            <template v-else>
+                                <span class="tree-file-name">{{ node.name }}</span>
+                                <span v-if="node.updated_at" class="tree-file-time">{{ timeAgo(node.updated_at) }}</span>
+                            </template>
                         </div>
                     </template>
                 </div>
@@ -85,8 +92,11 @@
         </div>
     </div>
 
-    <!-- Context menu for sync mappings -->
+    <!-- Context menu -->
     <div v-if="syncContextMenu" class="context-menu" :style="{ left: syncContextMenu.x + 'px', top: syncContextMenu.y + 'px' }">
+        <div v-if="syncContextMenu.slug !== '' && canDo('notes', 'write')" class="context-menu-item" @click.stop="startRenameFromContext">
+            <i class="icon-edit-2"></i> Rename
+        </div>
         <div class="context-menu-item" @click.stop="openSyncDialog">
             <i class="icon-refresh-cw"></i> Sync to local directory...
         </div>
