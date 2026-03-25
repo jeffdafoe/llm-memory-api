@@ -7,6 +7,41 @@ const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 
+// Validate a slug to prevent malformed entries that break the tree UI.
+// Throws 400 if invalid. Prefixes (for move-prefix) end with '/' and are validated
+// with allowTrailingSlash=true.
+function validateSlug(slug, { allowTrailingSlash = false } = {}) {
+    if (!slug || typeof slug !== 'string') {
+        throw Object.assign(new Error('Slug is required'), { statusCode: 400 });
+    }
+    if (slug.length > 500) {
+        throw Object.assign(new Error('Slug too long (max 500 characters)'), { statusCode: 400 });
+    }
+    // No control characters or null bytes
+    if (/[\x00-\x1f\x7f]/.test(slug)) {
+        throw Object.assign(new Error('Slug contains invalid characters'), { statusCode: 400 });
+    }
+    // No leading slash
+    if (slug.startsWith('/')) {
+        throw Object.assign(new Error('Slug must not start with /'), { statusCode: 400 });
+    }
+    // No trailing slash (unless it's a prefix for folder operations)
+    if (!allowTrailingSlash && slug.endsWith('/')) {
+        throw Object.assign(new Error('Slug must not end with /'), { statusCode: 400 });
+    }
+    // No double slashes (creates empty segments in the tree)
+    if (slug.includes('//')) {
+        throw Object.assign(new Error('Slug must not contain //'), { statusCode: 400 });
+    }
+    // Every segment must be non-empty
+    const segments = slug.replace(/\/$/, '').split('/');
+    for (const seg of segments) {
+        if (seg === '') {
+            throw Object.assign(new Error('Slug must not contain empty path segments'), { statusCode: 400 });
+        }
+    }
+}
+
 function slugToKind(slug) {
     if (slug.startsWith('instructions/')) return 'instruction';
     if (slug.startsWith('notes/codebase/')) return 'reference';
@@ -38,6 +73,7 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     if (!resolvedSlug) {
         throw Object.assign(new Error('Could not generate slug from title'), { statusCode: 400 });
     }
+    validateSlug(resolvedSlug);
 
     // Detect redundant namespace prefix in slug (e.g. slug="shared/ideas/foo" in namespace="shared")
     if (resolvedSlug.startsWith(namespace + '/')) {
@@ -412,6 +448,7 @@ async function grepNotes(pattern, namespace, limit, readableNamespaces) {
 // Move/rename a note by changing its slug (and optionally namespace).
 // Updates both the document row and any associated vector chunks.
 async function moveNote(namespace, slug, newSlug, newNamespace) {
+    validateSlug(newSlug);
     const targetNamespace = newNamespace || namespace;
 
     // Verify source exists and isn't deleted
@@ -468,4 +505,4 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
     return doc;
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, titleToSlug };
+module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, titleToSlug, validateSlug };

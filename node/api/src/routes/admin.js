@@ -4,7 +4,7 @@ const pool = require('../db');
 const config = require('../services/config');
 const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
-const { listNotes, readNote, saveNote, deleteNote, moveNote } = require('../services/documents');
+const { listNotes, readNote, saveNote, deleteNote, moveNote, validateSlug } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
 const { getErrorLogEntries } = require('../services/logger');
@@ -873,6 +873,10 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
         });
     }
     validateNamespace(namespace);
+    validateSlug(old_prefix, { allowTrailingSlash: true });
+    if (new_prefix !== '') {
+        validateSlug(new_prefix, { allowTrailingSlash: true });
+    }
     await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
 
     // Count notes that would be moved
