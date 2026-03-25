@@ -2122,7 +2122,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 
 .tree-sync-icon {
     font-size: 10px !important;
-    opacity: 0.5 !important;
+    opacity: 1 !important;
     color: var(--accent-text) !important;
     margin-left: -2px;
     margin-right: -2px;
