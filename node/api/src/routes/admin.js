@@ -873,6 +873,21 @@ router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRout
     validateNamespace(namespace);
     await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
 
+    // Check for collisions: any existing notes under the new prefix that aren't being renamed
+    const conflict = await pool.query(`
+        SELECT slug FROM documents
+        WHERE namespace = $1
+          AND slug LIKE $3 || '%'
+          AND slug NOT LIKE $2 || '%'
+          AND deleted_at IS NULL
+        LIMIT 1
+    `, [namespace, old_prefix, new_prefix]);
+    if (conflict.rows.length > 0) {
+        return res.status(409).json({
+            error: { code: 'CONFLICT', message: 'Target prefix conflicts with existing note: ' + conflict.rows[0].slug }
+        });
+    }
+
     // Update document slugs: replace the prefix portion
     const docResult = await pool.query(`
         UPDATE documents
