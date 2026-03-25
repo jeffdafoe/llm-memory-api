@@ -867,7 +867,7 @@ router.post('/admin/notes/move', requirePerm('notes', 'write'), adminRoute('note
 // conflicting notes before moving.
 router.post('/admin/notes/move-prefix', requirePerm('notes', 'write'), adminRoute('notes-move-prefix', async (req, res) => {
     const { namespace, old_prefix, new_prefix, dry_run, overwrite_slugs } = req.body;
-    if (!namespace || !old_prefix || !new_prefix) {
+    if (!namespace || !old_prefix || new_prefix == null) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, old_prefix, new_prefix' }
         });
