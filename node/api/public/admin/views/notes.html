@@ -145,46 +145,57 @@
 
     <!-- Conflict resolution dialog for folder rename -->
     <dialog :open="renameConflict !== null" @close="cancelRenameConflict">
-        <article v-if="renameConflict" class="confirm-dialog" style="min-width: 550px;">
+        <article v-if="renameConflict" class="confirm-dialog rename-conflict-dialog">
             <header>
                 <h3>Folder Rename</h3>
                 <button aria-label="Close" rel="prev" @click="cancelRenameConflict"></button>
             </header>
             <div class="dialog-body">
-                <p>Renaming <code>{{ renameConflict.old_prefix }}</code> to <code>{{ renameConflict.new_prefix }}</code></p>
-                <p>{{ renameConflict.would_move }} {{ renameConflict.would_move === 1 ? 'note' : 'notes' }} will be moved.</p>
-                <p v-if="renameConflict.conflicts.length > 0"><strong>{{ renameConflict.conflicts.length }} {{ renameConflict.conflicts.length === 1 ? 'note already exists' : 'notes already exist' }} at the destination:</strong></p>
-                <div v-if="renameConflict.conflicts.length > 0" style="max-height: 300px; overflow-y: auto; margin-bottom: 12px;">
-                <table class="fixed-table">
-                    <colgroup>
-                        <col>
-                        <col style="width: 10em;">
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th>Note</th>
-                            <th>
-                                <select v-model="renameConflictBulkAction" @change="applyBulkConflictAction" style="margin:0; padding:2px 4px; font-size:12px;">
-                                    <option value="">Action...</option>
-                                    <option value="skip">Skip All</option>
-                                    <option value="overwrite">Overwrite All</option>
-                                </select>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="c in renameConflict.conflicts" :key="c.slug">
-                            <td><span class="mono" style="font-size: 12px;">{{ c.slug }}</span><br><span class="muted" style="font-size: 12px;">{{ c.title }}</span></td>
-                            <td>
-                                <select v-model="c.action" style="margin:0; padding:2px 4px; font-size:12px;">
-                                    <option value="skip">Skip</option>
-                                    <option value="overwrite">Overwrite</option>
-                                </select>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="rename-conflict-intro">
+                    <div class="rename-path">
+                        <span class="path-chip">{{ renameConflict.old_prefix }}</span>
+                        <span class="path-arrow">&rarr;</span>
+                        <span class="path-chip destination">{{ renameConflict.new_prefix || '(root)' }}</span>
+                    </div>
+                    <div class="rename-stats">
+                        <div class="stat">
+                            <strong>{{ renameConflict.would_move }}</strong>
+                            <span>{{ renameConflict.would_move === 1 ? 'note' : 'notes' }} will be moved</span>
+                        </div>
+                        <div class="stat conflict">
+                            <strong>{{ renameConflict.conflicts.length }}</strong>
+                            <span>already {{ renameConflict.conflicts.length === 1 ? 'exists' : 'exist' }} at destination</span>
+                        </div>
+                    </div>
                 </div>
+
+                <div class="conflict-bulk-bar">
+                    <div class="bulk-copy">
+                        <span class="bulk-title">Resolve conflicts</span>
+                        <span class="bulk-subtitle">Choose what happens when a destination note already exists.</span>
+                    </div>
+                    <div class="bulk-actions">
+                        <button type="button" class="bulk-btn" @click="setBulkConflictAction('skip')">Skip all</button>
+                        <button type="button" class="bulk-btn danger" @click="setBulkConflictAction('overwrite')">Overwrite all</button>
+                    </div>
+                </div>
+
+                <div class="conflict-list" role="list">
+                    <div v-for="c in renameConflict.conflicts" :key="c.slug" class="conflict-item" role="listitem">
+                        <div class="conflict-main">
+                            <div class="conflict-title-row">
+                                <code class="note-slug">{{ c.slug }}</code>
+                                <span class="conflict-badge">Exists</span>
+                            </div>
+                            <div class="conflict-note-title">{{ c.title }}</div>
+                        </div>
+                        <div class="conflict-choice" role="group" :aria-label="'Action for ' + c.slug">
+                            <button type="button" class="choice-btn" :class="{ 'is-active': c.action === 'skip' }" data-value="skip" @click="c.action = 'skip'">Skip</button>
+                            <button type="button" class="choice-btn" :class="{ 'is-active': c.action === 'overwrite' }" data-value="overwrite" @click="c.action = 'overwrite'">Overwrite</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="dialog-actions">
                     <button class="btn btn-secondary" @click="cancelRenameConflict">Cancel</button>
                     <button class="btn btn-primary" @click="executeRenameWithConflicts" :disabled="renameConflictExecuting">{{ renameConflictExecuting ? 'Moving...' : 'Move Notes' }}</button>

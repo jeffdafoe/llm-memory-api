@@ -60,7 +60,6 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const renameTarget = ref(null);          // { namespace, slug, type: 'file'|'folder', originalName }
     const renameValue = ref('');
     const renameConflict = ref(null);        // { namespace, old_prefix, new_prefix, would_move, conflicts: [{slug, title, action}] }
-    const renameConflictBulkAction = ref('');
     const renameConflictExecuting = ref(false);
 
     const notesSidebarCollapsed = ref(false);
@@ -483,7 +482,6 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                         would_move: result.would_move,
                         conflicts: result.conflicts.map(c => ({ ...c, action: 'skip' }))
                     };
-                    renameConflictBulkAction.value = '';
                 } else {
                     // No conflicts — execute directly
                     await api('/admin/notes/move-prefix', {
@@ -504,9 +502,8 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     }
 
     // Set all conflict actions at once (skip all / overwrite all)
-    function applyBulkConflictAction() {
-        const action = renameConflictBulkAction.value;
-        if (!action || !renameConflict.value) return;
+    function setBulkConflictAction(action) {
+        if (!renameConflict.value) return;
         for (const c of renameConflict.value.conflicts) {
             c.action = action;
         }
@@ -823,12 +820,12 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesReindexing, reindexStatus,
         isSynced, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving,
         renameTarget, renameValue,
-        renameConflict, renameConflictBulkAction, renameConflictExecuting,
+        renameConflict, renameConflictExecuting,
         loadNotes, toggleNamespace, toggleFolder,
         openNote, openNoteFromSearch,
         startEditNote, cancelEditNote, saveEditedNote, confirmDeleteNote,
         startRename, cancelRename, commitRename, renameKeydown, startRenameFromContext,
-        applyBulkConflictAction, cancelRenameConflict, executeRenameWithConflicts,
+        setBulkConflictAction, cancelRenameConflict, executeRenameWithConflicts,
         downloadNote, uploadNote,
         searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling,
         showSyncContextMenu, closeSyncContextMenu, openSyncDialog,
