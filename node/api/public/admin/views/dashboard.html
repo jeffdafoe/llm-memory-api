@@ -264,7 +264,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="entry in errorLogServerErrors.slice(0, 5)" :key="entry.id" class="error-row-server">
+                    <tr v-for="entry in errorLogServerErrors.slice(0, 5)" :key="entry.id">
                         <td class="ts nowrap">{{ formatShortDate(entry.created_at) }}</td>
                         <td class="log-mono nowrap">{{ entry.status_code || '—' }}</td>
                         <td class="nowrap" :style="{ color: agentColor(entry.agent) }" :title="entry.agent">{{ entry.agent }}</td>
