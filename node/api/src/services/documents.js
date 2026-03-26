@@ -90,10 +90,10 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         ), { statusCode: 400 });
     }
 
-    // Check if the slug already exists (including soft-deleted rows)
+    // Check if an active note already exists at this slug
     // Case-insensitive lookup — slugs are preserved as-is, only matching is lowered
     const existing = await pool.query(
-        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2)',
+        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [namespace, resolvedSlug]
     );
 
@@ -467,9 +467,9 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
 
-    // Check target slug isn't already taken (including soft-deleted — unique constraint covers both)
+    // Check target slug isn't already taken by an active note
     const conflict = await pool.query(
-        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2)',
+        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [targetNamespace, newSlug]
     );
     if (conflict.rows.length > 0) {
