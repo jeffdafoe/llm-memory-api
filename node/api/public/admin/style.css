@@ -2588,6 +2588,16 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 
 .shared-namespace .tree-namespace-header strong { color: var(--text-secondary); }
 
+.share-readonly-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--border-subtle);
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
 /* Shared note/folder indicators in tree */
 .shared-specific { color: #ffc107; }  /* yellow — shared with specific actors */
 .shared-all { color: #fd7e14; }       /* orange — shared with everyone */

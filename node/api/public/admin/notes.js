@@ -411,7 +411,17 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesEditing.value = false;
         try {
             const data = await api('/admin/notes/read', { namespace, slug });
-            selectedNote.value = { ...data.note, namespace };
+            const note = { ...data.note, namespace };
+
+            // Check if this is a shared note (not in user's own namespaces)
+            const sharedEntry = sharedWithMe.value.find(e => e.namespace === namespace);
+            if (sharedEntry) {
+                note.isShared = true;
+                note.sharedCanWrite = sharedEntry.canWrite;
+                note.sharedCanDelete = sharedEntry.canDelete;
+            }
+
+            selectedNote.value = note;
         } catch (err) {
             console.error('Failed to open note:', err);
         }
