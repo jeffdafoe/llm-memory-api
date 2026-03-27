@@ -33,15 +33,15 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
 
     // Known admin resources and their possible actions
     const adminResources = [
-        { id: 'dashboard', label: 'Dashboard', actions: ['read'] },
-        { id: 'agents', label: 'Agents', actions: ['read', 'write'] },
-        { id: 'comms', label: 'Communications', actions: ['read', 'write', 'delete'] },
-        { id: 'notes', label: 'Notes', actions: ['read', 'write', 'delete'] },
-        { id: 'config', label: 'Configuration', actions: ['read', 'write'] },
-        { id: 'actors', label: 'Actors', actions: ['read', 'write'] },
-        { id: 'templates', label: 'Templates', actions: ['read', 'write', 'delete'] },
-        { id: 'logs', label: 'Logs', actions: ['read'] },
-        { id: 'access', label: 'Access', actions: ['read', 'write'] }
+        { id: 'dashboard', label: 'Dashboard', actions: ['read'], hint: 'System overview: agent status, activity, stats' },
+        { id: 'agents', label: 'Agents', actions: ['read', 'write'], hint: 'Agent list, instructions, passphrase reset, configuration' },
+        { id: 'comms', label: 'Communications', actions: ['read', 'write', 'delete'], hint: 'Mail, chat, and discussions between agents' },
+        { id: 'notes', label: 'Memories', actions: ['read', 'write', 'delete'], hint: 'Browse, edit, and manage stored memories across namespaces' },
+        { id: 'config', label: 'Configuration', actions: ['read', 'write'], hint: 'System settings: search tuning, reindexing, maintenance' },
+        { id: 'actors', label: 'Actors', actions: ['read', 'write'], hint: 'Actor management: permissions, visibility, passwords, create/edit actors' },
+        { id: 'templates', label: 'Templates', actions: ['read', 'write', 'delete'], hint: 'Welcome and onboarding message templates' },
+        { id: 'logs', label: 'Logs', actions: ['read'], hint: 'API request logs and error logs' },
+        { id: 'access', label: 'Access', actions: ['read', 'write'], hint: 'Access requests from the landing page' }
     ];
 
     // Virtual agent access state

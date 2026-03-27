@@ -223,7 +223,7 @@
                             </thead>
                             <tbody>
                                 <tr v-for="(row, idx) in actorAdminPerms" :key="row.resource">
-                                    <td>{{ row.label }}</td>
+                                    <td :title="row.hint" style="cursor: help;">{{ row.label }}</td>
                                     <td style="text-align: center;">
                                         <input v-if="row.actions.includes('read')" type="checkbox" :checked="adminPermChecked(idx, 'read')" @change="toggleAdminPerm(idx, 'read')">
                                         <span v-else class="ts">—</span>
