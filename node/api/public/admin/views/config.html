@@ -72,6 +72,14 @@
 
     <!-- System sub-tab -->
     <div v-if="configSubTab === 'system'">
+        <h3 style="margin-bottom: 0.75rem;">Maintenance</h3>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 2rem;">
+            <button v-if="canDo('notes', 'write')" class="inline-button" @click="reindexNotes" :disabled="notesReindexing">
+                <i class="icon-refresh-cw" :class="{ 'spin': notesReindexing }"></i>
+                {{ notesReindexing ? 'Reindexing...' : 'Reindex Vectors' }}
+            </button>
+            <span v-if="notesReindexing" class="muted">This may take a while.</span>
+        </div>
         <table>
             <thead>
                 <tr>
