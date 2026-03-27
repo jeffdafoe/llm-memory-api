@@ -294,6 +294,18 @@
 
         .hero h1 span {
             color: #7CB9E8;
+            display: block;
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        .hero-hook {
+            font-size: 24px;
+            color: var(--text-primary);
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            margin-bottom: 24px;
+            margin-top: 32px;
         }
 
         .hero p {
@@ -635,8 +647,9 @@
 
 <section class="hero">
     <img src="/static/logo-mascot.png" alt="LLM Memory" class="hero-mascot">
-    <h1>Every conversation starts from <span>zero</span></h1>
-    <p>It doesn't have to. LLM Memory gives your AI <span style="color:var(--accent)">persistent knowledge</span> that survives sessions — and a dashboard where you can see, edit, and organize everything it knows.</p>
+    <h1>Every conversation starts from<br><span>zero</span></h1>
+    <p class="hero-hook">It doesn't have to.</p>
+    <p>LLM Memory gives your AI <span style="color:var(--accent)">persistent knowledge</span> that survives sessions — and a dashboard where you can see, edit, and organize everything it knows.</p>
     <div class="hero-buttons">
         <button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button>
         <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
