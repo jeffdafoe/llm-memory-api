@@ -457,6 +457,18 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         }
     }
 
+    async function toggleActorVisibleToOthers() {
+        if (!selectedActorConfig.value) return;
+        const newVal = selectedActorConfig.value.visible_to_others;
+        try {
+            await api('/admin/profile/visibility', { actor_id: selectedActorConfig.value.id, visible_to_others: newVal });
+            showToast(newVal ? 'Now visible for sharing' : 'Now hidden from sharing', 'success');
+        } catch (err) {
+            selectedActorConfig.value.visible_to_others = !newVal;
+            showToast(err.message || 'Failed to update', 'error');
+        }
+    }
+
     function closeDialogs() {
         selectedActorConfig.value = null;
         actorCreating.value = false;
@@ -477,6 +489,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         // Admin Permissions
         actorAdminPerms, actorHasWildcardAdmin, adminResources,
         toggleAdminPerm, adminPermChecked,
+        // Sharing
+        toggleActorVisibleToOthers,
         // UI Access
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Create actor
