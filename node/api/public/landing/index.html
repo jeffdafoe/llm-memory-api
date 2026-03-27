@@ -78,11 +78,11 @@
         }
 
         .hero-mascot {
-            float: right;
-            width: 380px;
+            position: absolute;
+            right: -40px;
+            top: 180px;
+            width: 420px;
             height: auto;
-            margin: 80px -40px 20px 48px;
-            shape-outside: margin-box;
         }
 
         .nav-links {
@@ -154,6 +154,7 @@
             display: block;
             padding-top: 140px;
             padding-bottom: 80px;
+            position: relative;
         }
 
         /* Access request modal */
@@ -284,6 +285,8 @@
             letter-spacing: -0.03em;
             line-height: 1.05;
             margin-bottom: 24px;
+            position: relative;
+            z-index: 2;
         }
 
         .hero h1 span {
@@ -565,7 +568,7 @@
             }
 
             .hero-mascot {
-                float: none;
+                position: static;
                 width: 180px;
                 display: block;
                 margin: 0 auto 24px auto;
