@@ -35,7 +35,7 @@
                 <div v-if="expandedNamespaces[ns.namespace]" class="tree-children">
                     <template v-for="node in notesTrees[ns.namespace]" :key="node.path">
                         <div v-if="node.type === 'folder'" class="tree-folder">
-                            <div class="tree-folder-header" @click="toggleFolder(ns.namespace, node.path)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.path + '/')" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
+                            <div class="tree-folder-header" @mousedown.prevent="toggleFolder(ns.namespace, node.path)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.path + '/')" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
                                 <i :class="expandedFolders[ns.namespace + '/' + node.path] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
                                 <i class="icon-folder"></i>
                                 <i v-if="isSynced(ns.namespace, node.path + '/')" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
@@ -95,6 +95,9 @@
     <div v-if="syncContextMenu" class="context-menu" :style="{ left: syncContextMenu.x + 'px', top: syncContextMenu.y + 'px' }">
         <div v-if="syncContextMenu.slug !== '' && canDo('notes', 'write')" class="context-menu-item" @click.stop="startRenameFromContext">
             <i class="icon-edit-2"></i> Rename
+        </div>
+        <div v-if="syncContextMenu.slug !== '' && canDo('notes', 'delete')" class="context-menu-item context-menu-danger" @click.stop="deleteFromContext">
+            <i class="icon-trash-2"></i> Delete
         </div>
         <div class="context-menu-item" @click.stop="openSyncDialog">
             <i class="icon-refresh-cw"></i> Sync to local directory...

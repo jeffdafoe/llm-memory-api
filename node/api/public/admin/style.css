@@ -2351,6 +2351,8 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 }
 
 .context-menu-item:hover { background: var(--bg-hover); }
+.context-menu-danger { color: var(--danger); }
+.context-menu-danger:hover { background: rgba(220, 53, 69, 0.15); }
 
 /* Notes toolbar */
 .notes-toolbar {
