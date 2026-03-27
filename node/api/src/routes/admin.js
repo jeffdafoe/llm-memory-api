@@ -2278,7 +2278,7 @@ router.post('/admin/actors/searchable', requirePerm('notes', 'read'), adminRoute
 }));
 
 // POST /admin/virtual-agent-access/list — list access rules for virtual agents
-router.post('/admin/virtual-agent-access/list', requireAdmin, adminRoute('va-access-list', async (req, res) => {
+router.post('/admin/virtual-agent-access/list', requirePerm('actors', 'read'), adminRoute('va-access-list', async (req, res) => {
     const result = await pool.query(`
         SELECT vaa.id, vaa.virtual_agent_id, va.name AS virtual_agent_name,
                vaa.grantee_actor_id, ga.name AS grantee_name, vaa.created_at
@@ -2291,7 +2291,7 @@ router.post('/admin/virtual-agent-access/list', requireAdmin, adminRoute('va-acc
 }));
 
 // POST /admin/virtual-agent-access/grant — grant access to a virtual agent
-router.post('/admin/virtual-agent-access/grant', requireAdmin, adminRoute('va-access-grant', async (req, res) => {
+router.post('/admin/virtual-agent-access/grant', requirePerm('actors', 'write'), adminRoute('va-access-grant', async (req, res) => {
     const { virtual_agent_id, grantee_actor_id } = req.body;
     if (!virtual_agent_id) return res.status(400).json({ error: 'virtual_agent_id required' });
 
@@ -2308,7 +2308,7 @@ router.post('/admin/virtual-agent-access/grant', requireAdmin, adminRoute('va-ac
 }));
 
 // POST /admin/virtual-agent-access/revoke — revoke access
-router.post('/admin/virtual-agent-access/revoke', requireAdmin, adminRoute('va-access-revoke', async (req, res) => {
+router.post('/admin/virtual-agent-access/revoke', requirePerm('actors', 'write'), adminRoute('va-access-revoke', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
 
