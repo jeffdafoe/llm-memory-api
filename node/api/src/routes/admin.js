@@ -18,6 +18,7 @@ const { requireAccess, getReadableNamespaces, validateNamespace, clearCache: cle
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
 const { requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
+const notePerms = require('../services/note-permissions');
 const { apiRoute } = require('../middleware/route-wrapper');
 
 const router = Router();
@@ -2127,6 +2128,106 @@ router.post('/admin/invite-codes/delete', requirePerm('access', 'write'), adminR
     await pool.query('DELETE FROM invite_codes WHERE id = $1', [id]);
     logAdmin('invite_code_deleted', { code_id: id, user_id: req.authenticatedUser.id });
     res.json({ ok: true });
+}));
+
+// ── Note Sharing ──────────────────────────────────────────────────────────────
+
+// POST /admin/shares/create — create a note/folder share
+router.post('/admin/shares/create', requirePerm('notes', 'write'), adminRoute('shares-create', async (req, res) => {
+    const { owner_namespace, slug_pattern, grantee_actor_id, can_read, can_write, can_delete } = req.body;
+    if (!owner_namespace || !slug_pattern) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required fields: owner_namespace, slug_pattern' } });
+    }
+    validateNamespace(owner_namespace);
+    // Only the namespace owner (or admin with wildcard) can share
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', owner_namespace, 'write');
+
+    const share = await notePerms.createShare({
+        ownerNamespace: owner_namespace,
+        slugPattern: slug_pattern,
+        granteeActorId: grantee_actor_id !== undefined ? grantee_actor_id : null,
+        canRead: can_read !== false,
+        canWrite: !!can_write,
+        canDelete: !!can_delete,
+        grantedBy: req.actorId,
+    });
+    logAdmin('share_create', { owner_namespace, slug_pattern, grantee_actor_id, user_id: req.authenticatedUser.id });
+    res.json({ share });
+}));
+
+// POST /admin/shares/revoke — revoke a share by ID
+router.post('/admin/shares/revoke', requirePerm('notes', 'write'), adminRoute('shares-revoke', async (req, res) => {
+    const { id } = req.body;
+    if (!id) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: id' } });
+    }
+    // Look up the share to verify ownership
+    const check = await pool.query('SELECT owner_namespace FROM note_permissions WHERE id = $1 AND revoked_at IS NULL', [id]);
+    if (check.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Share not found' } });
+    }
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', check.rows[0].owner_namespace, 'write');
+
+    const share = await notePerms.revokeShare(id);
+    logAdmin('share_revoke', { share_id: id, user_id: req.authenticatedUser.id });
+    res.json({ share });
+}));
+
+// POST /admin/shares/list — list shares (by owner namespace, or all for admin)
+router.post('/admin/shares/list', requirePerm('notes', 'read'), adminRoute('shares-list', async (req, res) => {
+    const { owner_namespace, all } = req.body;
+
+    if (all) {
+        // Admin view: list all shares
+        const shares = await notePerms.listAllShares();
+        return res.json({ shares });
+    }
+
+    if (!owner_namespace) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: owner_namespace (or all: true)' } });
+    }
+    validateNamespace(owner_namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', owner_namespace, 'read');
+    const shares = await notePerms.listSharesByOwner(owner_namespace);
+    res.json({ shares });
+}));
+
+// POST /admin/shares/shared-with-me — list shares granted to the current user
+router.post('/admin/shares/shared-with-me', requirePerm('notes', 'read'), adminRoute('shares-shared-with-me', async (req, res) => {
+    const shares = await notePerms.listSharesForRecipient(req.actorId);
+    res.json({ shares });
+}));
+
+// POST /admin/shares/for-slug — get shares for a specific note (for the share dialog)
+router.post('/admin/shares/for-slug', requirePerm('notes', 'read'), adminRoute('shares-for-slug', async (req, res) => {
+    const { owner_namespace, slug_pattern } = req.body;
+    if (!owner_namespace || !slug_pattern) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required fields: owner_namespace, slug_pattern' } });
+    }
+    validateNamespace(owner_namespace);
+    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', owner_namespace, 'read');
+
+    const result = await pool.query(
+        `SELECT np.*, a.name AS grantee_name
+         FROM note_permissions np
+         LEFT JOIN actors a ON np.grantee_actor_id = a.id
+         WHERE np.owner_namespace = $1 AND np.slug_pattern = $2 AND np.revoked_at IS NULL
+         ORDER BY np.grantee_actor_id`,
+        [owner_namespace, slug_pattern]
+    );
+    res.json({ shares: result.rows });
+}));
+
+// POST /admin/actors/searchable — search actors for sharing (filtered by visible_to_others)
+router.post('/admin/actors/searchable', requirePerm('notes', 'read'), adminRoute('actors-searchable', async (req, res) => {
+    const { query } = req.body;
+    const result = await pool.query(
+        `SELECT id, name FROM actors
+         WHERE visible_to_others = true AND name ILIKE $1 AND id != $2
+         ORDER BY name LIMIT 20`,
+        [`%${query || ''}%`, req.actorId]
+    );
+    res.json({ actors: result.rows });
 }));
 
 module.exports = router;
