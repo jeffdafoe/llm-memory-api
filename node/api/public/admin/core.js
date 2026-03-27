@@ -137,18 +137,37 @@ function useCore() {
         localStorage.removeItem('admin_session');
     }
 
-    // Profile / Change password
+    // Profile / Change password / Visibility
     const showProfile = ref(false);
     const showChangePassword = ref(false);
     const changePasswordForm = ref({ current: '', newPassword: '', confirm: '' });
     const changePasswordError = ref('');
     const changePasswordSaving = ref(false);
+    const visibleToOthers = ref(false);
 
     function closeProfile() {
         showProfile.value = false;
         changePasswordForm.value = { current: '', newPassword: '', confirm: '' };
         changePasswordError.value = '';
         changePasswordSaving.value = false;
+    }
+
+    async function loadVisibility() {
+        try {
+            const data = await api('/admin/profile/visibility');
+            visibleToOthers.value = data.visible_to_others;
+        } catch { /* ignore */ }
+    }
+
+    async function toggleVisibleToOthers() {
+        const newVal = !visibleToOthers.value;
+        try {
+            await api('/admin/profile/visibility', { visible_to_others: newVal });
+            visibleToOthers.value = newVal;
+            showToast(newVal ? 'You are now visible for sharing' : 'You are now hidden from sharing', 'success');
+        } catch (err) {
+            showToast(err.message || 'Failed to update visibility', 'error');
+        }
     }
 
     async function changePassword() {
@@ -353,7 +372,7 @@ function useCore() {
     return {
         authenticated, sessionToken, user, permissions, canDo,
         loginForm, loginError, loggingIn,
-        showProfile, showChangePassword, closeProfile, changePasswordForm, changePasswordError, changePasswordSaving, changePassword,
+        showProfile, showChangePassword, closeProfile, changePasswordForm, changePasswordError, changePasswordSaving, changePassword, visibleToOthers, loadVisibility, toggleVisibleToOthers,
         login, logout, restoreSession,
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
