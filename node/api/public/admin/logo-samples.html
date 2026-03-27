@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chip Bot - Pins Down</title>
+<style>
+    body {
+        background: #0a0e17;
+        color: #e2e8f0;
+        font-family: 'Inter', sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 60px 40px;
+        gap: 80px;
+        min-height: 100vh;
+        margin: 0;
+    }
+    .sample {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+    }
+    .sample h3 {
+        color: #94a3b8;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .logo-preview {
+        width: 260px;
+        height: 260px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f1420;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.06);
+    }
+    .sidebar-preview {
+        width: 200px;
+        background: #0f1420;
+        border-radius: 12px;
+        padding: 20px 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid rgba(255,255,255,0.06);
+    }
+    .sidebar-preview .logo-area {
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+    .sidebar-preview .nav-item {
+        width: 100%;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #94a3b8;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .sidebar-preview .nav-item.active {
+        background: rgba(99, 164, 255, 0.12);
+        color: #63a4ff;
+    }
+    .sidebar-preview .nav-item .dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.08);
+    }
+    .sidebar-preview .nav-item.active .dot {
+        background: rgba(99, 164, 255, 0.3);
+    }
+</style>
+</head>
+<body>
+
+<!-- Iteration 1: Slight tilt -->
+<div class="sample">
+    <h3>V1 — Slight tilt</h3>
+    <div class="logo-preview">
+        <svg width="200" height="200" viewBox="0 0 200 200" fill="none">
+            <g transform="translate(100,100) rotate(-8) translate(-100,-100)">
+                <!-- Antenna -->
+                <line x1="100" y1="28" x2="100" y2="48" stroke="#63a4ff" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="100" cy="24" r="4" fill="#ffd700" opacity="0.8"/>
+                <circle cx="100" cy="24" r="2" fill="white" opacity="0.5"/>
+
+                <!-- Main chip body (the base, angled back) -->
+                <rect x="58" y="48" width="84" height="60" rx="6" fill="#3a6cb8"/>
+                <!-- Circuit traces on body -->
+                <line x1="68" y1="80" x2="78" y2="80" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="78" y1="80" x2="78" y2="95" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="120" y1="75" x2="130" y2="75" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="130" y1="75" x2="130" y2="60" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="90" y1="100" x2="110" y2="100" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+
+                <!-- Folded-up front flap (the face panel) -->
+                <rect x="62" y="46" width="76" height="42" rx="5" fill="#63a4ff"/>
+                <!-- Inner die area on face -->
+                <rect x="68" y="50" width="64" height="34" rx="3" fill="#4f8ce0"/>
+
+                <!-- Eyes -->
+                <circle cx="86" cy="62" r="6" fill="white"/>
+                <circle cx="114" cy="62" r="6" fill="white"/>
+                <circle cx="87.5" cy="61.5" r="3.5" fill="#1a1a2e"/>
+                <circle cx="115.5" cy="61.5" r="3.5" fill="#1a1a2e"/>
+                <circle cx="88.5" cy="60.5" r="1.3" fill="white"/>
+                <circle cx="116.5" cy="60.5" r="1.3" fill="white"/>
+                <!-- Smile -->
+                <path d="M92 74 Q100 81, 108 74" stroke="#1a1a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <!-- Cheeks -->
+                <circle cx="80" cy="72" r="3.5" fill="#ff9ec6" opacity="0.25"/>
+                <circle cx="120" cy="72" r="3.5" fill="#ff9ec6" opacity="0.25"/>
+
+                <!-- Pins going DOWN - left side (4 pins) -->
+                <rect x="62" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                <rect x="74" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                <rect x="86" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                <rect x="98" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                <!-- Pins - right side -->
+                <rect x="110" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                <rect x="122" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                <rect x="134" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+
+                <!-- Pin feet (little circles at bottom) -->
+                <circle cx="64" cy="128" r="3" fill="#5a9aef"/>
+                <circle cx="76" cy="128" r="3" fill="#5a9aef"/>
+                <circle cx="88" cy="128" r="3" fill="#5a9aef"/>
+                <circle cx="100" cy="128" r="3" fill="#5a9aef"/>
+                <circle cx="112" cy="128" r="3" fill="#5a9aef"/>
+                <circle cx="124" cy="128" r="3" fill="#5a9aef"/>
+                <circle cx="136" cy="128" r="3" fill="#5a9aef"/>
+            </g>
+            <!-- Sparkle (outside rotation) -->
+            <circle cx="155" cy="38" r="2" fill="#ffd700" opacity="0.5"/>
+            <path d="M155 34 L155 42 M151 38 L159 38" stroke="#ffd700" stroke-width="0.8" opacity="0.3"/>
+        </svg>
+    </div>
+    <div class="sidebar-preview">
+        <div class="logo-area">
+            <svg width="64" height="64" viewBox="0 0 200 200" fill="none">
+                <g transform="translate(100,100) rotate(-8) translate(-100,-100)">
+                    <line x1="100" y1="28" x2="100" y2="48" stroke="#63a4ff" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="100" cy="24" r="5" fill="#ffd700" opacity="0.8"/>
+                    <rect x="58" y="48" width="84" height="60" rx="6" fill="#3a6cb8"/>
+                    <rect x="62" y="46" width="76" height="42" rx="5" fill="#63a4ff"/>
+                    <rect x="68" y="50" width="64" height="34" rx="3" fill="#4f8ce0"/>
+                    <circle cx="86" cy="62" r="6" fill="white"/>
+                    <circle cx="114" cy="62" r="6" fill="white"/>
+                    <circle cx="87.5" cy="61.5" r="3.5" fill="#1a1a2e"/>
+                    <circle cx="115.5" cy="61.5" r="3.5" fill="#1a1a2e"/>
+                    <circle cx="88.5" cy="60.5" r="1.3" fill="white"/>
+                    <circle cx="116.5" cy="60.5" r="1.3" fill="white"/>
+                    <path d="M92 74 Q100 81, 108 74" stroke="#1a1a2e" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                    <rect x="62" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                    <rect x="74" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                    <rect x="86" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                    <rect x="98" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                    <rect x="110" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                    <rect x="122" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                    <rect x="134" y="108" width="4" height="18" rx="2" fill="#7cb8ff"/>
+                    <circle cx="64" cy="128" r="3" fill="#5a9aef"/>
+                    <circle cx="76" cy="128" r="3" fill="#5a9aef"/>
+                    <circle cx="88" cy="128" r="3" fill="#5a9aef"/>
+                    <circle cx="100" cy="128" r="3" fill="#5a9aef"/>
+                    <circle cx="112" cy="128" r="3" fill="#5a9aef"/>
+                    <circle cx="124" cy="128" r="3" fill="#5a9aef"/>
+                    <circle cx="136" cy="128" r="3" fill="#5a9aef"/>
+                </g>
+            </svg>
+        </div>
+        <div class="nav-item active"><div class="dot"></div> Dashboard</div>
+        <div class="nav-item"><div class="dot"></div> Agents</div>
+        <div class="nav-item"><div class="dot"></div> Notes</div>
+        <div class="nav-item"><div class="dot"></div> Configuration</div>
+    </div>
+</div>
+
+<!-- Iteration 2: More perspective, flap more pronounced -->
+<div class="sample">
+    <h3>V2 — Angled flap</h3>
+    <div class="logo-preview">
+        <svg width="200" height="200" viewBox="0 0 200 200" fill="none">
+            <g transform="translate(100,105) rotate(-6) translate(-100,-105)">
+                <!-- Antenna -->
+                <line x1="100" y1="22" x2="100" y2="38" stroke="#63a4ff" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="100" cy="18" r="4" fill="#ffd700" opacity="0.8"/>
+                <circle cx="100" cy="18" r="2" fill="white" opacity="0.5"/>
+
+                <!-- Main chip body - the flat base tilted back -->
+                <path d="M55 90 L60 52 L140 52 L145 90 Z" fill="#3a6cb8" rx="4"/>
+                <!-- Circuit traces on body -->
+                <line x1="72" y1="72" x2="82" y2="68" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="82" y1="68" x2="82" y2="82" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="115" y1="65" x2="125" y2="62" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="125" y1="62" x2="128" y2="78" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+
+                <!-- Folded-up face panel -->
+                <path d="M62 52 L66 30 L134 30 L138 52 Z" fill="#63a4ff"/>
+                <!-- Inner die on face -->
+                <path d="M70 49 L73 35 L127 35 L130 49 Z" fill="#4f8ce0"/>
+
+                <!-- Eyes -->
+                <circle cx="88" cy="41" r="5.5" fill="white"/>
+                <circle cx="112" cy="41" r="5.5" fill="white"/>
+                <circle cx="89.5" cy="40.5" r="3.2" fill="#1a1a2e"/>
+                <circle cx="113.5" cy="40.5" r="3.2" fill="#1a1a2e"/>
+                <circle cx="90.5" cy="39.5" r="1.2" fill="white"/>
+                <circle cx="114.5" cy="39.5" r="1.2" fill="white"/>
+                <!-- Smile -->
+                <path d="M94 48 Q100 53, 106 48" stroke="#1a1a2e" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+                <!-- Cheeks -->
+                <circle cx="82" cy="46" r="3" fill="#ff9ec6" opacity="0.25"/>
+                <circle cx="118" cy="46" r="3" fill="#ff9ec6" opacity="0.25"/>
+
+                <!-- Pins DOWN from body -->
+                <rect x="62" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                <rect x="74" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                <rect x="86" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                <rect x="98" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                <rect x="110" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                <rect x="122" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                <rect x="134" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+
+                <!-- Pin feet -->
+                <circle cx="64" cy="114" r="3" fill="#5a9aef"/>
+                <circle cx="76" cy="114" r="3" fill="#5a9aef"/>
+                <circle cx="88" cy="114" r="3" fill="#5a9aef"/>
+                <circle cx="100" cy="114" r="3" fill="#5a9aef"/>
+                <circle cx="112" cy="114" r="3" fill="#5a9aef"/>
+                <circle cx="124" cy="114" r="3" fill="#5a9aef"/>
+                <circle cx="136" cy="114" r="3" fill="#5a9aef"/>
+
+                <!-- Little arms -->
+                <path d="M55 65 Q45 72, 42 82 Q41 86, 46 84" stroke="#4f8ce0" stroke-width="4" fill="none" stroke-linecap="round"/>
+                <path d="M145 65 Q155 72, 158 82 Q159 86, 154 84" stroke="#4f8ce0" stroke-width="4" fill="none" stroke-linecap="round"/>
+            </g>
+            <!-- Sparkles -->
+            <circle cx="160" cy="28" r="2" fill="#ffd700" opacity="0.5"/>
+            <path d="M160 24 L160 32 M156 28 L164 28" stroke="#ffd700" stroke-width="0.8" opacity="0.3"/>
+            <circle cx="38" cy="35" r="1.5" fill="#ffd700" opacity="0.35"/>
+        </svg>
+    </div>
+    <div class="sidebar-preview">
+        <div class="logo-area">
+            <svg width="64" height="64" viewBox="0 0 200 200" fill="none">
+                <g transform="translate(100,105) rotate(-6) translate(-100,-105)">
+                    <line x1="100" y1="22" x2="100" y2="38" stroke="#63a4ff" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="100" cy="18" r="5" fill="#ffd700" opacity="0.8"/>
+                    <path d="M55 90 L60 52 L140 52 L145 90 Z" fill="#3a6cb8"/>
+                    <path d="M62 52 L66 30 L134 30 L138 52 Z" fill="#63a4ff"/>
+                    <path d="M70 49 L73 35 L127 35 L130 49 Z" fill="#4f8ce0"/>
+                    <circle cx="88" cy="41" r="5.5" fill="white"/>
+                    <circle cx="112" cy="41" r="5.5" fill="white"/>
+                    <circle cx="89.5" cy="40.5" r="3.2" fill="#1a1a2e"/>
+                    <circle cx="113.5" cy="40.5" r="3.2" fill="#1a1a2e"/>
+                    <circle cx="90.5" cy="39.5" r="1.2" fill="white"/>
+                    <circle cx="114.5" cy="39.5" r="1.2" fill="white"/>
+                    <path d="M94 48 Q100 53, 106 48" stroke="#1a1a2e" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                    <rect x="62" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                    <rect x="74" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                    <rect x="86" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                    <rect x="98" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                    <rect x="110" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                    <rect x="122" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                    <rect x="134" y="90" width="4" height="22" rx="2" fill="#7cb8ff"/>
+                    <circle cx="64" cy="114" r="3" fill="#5a9aef"/>
+                    <circle cx="76" cy="114" r="3" fill="#5a9aef"/>
+                    <circle cx="88" cy="114" r="3" fill="#5a9aef"/>
+                    <circle cx="100" cy="114" r="3" fill="#5a9aef"/>
+                    <circle cx="112" cy="114" r="3" fill="#5a9aef"/>
+                    <circle cx="124" cy="114" r="3" fill="#5a9aef"/>
+                    <circle cx="136" cy="114" r="3" fill="#5a9aef"/>
+                </g>
+            </svg>
+        </div>
+        <div class="nav-item active"><div class="dot"></div> Dashboard</div>
+        <div class="nav-item"><div class="dot"></div> Agents</div>
+        <div class="nav-item"><div class="dot"></div> Notes</div>
+        <div class="nav-item"><div class="dot"></div> Configuration</div>
+    </div>
+</div>
+
+<!-- Iteration 3: More compact, rounder -->
+<div class="sample">
+    <h3>V3 — Compact round</h3>
+    <div class="logo-preview">
+        <svg width="200" height="200" viewBox="0 0 200 200" fill="none">
+            <g transform="translate(100,100) rotate(-10) translate(-100,-100)">
+                <!-- Antenna -->
+                <line x1="100" y1="25" x2="100" y2="42" stroke="#63a4ff" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="100" cy="21" r="5" fill="#ffd700" opacity="0.8"/>
+                <circle cx="100" cy="21" r="2.5" fill="white" opacity="0.5"/>
+
+                <!-- Chip body - rounded square -->
+                <rect x="55" y="42" width="90" height="65" rx="12" fill="#3a6cb8"/>
+                <!-- Circuit traces -->
+                <line x1="68" y1="78" x2="80" y2="78" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="80" y1="78" x2="80" y2="95" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="120" y1="72" x2="132" y2="72" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="132" y1="72" x2="132" y2="60" stroke="#2d5a9e" stroke-width="1.5" stroke-linecap="round"/>
+
+                <!-- Face flap folded up -->
+                <rect x="60" y="38" width="80" height="38" rx="10" fill="#63a4ff"/>
+                <rect x="66" y="42" width="68" height="30" rx="6" fill="#4f8ce0"/>
+
+                <!-- Eyes -->
+                <circle cx="86" cy="55" r="6" fill="white"/>
+                <circle cx="114" cy="55" r="6" fill="white"/>
+                <circle cx="87.5" cy="54.5" r="3.5" fill="#1a1a2e"/>
+                <circle cx="115.5" cy="54.5" r="3.5" fill="#1a1a2e"/>
+                <circle cx="88.5" cy="53.5" r="1.3" fill="white"/>
+                <circle cx="116.5" cy="53.5" r="1.3" fill="white"/>
+                <!-- Smile -->
+                <path d="M93 65 Q100 72, 107 65" stroke="#1a1a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <!-- Cheeks -->
+                <circle cx="79" cy="63" r="3.5" fill="#ff9ec6" opacity="0.25"/>
+                <circle cx="121" cy="63" r="3.5" fill="#ff9ec6" opacity="0.25"/>
+
+                <!-- Pins DOWN - evenly spaced -->
+                <rect x="63" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                <rect x="77" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                <rect x="91" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                <rect x="105" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                <rect x="119" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                <rect x="133" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+
+                <!-- Pin balls -->
+                <circle cx="65" cy="129" r="3.5" fill="#5a9aef"/>
+                <circle cx="79" cy="129" r="3.5" fill="#5a9aef"/>
+                <circle cx="93" cy="129" r="3.5" fill="#5a9aef"/>
+                <circle cx="107" cy="129" r="3.5" fill="#5a9aef"/>
+                <circle cx="121" cy="129" r="3.5" fill="#5a9aef"/>
+                <circle cx="135" cy="129" r="3.5" fill="#5a9aef"/>
+            </g>
+            <!-- Sparkles -->
+            <circle cx="158" cy="30" r="2" fill="#ffd700" opacity="0.5"/>
+            <path d="M158 26 L158 34 M154 30 L162 30" stroke="#ffd700" stroke-width="0.8" opacity="0.3"/>
+            <circle cx="40" cy="42" r="1.5" fill="#ffd700" opacity="0.35"/>
+        </svg>
+    </div>
+    <div class="sidebar-preview">
+        <div class="logo-area">
+            <svg width="64" height="64" viewBox="0 0 200 200" fill="none">
+                <g transform="translate(100,100) rotate(-10) translate(-100,-100)">
+                    <line x1="100" y1="25" x2="100" y2="42" stroke="#63a4ff" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="100" cy="21" r="6" fill="#ffd700" opacity="0.8"/>
+                    <rect x="55" y="42" width="90" height="65" rx="12" fill="#3a6cb8"/>
+                    <rect x="60" y="38" width="80" height="38" rx="10" fill="#63a4ff"/>
+                    <rect x="66" y="42" width="68" height="30" rx="6" fill="#4f8ce0"/>
+                    <circle cx="86" cy="55" r="6" fill="white"/>
+                    <circle cx="114" cy="55" r="6" fill="white"/>
+                    <circle cx="87.5" cy="54.5" r="3.5" fill="#1a1a2e"/>
+                    <circle cx="115.5" cy="54.5" r="3.5" fill="#1a1a2e"/>
+                    <circle cx="88.5" cy="53.5" r="1.3" fill="white"/>
+                    <circle cx="116.5" cy="53.5" r="1.3" fill="white"/>
+                    <path d="M93 65 Q100 72, 107 65" stroke="#1a1a2e" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                    <rect x="63" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                    <rect x="77" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                    <rect x="91" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                    <rect x="105" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                    <rect x="119" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                    <rect x="133" y="107" width="4" height="20" rx="2" fill="#7cb8ff"/>
+                    <circle cx="65" cy="129" r="3.5" fill="#5a9aef"/>
+                    <circle cx="79" cy="129" r="3.5" fill="#5a9aef"/>
+                    <circle cx="93" cy="129" r="3.5" fill="#5a9aef"/>
+                    <circle cx="107" cy="129" r="3.5" fill="#5a9aef"/>
+                    <circle cx="121" cy="129" r="3.5" fill="#5a9aef"/>
+                    <circle cx="135" cy="129" r="3.5" fill="#5a9aef"/>
+                </g>
+            </svg>
+        </div>
+        <div class="nav-item active"><div class="dot"></div> Dashboard</div>
+        <div class="nav-item"><div class="dot"></div> Agents</div>
+        <div class="nav-item"><div class="dot"></div> Notes</div>
+        <div class="nav-item"><div class="dot"></div> Configuration</div>
+    </div>
+</div>
+
+</body>
+</html>

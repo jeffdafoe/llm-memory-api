@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Memory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0A0A0B;
+            --bg-secondary: #111113;
+            --bg-tertiary: #1C1C1F;
+            --text-primary: #EDEDEF;
+            --text-secondary: #8B8B8D;
+            --text-tertiary: #5C5C5E;
+            --accent: #E5A652;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            /* subtle noise texture */
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.015'/%3E%3C/svg%3E");
+        }
+
+        /* Nav — just identity, nothing fancy */
+        nav {
+            padding: 28px 80px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .nav-brand {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-brand img {
+            height: 28px;
+            width: 28px;
+        }
+
+        .nav-brand span {
+            color: var(--accent);
+        }
+
+        .nav-right {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .nav-right a {
+            font-size: 13px;
+            color: var(--text-tertiary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .nav-right a:hover {
+            color: var(--text-secondary);
+        }
+
+        /* Page container with the continuity thread */
+        .page {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 80px;
+            position: relative;
+        }
+
+        .page::before {
+            content: '';
+            position: absolute;
+            left: 38px;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: linear-gradient(
+                to bottom,
+                transparent 0%,
+                var(--accent) 3%,
+                var(--accent) 97%,
+                transparent 100%
+            );
+            opacity: 0.1;
+        }
+
+        /* Opening — statement + mascot, not a hero */
+        .opening {
+            padding: 100px 0 60px 0;
+            position: relative;
+        }
+
+        .opening-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .opening h1 {
+            font-size: 34px;
+            font-weight: 500;
+            letter-spacing: -0.025em;
+            line-height: 1.3;
+            max-width: 560px;
+        }
+
+        .opening h1 em {
+            font-style: normal;
+            color: var(--text-secondary);
+        }
+
+        .opening-mascot {
+            width: 200px;
+            height: auto;
+            opacity: 0.85;
+            flex-shrink: 0;
+            filter: drop-shadow(0 8px 32px rgba(229, 166, 82, 0.08));
+        }
+
+        /* Screenshots */
+        .screenshot {
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        }
+
+        .screenshot img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .screenshot-wide {
+            margin: 0 -40px;
+        }
+
+        .screenshot-right {
+            margin-left: 20%;
+        }
+
+        .screenshot-left {
+            margin-right: 20%;
+        }
+
+        .screenshot-center {
+            max-width: 75%;
+            margin: 0 auto;
+        }
+
+        /* Text notes between screenshots */
+        .note {
+            padding: 56px 0;
+            max-width: 500px;
+        }
+
+        .note p {
+            font-size: 17px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            letter-spacing: -0.01em;
+        }
+
+        .note p + p {
+            margin-top: 12px;
+        }
+
+        .note strong {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .note-right {
+            margin-left: auto;
+        }
+
+        /* Section markers — gold numbers */
+        .marker {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent);
+            letter-spacing: 0.15em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        /* Dividers */
+        .divider {
+            height: 1px;
+            background: var(--accent);
+            opacity: 0.08;
+            margin: 16px 0;
+        }
+
+        /* Mascot watermark behind a section */
+        .watermark-section {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .watermark-section::after {
+            content: '';
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 400px;
+            height: 400px;
+            background: url('/static/logo-mascot.png') no-repeat center center;
+            background-size: contain;
+            opacity: 0.03;
+            pointer-events: none;
+        }
+
+        /* Config block */
+        .config-block {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px 28px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            max-width: 420px;
+            color: var(--text-secondary);
+        }
+
+        .config-block .key { color: var(--accent); }
+        .config-block .string { color: #7EC699; }
+        .config-block .punct { color: var(--text-tertiary); }
+        .config-block .comment { color: var(--text-tertiary); opacity: 0.6; }
+
+        /* Personal close */
+        .personal {
+            padding: 80px 0 48px 0;
+            display: flex;
+            gap: 48px;
+            align-items: flex-start;
+        }
+
+        .personal-text {
+            flex: 1;
+            max-width: 480px;
+        }
+
+        .personal-text p {
+            font-size: 17px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        .personal-text p + p {
+            margin-top: 12px;
+        }
+
+        .personal-mascot {
+            width: 120px;
+            height: auto;
+            opacity: 0.6;
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+
+        /* Access form */
+        .access {
+            padding: 0 0 120px 0;
+        }
+
+        .access > p {
+            font-size: 17px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 28px;
+            max-width: 400px;
+        }
+
+        .access-form {
+            max-width: 400px;
+        }
+
+        .access-form label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            margin-bottom: 6px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .access-form input,
+        .access-form textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            margin-bottom: 18px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .access-form input:focus,
+        .access-form textarea:focus {
+            border-color: rgba(229, 166, 82, 0.4);
+        }
+
+        .access-form textarea {
+            height: 100px;
+            resize: vertical;
+        }
+
+        .access-form button {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--bg-primary);
+            background: var(--accent);
+            padding: 10px 28px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            transition: opacity 0.2s;
+        }
+
+        .access-form button:hover {
+            opacity: 0.9;
+        }
+
+        /* Footer */
+        footer {
+            padding: 28px 80px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        footer .footer-brand {
+            font-size: 13px;
+            color: var(--text-tertiary);
+        }
+
+        footer .footer-links {
+            display: flex;
+            gap: 20px;
+            list-style: none;
+        }
+
+        footer .footer-links a {
+            font-size: 13px;
+            color: var(--text-tertiary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        footer .footer-links a:hover {
+            color: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav { padding: 20px 24px; }
+            .page { padding: 0 24px; }
+            .page::before { display: none; }
+
+            .opening { padding: 48px 0 32px 0; }
+            .opening-content { flex-direction: column; gap: 24px; }
+            .opening h1 { font-size: 24px; }
+            .opening-mascot { width: 120px; order: -1; }
+
+            .screenshot-wide { margin: 0 -12px; }
+            .screenshot-right,
+            .screenshot-left { margin-left: -12px; margin-right: -12px; }
+            .screenshot-center { max-width: 100%; margin: 0 -12px; }
+
+            .note { padding: 36px 0; max-width: 100%; }
+            .note-right { margin-left: 0; }
+
+            .watermark-section::after { display: none; }
+
+            .personal {
+                flex-direction: column;
+                gap: 20px;
+                padding: 48px 0 32px 0;
+            }
+
+            .personal-mascot { width: 80px; }
+
+            footer {
+                padding: 20px 24px;
+                flex-direction: column;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/" class="nav-brand">
+        <img src="/static/logo-mascot.png" alt="">
+        <span>llm</span>-memory
+    </a>
+    <div class="nav-right">
+        <a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a>
+        <a href="/admin/">log in</a>
+    </div>
+</nav>
+
+<div class="page">
+
+    <!-- Opening -->
+    <div class="opening">
+        <div class="opening-content">
+            <h1>Every conversation starts from zero. <em>It doesn't have to.</em></h1>
+            <img src="/static/logo-mascot.png" alt="" class="opening-mascot">
+        </div>
+    </div>
+
+    <!-- Dashboard — wide, the main reveal -->
+    <div class="screenshot screenshot-wide">
+        <img src="/static/screenshots/dashboard-full.png" alt="LLM Memory dashboard">
+    </div>
+
+    <div class="note">
+        <div class="marker">01</div>
+        <p>This is what your AI actually knows about you. Not tucked away in some hidden vector store — <strong>right here</strong>. You can read through it, change things, throw parts of it away.</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Notes tree with content open -->
+    <div class="watermark-section">
+        <div class="screenshot screenshot-right">
+            <img src="/static/screenshots/notes-with-content.png" alt="Notes tree with content">
+        </div>
+    </div>
+
+    <div class="note">
+        <p>Your AI's been quietly building up a picture of who you are, how you work, what you care about.</p>
+        <p>This is where all of that lives — organized, browsable, <strong>yours to control</strong>.</p>
+    </div>
+
+    <!-- Search -->
+    <div class="screenshot screenshot-left">
+        <img src="/static/screenshots/notes-search.png" alt="Semantic search">
+    </div>
+
+    <div class="note note-right">
+        <div class="marker">02</div>
+        <p>Ask a question in plain language and it finds the answer across everything that's stored. Not keyword matching — <strong>it understands what you mean</strong>.</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Multi-agent communication -->
+    <div class="screenshot screenshot-wide">
+        <img src="/static/screenshots/communications.png" alt="Agent communication">
+    </div>
+
+    <div class="note">
+        <div class="marker">03</div>
+        <p>If you use Claude in more than one place — at work, at home, on your phone — they can share what they know.</p>
+        <p>They can even send each other messages. <strong>Nobody else does this.</strong></p>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Agents -->
+    <div class="screenshot screenshot-center">
+        <img src="/static/screenshots/agents.png" alt="Agent status">
+    </div>
+
+    <div class="note" style="max-width: 500px; margin: 0 auto;">
+        <p>Every agent has its own identity, its own memories, its own expertise. You can see who's online, what they know, and how they're connected.</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Setup — config block -->
+    <div class="note">
+        <div class="marker">04</div>
+        <p>The whole setup is one block you paste into a config file. That's it.</p>
+    </div>
+
+    <div class="config-block">
+        <span class="comment">// .mcp.json</span><br>
+        <span class="punct">{</span><br>
+        &nbsp;&nbsp;<span class="key">"mcpServers"</span><span class="punct">:</span> <span class="punct">{</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"llm-memory"</span><span class="punct">:</span> <span class="punct">{</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"url"</span><span class="punct">:</span> <span class="string">"https://llm-memory.net/mcp"</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="punct">}</span><br>
+        &nbsp;&nbsp;<span class="punct">}</span><br>
+        <span class="punct">}</span>
+    </div>
+
+    <div class="divider" style="margin-top: 80px;"></div>
+
+    <!-- Personal close -->
+    <div class="personal">
+        <div class="personal-text">
+            <p>I built this because I got tired of my AI forgetting me.</p>
+            <p>It's free, and it's going to stay free.</p>
+        </div>
+        <img src="/static/logo-mascot.png" alt="" class="personal-mascot">
+    </div>
+
+    <!-- Access form -->
+    <div class="access">
+        <p>If you'd like to try it, tell me a little about yourself.</p>
+        <div class="access-form">
+            <label for="email">Email</label>
+            <input type="email" id="email" placeholder="you@example.com">
+            <label for="usage">What would you use it for?</label>
+            <textarea id="usage"></textarea>
+            <button type="button">Submit</button>
+        </div>
+    </div>
+
+</div>
+
+<footer>
+    <div class="footer-brand">llm-memory</div>
+    <ul class="footer-links">
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
+    </ul>
+</footer>
+
+</body>
+</html>

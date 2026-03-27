@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Notes Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    --sidebar-width: 220px;
+    --notes-tree-width: 280px;
+}
+
+[data-theme="dark"] {
+    --bg-base: #131320;
+    --bg-surface: #1c1c30;
+    --bg-elevated: #2f2f52;
+    --bg-input: #0f0f1a;
+    --bg-hover: #2e2e50;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text-primary: #e4e4e7;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --text-inverse: #1a1a2e;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-subtle: rgba(59, 130, 246, 0.12);
+    --accent-text: #60a5fa;
+    --success: #22c55e;
+    --warning: #eab308;
+    --error: #ef4444;
+    --info: #3b82f6;
+}
+
+[data-theme="light"] {
+    --bg-base: #f3f3f6;
+    --bg-surface: #ffffff;
+    --bg-elevated: #ffffff;
+    --bg-input: #eaeaef;
+    --bg-hover: #ededf2;
+    --border-subtle: rgba(0, 0, 0, 0.05);
+    --border-default: rgba(0, 0, 0, 0.10);
+    --border-strong: rgba(0, 0, 0, 0.18);
+    --text-primary: #18181b;
+    --text-secondary: #52525b;
+    --text-muted: #a1a1aa;
+    --text-inverse: #ffffff;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-subtle: rgba(37, 99, 235, 0.08);
+    --accent-text: #2563eb;
+    --success: #16a34a;
+    --warning: #ca8a04;
+    --error: #dc2626;
+    --info: #2563eb;
+}
+
+html, body {
+    height: 100%;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-base);
+}
+
+/* Layout */
+.app {
+    display: flex;
+    height: 100vh;
+}
+
+/* Sidebar (same as dashboard mockup) */
+.sidebar {
+    width: var(--sidebar-width);
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.sidebar-header {
+    padding: 20px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+.sidebar-header .subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.sidebar-nav {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.nav-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.nav-item.active {
+    background: var(--accent-subtle);
+    color: var(--accent-text);
+}
+
+.icon-svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.sidebar-footer {
+    padding: 12px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 150ms ease;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+}
+
+.theme-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--accent-subtle);
+    color: var(--accent-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* Main content */
+.main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.page-header {
+    padding: 20px 24px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.page-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.page-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Notes layout — two panel */
+.notes-layout {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    margin: 16px 24px 24px;
+    gap: 16px;
+}
+
+/* Notes tree panel */
+.notes-tree-panel {
+    width: var(--notes-tree-width);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.notes-search {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.search-input-wrap {
+    position: relative;
+}
+
+.search-input-wrap .search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+}
+
+.search-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 7px 12px 7px 30px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    outline: none;
+    width: 100%;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.search-input:focus {
+    border-color: var(--border-strong);
+    box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.notes-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+/* Tree items */
+.tree-namespace {
+    user-select: none;
+}
+
+.tree-namespace-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    transition: color 150ms ease;
+}
+
+.tree-namespace-header:hover {
+    color: var(--text-primary);
+}
+
+.tree-chevron {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    transition: transform 150ms ease;
+}
+
+.tree-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+.tree-count {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.tree-folder {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 28px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background 150ms ease, color 150ms ease;
+}
+
+.tree-folder:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.tree-folder-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--accent-text);
+    opacity: 0.6;
+}
+
+.tree-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 42px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    transition: background 150ms ease, color 150ms ease;
+}
+
+.tree-file:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.tree-file.selected {
+    background: var(--accent-subtle);
+    color: var(--accent-text);
+}
+
+.tree-file-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    opacity: 0.5;
+}
+
+.tree-file.selected .tree-file-icon {
+    opacity: 0.8;
+}
+
+.tree-file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tree-file-time {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+/* Nested deeper */
+.tree-file.depth-3 {
+    padding-left: 56px;
+}
+
+/* Notes content panel */
+.notes-content-panel {
+    flex: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.note-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.note-title-area {
+    flex: 1;
+    min-width: 0;
+}
+
+.note-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 4px;
+}
+
+.note-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.note-meta .namespace-badge {
+    background: var(--accent-subtle);
+    color: var(--accent-text);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 10px;
+}
+
+.note-meta .slug {
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.note-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+    font-family: var(--font-sans);
+    height: 32px;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text-primary);
+    border-color: var(--border-default);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    padding: 6px 8px;
+}
+
+.btn-ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-compact {
+    height: 28px;
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.btn-icon {
+    height: 28px;
+    width: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+}
+
+.btn-danger {
+    color: var(--error);
+}
+
+.btn-danger:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* Note body */
+.note-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+}
+
+/* Markdown rendered content */
+.markdown-body {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+}
+
+.markdown-body h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.markdown-body h1:first-child {
+    margin-top: 0;
+}
+
+.markdown-body h2 {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 20px 0 8px;
+    color: var(--text-primary);
+}
+
+.markdown-body h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 16px 0 6px;
+    color: var(--text-primary);
+}
+
+.markdown-body p {
+    margin: 0 0 12px;
+}
+
+.markdown-body ul, .markdown-body ol {
+    margin: 0 0 12px;
+    padding-left: 20px;
+}
+
+.markdown-body li {
+    margin-bottom: 4px;
+}
+
+.markdown-body code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--bg-input);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent-text);
+}
+
+.markdown-body pre {
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 0 0 16px;
+    overflow-x: auto;
+}
+
+.markdown-body pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+.markdown-body strong {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.markdown-body a {
+    color: var(--accent-text);
+    text-decoration: none;
+}
+
+.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.markdown-body blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 4px 16px;
+    margin: 0 0 12px;
+    color: var(--text-secondary);
+}
+
+.markdown-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 16px;
+}
+
+.markdown-body th {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-default);
+}
+
+.markdown-body td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 13px;
+}
+
+/* Empty state */
+.empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    gap: 8px;
+}
+
+.empty-state-icon {
+    width: 48px;
+    height: 48px;
+    opacity: 0.3;
+}
+
+.empty-state-text {
+    font-size: 14px;
+}
+
+.empty-state-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+/* Badge */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.badge-accent {
+    background: var(--accent-subtle);
+    color: var(--accent-text);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
+}
+</style>
+</head>
+<body>
+<div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>llm-memory</h1>
+            <div class="subtitle">Admin Dashboard</div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Dashboard
+            </div>
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Agents
+            </div>
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Communications
+            </div>
+            <div class="nav-item active">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Notes
+            </div>
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Configuration
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <span id="theme-label">Light Mode</span>
+            </button>
+            <div class="user-info">
+                <div class="user-avatar">J</div>
+                <div>
+                    <div style="color: var(--text-primary); font-weight: 500;">jeff</div>
+                    <div style="font-size: 11px;">Administrator</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+        <div class="page-header">
+            <h2>Notes</h2>
+            <div class="page-header-actions">
+                <button class="btn btn-ghost btn-compact">
+                    <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.2M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                    Reindex
+                </button>
+                <button class="btn btn-secondary btn-compact">
+                    <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    Search
+                </button>
+            </div>
+        </div>
+
+        <div class="notes-layout">
+            <!-- Tree panel -->
+            <div class="notes-tree-panel">
+                <div class="notes-search">
+                    <div class="search-input-wrap">
+                        <svg class="icon-svg search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        <input type="text" class="search-input" placeholder="Filter notes..." />
+                    </div>
+                </div>
+
+                <div class="notes-tree">
+                    <!-- home namespace -->
+                    <div class="tree-namespace">
+                        <div class="tree-namespace-header">
+                            <svg class="icon-svg tree-chevron expanded" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                            home
+                            <span class="tree-count">42</span>
+                        </div>
+                        <div class="tree-folder">
+                            <svg class="icon-svg tree-folder-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            instructions
+                        </div>
+                        <div class="tree-file depth-3">
+                            <svg class="icon-svg tree-file-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="tree-file-name">bootstrap</span>
+                            <span class="tree-file-time">2d ago</span>
+                        </div>
+                        <div class="tree-file depth-3">
+                            <svg class="icon-svg tree-file-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="tree-file-name">instructions</span>
+                            <span class="tree-file-time">5d ago</span>
+                        </div>
+                        <div class="tree-folder">
+                            <svg class="icon-svg tree-folder-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            notes
+                        </div>
+                        <div class="tree-file depth-3 selected">
+                            <svg class="icon-svg tree-file-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="tree-file-name">active-work</span>
+                            <span class="tree-file-time">1m ago</span>
+                        </div>
+                        <div class="tree-file depth-3">
+                            <svg class="icon-svg tree-file-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="tree-file-name">codebase</span>
+                            <span class="tree-file-time">3d ago</span>
+                        </div>
+                    </div>
+
+                    <!-- shared namespace -->
+                    <div class="tree-namespace">
+                        <div class="tree-namespace-header">
+                            <svg class="icon-svg tree-chevron expanded" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                            shared
+                            <span class="tree-count">28</span>
+                        </div>
+                        <div class="tree-folder">
+                            <svg class="icon-svg tree-folder-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            notes/design
+                        </div>
+                        <div class="tree-file depth-3">
+                            <svg class="icon-svg tree-file-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="tree-file-name">admin-dashboard</span>
+                            <span class="tree-file-time">just now</span>
+                        </div>
+                        <div class="tree-folder">
+                            <svg class="icon-svg tree-folder-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            tasks/pending
+                        </div>
+                        <div class="tree-file depth-3">
+                            <svg class="icon-svg tree-file-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="tree-file-name">admin-dashboard-redesign</span>
+                            <span class="tree-file-time">4d ago</span>
+                        </div>
+                        <div class="tree-file depth-3">
+                            <svg class="icon-svg tree-file-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="tree-file-name">note-versioning</span>
+                            <span class="tree-file-time">3d ago</span>
+                        </div>
+                    </div>
+
+                    <!-- work namespace -->
+                    <div class="tree-namespace">
+                        <div class="tree-namespace-header">
+                            <svg class="icon-svg tree-chevron" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                            work
+                            <span class="tree-count">35</span>
+                        </div>
+                    </div>
+
+                    <!-- wendy namespace -->
+                    <div class="tree-namespace">
+                        <div class="tree-namespace-header">
+                            <svg class="icon-svg tree-chevron" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                            wendy
+                            <span class="tree-count">8</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content panel -->
+            <div class="notes-content-panel">
+                <div class="note-header">
+                    <div class="note-title-area">
+                        <div class="note-title">Active Work</div>
+                        <div class="note-meta">
+                            <span class="namespace-badge">home</span>
+                            <span class="slug">notes/active-work</span>
+                            <span>Updated 1 minute ago</span>
+                        </div>
+                    </div>
+                    <div class="note-actions">
+                        <button class="btn btn-icon btn-ghost" title="Upload">
+                            <svg class="icon-svg" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </button>
+                        <button class="btn btn-icon btn-ghost" title="Download">
+                            <svg class="icon-svg" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </button>
+                        <button class="btn btn-icon btn-ghost" title="Fullscreen">
+                            <svg class="icon-svg" viewBox="0 0 24 24" style="width:15px;height:15px"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                        </button>
+                        <button class="btn btn-secondary btn-compact">
+                            <svg class="icon-svg" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            Edit
+                        </button>
+                        <button class="btn btn-icon btn-ghost btn-danger" title="Delete">
+                            <svg class="icon-svg" viewBox="0 0 24 24" style="width:15px;height:15px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="note-body">
+                    <div class="markdown-body">
+                        <h1>Active Work</h1>
+
+                        <h2>Last Session — 2026-03-21</h2>
+
+                        <h3>Completed This Session</h3>
+                        <ul>
+                            <li><strong>apiRoute wrapper</strong> — Created <code>middleware/route-wrapper.js</code> with centralized <code>apiRoute(category, label, fn)</code>. Refactored all route files to use it.</li>
+                            <li>Updated codebase docs (overview + services) with route-wrapper and middleware directory listing</li>
+                        </ul>
+
+                        <h3>Pending Tasks (shared/tasks/pending/)</h3>
+                        <ul>
+                            <li>admin-dashboard-redesign — Design language + landing page redesign</li>
+                            <li>note-versioning — Race condition on concurrent edit_note</li>
+                            <li>llm-memory-plugin/design — llm-memory plugin design</li>
+                        </ul>
+
+                        <h3>Notes</h3>
+                        <ul>
+                            <li>Migration counter is at MEM-070</li>
+                            <li>discussion.js create route keeps inner try/catch for transaction ROLLBACK</li>
+                        </ul>
+
+                        <blockquote>
+                            Behavior change: agent routes previously logged all errors to error_log. Now consistent — only 500+ errors are logged.
+                        </blockquote>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+function toggleTheme() {
+    const html = document.documentElement;
+    const label = document.getElementById('theme-label');
+    if (html.getAttribute('data-theme') === 'dark') {
+        html.setAttribute('data-theme', 'light');
+        label.textContent = 'Dark Mode';
+    } else {
+        html.setAttribute('data-theme', 'dark');
+        label.textContent = 'Light Mode';
+    }
+}
+</script>
+</body>
+</html>

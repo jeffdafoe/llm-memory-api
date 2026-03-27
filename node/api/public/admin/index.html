@@ -56,7 +56,7 @@
                         <i class="icon-messages-square"></i> Communications
                     </a>
                     <a v-if="canDo('notes', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'notes' }" @click.prevent="currentView = 'notes'">
-                        <i class="icon-file-text"></i> Notes
+                        <i class="icon-file-text"></i> Memories
                     </a>
                     <a v-if="canDo('config', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">
                         <i class="icon-settings"></i> Configuration

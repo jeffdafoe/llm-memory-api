@@ -1,6 +1,6 @@
 <div style="flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden;">
     <div class="page-header">
-        <h2>Notes</h2>
+        <h2>Memories</h2>
     </div>
     <div class="page-content" style="padding-bottom: 0; overflow: hidden;">
     <div class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
@@ -61,7 +61,7 @@
     <div class="notes-resize-handle" @mousedown="startSidebarResize"></div>
     <div class="notes-content">
         <div v-if="!selectedNote" class="notes-empty">
-            <p class="muted">Select a note from the tree to view it.</p>
+            <p class="muted">Select a memory from the tree to view it.</p>
         </div>
         <div v-else style="display:flex; flex-direction:column; min-height:0; flex:1;">
             <div class="notes-toolbar">
@@ -160,7 +160,7 @@
                     <div class="rename-stats">
                         <div class="stat">
                             <strong>{{ renameConflict.would_move }}</strong>
-                            <span>{{ renameConflict.would_move === 1 ? 'note' : 'notes' }} will be moved</span>
+                            <span>{{ renameConflict.would_move === 1 ? 'memory' : 'memories' }} will be moved</span>
                         </div>
                         <div class="stat conflict">
                             <strong>{{ renameConflict.conflicts.length }}</strong>
@@ -172,7 +172,7 @@
                 <div class="conflict-bulk-bar">
                     <div class="bulk-copy">
                         <span class="bulk-title">Resolve conflicts</span>
-                        <span class="bulk-subtitle">Choose what happens when a destination note already exists.</span>
+                        <span class="bulk-subtitle">Choose what happens when a destination memory already exists.</span>
                     </div>
                     <div class="bulk-actions">
                         <button type="button" class="bulk-btn" @click="setBulkConflictAction('skip')">Skip all</button>
@@ -198,7 +198,7 @@
 
                 <div class="dialog-actions">
                     <button class="btn btn-secondary" @click="cancelRenameConflict">Cancel</button>
-                    <button class="btn btn-primary" @click="executeRenameWithConflicts" :disabled="renameConflictExecuting">{{ renameConflictExecuting ? 'Moving...' : 'Move Notes' }}</button>
+                    <button class="btn btn-primary" @click="executeRenameWithConflicts" :disabled="renameConflictExecuting">{{ renameConflictExecuting ? 'Moving...' : 'Move Memories' }}</button>
                 </div>
             </div>
         </article>

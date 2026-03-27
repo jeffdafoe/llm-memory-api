@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Configuration Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    --sidebar-width: 220px;
+}
+
+[data-theme="dark"] {
+    --bg-base: #131320;
+    --bg-surface: #1c1c30;
+    --bg-elevated: #2f2f52;
+    --bg-input: #0f0f1a;
+    --bg-hover: #2e2e50;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text-primary: #e4e4e7;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --text-inverse: #1a1a2e;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-subtle: rgba(59, 130, 246, 0.12);
+    --accent-text: #60a5fa;
+    --success: #22c55e;
+    --warning: #eab308;
+    --error: #ef4444;
+    --info: #3b82f6;
+}
+
+[data-theme="light"] {
+    --bg-base: #f3f3f6;
+    --bg-surface: #ffffff;
+    --bg-elevated: #ffffff;
+    --bg-input: #eaeaef;
+    --bg-hover: #ededf2;
+    --border-subtle: rgba(0, 0, 0, 0.05);
+    --border-default: rgba(0, 0, 0, 0.10);
+    --border-strong: rgba(0, 0, 0, 0.18);
+    --text-primary: #18181b;
+    --text-secondary: #52525b;
+    --text-muted: #a1a1aa;
+    --text-inverse: #ffffff;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-subtle: rgba(37, 99, 235, 0.08);
+    --accent-text: #2563eb;
+    --success: #16a34a;
+    --warning: #ca8a04;
+    --error: #dc2626;
+    --info: #2563eb;
+}
+
+html, body {
+    height: 100%;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-base);
+}
+
+.app { display: flex; height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+    width: var(--sidebar-width);
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.sidebar-header { padding: 20px 16px; border-bottom: 1px solid var(--border-subtle); }
+.sidebar-header h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); }
+.sidebar-header .subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.sidebar-nav { flex: 1; padding: 8px; overflow-y: auto; }
+
+.nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-radius: 8px; color: var(--text-secondary); cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+    font-size: 13px; font-weight: 500;
+}
+.nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.nav-item.active { background: var(--accent-subtle); color: var(--accent-text); }
+
+.icon-svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+.sidebar-footer { padding: 12px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+.theme-toggle { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; color: var(--text-secondary); cursor: pointer; font-size: 13px; font-weight: 500; transition: background 150ms ease; border: none; background: none; width: 100%; text-align: left; }
+.theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+.user-info { display: flex; align-items: center; gap: 10px; padding: 8px 12px; color: var(--text-secondary); font-size: 12px; }
+.user-avatar { width: 28px; height: 28px; border-radius: 8px; background: var(--accent-subtle); color: var(--accent-text); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px; flex-shrink: 0; }
+
+/* Main content */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.page-header { padding: 20px 24px 0; display: flex; align-items: center; justify-content: space-between; }
+.page-header h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle); padding: 0 24px; margin-top: 16px; }
+.tab {
+    padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--text-secondary);
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color 150ms ease; background: none; border-top: none; border-left: none; border-right: none; font-family: var(--font-sans);
+}
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: var(--accent-text); border-bottom-color: var(--accent); }
+
+.page-content { flex: 1; padding: 20px 24px 24px; overflow-y: auto; }
+
+/* Table */
+.table-wrap { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+thead th { font-size: 11px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--bg-hover); }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
+.badge-success { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+.badge-error { background: rgba(239, 68, 68, 0.15); color: var(--error); }
+.badge-warning { background: rgba(234, 179, 8, 0.15); color: var(--warning); }
+.badge-muted { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
+.badge-accent { background: var(--accent-subtle); color: var(--accent-text); }
+
+.dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.dot-success { background: var(--success); }
+.dot-muted { background: var(--text-muted); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; transition: background 150ms ease, border-color 150ms ease; font-family: var(--font-sans); height: 32px; }
+.btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-secondary { background: transparent; color: var(--text-primary); border-color: var(--border-default); }
+.btn-secondary:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border: none; padding: 6px 10px; }
+.btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn-compact { height: 28px; padding: 4px 10px; font-size: 12px; }
+.btn-icon { height: 28px; width: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.btn-danger { color: var(--error); }
+.btn-danger:hover { background: rgba(239, 68, 68, 0.12); }
+
+/* Inputs */
+.input { background: var(--bg-input); border: 1px solid var(--border-default); border-radius: 8px; padding: 8px 12px; color: var(--text-primary); font-family: var(--font-sans); font-size: 13px; outline: none; transition: border-color 150ms ease, box-shadow 150ms ease; width: 100%; }
+.input::placeholder { color: var(--text-muted); }
+.input:focus { border-color: var(--border-strong); box-shadow: 0 0 0 2px var(--accent-subtle); }
+.input-mono { font-family: var(--font-mono); font-size: 12px; }
+
+/* Mono */
+.mono { font-family: var(--font-mono); font-size: 12px; }
+.ts { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+/* Agent colors */
+.agent-home { color: #5b9bd5; }
+.agent-work { color: #e07b53; }
+.agent-system { color: #888; }
+
+/* Section */
+.section { margin-bottom: 24px; }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.section-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+
+/* Config key-value rows */
+.config-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.config-row:last-child { border-bottom: none; }
+.config-row:hover { background: var(--bg-hover); }
+
+.config-key {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent-text);
+    width: 280px;
+    flex-shrink: 0;
+}
+
+.config-value {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.config-value-mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.config-actions {
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.config-row:hover .config-actions {
+    opacity: 1;
+}
+
+/* Actors list */
+.actor-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.actor-row:last-child { border-bottom: none; }
+.actor-row:hover { background: var(--bg-hover); }
+
+.actor-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.actor-info { flex: 1; min-width: 0; }
+.actor-name { font-weight: 500; font-size: 14px; }
+.actor-detail { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+.actor-badges { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* Tab panels */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Filter bar */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.filter-bar .input {
+    max-width: 300px;
+}
+
+/* Log entry */
+.log-row {
+    display: flex;
+    gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 12px;
+    align-items: flex-start;
+}
+
+.log-row:last-child { border-bottom: none; }
+.log-row:hover { background: var(--bg-hover); }
+
+.log-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); width: 70px; flex-shrink: 0; padding-top: 1px; }
+.log-agent { width: 70px; flex-shrink: 0; font-weight: 500; }
+.log-method { font-family: var(--font-mono); font-size: 11px; width: 50px; flex-shrink: 0; color: var(--text-secondary); }
+.log-path { font-family: var(--font-mono); font-size: 11px; flex: 1; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-status { width: 40px; flex-shrink: 0; text-align: right; }
+.log-duration { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); width: 55px; flex-shrink: 0; text-align: right; }
+
+/* Error log */
+.error-row {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.error-row:last-child { border-bottom: none; }
+.error-row:hover { background: var(--bg-hover); }
+
+.error-row-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+}
+
+.error-category {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--error);
+    width: 100px;
+    flex-shrink: 0;
+}
+
+.error-action {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    width: 140px;
+    flex-shrink: 0;
+}
+
+.error-message {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+</style>
+</head>
+<body>
+<div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>llm-memory</h1>
+            <div class="subtitle">Admin Dashboard</div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Dashboard
+            </div>
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Agents
+            </div>
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Communications
+            </div>
+            <div class="nav-item">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Notes
+            </div>
+            <div class="nav-item active">
+                <svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Configuration
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <span id="theme-label">Light Mode</span>
+            </button>
+            <div class="user-info">
+                <div class="user-avatar">J</div>
+                <div>
+                    <div style="color: var(--text-primary); font-weight: 500;">jeff</div>
+                    <div style="font-size: 11px;">Administrator</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+        <div class="page-header">
+            <h2>Configuration</h2>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('actors')">Actors</button>
+            <button class="tab" onclick="switchTab('system')">System</button>
+            <button class="tab" onclick="switchTab('apilog')">API Log</button>
+            <button class="tab" onclick="switchTab('errorlog')">Error Log</button>
+            <button class="tab" onclick="switchTab('templates')">Templates</button>
+        </div>
+
+        <div class="page-content">
+            <!-- Actors Tab -->
+            <div class="tab-panel active" id="panel-actors">
+                <div class="filter-bar">
+                    <input class="input" placeholder="Filter actors..." style="max-width: 280px;" />
+                    <div style="flex:1"></div>
+                    <button class="btn btn-primary btn-compact">
+                        <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Actor
+                    </button>
+                </div>
+
+                <div class="table-wrap">
+                    <div class="actor-row">
+                        <div class="actor-avatar" style="background: rgba(91,155,213,0.15); color: #5b9bd5;">H</div>
+                        <div class="actor-info">
+                            <div class="actor-name agent-home">home</div>
+                            <div class="actor-detail">Agent · Anthropic claude-4-sonnet · Last seen just now</div>
+                        </div>
+                        <div class="actor-badges">
+                            <span class="badge badge-success"><span class="dot dot-success"></span> online</span>
+                            <span class="badge badge-accent">agent</span>
+                        </div>
+                    </div>
+                    <div class="actor-row">
+                        <div class="actor-avatar" style="background: rgba(224,123,83,0.15); color: #e07b53;">W</div>
+                        <div class="actor-info">
+                            <div class="actor-name agent-work">work</div>
+                            <div class="actor-detail">Agent · Anthropic claude-4-sonnet · Last seen 2 min ago</div>
+                        </div>
+                        <div class="actor-badges">
+                            <span class="badge badge-success"><span class="dot dot-success"></span> online</span>
+                            <span class="badge badge-accent">agent</span>
+                        </div>
+                    </div>
+                    <div class="actor-row">
+                        <div class="actor-avatar" style="background: rgba(113,113,122,0.15); color: var(--text-secondary);">W</div>
+                        <div class="actor-info">
+                            <div class="actor-name" style="color: var(--text-secondary);">wendy</div>
+                            <div class="actor-detail">Virtual Agent · Anthropic claude-4-sonnet · Last seen 3h ago</div>
+                        </div>
+                        <div class="actor-badges">
+                            <span class="badge badge-muted"><span class="dot dot-muted"></span> offline</span>
+                            <span class="badge badge-accent">virtual</span>
+                        </div>
+                    </div>
+                    <div class="actor-row">
+                        <div class="actor-avatar" style="background: rgba(59,130,246,0.12); color: var(--accent-text);">J</div>
+                        <div class="actor-info">
+                            <div class="actor-name">jeff</div>
+                            <div class="actor-detail">User · Administrator · Created 2025-12-15</div>
+                        </div>
+                        <div class="actor-badges">
+                            <span class="badge badge-accent">user</span>
+                            <span class="badge badge-warning">admin</span>
+                        </div>
+                    </div>
+                    <div class="actor-row">
+                        <div class="actor-avatar" style="background: rgba(113,113,122,0.15); color: var(--text-muted);">S</div>
+                        <div class="actor-info">
+                            <div class="actor-name" style="color: var(--text-muted);">system</div>
+                            <div class="actor-detail">System · Internal message routing</div>
+                        </div>
+                        <div class="actor-badges">
+                            <span class="badge badge-muted">system</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Tab -->
+            <div class="tab-panel" id="panel-system">
+                <div class="table-wrap">
+                    <div class="config-row">
+                        <div class="config-key">embedding_model</div>
+                        <div class="config-value config-value-mono">text-embedding-3-small</div>
+                        <div class="config-actions">
+                            <button class="btn btn-icon btn-ghost" title="Edit">
+                                <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-row">
+                        <div class="config-key">embedding_dimensions</div>
+                        <div class="config-value config-value-mono">512</div>
+                        <div class="config-actions">
+                            <button class="btn btn-icon btn-ghost" title="Edit">
+                                <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-row">
+                        <div class="config-key">session_ttl_hours</div>
+                        <div class="config-value config-value-mono">72</div>
+                        <div class="config-actions">
+                            <button class="btn btn-icon btn-ghost" title="Edit">
+                                <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-row">
+                        <div class="config-key">virtual_agent_learning_enabled</div>
+                        <div class="config-value config-value-mono">true</div>
+                        <div class="config-actions">
+                            <button class="btn btn-icon btn-ghost" title="Edit">
+                                <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-row">
+                        <div class="config-key">virtual_agent_max_retries</div>
+                        <div class="config-value config-value-mono">3</div>
+                        <div class="config-actions">
+                            <button class="btn btn-icon btn-ghost" title="Edit">
+                                <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-row">
+                        <div class="config-key">request_log_retention_days</div>
+                        <div class="config-value config-value-mono">14</div>
+                        <div class="config-actions">
+                            <button class="btn btn-icon btn-ghost" title="Edit">
+                                <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-row">
+                        <div class="config-key">sync_exclude_slugs</div>
+                        <div class="config-value config-value-mono">work-log,active-work</div>
+                        <div class="config-actions">
+                            <button class="btn btn-icon btn-ghost" title="Edit">
+                                <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Log Tab -->
+            <div class="tab-panel" id="panel-apilog">
+                <div class="filter-bar">
+                    <input class="input" placeholder="Filter by path..." style="max-width: 280px;" />
+                    <select class="input" style="max-width: 140px;">
+                        <option>All agents</option>
+                        <option>home</option>
+                        <option>work</option>
+                        <option>wendy</option>
+                    </select>
+                    <div style="flex:1"></div>
+                    <span class="ts">Auto-refresh 2s</span>
+                </div>
+
+                <div class="table-wrap">
+                    <div class="log-row">
+                        <div class="log-time">14:32:01</div>
+                        <div class="log-agent agent-home">home</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/notes/read</div>
+                        <div class="log-status"><span class="badge badge-success" style="font-size:10px;padding:1px 6px;">200</span></div>
+                        <div class="log-duration">23ms</div>
+                    </div>
+                    <div class="log-row">
+                        <div class="log-time">14:31:58</div>
+                        <div class="log-agent agent-home">home</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/search</div>
+                        <div class="log-status"><span class="badge badge-success" style="font-size:10px;padding:1px 6px;">200</span></div>
+                        <div class="log-duration">142ms</div>
+                    </div>
+                    <div class="log-row">
+                        <div class="log-time">14:31:45</div>
+                        <div class="log-agent agent-work">work</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/chat/send</div>
+                        <div class="log-status"><span class="badge badge-success" style="font-size:10px;padding:1px 6px;">200</span></div>
+                        <div class="log-duration">18ms</div>
+                    </div>
+                    <div class="log-row">
+                        <div class="log-time">14:31:32</div>
+                        <div class="log-agent agent-home">home</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/notes/save</div>
+                        <div class="log-status"><span class="badge badge-success" style="font-size:10px;padding:1px 6px;">200</span></div>
+                        <div class="log-duration">89ms</div>
+                    </div>
+                    <div class="log-row">
+                        <div class="log-time">14:30:15</div>
+                        <div class="log-agent" style="color: var(--text-secondary);">wendy</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/mail/check</div>
+                        <div class="log-status"><span class="badge badge-warning" style="font-size:10px;padding:1px 6px;">404</span></div>
+                        <div class="log-duration">5ms</div>
+                    </div>
+                    <div class="log-row">
+                        <div class="log-time">14:29:44</div>
+                        <div class="log-agent agent-work">work</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/notes/list</div>
+                        <div class="log-status"><span class="badge badge-success" style="font-size:10px;padding:1px 6px;">200</span></div>
+                        <div class="log-duration">31ms</div>
+                    </div>
+                    <div class="log-row">
+                        <div class="log-time">14:28:10</div>
+                        <div class="log-agent agent-home">home</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/heartbeat</div>
+                        <div class="log-status"><span class="badge badge-success" style="font-size:10px;padding:1px 6px;">200</span></div>
+                        <div class="log-duration">2ms</div>
+                    </div>
+                    <div class="log-row">
+                        <div class="log-time">14:27:55</div>
+                        <div class="log-agent agent-home">home</div>
+                        <div class="log-method">POST</div>
+                        <div class="log-path">/agent/discussion/status</div>
+                        <div class="log-status"><span class="badge badge-error" style="font-size:10px;padding:1px 6px;">500</span></div>
+                        <div class="log-duration">340ms</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Log Tab -->
+            <div class="tab-panel" id="panel-errorlog">
+                <div class="filter-bar">
+                    <select class="input" style="max-width: 180px;">
+                        <option>All subsystems</option>
+                        <option>admin</option>
+                        <option>agent</option>
+                        <option>chat</option>
+                        <option>discussion</option>
+                        <option>mail</option>
+                        <option>memory</option>
+                    </select>
+                    <div style="flex:1"></div>
+                    <span class="ts">Auto-refresh 3s</span>
+                </div>
+
+                <div class="table-wrap">
+                    <div class="error-row">
+                        <div class="error-row-top">
+                            <span class="ts">14:27:55</span>
+                            <span class="error-category">discussion</span>
+                            <span class="error-action">status</span>
+                            <span class="error-message">Cannot read properties of undefined (reading 'map')</span>
+                        </div>
+                    </div>
+                    <div class="error-row">
+                        <div class="error-row-top">
+                            <span class="ts">13:15:22</span>
+                            <span class="error-category">memory</span>
+                            <span class="error-action">ingest</span>
+                            <span class="error-message">OpenAI API rate limit exceeded — retrying in 2s</span>
+                        </div>
+                    </div>
+                    <div class="error-row">
+                        <div class="error-row-top">
+                            <span class="ts">11:04:38</span>
+                            <span class="error-category">admin</span>
+                            <span class="error-action">notes/reindex</span>
+                            <span class="error-message">Connection timeout after 30000ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Templates Tab -->
+            <div class="tab-panel" id="panel-templates">
+                <div class="filter-bar">
+                    <div style="flex:1"></div>
+                    <button class="btn btn-primary btn-compact">
+                        <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Template
+                    </button>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:180px">Name</th>
+                                <th style="width:100px">Type</th>
+                                <th>Preview</th>
+                                <th style="width:100px">Updated</th>
+                                <th style="width:60px"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="font-weight:500">Welcome Message</td>
+                                <td><span class="badge badge-accent">welcome</span></td>
+                                <td style="color: var(--text-secondary); font-size:12px;">Welcome to llm-memory! Here's how to get started...</td>
+                                <td class="ts">2d ago</td>
+                                <td>
+                                    <button class="btn btn-icon btn-ghost" title="Edit">
+                                        <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:500">Agent Onboarding</td>
+                                <td><span class="badge badge-accent">onboarding</span></td>
+                                <td style="color: var(--text-secondary); font-size:12px;">You are a new agent on the llm-memory platform...</td>
+                                <td class="ts">5d ago</td>
+                                <td>
+                                    <button class="btn btn-icon btn-ghost" title="Edit">
+                                        <svg class="icon-svg" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+function toggleTheme() {
+    const html = document.documentElement;
+    const label = document.getElementById('theme-label');
+    if (html.getAttribute('data-theme') === 'dark') {
+        html.setAttribute('data-theme', 'light');
+        label.textContent = 'Dark Mode';
+    } else {
+        html.setAttribute('data-theme', 'dark');
+        label.textContent = 'Light Mode';
+    }
+}
+
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+}
+</script>
+</body>
+</html>

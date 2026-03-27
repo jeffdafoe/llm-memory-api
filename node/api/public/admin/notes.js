@@ -274,11 +274,11 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     // Live note update notifications via WebSocket
     if (onEvent) {
         const opMessages = {
-            saved: 'This note was updated externally',
-            edited: 'This note was edited externally',
-            deleted: 'This note was deleted',
-            restored: 'This note was restored',
-            moved: 'This note was moved'
+            saved: 'This memory was updated externally',
+            edited: 'This memory was edited externally',
+            deleted: 'This memory was deleted',
+            restored: 'This memory was restored',
+            moved: 'This memory was moved'
         };
         onEvent('note_updated', (data) => {
             if (selectedNote.value &&
@@ -393,9 +393,9 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                 await api('/admin/notes/delete', { namespace: ns, slug });
                 selectedNote.value = null;
                 await loadNotes();
-                showToast('Note deleted', 'success');
+                showToast('Memory deleted', 'success');
             } catch (err) {
-                console.error('Failed to delete note:', err);
+                console.error('Failed to delete memory:', err);
                 showToast('Failed to delete: ' + err.message, 'error');
             }
         });
@@ -442,7 +442,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                     slug: target.slug,
                     new_slug: newSlug
                 });
-                showToast('Note renamed', 'success');
+                showToast('Memory renamed', 'success');
 
                 // Update selected note if it was the renamed one
                 if (selectedNote.value && selectedNote.value.namespace === target.namespace && selectedNote.value.slug === target.slug) {
@@ -625,7 +625,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
 
     // Reindex
     function reindexNotes() {
-        showConfirm('Delete ALL vector chunks and re-ingest every note? This may take a while.', async () => {
+        showConfirm('Delete ALL vector chunks and re-ingest every memory? This may take a while.', async () => {
             try {
                 await api('/admin/notes/reindex');
                 startReindexPolling();
