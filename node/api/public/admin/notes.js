@@ -720,7 +720,10 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                     showToast('Folder is empty', 'info');
                     return;
                 }
-                const slugList = notes.map(n => n.slug).join('\n  • ');
+                const maxShow = 10;
+                const shown = notes.slice(0, maxShow).map(n => n.slug);
+                let slugList = shown.join('\n  • ');
+                if (notes.length > maxShow) slugList += '\n  … and ' + (notes.length - maxShow) + ' more';
                 showConfirm('Delete ' + notes.length + ' ' + (notes.length === 1 ? 'memory' : 'memories') + ' in "' + ctx.slug + '"?\n\n  • ' + slugList, async () => {
                     let deleted = 0;
                     for (const note of notes) {
