@@ -52,6 +52,38 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
 
     // ---- Sharing ----
     const shareDialog = ref(null);
+    const sharesCache = ref({});   // namespace -> [share rows]
+
+    // Load shares for a namespace (for tree indicators)
+    async function loadSharesForNamespace(namespace) {
+        try {
+            const data = await api('/admin/shares/list', { owner_namespace: namespace });
+            sharesCache.value[namespace] = data.shares || [];
+        } catch { /* ignore — may not have access */ }
+    }
+
+    // Check if a slug in a namespace has any active shares
+    // Returns: null (not shared), 'specific' (yellow), or 'all' (orange)
+    function getShareType(namespace, slug) {
+        const shares = sharesCache.value[namespace];
+        if (!shares || shares.length === 0) return null;
+
+        let hasSpecific = false;
+        let hasAll = false;
+
+        for (const s of shares) {
+            // Match: exact slug, or slug starts with a folder pattern
+            if (s.slug_pattern === slug || (s.slug_pattern.endsWith('/') && slug.startsWith(s.slug_pattern)) ||
+                (slug.endsWith('/') && s.slug_pattern.startsWith(slug))) {
+                if (s.grantee_actor_id === null) hasAll = true;
+                else hasSpecific = true;
+            }
+        }
+
+        if (hasAll) return 'all';
+        if (hasSpecific) return 'specific';
+        return null;
+    }
 
     const isMermaid = computed(() => {
         if (!selectedNote.value) return false;
@@ -310,8 +342,11 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
             for (const { namespace, notes } of results) {
                 notesTreesRaw.value[namespace] = buildTree(notes);
             }
-            // Load sync mappings for tree indicators
+            // Load sync mappings and shares for tree indicators
             await loadAllSyncMappings();
+            for (const ns of data.namespaces) {
+                loadSharesForNamespace(ns.namespace);
+            }
         } catch (err) {
             console.error('Failed to load notes:', err);
         }
@@ -916,7 +951,8 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         try {
             await api('/admin/shares/create', payload);
             showToast('Shared successfully', 'success');
-            // Reload shares
+            // Reload shares and tree indicators
+            loadSharesForNamespace(d.namespace);
             const data = await api('/admin/shares/for-slug', { owner_namespace: d.namespace, slug_pattern: d.slugPattern });
             if (shareDialog.value) shareDialog.value.shares = data.shares || [];
             // Reset form
@@ -935,9 +971,10 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         try {
             await api('/admin/shares/revoke', { id: shareId });
             showToast('Share revoked', 'success');
-            // Reload
+            // Reload and refresh tree indicators
             const d = shareDialog.value;
             if (d) {
+                loadSharesForNamespace(d.namespace);
                 const data = await api('/admin/shares/for-slug', { owner_namespace: d.namespace, slug_pattern: d.slugPattern });
                 d.shares = data.shares || [];
             }
@@ -983,7 +1020,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
-        isSynced, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving, shareDialog,
+        isSynced, getShareType, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving, shareDialog,
         renameTarget, renameValue,
         renameConflict, renameConflictExecuting,
         loadNotes, toggleNamespace, toggleFolder,
