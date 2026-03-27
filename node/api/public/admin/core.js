@@ -161,12 +161,25 @@ function useCore() {
 
     async function toggleVisibleToOthers() {
         const newVal = !visibleToOthers.value;
-        try {
-            await api('/admin/profile/visibility', { visible_to_others: newVal });
-            visibleToOthers.value = newVal;
-            showToast(newVal ? 'You are now visible for sharing' : 'You are now hidden from sharing', 'success');
-        } catch (err) {
-            showToast(err.message || 'Failed to update visibility', 'error');
+        if (newVal) {
+            // Confirm before enabling
+            showConfirm('Enabling this means that other users of llm-memory will be able to search for you when sharing memories.\n\nYour memories still remain private unless you choose to share some.', async () => {
+                try {
+                    await api('/admin/profile/visibility', { visible_to_others: true });
+                    visibleToOthers.value = true;
+                    showToast('You are now visible for sharing', 'success');
+                } catch (err) {
+                    showToast(err.message || 'Failed to update visibility', 'error');
+                }
+            });
+        } else {
+            try {
+                await api('/admin/profile/visibility', { visible_to_others: false });
+                visibleToOthers.value = false;
+                showToast('You are now hidden from sharing', 'success');
+            } catch (err) {
+                showToast(err.message || 'Failed to update visibility', 'error');
+            }
         }
     }
 
