@@ -8,10 +8,7 @@
                 <span v-if="selectedActorConfig.is_agent" class="badge badge-type-agent">agent</span>
                 <span v-if="selectedActorConfig.is_user" class="badge badge-type-user">user</span>
             </h3>
-            <div style="display:flex; gap:4px;">
-                <button v-if="selectedActorConfig.is_agent" class="btn btn-ghost btn-compact" @click="closeActorConfig(); viewAgent({ agent: selectedActorConfig.name, ...selectedActorConfig })" title="Agent Details"><i class="icon-arrow-left"></i></button>
-                <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
-            </div>
+            <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
         </header>
         <div class="dialog-body" v-if="!actorConfigLoading" style="padding: 0 24px 24px;">
 
