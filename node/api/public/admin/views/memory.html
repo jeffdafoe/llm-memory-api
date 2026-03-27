@@ -99,10 +99,87 @@
         <div v-if="syncContextMenu.slug !== '' && canDo('notes', 'delete')" class="context-menu-item context-menu-danger" @click.stop="deleteFromContext">
             <i class="icon-trash-2"></i> Delete
         </div>
+        <div v-if="syncContextMenu.slug !== '' && canDo('notes', 'write')" class="context-menu-item" @click.stop="openShareDialog">
+            <i class="icon-share-2"></i> Share...
+        </div>
         <div class="context-menu-item" @click.stop="openSyncDialog">
             <i class="icon-refresh-cw"></i> Sync to local directory...
         </div>
     </div>
+
+    <!-- Share dialog -->
+    <dialog :open="shareDialog !== null" @close="closeShareDialog">
+        <article v-if="shareDialog" class="confirm-dialog" style="min-width: 500px;">
+            <header>
+                <h3>Share: {{ shareDialog.slug }}</h3>
+                <button aria-label="Close" rel="prev" @click="closeShareDialog"></button>
+            </header>
+            <div class="dialog-body">
+                <p v-if="shareDialog.slug.endsWith('/')" class="share-warning">
+                    <small>All current and future memories in this folder will be accessible to shared users.</small>
+                </p>
+
+                <!-- Existing shares -->
+                <div v-if="shareDialog.shares.length > 0" class="share-existing">
+                    <h4>Currently shared with</h4>
+                    <div v-for="share in shareDialog.shares" :key="share.id" class="share-row">
+                        <span class="share-grantee">{{ share.grantee_name || 'Everyone' }}</span>
+                        <span class="share-perms">
+                            <span v-if="share.can_read" class="share-badge">read</span>
+                            <span v-if="share.can_write" class="share-badge">write</span>
+                            <span v-if="share.can_delete" class="share-badge share-badge-danger">delete</span>
+                        </span>
+                        <button class="btn btn-sm btn-outline share-revoke" @click="revokeShare(share.id)" title="Revoke">
+                            <i class="icon-x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Add new share -->
+                <h4>Add share</h4>
+                <div class="share-add-form">
+                    <div class="share-actor-search">
+                        <label>Share with</label>
+                        <div class="share-actor-options">
+                            <label class="share-radio">
+                                <input type="radio" v-model="shareDialog.shareType" value="actor"> Specific user
+                            </label>
+                            <label class="share-radio">
+                                <input type="radio" v-model="shareDialog.shareType" value="all"> Everyone
+                            </label>
+                        </div>
+                        <div v-if="shareDialog.shareType === 'actor'" class="share-search-box">
+                            <input type="text" v-model="shareDialog.searchQuery" @input="searchActorsForShare"
+                                placeholder="Search users..." class="share-search-input">
+                            <div v-if="shareDialog.searchResults.length > 0" class="share-search-results">
+                                <div v-for="actor in shareDialog.searchResults" :key="actor.id"
+                                    class="share-search-result" @click="selectActorForShare(actor)">
+                                    {{ actor.name }}
+                                </div>
+                            </div>
+                            <div v-if="shareDialog.selectedActor" class="share-selected">
+                                Selected: <strong>{{ shareDialog.selectedActor.name }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="share-permissions">
+                        <label>Permissions</label>
+                        <div class="share-perm-checkboxes">
+                            <label><input type="checkbox" v-model="shareDialog.canRead" disabled> Read</label>
+                            <label><input type="checkbox" v-model="shareDialog.canWrite"> Write</label>
+                            <label v-if="shareDialog.shareType !== 'all'">
+                                <input type="checkbox" v-model="shareDialog.canDelete"> Delete
+                            </label>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" @click="createShare"
+                        :disabled="shareDialog.shareType === 'actor' && !shareDialog.selectedActor">
+                        Share
+                    </button>
+                </div>
+            </div>
+        </article>
+    </dialog>
 
     <!-- Sync mapping dialog -->
     <dialog :open="syncDialog !== null" @close="closeSyncDialog">
