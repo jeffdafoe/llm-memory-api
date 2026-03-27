@@ -706,6 +706,58 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // Delete from context menu — handles both single notes and folders
+    function deleteFromContext() {
+        const ctx = syncContextMenu.value;
+        if (!ctx) return;
+        syncContextMenu.value = null;
+
+        if (ctx.slug.endsWith('/')) {
+            // Folder: list all notes under this prefix and confirm bulk delete
+            api('/admin/notes/list', { namespace: ctx.namespace, prefix: ctx.slug }).then(data => {
+                const notes = data.notes || [];
+                if (notes.length === 0) {
+                    showToast('Folder is empty', 'info');
+                    return;
+                }
+                const slugList = notes.map(n => n.slug).join('\n  • ');
+                showConfirm('Delete ' + notes.length + ' ' + (notes.length === 1 ? 'memory' : 'memories') + ' in "' + ctx.slug + '"?\n\n  • ' + slugList, async () => {
+                    let deleted = 0;
+                    for (const note of notes) {
+                        try {
+                            await api('/admin/notes/delete', { namespace: ctx.namespace, slug: note.slug });
+                            deleted++;
+                        } catch (err) {
+                            console.error('Failed to delete ' + note.slug + ':', err);
+                        }
+                    }
+                    if (selectedNote.value && selectedNote.value.namespace === ctx.namespace && selectedNote.value.slug.startsWith(ctx.slug)) {
+                        selectedNote.value = null;
+                    }
+                    await loadNotes();
+                    showToast(deleted + ' ' + (deleted === 1 ? 'memory' : 'memories') + ' deleted', 'success');
+                });
+            }).catch(err => {
+                showToast('Failed to list folder contents: ' + err.message, 'error');
+            });
+        } else {
+            // Single note
+            showConfirm('Delete "' + ctx.slug + '"?', async () => {
+                try {
+                    await api('/admin/notes/delete', { namespace: ctx.namespace, slug: ctx.slug });
+                    if (selectedNote.value && selectedNote.value.namespace === ctx.namespace && selectedNote.value.slug === ctx.slug) {
+                        selectedNote.value = null;
+                    }
+                    await loadNotes();
+                    showToast('Memory deleted', 'success');
+                } catch (err) {
+                    console.error('Failed to delete memory:', err);
+                    showToast('Failed to delete: ' + err.message, 'error');
+                }
+            });
+        }
+    }
+
     // Open the sync dialog from the context menu
     async function openSyncDialog() {
         const ctx = syncContextMenu.value;
@@ -824,7 +876,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         loadNotes, toggleNamespace, toggleFolder,
         openNote, openNoteFromSearch,
         startEditNote, cancelEditNote, saveEditedNote, confirmDeleteNote,
-        startRename, cancelRename, commitRename, renameKeydown, startRenameFromContext,
+        startRename, cancelRename, commitRename, renameKeydown, startRenameFromContext, deleteFromContext,
         setBulkConflictAction, cancelRenameConflict, executeRenameWithConflicts,
         downloadNote, uploadNote,
         searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling,
