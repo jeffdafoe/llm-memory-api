@@ -9,7 +9,6 @@
             <form @submit.prevent="searchNotes" class="notes-search-form">
                 <input type="text" v-model="notesSearchQuery" placeholder="Search..." class="notes-search-input">
             </form>
-            <button v-if="canDo('notes', 'write')" class="notes-sidebar-icon" @click="reindexNotes" :disabled="notesReindexing" :title="notesReindexing ? 'Reindexing...' : 'Reindex vectors'"><i class="icon-refresh-cw" :class="{ 'spin': notesReindexing }"></i></button>
             <button class="notes-sidebar-icon" @click="notesSidebarCollapsed = !notesSidebarCollapsed" :title="notesSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"><i :class="notesSidebarCollapsed ? 'icon-panel-left-open' : 'icon-panel-left-close'"></i></button>
         </div>
         <div v-if="notesSearchResults" class="notes-search-results">
