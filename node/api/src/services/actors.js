@@ -83,4 +83,28 @@ function clearCache() {
     idCache.clear();
 }
 
-module.exports = { resolveByName, resolveById, resolveMultipleByName, requireByName, clearCache };
+// Check if an actor can access a virtual agent.
+// Access is granted if any of:
+//   1. The actor is the creator (owner) of the virtual agent
+//   2. The actor has an admin_permissions row (admin)
+//   3. There's a virtual_agent_access row with grantee_actor_id = NULL (public)
+//   4. There's a virtual_agent_access row with grantee_actor_id = actor's id
+async function canAccessVirtualAgent(actorId, virtualAgentId) {
+    const result = await pool.query(`
+        SELECT EXISTS(
+            -- Creator/owner check
+            SELECT 1 FROM actors WHERE id = $2 AND created_by = $1
+            UNION ALL
+            -- Admin check
+            SELECT 1 FROM admin_permissions WHERE actor_id = $1
+            UNION ALL
+            -- ACL check (public or explicit grant)
+            SELECT 1 FROM virtual_agent_access
+            WHERE virtual_agent_id = $2
+              AND (grantee_actor_id IS NULL OR grantee_actor_id = $1)
+        ) AS has_access
+    `, [actorId, virtualAgentId]);
+    return result.rows[0].has_access;
+}
+
+module.exports = { resolveByName, resolveById, resolveMultipleByName, requireByName, clearCache, canAccessVirtualAgent };

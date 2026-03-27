@@ -1408,9 +1408,9 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
 
         // Create actor
         const actorResult = await client.query(
-            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-            [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active']
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active', req.authenticatedUser.id]
         );
         actorId = actorResult.rows[0].id;
 
@@ -1677,15 +1677,17 @@ function parseActorId(raw, res) {
 // POST /admin/actors/list — list all actors (for the Actors config tab)
 router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('actors-list', async (req, res) => {
     const result = await pool.query(
-        `SELECT a.id, a.name, a.created_at, a.visible_to_others,
+        `SELECT a.id, a.name, a.created_at, a.visible_to_others, a.created_by,
                 (ac.actor_id IS NOT NULL) AS is_agent,
                 (a.password_hash IS NOT NULL) AS is_user,
                 s.status, s.last_seen, s.registered_at,
                 s.provider, s.model, s.virtual, s.personality,
-                s.active_since, ac.configuration
+                s.active_since, ac.configuration,
+                creator.name AS created_by_name
          FROM actors a
          LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
          LEFT JOIN agent_status s ON s.actor_id = a.id
+         LEFT JOIN actors creator ON creator.id = a.created_by
          ORDER BY a.name`
     );
 
@@ -2273,6 +2275,46 @@ router.post('/admin/actors/searchable', requirePerm('notes', 'read'), adminRoute
         [`%${query || ''}%`, req.actorId]
     );
     res.json({ actors: result.rows });
+}));
+
+// POST /admin/virtual-agent-access/list — list access rules for virtual agents
+router.post('/admin/virtual-agent-access/list', requireAdmin, adminRoute('va-access-list', async (req, res) => {
+    const result = await pool.query(`
+        SELECT vaa.id, vaa.virtual_agent_id, va.name AS virtual_agent_name,
+               vaa.grantee_actor_id, ga.name AS grantee_name, vaa.created_at
+        FROM virtual_agent_access vaa
+        JOIN actors va ON va.id = vaa.virtual_agent_id
+        LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id
+        ORDER BY va.name, ga.name NULLS FIRST
+    `);
+    res.json({ access: result.rows });
+}));
+
+// POST /admin/virtual-agent-access/grant — grant access to a virtual agent
+router.post('/admin/virtual-agent-access/grant', requireAdmin, adminRoute('va-access-grant', async (req, res) => {
+    const { virtual_agent_id, grantee_actor_id } = req.body;
+    if (!virtual_agent_id) return res.status(400).json({ error: 'virtual_agent_id required' });
+
+    // Verify it's actually a virtual agent
+    const vc = await pool.query('SELECT virtual FROM agent_configuration WHERE actor_id = $1', [virtual_agent_id]);
+    if (!vc.rows[0]?.virtual) return res.status(400).json({ error: 'Not a virtual agent' });
+
+    const result = await pool.query(
+        'INSERT INTO virtual_agent_access (virtual_agent_id, grantee_actor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id',
+        [virtual_agent_id, grantee_actor_id || null]
+    );
+    logAdmin('va_access_grant', { virtual_agent_id, grantee_actor_id, user_id: req.authenticatedUser.id });
+    res.json({ granted: result.rowCount > 0 });
+}));
+
+// POST /admin/virtual-agent-access/revoke — revoke access
+router.post('/admin/virtual-agent-access/revoke', requireAdmin, adminRoute('va-access-revoke', async (req, res) => {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'id required' });
+
+    await pool.query('DELETE FROM virtual_agent_access WHERE id = $1', [id]);
+    logAdmin('va_access_revoke', { access_id: id, user_id: req.authenticatedUser.id });
+    res.json({ revoked: true });
 }));
 
 module.exports = router;
