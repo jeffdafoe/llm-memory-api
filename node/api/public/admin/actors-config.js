@@ -44,6 +44,11 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         { id: 'access', label: 'Access', actions: ['read', 'write'] }
     ];
 
+    // Virtual agent access state
+    const vaAccessList = ref([]);
+    const newVaAccessTarget = ref('');
+    const vaAccessPublic = ref(false);
+
     // UI Access (password) state
     const actorPasswordInput = ref('');
     const actorPasswordSaving = ref(false);
@@ -90,14 +95,15 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
         try {
-            // Load permissions, visibility, namespaces, and admin perms in parallel
+            // Load permissions, visibility, namespaces, admin perms, and VA access in parallel
             const promises = [
                 api('/admin/actors/permissions/read', { actor_id: actor.id }),
                 api('/admin/actors/visibility/read', { actor_id: actor.id }),
                 api('/admin/actors/namespaces'),
-                actor.is_user ? api('/admin/actors/admin-permissions/read', { actor_id: actor.id }) : Promise.resolve(null)
+                actor.is_user ? api('/admin/actors/admin-permissions/read', { actor_id: actor.id }) : Promise.resolve(null),
+                actor.virtual ? api('/admin/virtual-agent-access/list') : Promise.resolve(null)
             ];
-            const [permData, visData, nsData, adminPermData] = await Promise.all(promises);
+            const [permData, visData, nsData, adminPermData, vaData] = await Promise.all(promises);
 
             // Permissions: separate wildcard from specific
             const wildPerm = permData.permissions.find(p => p.namespace === '/');
@@ -136,6 +142,16 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             } else {
                 actorHasWildcardAdmin.value = false;
                 actorAdminPerms.value = [];
+            }
+
+            // Virtual agent access
+            if (vaData) {
+                const myAccess = vaData.access.filter(a => a.virtual_agent_id === actor.id);
+                vaAccessPublic.value = myAccess.some(a => a.grantee_actor_id === null);
+                vaAccessList.value = myAccess.filter(a => a.grantee_actor_id !== null);
+            } else {
+                vaAccessPublic.value = false;
+                vaAccessList.value = [];
             }
         } catch (err) {
             console.error('Failed to load actor config:', err);
@@ -469,6 +485,70 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         }
     }
 
+    // ─── Virtual Agent Access ───
+
+    async function toggleVaPublicAccess() {
+        if (!selectedActorConfig.value) return;
+        try {
+            if (vaAccessPublic.value) {
+                // Grant public access
+                await api('/admin/virtual-agent-access/grant', {
+                    virtual_agent_id: selectedActorConfig.value.id,
+                    grantee_actor_id: null
+                });
+            } else {
+                // Revoke public access — find the public row
+                const vaData = await api('/admin/virtual-agent-access/list');
+                const publicRow = vaData.access.find(a => a.virtual_agent_id === selectedActorConfig.value.id && a.grantee_actor_id === null);
+                if (publicRow) {
+                    await api('/admin/virtual-agent-access/revoke', { id: publicRow.id });
+                }
+            }
+            showToast(vaAccessPublic.value ? 'Public access granted' : 'Public access revoked', 'success');
+        } catch (err) {
+            vaAccessPublic.value = !vaAccessPublic.value;
+            showToast(err.message || 'Failed', 'error');
+        }
+    }
+
+    async function addVaAccessGrant() {
+        const targetId = parseInt(newVaAccessTarget.value);
+        if (!targetId || !selectedActorConfig.value) return;
+        try {
+            await api('/admin/virtual-agent-access/grant', {
+                virtual_agent_id: selectedActorConfig.value.id,
+                grantee_actor_id: targetId
+            });
+            const target = actorsConfigList.value.find(a => a.id === targetId);
+            // Reload to get the row ID
+            const vaData = await api('/admin/virtual-agent-access/list');
+            const myAccess = vaData.access.filter(a => a.virtual_agent_id === selectedActorConfig.value.id);
+            vaAccessList.value = myAccess.filter(a => a.grantee_actor_id !== null);
+            newVaAccessTarget.value = '';
+            showToast('Access granted to ' + (target?.name || 'actor'), 'success');
+        } catch (err) {
+            showToast(err.message || 'Failed', 'error');
+        }
+    }
+
+    async function removeVaAccessGrant(accessId) {
+        try {
+            await api('/admin/virtual-agent-access/revoke', { id: accessId });
+            vaAccessList.value = vaAccessList.value.filter(a => a.id !== accessId);
+            showToast('Access revoked', 'success');
+        } catch (err) {
+            showToast(err.message || 'Failed', 'error');
+        }
+    }
+
+    // Actors available for VA access (exclude self, already-granted, and virtual agents)
+    const availableVaAccessTargets = computed(() => {
+        if (!selectedActorConfig.value) return [];
+        const selfId = selectedActorConfig.value.id;
+        const grantedIds = new Set(vaAccessList.value.map(a => a.grantee_actor_id));
+        return actorsConfigList.value.filter(a => a.id !== selfId && !grantedIds.has(a.id) && !a.virtual);
+    });
+
     function closeDialogs() {
         selectedActorConfig.value = null;
         actorCreating.value = false;
@@ -491,6 +571,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         toggleAdminPerm, adminPermChecked,
         // Sharing
         toggleActorVisibleToOthers,
+        // Virtual Agent Access
+        vaAccessList, vaAccessPublic, newVaAccessTarget, availableVaAccessTargets,
+        toggleVaPublicAccess, addVaAccessGrant, removeVaAccessGrant,
         // UI Access
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Create actor
