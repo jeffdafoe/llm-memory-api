@@ -50,7 +50,7 @@ async function ingestContent(namespace, sourceFile, content) {
     return { chunks_created: chunks.length, source_file: sourceFile, namespace };
 }
 
-async function searchMemory(query, namespace, limit, readableNamespaces) {
+async function searchMemory(query, namespace, limit, readableNamespaces, actorId) {
     const maxResults = limit || 5;
     const embeddings = await embed(query);
     const queryVector = pgvector.toSql(embeddings[0]);
@@ -104,9 +104,26 @@ async function searchMemory(query, namespace, limit, readableNamespaces) {
     // Namespace filter param (global search only)
     let nsFilter = '';
     if ((!namespace || namespace === '*') && readableNamespaces) {
-        nsFilter = `AND mc.namespace = ANY($${paramIdx})`;
+        // Include chunks from: (1) namespaces the actor has full read access to,
+        // or (2) specific notes/folders shared via note_permissions.
+        const nsArrayIdx = paramIdx;
         params.push(readableNamespaces);
         paramIdx++;
+
+        if (actorId) {
+            const actorIdx = paramIdx;
+            params.push(actorId);
+            paramIdx++;
+            nsFilter = `AND (mc.namespace = ANY($${nsArrayIdx}) OR EXISTS (
+                SELECT 1 FROM note_permissions np
+                WHERE np.owner_namespace = mc.namespace
+                  AND (np.slug_pattern = mc.source_file OR mc.source_file LIKE np.slug_pattern || '%')
+                  AND (np.grantee_actor_id = $${actorIdx} OR np.grantee_actor_id IS NULL)
+                  AND np.revoked_at IS NULL AND np.can_read = true
+            ))`;
+        } else {
+            nsFilter = `AND mc.namespace = ANY($${nsArrayIdx})`;
+        }
     }
 
     // Time-decay CASE expression per kind (half-life values as bound params).

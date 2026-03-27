@@ -70,7 +70,7 @@ router.post('/memory/search', apiRoute('memory', 'search', async (req, res) => {
     if (!namespace || namespace === '*') {
         readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
     }
-    const result = await searchMemory(query, namespace, limit, readable);
+    const result = await searchMemory(query, namespace, limit, readable, actor.actorId);
     res.json(result);
 }));
 

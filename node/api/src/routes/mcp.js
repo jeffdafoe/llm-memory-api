@@ -618,7 +618,7 @@ const TOOL_HANDLERS = {
         if (!targetNs || targetNs === '*') {
             readable = await getReadableNamespaces(actorId, agent, 'agent');
         }
-        const data = await searchMemory(args.query, targetNs, args.limit || 5, readable);
+        const data = await searchMemory(args.query, targetNs, args.limit || 5, readable, actorId);
         const lines = data.results.map(r => {
             return `[${r.namespace}] ${r.source_file} — ${r.heading || '(no heading)'} (${(r.similarity * 100).toFixed(1)}%)\n${r.chunk_text}`;
         });
