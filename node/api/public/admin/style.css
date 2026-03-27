@@ -2567,6 +2567,10 @@ details[open] .summary-chevron { transform: rotate(90deg); }
    Share Dialog
    ═══════════════════════════════════════════════════════════════════ */
 
+/* Shared note/folder indicators in tree */
+.shared-specific { color: #ffc107; }  /* yellow — shared with specific actors */
+.shared-all { color: #fd7e14; }       /* orange — shared with everyone */
+
 .share-warning {
     background: rgba(255, 193, 7, 0.1);
     border: 1px solid rgba(255, 193, 7, 0.3);

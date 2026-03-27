@@ -37,14 +37,14 @@
                         <div v-if="node.type === 'folder'" class="tree-folder">
                             <div class="tree-folder-header" @mousedown.prevent="toggleFolder(ns.namespace, node.path)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.path + '/')" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
                                 <i :class="expandedFolders[ns.namespace + '/' + node.path] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
-                                <i class="icon-folder"></i>
+                                <i class="icon-folder" :class="{ 'shared-specific': getShareType(ns.namespace, node.path + '/') === 'specific', 'shared-all': getShareType(ns.namespace, node.path + '/') === 'all' }"></i>
                                 <i v-if="isSynced(ns.namespace, node.path + '/')" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
                                 <input v-if="renameTarget && renameTarget.namespace === ns.namespace && renameTarget.slug === node.path + '/'" v-model="renameValue" class="tree-rename-input" @keydown="renameKeydown" @blur="commitRename" @click.stop v-focus>
                                 <template v-else>{{ node.name }}</template>
                             </div>
                         </div>
                         <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === ns.namespace && selectedNote.slug === node.slug }" @click="openNote(ns.namespace, node.slug)" @contextmenu="showSyncContextMenu($event, ns.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2 + 1.2) + 'em' }">
-                            <i class="icon-file-text"></i>
+                            <i class="icon-file-text" :class="{ 'shared-specific': getShareType(ns.namespace, node.slug) === 'specific', 'shared-all': getShareType(ns.namespace, node.slug) === 'all' }"></i>
                             <i v-if="isSynced(ns.namespace, node.slug)" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
                             <input v-if="renameTarget && renameTarget.namespace === ns.namespace && renameTarget.slug === node.slug" v-model="renameValue" class="tree-rename-input" @keydown="renameKeydown" @blur="commitRename" @click.stop v-focus>
                             <template v-else>
