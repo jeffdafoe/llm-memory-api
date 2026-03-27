@@ -25,7 +25,7 @@ const {
 const { broadcast } = require('../services/events');
 const { requireByName, resolveByName } = require('../services/actors');
 const { requireAccess, hasAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
-const { hasNoteAccess } = require('../services/note-permissions');
+const { hasNoteAccess, listSharesByOwner, listSharedDocuments } = require('../services/note-permissions');
 
 const router = Router();
 
@@ -658,13 +658,35 @@ const TOOL_HANDLERS = {
 
     async list_notes(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
+
+        // Special scope: list notes shared with this agent
+        if (targetNs === 'shared-with-me') {
+            const docs = await listSharedDocuments(actorId);
+            if (docs.length === 0) return 'No shared notes found.';
+            return docs.map(d => `[${d.namespace}] ${d.slug} — ${d.title} (${d.can_write ? 'read/write' : 'read-only'})`).join('\n');
+        }
+
         validateNamespace(targetNs);
         await requireAccess(actorId, agent, 'agent', targetNs, 'read');
         const data = await listNotes(targetNs, args.limit, args.offset, args.prefix);
         if (data.notes.length === 0) {
             return 'No notes found.';
         }
-        return data.notes.map(n => `${n.slug} — ${n.title} (updated ${n.updated_at})`).join('\n');
+
+        // Annotate notes that are shared with others
+        const shares = await listSharesByOwner(targetNs);
+        const lines = data.notes.map(n => {
+            let line = `${n.slug} — ${n.title} (updated ${n.updated_at})`;
+            const noteShares = shares.filter(s =>
+                s.slug_pattern === n.slug || (s.slug_pattern.endsWith('/') && n.slug.startsWith(s.slug_pattern))
+            );
+            if (noteShares.length > 0) {
+                const names = noteShares.map(s => s.grantee_name || 'everyone');
+                line += ` [shared with: ${[...new Set(names)].join(', ')}]`;
+            }
+            return line;
+        });
+        return lines.join('\n');
     },
 
     async read_note(args, agent, namespace, actorId) {
