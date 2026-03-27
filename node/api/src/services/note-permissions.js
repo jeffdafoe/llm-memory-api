@@ -19,11 +19,11 @@ async function createShare({ ownerNamespace, slugPattern, granteeActorId, canRea
     const existing = await pool.query(
         `SELECT id FROM note_permissions
          WHERE owner_namespace = $1 AND slug_pattern = $2
-           AND ${granteeActorId === null ? 'grantee_actor_id IS NULL' : 'grantee_actor_id = $4'}
+           AND ${granteeActorId === null ? 'grantee_actor_id IS NULL' : 'grantee_actor_id = $3'}
            AND revoked_at IS NULL`,
         granteeActorId === null
             ? [ownerNamespace, slugPattern]
-            : [ownerNamespace, slugPattern, null, granteeActorId]
+            : [ownerNamespace, slugPattern, granteeActorId]
     );
 
     if (existing.rows.length > 0) {
