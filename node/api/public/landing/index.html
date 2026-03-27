@@ -568,6 +568,24 @@
             max-height: 100%;
             border-radius: 8px;
             box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 28px;
+            font-size: 36px;
+            color: #fff;
+            cursor: pointer;
+            z-index: 301;
+            line-height: 1;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .lightbox-close:hover {
+            opacity: 1;
         }
 
         /* Responsive */
@@ -814,10 +832,12 @@ function closeLightbox() {
 }
 
 document.getElementById('lightbox').addEventListener('click', closeLightbox);
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
 </script>
 
 <!-- Lightbox -->
 <div class="lightbox-overlay" id="lightbox">
+    <span class="lightbox-close">&times;</span>
     <img src="" alt="">
 </div>
 
