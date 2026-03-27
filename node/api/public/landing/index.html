@@ -77,6 +77,10 @@
             color: var(--accent);
         }
 
+        .nav-brand .nav-memory {
+            color: #7CB9E8;
+        }
+
         .hero-mascot {
             position: absolute;
             right: -40px;
@@ -301,7 +305,7 @@
 
         .hero-hook {
             font-size: 36px;
-            color: var(--accent);
+            color: rgba(255, 255, 255, 0.85);
             font-weight: 500;
             letter-spacing: -0.02em;
             margin-bottom: 32px;
@@ -634,7 +638,7 @@
 <body>
 
 <nav>
-    <a href="/" class="nav-brand"><span>LLM</span> Memory<img src="/static/logo-mascot.png" alt=""></a>
+    <a href="/" class="nav-brand"><span>LLM</span> <span class="nav-memory">Memory</span><img src="/static/logo-mascot.png" alt=""></a>
     <ul class="nav-links">
         <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
         <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
@@ -714,7 +718,7 @@
 </section>
 
 <footer>
-    <div class="footer-brand">LLM Memory</div>
+    <div class="footer-brand"><span style="color:var(--accent)">LLM</span> <span style="color:#7CB9E8">Memory</span></div>
     <ul class="footer-links">
         <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
         <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
