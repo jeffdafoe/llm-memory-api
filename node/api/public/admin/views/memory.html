@@ -153,7 +153,7 @@
 
                 <!-- Existing shares -->
                 <div v-if="shareDialog.shares.length > 0" class="share-existing">
-                    <h4>Currently shared with</h4>
+                    <h4 style="color: var(--accent)">Currently shared with</h4>
                     <div v-for="share in shareDialog.shares" :key="share.id" class="share-row">
                         <span class="share-grantee">{{ share.grantee_name || 'Everyone' }}</span>
                         <span class="share-perms">
