@@ -56,6 +56,37 @@
                 </div>
             </div>
         </div>
+
+        <!-- Shared with me -->
+        <div v-if="sharedWithMe.length > 0" class="shared-with-me-section">
+            <div class="shared-with-me-header">
+                <i class="icon-share-2"></i> Shared with me
+            </div>
+            <div v-for="entry in sharedWithMe" :key="'shared-' + entry.namespace" class="tree-namespace shared-namespace">
+                <div class="tree-namespace-header" @click="toggleNamespace('shared:' + entry.namespace)">
+                    <i :class="expandedNamespaces['shared:' + entry.namespace] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron"></i>
+                    <i class="icon-folder shared-all"></i>
+                    <strong>{{ entry.namespace }}</strong>
+                    <span class="tree-count">({{ entry.count }})</span>
+                </div>
+                <div v-if="expandedNamespaces['shared:' + entry.namespace]" class="tree-children">
+                    <template v-for="node in entry.tree" :key="'shared-' + node.path">
+                        <div v-if="node.type === 'folder'" class="tree-folder">
+                            <div class="tree-folder-header" :style="{ paddingLeft: (node.depth * 1.2) + 'em' }">
+                                <i :class="expandedFolders['shared:' + entry.namespace + '/' + node.path] ? 'icon-chevron-down' : 'icon-chevron-right'" class="tree-chevron" @click.stop="toggleFolder('shared:' + entry.namespace, node.path)"></i>
+                                <i class="icon-folder"></i>
+                                {{ node.name }}
+                            </div>
+                        </div>
+                        <div v-else class="tree-file" :class="{ 'tree-file-active': selectedNote && selectedNote.namespace === entry.namespace && selectedNote.slug === node.slug }" @click="openNote(entry.namespace, node.slug)" :style="{ paddingLeft: (node.depth * 1.2 + 1.2) + 'em' }">
+                            <i class="icon-file-text"></i>
+                            <span class="tree-file-name">{{ node.name }}</span>
+                            <span v-if="node.updated_at" class="tree-file-time">{{ timeAgo(node.updated_at) }}</span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
     </div>
     <div class="notes-resize-handle" @mousedown="startSidebarResize"></div>
     <div class="notes-content">

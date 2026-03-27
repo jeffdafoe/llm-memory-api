@@ -2567,6 +2567,27 @@ details[open] .summary-chevron { transform: rotate(90deg); }
    Share Dialog
    ═══════════════════════════════════════════════════════════════════ */
 
+/* Shared with me section in tree */
+.shared-with-me-section {
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 8px;
+    padding-top: 8px;
+}
+
+.shared-with-me-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.shared-namespace .tree-namespace-header strong { color: var(--text-secondary); }
+
 /* Shared note/folder indicators in tree */
 .shared-specific { color: #ffc107; }  /* yellow — shared with specific actors */
 .shared-all { color: #fd7e14; }       /* orange — shared with everyone */

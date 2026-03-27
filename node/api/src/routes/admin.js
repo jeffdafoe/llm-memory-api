@@ -2216,6 +2216,18 @@ router.post('/admin/shares/shared-with-me', requirePerm('notes', 'read'), adminR
     res.json({ shares });
 }));
 
+// POST /admin/shares/documents — list actual documents shared with the current user
+router.post('/admin/shares/documents', requirePerm('notes', 'read'), adminRoute('shares-documents', async (req, res) => {
+    const docs = await notePerms.listSharedDocuments(req.actorId);
+    // Group by namespace
+    const byNamespace = {};
+    for (const d of docs) {
+        if (!byNamespace[d.namespace]) byNamespace[d.namespace] = [];
+        byNamespace[d.namespace].push(d);
+    }
+    res.json({ namespaces: byNamespace });
+}));
+
 // POST /admin/shares/for-slug — get shares for a specific note (for the share dialog)
 router.post('/admin/shares/for-slug', requirePerm('notes', 'read'), adminRoute('shares-for-slug', async (req, res) => {
     const { owner_namespace, slug_pattern } = req.body;
