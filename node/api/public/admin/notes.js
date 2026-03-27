@@ -59,8 +59,9 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     async function loadSharesForNamespace(namespace) {
         try {
             const data = await api('/admin/shares/list', { owner_namespace: namespace });
+            console.log('[shares] loaded for', namespace, ':', JSON.stringify(data.shares));
             sharesCache.value = { ...sharesCache.value, [namespace]: data.shares || [] };
-        } catch { /* ignore — may not have access */ }
+        } catch (err) { console.error('[shares] failed for', namespace, err); }
     }
 
     // Check if a slug in a namespace has any active shares
