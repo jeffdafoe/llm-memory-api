@@ -2677,7 +2677,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
     top: 100%;
     left: 0;
     right: 0;
-    background: var(--bg-card);
+    background: #1e2030;
     border: 1px solid var(--border-subtle);
     border-radius: 4px;
     max-height: 150px;
