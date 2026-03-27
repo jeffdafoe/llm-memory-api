@@ -1011,7 +1011,7 @@ router.post('/admin/notes/search', requirePerm('notes', 'read'), adminRoute('not
     if (targetNs === '*') {
         readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
     }
-    let data = await searchMemory(query, targetNs, limit || 10, readable);
+    let data = await searchMemory(query, targetNs, limit || 10, readable, req.actorId);
     res.json(data);
 }));
 
