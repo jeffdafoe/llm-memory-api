@@ -68,6 +68,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     // Returns: null (not shared), 'specific' (yellow), or 'all' (orange)
     function getShareType(namespace, slug) {
         const shares = sharesCache.value[namespace];
+        if (slug.includes('bbl-30')) console.log('[getShareType]', namespace, slug, 'shares:', JSON.stringify(shares));
         if (!shares || shares.length === 0) return null;
 
         let hasSpecific = false;
