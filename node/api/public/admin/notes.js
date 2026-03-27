@@ -59,7 +59,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     async function loadSharesForNamespace(namespace) {
         try {
             const data = await api('/admin/shares/list', { owner_namespace: namespace });
-            sharesCache.value[namespace] = data.shares || [];
+            sharesCache.value = { ...sharesCache.value, [namespace]: data.shares || [] };
         } catch { /* ignore — may not have access */ }
     }
 
