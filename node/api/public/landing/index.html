@@ -78,11 +78,11 @@
         }
 
         .hero-mascot {
-            width: 560px;
+            float: right;
+            width: 420px;
             height: auto;
-            justify-self: end;
-            margin-right: -80px;
-            margin-top: -60px;
+            margin: -20px -40px 20px 40px;
+            shape-outside: margin-box;
         }
 
         .nav-links {
@@ -151,9 +151,7 @@
         /* Hero */
         .hero {
             min-height: 100vh;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            align-items: center;
+            display: block;
             padding-top: 140px;
             padding-bottom: 80px;
         }
@@ -564,12 +562,13 @@
                 padding-top: 140px;
                 padding-bottom: 64px;
                 min-height: auto;
-                grid-template-columns: 1fr;
             }
 
             .hero-mascot {
-                width: 200px;
-                order: -1;
+                float: none;
+                width: 180px;
+                display: block;
+                margin: 0 auto 24px auto;
             }
 
             .hero h1 {
@@ -629,15 +628,13 @@
 </nav>
 
 <section class="hero">
-    <div class="hero-text">
-        <h1>Every conversation<br>starts from <span>zero</span></h1>
-        <p>It doesn't have to. LLM Memory gives your AI <span style="color:var(--accent)">persistent knowledge</span> that survives sessions — and a dashboard where you can see, edit, and organize everything it knows.</p>
-        <div class="hero-buttons">
-            <button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button>
-            <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
-        </div>
-    </div>
     <img src="/static/logo-mascot.png" alt="LLM Memory" class="hero-mascot">
+    <h1>Every conversation<br>starts from <span>zero</span></h1>
+    <p>It doesn't have to. LLM Memory gives your AI <span style="color:var(--accent)">persistent knowledge</span> that survives sessions — and a dashboard where you can see, edit, and organize everything it knows.</p>
+    <div class="hero-buttons">
+        <button onclick="openAccessForm()" class="btn-primary" style="border:none;cursor:pointer;font-family:'Inter',sans-serif;">Demand Free Access</button>
+        <a href="https://github.com/jeffdafoe/llm-memory-api#readme" class="btn-ghost">Documentation</a>
+    </div>
 </section>
 
 <section class="statement">
