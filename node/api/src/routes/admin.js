@@ -1677,7 +1677,7 @@ function parseActorId(raw, res) {
 // POST /admin/actors/list — list all actors (for the Actors config tab)
 router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('actors-list', async (req, res) => {
     const result = await pool.query(
-        `SELECT a.id, a.name, a.created_at,
+        `SELECT a.id, a.name, a.created_at, a.visible_to_others,
                 (ac.actor_id IS NOT NULL) AS is_agent,
                 (a.password_hash IS NOT NULL) AS is_user,
                 s.status, s.last_seen, s.registered_at,
@@ -2150,16 +2150,16 @@ router.post('/admin/invite-codes/delete', requirePerm('access', 'write'), adminR
 
 // ── Profile: visibility ───────────────────────────────────────────────────────
 
-// POST /admin/profile/visibility — get or set visible_to_others for the current user
+// POST /admin/profile/visibility — get or set visible_to_others
+// Accepts optional actor_id for admin to manage other actors; defaults to self.
 router.post('/admin/profile/visibility', adminRoute('profile-visibility', async (req, res) => {
+    const targetId = req.body.actor_id || req.actorId;
     if (req.body.visible_to_others !== undefined) {
-        // Set
-        await pool.query('UPDATE actors SET visible_to_others = $1 WHERE id = $2', [!!req.body.visible_to_others, req.actorId]);
-        logAdmin('visibility_update', { visible_to_others: !!req.body.visible_to_others, user_id: req.authenticatedUser.id });
+        await pool.query('UPDATE actors SET visible_to_others = $1 WHERE id = $2', [!!req.body.visible_to_others, targetId]);
+        logAdmin('visibility_update', { actor_id: targetId, visible_to_others: !!req.body.visible_to_others, user_id: req.authenticatedUser.id });
         return res.json({ visible_to_others: !!req.body.visible_to_others });
     }
-    // Get
-    const result = await pool.query('SELECT visible_to_others FROM actors WHERE id = $1', [req.actorId]);
+    const result = await pool.query('SELECT visible_to_others FROM actors WHERE id = $1', [targetId]);
     res.json({ visible_to_others: result.rows[0]?.visible_to_others || false });
 }));
 

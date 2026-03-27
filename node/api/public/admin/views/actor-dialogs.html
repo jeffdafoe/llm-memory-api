@@ -138,6 +138,20 @@
                 </div>
             </div>
 
+            <!-- Sharing Visibility -->
+            <div class="agent-card">
+                <div class="agent-card-header">
+                    <span class="agent-card-title"><i class="icon-share-2"></i>Sharing</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                        <input type="checkbox" v-model="selectedActorConfig.visible_to_others" @change="toggleActorVisibleToOthers">
+                        Visible to others for sharing
+                    </label>
+                </div>
+                <p class="ts" style="margin-top: 6px;">When enabled, other users can find this actor when sharing memories.</p>
+            </div>
+
             <!-- Admin Permissions (only for UI users) -->
             <template v-if="selectedActorConfig.is_user">
                 <div class="agent-card">
