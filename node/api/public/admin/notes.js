@@ -59,16 +59,14 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     async function loadSharesForNamespace(namespace) {
         try {
             const data = await api('/admin/shares/list', { owner_namespace: namespace });
-            console.log('[shares] loaded for', namespace, ':', JSON.stringify(data.shares));
             sharesCache.value = { ...sharesCache.value, [namespace]: data.shares || [] };
-        } catch (err) { console.error('[shares] failed for', namespace, err); }
+        } catch { /* ignore — may not have access */ }
     }
 
     // Check if a slug in a namespace has any active shares
     // Returns: null (not shared), 'specific' (yellow), or 'all' (orange)
     function getShareType(namespace, slug) {
         const shares = sharesCache.value[namespace];
-        if (slug.includes('bbl-30')) console.log('[getShareType]', namespace, slug, 'shares:', JSON.stringify(shares));
         if (!shares || shares.length === 0) return null;
 
         let hasSpecific = false;
