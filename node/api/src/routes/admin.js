@@ -2148,6 +2148,21 @@ router.post('/admin/invite-codes/delete', requirePerm('access', 'write'), adminR
     res.json({ ok: true });
 }));
 
+// ── Profile: visibility ───────────────────────────────────────────────────────
+
+// POST /admin/profile/visibility — get or set visible_to_others for the current user
+router.post('/admin/profile/visibility', adminRoute('profile-visibility', async (req, res) => {
+    if (req.body.visible_to_others !== undefined) {
+        // Set
+        await pool.query('UPDATE actors SET visible_to_others = $1 WHERE id = $2', [!!req.body.visible_to_others, req.actorId]);
+        logAdmin('visibility_update', { visible_to_others: !!req.body.visible_to_others, user_id: req.authenticatedUser.id });
+        return res.json({ visible_to_others: !!req.body.visible_to_others });
+    }
+    // Get
+    const result = await pool.query('SELECT visible_to_others FROM actors WHERE id = $1', [req.actorId]);
+    res.json({ visible_to_others: result.rows[0]?.visible_to_others || false });
+}));
+
 // ── Note Sharing ──────────────────────────────────────────────────────────────
 
 // POST /admin/shares/create — create a note/folder share
