@@ -518,6 +518,34 @@
             color: var(--text-secondary);
         }
 
+        /* Lightbox */
+        .lightbox-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 32px;
+        }
+
+        .lightbox-overlay.active {
+            display: flex;
+        }
+
+        .lightbox-overlay img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             nav {
@@ -622,7 +650,7 @@
         <p>Everything your AI remembers lives in a place you can browse, edit, organize, and search. Notes in folders, not hidden in a black box. If something's wrong, you fix it. If something's outdated, you remove it.</p>
     </div>
     <div class="feature-visual" style="padding:0;overflow:hidden;">
-        <img src="/static/screenshots/notes-with-content.png" alt="Notes dashboard" style="width:100%;height:auto;display:block;">
+        <img src="/static/screenshots/notes-with-content.png" alt="Notes dashboard" style="width:100%;height:auto;display:block;cursor:pointer;" onclick="openLightbox(this.src)">
     </div>
 </section>
 
@@ -749,7 +777,25 @@ async function submitAccessForm() {
 document.getElementById('accessModal').addEventListener('click', function(e) {
     if (e.target === this) closeAccessForm();
 });
+
+// Lightbox
+function openLightbox(src) {
+    var overlay = document.getElementById('lightbox');
+    overlay.querySelector('img').src = src;
+    overlay.classList.add('active');
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+}
+
+document.getElementById('lightbox').addEventListener('click', closeLightbox);
 </script>
+
+<!-- Lightbox -->
+<div class="lightbox-overlay" id="lightbox">
+    <img src="" alt="">
+</div>
 
 </body>
 </html>
