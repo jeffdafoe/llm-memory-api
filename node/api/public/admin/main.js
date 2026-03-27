@@ -36,6 +36,28 @@ createApp({
         const configSubTab = ref('actors');
         const commSubTab = ref('mail');
 
+        // Shares overview (config tab)
+        const allSharesList = ref([]);
+        async function loadAllShares() {
+            try {
+                const data = await core.api('/admin/shares/list', { all: true });
+                allSharesList.value = data.shares || [];
+            } catch (err) {
+                console.error('Failed to load shares:', err);
+            }
+        }
+        async function revokeShareFromConfig(shareId) {
+            core.showConfirm('Revoke this share?', async () => {
+                try {
+                    await core.api('/admin/shares/revoke', { id: shareId });
+                    core.showToast('Share revoked', 'success');
+                    loadAllShares();
+                } catch (err) {
+                    core.showToast(err.message || 'Failed to revoke', 'error');
+                }
+            });
+        }
+
         // Theme
         const theme = ref(localStorage.getItem('admin_theme') || 'dark');
         document.documentElement.setAttribute('data-theme', theme.value);
@@ -48,7 +70,7 @@ createApp({
 
         // ─── Hash-based tab persistence ───
         const validViews = new Set(['dashboard', 'agents', 'comms', 'notes', 'config', 'access']);
-        const validConfigSubs = new Set(['actors', 'system', 'apilog', 'errorlog', 'templates']);
+        const validConfigSubs = new Set(['actors', 'system', 'apilog', 'errorlog', 'templates', 'shares']);
         const validCommSubs = new Set(['mail', 'chat', 'discussions']);
         let suppressHashUpdate = false;
 
@@ -337,6 +359,7 @@ createApp({
             viewTitle,
             configSubTab,
             commSubTab,
+            allSharesList, loadAllShares, revokeShareFromConfig,
             theme,
             toggleTheme,
             // Core

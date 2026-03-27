@@ -8,6 +8,7 @@
         <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
         <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
         <a v-if="canDo('templates', 'read')" href="#" :class="{ active: configSubTab === 'templates' }" @click.prevent="configSubTab = 'templates'; loadTemplates()">Templates</a>
+        <a v-if="canDo('notes', 'read')" href="#" :class="{ active: configSubTab === 'shares' }" @click.prevent="configSubTab = 'shares'; loadAllShares()">Shares</a>
     </div>
 
     <div class="page-content" :class="{ 'page-content-flex': configSubTab === 'templates' && templateEditing }">
@@ -302,6 +303,54 @@
                     </tr>
                     <tr v-if="welcomeTemplates.length === 0">
                         <td colspan="5" class="muted">No templates yet.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <!-- Shares sub-tab -->
+    <div v-if="configSubTab === 'shares'">
+        <div class="table-wrap">
+            <table class="fixed-table">
+                <colgroup>
+                    <col style="width: 10em;">
+                    <col>
+                    <col style="width: 10em;">
+                    <col style="width: 5em;">
+                    <col style="width: 5em;">
+                    <col style="width: 5em;">
+                    <col class="col-time">
+                    <col style="width: 5em;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Owner</th>
+                        <th>Path</th>
+                        <th>Shared With</th>
+                        <th>Read</th>
+                        <th>Write</th>
+                        <th>Delete</th>
+                        <th class="time-cell">Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="s in allSharesList" :key="s.id">
+                        <td :style="{ color: agentColor(s.owner_namespace) }">{{ s.owner_namespace }}</td>
+                        <td class="log-mono message-cell">{{ s.slug_pattern }}</td>
+                        <td>{{ s.grantee_name || 'Everyone' }}</td>
+                        <td>{{ s.can_read ? '✓' : '—' }}</td>
+                        <td>{{ s.can_write ? '✓' : '—' }}</td>
+                        <td>{{ s.can_delete ? '✓' : '—' }}</td>
+                        <td class="time-cell ts">{{ formatShortDate(s.created_at) }}</td>
+                        <td>
+                            <button v-if="canDo('notes', 'write')" class="inline-button compact secondary" @click="revokeShareFromConfig(s.id)" title="Revoke">
+                                <i class="icon-x"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr v-if="allSharesList.length === 0">
+                        <td colspan="8" class="muted">No active shares.</td>
                     </tr>
                 </tbody>
             </table>
