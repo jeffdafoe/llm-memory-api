@@ -49,6 +49,10 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const syncAgents = ref([]);              // agents list for dropdown
     const syncMappings = ref([]);            // current mappings for dialog display
     const syncSaving = ref(false);
+
+    // ---- Sharing ----
+    const shareDialog = ref(null);
+
     const isMermaid = computed(() => {
         if (!selectedNote.value) return false;
         if (selectedNote.value.slug.endsWith('.mmd')) return true;
@@ -836,6 +840,112 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         syncMappings.value = [];
     }
 
+    // ---- Share dialog ----
+    let shareSearchTimeout = null;
+
+    function openShareDialog() {
+        const ctx = syncContextMenu.value;
+        if (!ctx) return;
+        syncContextMenu.value = null;
+
+        const slugPattern = ctx.slug.endsWith('/') ? ctx.slug : ctx.slug;
+        shareDialog.value = {
+            namespace: ctx.namespace,
+            slug: ctx.slug,
+            slugPattern,
+            shares: [],
+            shareType: 'actor',
+            searchQuery: '',
+            searchResults: [],
+            selectedActor: null,
+            canRead: true,
+            canWrite: false,
+            canDelete: false,
+        };
+
+        // Load existing shares for this slug
+        api('/admin/shares/for-slug', { owner_namespace: ctx.namespace, slug_pattern: slugPattern }).then(data => {
+            if (shareDialog.value) shareDialog.value.shares = data.shares || [];
+        });
+    }
+
+    function closeShareDialog() {
+        shareDialog.value = null;
+    }
+
+    function searchActorsForShare() {
+        if (shareSearchTimeout) clearTimeout(shareSearchTimeout);
+        shareSearchTimeout = setTimeout(() => {
+            const q = shareDialog.value?.searchQuery;
+            if (!q || q.length < 1) {
+                if (shareDialog.value) shareDialog.value.searchResults = [];
+                return;
+            }
+            api('/admin/actors/searchable', { query: q }).then(data => {
+                if (shareDialog.value) shareDialog.value.searchResults = data.actors || [];
+            });
+        }, 200);
+    }
+
+    function selectActorForShare(actor) {
+        if (!shareDialog.value) return;
+        shareDialog.value.selectedActor = actor;
+        shareDialog.value.searchResults = [];
+        shareDialog.value.searchQuery = actor.name;
+    }
+
+    async function createShare() {
+        const d = shareDialog.value;
+        if (!d) return;
+
+        const payload = {
+            owner_namespace: d.namespace,
+            slug_pattern: d.slugPattern,
+            can_read: d.canRead,
+            can_write: d.canWrite,
+            can_delete: d.canDelete,
+        };
+
+        if (d.shareType === 'actor') {
+            if (!d.selectedActor) return;
+            payload.grantee_actor_id = d.selectedActor.id;
+        } else {
+            payload.grantee_actor_id = null;
+        }
+
+        try {
+            await api('/admin/shares/create', payload);
+            showToast('Shared successfully', 'success');
+            // Reload shares
+            const data = await api('/admin/shares/for-slug', { owner_namespace: d.namespace, slug_pattern: d.slugPattern });
+            if (shareDialog.value) shareDialog.value.shares = data.shares || [];
+            // Reset form
+            if (shareDialog.value) {
+                shareDialog.value.selectedActor = null;
+                shareDialog.value.searchQuery = '';
+                shareDialog.value.canWrite = false;
+                shareDialog.value.canDelete = false;
+            }
+        } catch (err) {
+            showToast(err.message || 'Failed to share', 'error');
+        }
+    }
+
+    async function revokeShare(shareId) {
+        try {
+            await api('/admin/shares/revoke', { id: shareId });
+            showToast('Share revoked', 'success');
+            // Reload
+            const d = shareDialog.value;
+            if (d) {
+                const data = await api('/admin/shares/for-slug', { owner_namespace: d.namespace, slug_pattern: d.slugPattern });
+                d.shares = data.shares || [];
+            }
+        } catch (err) {
+            showToast(err.message || 'Failed to revoke', 'error');
+        }
+    }
+
     // Close context menu on any click anywhere
     document.addEventListener('click', closeSyncContextMenu);
 
@@ -873,7 +983,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
-        isSynced, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving,
+        isSynced, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving, shareDialog,
         renameTarget, renameValue,
         renameConflict, renameConflictExecuting,
         loadNotes, toggleNamespace, toggleFolder,
@@ -885,6 +995,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         searchNotes, reindexNotes, pollReindexStatus, stopReindexPolling,
         showSyncContextMenu, closeSyncContextMenu, openSyncDialog,
         saveSyncMapping, deleteSyncMapping, closeSyncDialog,
+        openShareDialog, closeShareDialog, searchActorsForShare, selectActorForShare, createShare, revokeShare,
         startSidebarResize
     };
 }
