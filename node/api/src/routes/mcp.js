@@ -673,17 +673,14 @@ const TOOL_HANDLERS = {
             return 'No notes found.';
         }
 
-        // Annotate notes that are shared with others
+        // Annotate notes that are shared
         const shares = await listSharesByOwner(targetNs);
         const lines = data.notes.map(n => {
             let line = `${n.slug} — ${n.title} (updated ${n.updated_at})`;
-            const noteShares = shares.filter(s =>
+            const isShared = shares.some(s =>
                 s.slug_pattern === n.slug || (s.slug_pattern.endsWith('/') && n.slug.startsWith(s.slug_pattern))
             );
-            if (noteShares.length > 0) {
-                const names = noteShares.map(s => s.grantee_name || 'everyone');
-                line += ` [shared with: ${[...new Set(names)].join(', ')}]`;
-            }
+            if (isShared) line += ' [shared]';
             return line;
         });
         return lines.join('\n');
