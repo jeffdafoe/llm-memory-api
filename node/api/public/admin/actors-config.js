@@ -8,6 +8,15 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     // Detail dialog state
     const selectedActorConfig = ref(null);
     const actorConfigLoading = ref(false);
+    const actorDialogMode = ref('edit'); // 'edit' or 'create'
+
+    // Agent configuration editing state (provider, model, personality, etc.)
+    const editAgentProvider = ref('');
+    const editAgentModel = ref('');
+    const editAgentPersonality = ref('');
+    const editAgentApiKey = ref('');
+    const editAgentConfig = ref({});
+    const agentConfigSaving = ref(false);
 
     // Permissions state
     const actorPermissions = ref([]);
@@ -54,14 +63,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     const actorPasswordSaving = ref(false);
 
     // ─── Create Actor ───
-    const actorCreating = ref(false);
     const newActorName = ref('');
-    const newActorProvider = ref('');
-    const newActorModel = ref('');
     const newActorVirtual = ref(false);
-    const newActorPersonality = ref('');
-    const newActorApiKey = ref('');
-    const newActorConfig = ref({});
     const newActorUiAccess = ref(false);
     const newActorPassword = ref('');
     const newActorTemplateId = ref(null);
@@ -90,10 +93,14 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             actor = actorsConfigList.value.find(a => a.name === actor);
             if (!actor) return;
         }
+        actorDialogMode.value = 'edit';
         selectedActorConfig.value = actor;
         actorConfigLoading.value = true;
         newNamespaceInput.value = '';
         newVisibilityTarget.value = '';
+
+        // Load provider registry for agent config editing
+        agentsModule.loadProviderRegistry();
         try {
             // Load permissions, visibility, namespaces, admin perms, and VA access in parallel
             const promises = [
@@ -143,6 +150,27 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             } else {
                 actorHasWildcardAdmin.value = false;
                 actorAdminPerms.value = [];
+            }
+
+            // Agent configuration (provider, model, personality, config)
+            if (actor.is_agent) {
+                editAgentProvider.value = actor.provider || '';
+                editAgentModel.value = actor.model || '';
+                editAgentPersonality.value = actor.personality || '';
+                editAgentApiKey.value = '';
+                // Load configuration from the agent's stored config
+                let cfg = {};
+                if (actor.configuration) {
+                    if (typeof actor.configuration === 'object') cfg = actor.configuration;
+                    else try { cfg = JSON.parse(actor.configuration); } catch (e) { /* ignore */ }
+                }
+                editAgentConfig.value = { ...cfg };
+            } else {
+                editAgentProvider.value = '';
+                editAgentModel.value = '';
+                editAgentPersonality.value = '';
+                editAgentApiKey.value = '';
+                editAgentConfig.value = {};
             }
 
             // Virtual agent access
@@ -305,6 +333,50 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         }
     }
 
+    // ─── Agent Configuration Save ───
+
+    function onEditProviderChange() {
+        const models = agentsModule.modelsForProvider(editAgentProvider.value);
+        if (models.length > 0) {
+            editAgentModel.value = models[0].id;
+        } else {
+            editAgentModel.value = '';
+        }
+    }
+
+    async function saveAgentConfiguration() {
+        if (!selectedActorConfig.value) return;
+        agentConfigSaving.value = true;
+        try {
+            const body = { agent: selectedActorConfig.value.name };
+            body.provider = editAgentProvider.value || null;
+            body.model = editAgentModel.value || null;
+            if (selectedActorConfig.value.virtual) {
+                body.personality = editAgentPersonality.value || null;
+                if (editAgentApiKey.value) body.api_key = editAgentApiKey.value;
+                if (Object.keys(editAgentConfig.value).length > 0) {
+                    const configCopy = { ...editAgentConfig.value };
+                    const version = agentsModule.configVersionFor(editAgentProvider.value, editAgentModel.value);
+                    if (version != null) configCopy._configVersion = version;
+                    body.configuration = configCopy;
+                }
+            }
+            await api('/admin/agents/update', body);
+            // Update the local actor data
+            selectedActorConfig.value.provider = body.provider;
+            selectedActorConfig.value.model = body.model;
+            if (body.personality !== undefined) selectedActorConfig.value.personality = body.personality;
+            editAgentApiKey.value = '';
+            showToast('Agent configuration saved', 'success');
+            agentsModule.loadAgents();
+        } catch (err) {
+            console.error('Failed to save agent config:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            agentConfigSaving.value = false;
+        }
+    }
+
     // Computed: actors available to add as visibility grants (exclude self and already-granted)
     const availableVisibilityTargets = computed(() => {
         if (!selectedActorConfig.value) return [];
@@ -399,14 +471,17 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     function startCreateActor() {
         agentsModule.loadProviderRegistry();
         agentsModule.loadTemplates();
-        actorCreating.value = true;
+        actorDialogMode.value = 'create';
+        // Use a stub object so the dialog opens
+        selectedActorConfig.value = { id: null, name: '', is_agent: true, is_user: false, virtual: false };
+        actorConfigLoading.value = false;
         newActorName.value = '';
-        newActorProvider.value = '';
-        newActorModel.value = '';
         newActorVirtual.value = false;
-        newActorPersonality.value = '';
-        newActorApiKey.value = '';
-        newActorConfig.value = {};
+        editAgentProvider.value = '';
+        editAgentModel.value = '';
+        editAgentPersonality.value = '';
+        editAgentApiKey.value = '';
+        editAgentConfig.value = {};
         newActorUiAccess.value = false;
         newActorPassword.value = '';
         newActorTemplateId.value = null;
@@ -414,31 +489,20 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         newActorPassphrase.value = null;
     }
 
-    function onNewActorProviderChange() {
-        const models = agentsModule.modelsForProvider(newActorProvider.value);
-        if (models.length > 0) {
-            newActorModel.value = models[0].id;
-        } else {
-            newActorModel.value = '';
-        }
-    }
-
     async function createActor() {
         if (!newActorName.value.trim()) return;
         newActorCreating.value = true;
         try {
             const body = { name: newActorName.value.trim() };
-            if (newActorProvider.value) body.provider = newActorProvider.value;
-            if (newActorModel.value) body.model = newActorModel.value;
+            if (editAgentProvider.value) body.provider = editAgentProvider.value;
+            if (editAgentModel.value) body.model = editAgentModel.value;
             if (newActorVirtual.value) {
                 body.virtual = true;
-                if (newActorPersonality.value) body.personality = newActorPersonality.value;
-                if (Object.keys(newActorConfig.value).length > 0) {
-                    const configCopy = Object.assign({}, newActorConfig.value);
-                    const version = agentsModule.configVersionFor(newActorProvider.value, newActorModel.value);
-                    if (version != null) {
-                        configCopy._configVersion = version;
-                    }
+                if (editAgentPersonality.value) body.personality = editAgentPersonality.value;
+                if (Object.keys(editAgentConfig.value).length > 0) {
+                    const configCopy = { ...editAgentConfig.value };
+                    const version = agentsModule.configVersionFor(editAgentProvider.value, editAgentModel.value);
+                    if (version != null) configCopy._configVersion = version;
                     body.configuration = configCopy;
                 }
             }
@@ -453,10 +517,10 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             newActorPassphrase.value = data.passphrase;
 
             // If virtual and API key provided, update it separately (encrypted)
-            if (newActorVirtual.value && newActorApiKey.value) {
+            if (newActorVirtual.value && editAgentApiKey.value) {
                 await api('/admin/agents/update', {
                     agent: data.name,
-                    api_key: newActorApiKey.value
+                    api_key: editAgentApiKey.value
                 });
             }
 
@@ -552,12 +616,11 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
 
     function closeDialogs() {
         selectedActorConfig.value = null;
-        actorCreating.value = false;
     }
 
     return {
         actorsConfigList, actorsConfigLoading,
-        selectedActorConfig, actorConfigLoading,
+        selectedActorConfig, actorConfigLoading, actorDialogMode,
         actorPermissions, actorHasWildcardPerm,
         actorVisibilityGrants, actorHasWildcardVis,
         actorConfigSaving,
@@ -577,12 +640,14 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         toggleVaPublicAccess, addVaAccessGrant, removeVaAccessGrant,
         // UI Access
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
+        // Agent configuration editing
+        editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentConfig,
+        agentConfigSaving, onEditProviderChange, saveAgentConfiguration,
         // Create actor
-        actorCreating, newActorName, newActorProvider, newActorModel,
-        newActorVirtual, newActorPersonality, newActorApiKey, newActorConfig,
+        newActorName, newActorVirtual,
         newActorUiAccess, newActorPassword,
         newActorTemplateId, newActorCreating, newActorPassphrase,
-        startCreateActor, onNewActorProviderChange, createActor,
+        startCreateActor, createActor,
         closeDialogs
     };
 }
