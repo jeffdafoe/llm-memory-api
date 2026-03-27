@@ -136,6 +136,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
                 actorAdminPerms.value = adminResources.map(r => ({
                     resource: r.id,
                     label: r.label,
+                    hint: r.hint,
                     actions: r.actions,
                     granted: permMap[r.id] ? Array.from(permMap[r.id]) : []
                 }));
