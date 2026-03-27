@@ -24,7 +24,8 @@ const {
 } = require('../services/discussion');
 const { broadcast } = require('../services/events');
 const { requireByName, resolveByName } = require('../services/actors');
-const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
+const { requireAccess, hasAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
+const { hasNoteAccess } = require('../services/note-permissions');
 
 const router = Router();
 
@@ -637,7 +638,16 @@ const TOOL_HANDLERS = {
     async save_note(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
         validateNamespace(targetNs);
-        await requireAccess(actorId, agent, 'agent', targetNs, 'write');
+        const nsAccess = await hasAccess(actorId, agent, 'agent', targetNs, 'write');
+        if (!nsAccess) {
+            const noteAccess = await hasNoteAccess(targetNs, args.slug, actorId, 'write');
+            if (!noteAccess) {
+                throw Object.assign(
+                    new Error(`Actor "${agent}" does not have write access to "${targetNs}/${args.slug}"`),
+                    { statusCode: 403 }
+                );
+            }
+        }
         const doc = await saveNote(targetNs, args.title, args.content, args.slug, agent);
         // Refresh activity indicator
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
@@ -660,7 +670,17 @@ const TOOL_HANDLERS = {
     async read_note(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
         validateNamespace(targetNs);
-        await requireAccess(actorId, agent, 'agent', targetNs, 'read');
+        // Check namespace-level access first, then fall back to note-level share
+        const nsAccess = await hasAccess(actorId, agent, 'agent', targetNs, 'read');
+        if (!nsAccess) {
+            const noteAccess = await hasNoteAccess(targetNs, args.slug, actorId, 'read');
+            if (!noteAccess) {
+                throw Object.assign(
+                    new Error(`Actor "${agent}" does not have read access to "${targetNs}/${args.slug}"`),
+                    { statusCode: 403 }
+                );
+            }
+        }
         const doc = await readNote(targetNs, args.slug);
         return doc.content;
     },
@@ -668,7 +688,16 @@ const TOOL_HANDLERS = {
     async delete_note(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
         validateNamespace(targetNs);
-        await requireAccess(actorId, agent, 'agent', targetNs, 'delete');
+        const nsAccess = await hasAccess(actorId, agent, 'agent', targetNs, 'delete');
+        if (!nsAccess) {
+            const noteAccess = await hasNoteAccess(targetNs, args.slug, actorId, 'delete');
+            if (!noteAccess) {
+                throw Object.assign(
+                    new Error(`Actor "${agent}" does not have delete access to "${targetNs}/${args.slug}"`),
+                    { statusCode: 403 }
+                );
+            }
+        }
         await deleteNote(targetNs, args.slug);
         return `Deleted: ${targetNs}/${args.slug}`;
     },
@@ -684,7 +713,16 @@ const TOOL_HANDLERS = {
     async edit_note(args, agent, namespace, actorId) {
         const targetNs = args.namespace || namespace;
         validateNamespace(targetNs);
-        await requireAccess(actorId, agent, 'agent', targetNs, 'write');
+        const nsAccess = await hasAccess(actorId, agent, 'agent', targetNs, 'write');
+        if (!nsAccess) {
+            const noteAccess = await hasNoteAccess(targetNs, args.slug, actorId, 'write');
+            if (!noteAccess) {
+                throw Object.assign(
+                    new Error(`Actor "${agent}" does not have write access to "${targetNs}/${args.slug}"`),
+                    { statusCode: 403 }
+                );
+            }
+        }
         const result = await editNote(targetNs, args.slug, args.old_string, args.new_string, args.replace_all);
         return `Edited: ${result.namespace}/${result.slug} (${result.replacements} replacement${result.replacements === 1 ? '' : 's'})`;
     },

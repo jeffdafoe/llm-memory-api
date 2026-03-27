@@ -14,7 +14,7 @@ const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { resolveEffectiveLimits } = require('../services/virtual-agent');
 const { requireByName, resolveByName, resolveById } = require('../services/actors');
-const { requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
+const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
 const { requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
@@ -809,7 +809,13 @@ router.post('/admin/notes/read', requirePerm('notes', 'read'), adminRoute('notes
         });
     }
     validateNamespace(namespace);
-    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
+    const nsAccess = await hasAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'read');
+    if (!nsAccess) {
+        const noteAccess = await notePerms.hasNoteAccess(namespace, slug, req.actorId, 'read');
+        if (!noteAccess) {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
+        }
+    }
     const note = await readNote(namespace, slug);
     res.json({ note });
 }));
@@ -823,7 +829,13 @@ router.post('/admin/notes/save', requirePerm('notes', 'write'), adminRoute('note
         });
     }
     validateNamespace(namespace);
-    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
+    const nsAccess = await hasAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'write');
+    if (!nsAccess) {
+        const noteAccess = await notePerms.hasNoteAccess(namespace, slug, req.actorId, 'write');
+        if (!noteAccess) {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
+        }
+    }
     const doc = await saveNote(namespace, title, content, slug, null, null, extension);
     logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
     res.json({ note: doc });
@@ -838,7 +850,13 @@ router.post('/admin/notes/delete', requirePerm('notes', 'delete'), adminRoute('n
         });
     }
     validateNamespace(namespace);
-    await requireAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'delete');
+    const nsAccess = await hasAccess(req.actorId, req.authenticatedUser.username, 'user', namespace, 'delete');
+    if (!nsAccess) {
+        const noteAccess = await notePerms.hasNoteAccess(namespace, slug, req.actorId, 'delete');
+        if (!noteAccess) {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
+        }
+    }
     await deleteNote(namespace, slug);
     logAdmin('note_delete', { namespace, slug, user_id: req.authenticatedUser.id });
     res.json({ deleted: true, namespace, slug });
