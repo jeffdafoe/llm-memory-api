@@ -2598,9 +2598,13 @@ details[open] .summary-chevron { transform: rotate(90deg); }
     letter-spacing: 0.3px;
 }
 
-/* Shared note/folder indicators in tree */
-.shared-specific { color: #ffc107; }  /* yellow — shared with specific actors */
-.shared-all { color: #fd7e14; }       /* orange — shared with everyone */
+/* Shared note/folder indicators in tree — need high specificity to override .tree-folder-header i */
+.tree-folder-header i.shared-specific,
+.tree-file i.shared-specific,
+i.shared-specific { color: #ffc107 !important; opacity: 1 !important; }  /* yellow — shared with specific actors */
+.tree-folder-header i.shared-all,
+.tree-file i.shared-all,
+i.shared-all { color: #fd7e14 !important; opacity: 1 !important; }       /* orange — shared with everyone */
 
 .share-warning {
     background: rgba(255, 193, 7, 0.1);
