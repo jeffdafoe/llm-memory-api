@@ -151,6 +151,24 @@ async function getSharedReadAccess(actorId) {
     return result.rows;
 }
 
+// List actual documents shared with an actor, grouped by owner namespace.
+// Returns documents with their share permissions.
+async function listSharedDocuments(actorId) {
+    const result = await pool.query(
+        `SELECT DISTINCT d.namespace, d.slug, d.title, d.updated_at,
+                np.can_read, np.can_write, np.can_delete
+         FROM note_permissions np
+         JOIN documents d ON d.namespace = np.owner_namespace
+           AND (np.slug_pattern = d.slug OR (np.slug_pattern LIKE '%/' AND d.slug LIKE np.slug_pattern || '%'))
+         WHERE (np.grantee_actor_id = $1 OR np.grantee_actor_id IS NULL)
+           AND np.revoked_at IS NULL AND np.can_read = true
+           AND d.deleted_at IS NULL
+         ORDER BY d.namespace, d.slug`,
+        [actorId]
+    );
+    return result.rows;
+}
+
 module.exports = {
     createShare,
     revokeShare,
@@ -160,4 +178,5 @@ module.exports = {
     getSharesForSlug,
     hasNoteAccess,
     getSharedReadAccess,
+    listSharedDocuments,
 };

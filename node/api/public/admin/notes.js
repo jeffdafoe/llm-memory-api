@@ -53,6 +53,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     // ---- Sharing ----
     const shareDialog = ref(null);
     const sharesCache = ref({});   // namespace -> [share rows]
+    const sharedWithMe = ref([]);  // shares granted to current user, grouped by owner
 
     // Load shares for a namespace (for tree indicators)
     async function loadSharesForNamespace(namespace) {
@@ -83,6 +84,32 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         if (hasAll) return 'all';
         if (hasSpecific) return 'specific';
         return null;
+    }
+
+    // Load shared-with-me: get documents shared with current user
+    async function loadSharedWithMe() {
+        try {
+            const data = await api('/admin/shares/documents');
+            const byNs = data.namespaces || {};
+
+            const entries = [];
+            for (const [ns, docs] of Object.entries(byNs)) {
+                const canWrite = docs.some(d => d.can_write);
+                const canDelete = docs.some(d => d.can_delete);
+                entries.push({
+                    namespace: ns,
+                    notes: docs,
+                    tree: buildTree(docs),
+                    count: docs.length,
+                    canWrite,
+                    canDelete,
+                });
+            }
+
+            sharedWithMe.value = entries;
+        } catch (err) {
+            console.error('Failed to load shared-with-me:', err);
+        }
     }
 
     const isMermaid = computed(() => {
@@ -342,11 +369,12 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
             for (const { namespace, notes } of results) {
                 notesTreesRaw.value[namespace] = buildTree(notes);
             }
-            // Load sync mappings and shares for tree indicators
+            // Load sync mappings, shares, and shared-with-me data
             await loadAllSyncMappings();
             for (const ns of data.namespaces) {
                 loadSharesForNamespace(ns.namespace);
             }
+            loadSharedWithMe();
         } catch (err) {
             console.error('Failed to load notes:', err);
         }
@@ -1020,7 +1048,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
-        isSynced, getShareType, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving, shareDialog,
+        isSynced, getShareType, sharedWithMe, syncContextMenu, syncDialog, syncAgents, syncMappings, syncSaving, shareDialog,
         renameTarget, renameValue,
         renameConflict, renameConflictExecuting,
         loadNotes, toggleNamespace, toggleFolder,
