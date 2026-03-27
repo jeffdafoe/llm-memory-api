@@ -1,5 +1,5 @@
 import { inject } from 'vue';
-import template from './notes.html?raw';
+import template from './memory.html?raw';
 
 export default {
     name: 'NotesView',
