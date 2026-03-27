@@ -13,6 +13,48 @@ function parseNonNegativeFinite(value, fallback = 0) {
     return fallback;
 }
 
+// Query preprocessing: strip filler words/phrases before embedding.
+// "can you tell me about how the auth middleware works" → "auth middleware works"
+const FILLER_PHRASES = [
+    /^(can you |could you |please |tell me |show me |explain |describe |help me |i want to know |i need to know |what is |what are |what's |how do i |how does |how do |how to |where is |where are |where's |who is |who are |find me |search for |look for |give me |let me know )/i,
+    /^(about |regarding |related to |concerning )/i,
+];
+const FILLER_WORDS = new Set([
+    'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'do', 'does', 'did', 'have', 'has', 'had', 'will', 'would', 'could',
+    'should', 'can', 'may', 'might', 'shall', 'must',
+    'i', 'me', 'my', 'we', 'our', 'you', 'your',
+    'it', 'its', 'this', 'that', 'these', 'those',
+    'of', 'in', 'to', 'for', 'with', 'on', 'at', 'by', 'from',
+    'and', 'or', 'but', 'not', 'so', 'if', 'then',
+    'just', 'also', 'very', 'really', 'actually', 'basically',
+    'please', 'thanks', 'thank',
+]);
+
+function preprocessQuery(query) {
+    let cleaned = query.trim();
+    // Strip leading filler phrases (apply repeatedly for stacked phrases)
+    let prev;
+    do {
+        prev = cleaned;
+        for (const re of FILLER_PHRASES) {
+            cleaned = cleaned.replace(re, '');
+        }
+        cleaned = cleaned.trim();
+    } while (cleaned !== prev && cleaned.length > 0);
+
+    // If stripping phrases left us with nothing, fall back to original
+    if (cleaned.length < 3) return query.trim();
+
+    // Strip individual filler words
+    const words = cleaned.split(/\s+/).filter(w => !FILLER_WORDS.has(w.toLowerCase()));
+
+    // If we stripped too aggressively, fall back
+    if (words.length === 0) return query.trim();
+
+    return words.join(' ');
+}
+
 async function ingestContent(namespace, sourceFile, content) {
     const chunks = chunkByHeading(content);
 
@@ -52,13 +94,14 @@ async function ingestContent(namespace, sourceFile, content) {
 
 async function searchMemory(query, namespace, limit, readableNamespaces, actorId) {
     const maxResults = limit || 5;
-    const embeddings = await embed(query);
+    const cleanedQuery = preprocessQuery(query);
+    const embeddings = await embed(cleanedQuery);
     const queryVector = pgvector.toSql(embeddings[0]);
 
     // Build ILIKE pattern from query words to boost chunks whose source_file
     // matches the search terms. This catches cases where the filename is the
     // most relevant signal but the chunk content uses different terminology.
-    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const queryWords = cleanedQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
     // Load decay/boost config (validated to finite non-negative numbers)
     const halfLives = {
@@ -100,6 +143,23 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const filenameBoostExpr = filenameClauses.length > 0
         ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
         : '0';
+
+    // BM25 full-text search boost (gated by vector similarity threshold).
+    // Only boosts chunks that already have decent vector similarity, preventing
+    // keyword-heavy but semantically irrelevant chunks from polluting results.
+    // Convert query words to a tsquery using & (AND) for precision.
+    let bm25BoostExpr = '0';
+    if (queryWords.length > 0) {
+        const tsqIdx = paramIdx;
+        // plainto_tsquery is safe with arbitrary input — no special syntax needed
+        params.push(cleanedQuery);
+        paramIdx++;
+        // ts_rank returns 0-1ish; scale by 0.1 so it's a gentle boost, not dominant.
+        // Gate: only apply when vector similarity > 0.3 (cosine distance < 0.7)
+        bm25BoostExpr = `CASE WHEN (1 - (mc.embedding <=> $1)) > 0.3 AND mc.tsv IS NOT NULL
+            THEN 0.1 * ts_rank(mc.tsv, plainto_tsquery('english', $${tsqIdx}))
+            ELSE 0 END`;
+    }
 
     // Namespace filter param (global search only)
     let nsFilter = '';
@@ -174,7 +234,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     if (!namespace || namespace === '*') {
         sql = `
             SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
-                   ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${accessBoostExpression})
+                   ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${bm25BoostExpr} + ${accessBoostExpression})
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
             LEFT JOIN documents d ON d.namespace = mc.namespace AND LOWER(d.slug) = LOWER(mc.source_file)
@@ -185,7 +245,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     } else {
         sql = `
             SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
-                   ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${accessBoostExpression})
+                   ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${bm25BoostExpr} + ${accessBoostExpression})
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
             LEFT JOIN documents d ON d.namespace = mc.namespace AND LOWER(d.slug) = LOWER(mc.source_file)
