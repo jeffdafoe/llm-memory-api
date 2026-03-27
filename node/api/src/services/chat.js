@@ -4,7 +4,7 @@
 const pool = require('../db');
 const { log } = require('./logger');
 const systemHandler = require('./system-handler');
-const { resolveByName, resolveMultipleByName, requireByName } = require('./actors');
+const { resolveByName, resolveMultipleByName, requireByName, canAccessVirtualAgent } = require('./actors');
 
 const CHANNEL_PATTERN = /^[a-zA-Z0-9_-]{1,50}$/;
 
@@ -134,6 +134,12 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
                 if (vr.rows.length === 0) return;
                 const { handleDirectChat } = require('./virtual-agent');
                 for (const row of vr.rows) {
+                    // Access control: check if sender can use this virtual agent
+                    const vrActor = recipientActors.get(row.agent);
+                    if (vrActor) {
+                        const hasAccess = await canAccessVirtualAgent(fromActor.id, vrActor.id);
+                        if (!hasAccess) continue;
+                    }
                     const msgRow = results.find(r => r.agent === row.agent);
                     handleDirectChat(row.agent, fromAgent, message, msgRow ? msgRow.id : null).catch(() => {});
                 }

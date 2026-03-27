@@ -3,7 +3,7 @@
 
 const pool = require('../db');
 const { log } = require('./logger');
-const { requireByName } = require('./actors');
+const { requireByName, canAccessVirtualAgent } = require('./actors');
 
 function logMail(action, details) {
     log('mail', action, details);
@@ -42,6 +42,12 @@ async function mailSend(toAgent, fromAgent, subject, body, inReplyTo) {
                 ]);
                 if (!recipientRow.rows[0] || !recipientRow.rows[0].virtual) return;
                 if (senderRow.rows[0] && senderRow.rows[0].virtual) return;
+                // Access control: check if sender can use this virtual agent
+                const hasAccess = await canAccessVirtualAgent(fromActor.id, toActor.id);
+                if (!hasAccess) {
+                    logMail('virtual-agent-access-denied', { from_agent: fromAgent, to_agent: toAgent });
+                    return;
+                }
                 const { handleDirectMail } = require('./virtual-agent');
                 handleDirectMail(toAgent, fromAgent, result.rows[0].id).catch(err => {
                     logMail('virtual-agent-trigger-error', { to_agent: toAgent, from_agent: fromAgent, error: err.message });
