@@ -152,6 +152,52 @@
                 <p class="ts" style="margin-top: 6px;">When enabled, other users can find this actor when sharing memories.</p>
             </div>
 
+            <!-- Virtual Agent Access (only for virtual agents) -->
+            <template v-if="selectedActorConfig.virtual">
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <span class="agent-card-title"><i class="icon-shield"></i>Virtual Agent Access</span>
+                    </div>
+                    <p class="ts" style="margin-bottom: 8px;">Controls who can use this virtual agent (send mail/chat to trigger responses).</p>
+
+                    <label class="checkbox-label" style="margin-bottom: 12px;">
+                        <input type="checkbox" v-model="vaAccessPublic" @change="toggleVaPublicAccess">
+                        Public — any user can use this agent
+                    </label>
+
+                    <div v-if="!vaAccessPublic">
+                        <p class="ts" style="margin-bottom: 8px;">The creator always has access. Add specific users below.</p>
+                        <table class="actor-perm-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th style="width: 3em;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="grant in vaAccessList" :key="grant.id">
+                                    <td>{{ grant.grantee_name }}</td>
+                                    <td><button class="btn btn-ghost btn-compact btn-danger" @click="removeVaAccessGrant(grant.id)" title="Revoke">&times;</button></td>
+                                </tr>
+                                <tr v-if="vaAccessList.length === 0">
+                                    <td colspan="2" class="ts">No specific grants — only the creator has access.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div style="margin-top: 8px;">
+                            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                                <select v-model="newVaAccessTarget" style="margin-bottom: 0; flex: 1;">
+                                    <option value="">Select user...</option>
+                                    <option v-for="a in availableVaAccessTargets" :key="a.id" :value="a.id">{{ a.name }}</option>
+                                </select>
+                                <button class="btn btn-secondary btn-compact" @click="addVaAccessGrant">Grant</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
             <!-- Admin Permissions (only for UI users) -->
             <template v-if="selectedActorConfig.is_user">
                 <div class="agent-card">
