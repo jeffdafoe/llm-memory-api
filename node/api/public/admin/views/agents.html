@@ -11,7 +11,8 @@
                     <col style="width: 10em;">
                     <col style="width: 10em;">
                     <col>
-                    <col style="width: 14em;">
+                    <col style="width: 9em;">
+                    <col style="width: 9em;">
                     <col class="col-time">
                 </colgroup>
                 <thead>
@@ -20,7 +21,8 @@
                         <th>Agent</th>
                         <th>Personality</th>
                         <th>Provider / Model</th>
-                        <th>Access</th>
+                        <th>Visibility</th>
+                        <th>VA Access</th>
                         <th class="time-cell">Last Seen</th>
                     </tr>
                 </thead>
@@ -39,13 +41,16 @@
                             {{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}
                             <br v-if="agent.pricing_info"><small v-if="agent.pricing_info" style="opacity: 0.7;">{{ agent.pricing_info }}</small>
                         </td>
-                        <td class="ts access-cell">
-                            <span v-if="agent.visibility_summary" class="access-badge" :class="agent.visibility_summary === 'all agents' ? 'access-badge--accent' : ''">
-                                <i class="icon-eye"></i> {{ agent.visibility_summary }}
+                        <td class="ts">
+                            <span class="access-badge" :class="agent.visibility_summary === 'all agents' ? 'access-badge--accent' : ''">
+                                {{ agent.visibility_summary }}
                             </span>
+                        </td>
+                        <td class="ts">
                             <span v-if="agent.va_access_summary" class="access-badge" :class="agent.va_access_summary === 'public' ? 'access-badge--accent' : ''">
-                                <i class="icon-users"></i> {{ agent.va_access_summary }}
+                                {{ agent.va_access_summary }}
                             </span>
+                            <span v-else class="access-badge">—</span>
                         </td>
                         <td class="time-cell ts">
                             {{ timeAgo(agent.last_seen) }}
