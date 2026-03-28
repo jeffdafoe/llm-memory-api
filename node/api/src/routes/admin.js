@@ -369,7 +369,7 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
                      THEN 'public'
                  WHEN (SELECT COUNT(*) FROM virtual_agent_access WHERE virtual_agent_id = s.actor_id AND grantee_actor_id IS NOT NULL) = 0
                      THEN 'creator only'
-                 ELSE (SELECT COUNT(*)::text || ' grant' || CASE WHEN COUNT(*) != 1 THEN 's' ELSE '' END
+                 ELSE (SELECT COUNT(*)::text || ' agent' || CASE WHEN COUNT(*) != 1 THEN 's' ELSE '' END
                         FROM virtual_agent_access WHERE virtual_agent_id = s.actor_id AND grantee_actor_id IS NOT NULL)
              END AS summary
          ) va ON true`;
