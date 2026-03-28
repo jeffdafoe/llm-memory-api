@@ -1607,8 +1607,8 @@ dialog article header button[aria-label="Close"]::after {
 /* Access column in agents list — lightweight text badges, not pills */
 .access-cell {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    flex-direction: row;
+    gap: 12px;
 }
 
 .access-badge {
