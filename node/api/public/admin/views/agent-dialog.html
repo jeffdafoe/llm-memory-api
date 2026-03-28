@@ -41,18 +41,14 @@
             <div v-if="agentProfileEditing" class="agent-card" style="margin-bottom: 20px;">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <label>Provider
-                        <select v-model="agentProfileProvider" @change="onProfileProviderChange">
-                            <option value="">None</option>
-                            <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
-                        </select>
+                        <custom-select v-model="agentProfileProvider" @update:model-value="onProfileProviderChange"
+                            :options="[{ value: '', label: 'None' }].concat((providerRegistry || []).map(p => ({ value: p.name, label: p.label })))"
+                            placeholder="None" />
                     </label>
                     <label>Model
-                        <select v-model="agentProfileModel">
-                            <option value="">None</option>
-                            <option v-for="m in modelsForProvider(agentProfileProvider)" :key="m.id" :value="m.id">
-                                {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
-                            </option>
-                        </select>
+                        <custom-select v-model="agentProfileModel"
+                            :options="[{ value: '', label: 'None' }].concat(modelsForProvider(agentProfileProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                            placeholder="None" />
                     </label>
                 </div>
                 <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
@@ -185,10 +181,9 @@
                             </label>
                             <label v-else-if="cap.type === 'select'">
                                 {{ cap.label }}
-                                <select v-model="agentSettingsConfig[key]"
-                                    :disabled="!!capabilityDisabled(cap, agentSettingsConfig)">
-                                    <option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option>
-                                </select>
+                                <custom-select v-model="agentSettingsConfig[key]"
+                                    :disabled="!!capabilityDisabled(cap, agentSettingsConfig)"
+                                    :options="cap.options.map(opt => ({ value: opt, label: opt }))" />
                                 <small class="ts" style="display: block;">{{ capabilityDisabled(cap, agentSettingsConfig) || cap.description }}</small>
                             </label>
                             <label v-else>

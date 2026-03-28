@@ -57,18 +57,14 @@
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <label>Provider
-                            <select v-model="editAgentProvider" @change="onEditProviderChange">
-                                <option value="">None</option>
-                                <option v-for="p in providerRegistry" :key="p.name" :value="p.name">{{ p.label }}</option>
-                            </select>
+                            <custom-select v-model="editAgentProvider" @update:model-value="onEditProviderChange"
+                                :options="[{ value: '', label: 'None' }].concat((providerRegistry || []).map(p => ({ value: p.name, label: p.label })))"
+                                placeholder="None" />
                         </label>
                         <label>Model
-                            <select v-model="editAgentModel">
-                                <option value="">None</option>
-                                <option v-for="m in modelsForProvider(editAgentProvider)" :key="m.id" :value="m.id">
-                                    {{ m.label }}<template v-if="m.deprecated"> (deprecated)</template>
-                                </option>
-                            </select>
+                            <custom-select v-model="editAgentModel"
+                                :options="[{ value: '', label: 'None' }].concat(modelsForProvider(editAgentProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                                placeholder="None" />
                         </label>
                     </div>
                     <small v-if="modelDeprecation(editAgentProvider, editAgentModel)" style="color: var(--error); display: block; margin: 4px 0;">
@@ -91,7 +87,7 @@
                                     </label>
                                     <label v-else-if="cap.type === 'select'" :title="'Default: ' + (cap.default || 'none')">
                                         {{ cap.label }}
-                                        <select v-model="editAgentConfig[key]"><option v-for="opt in cap.options" :key="opt" :value="opt">{{ opt }}</option></select>
+                                        <custom-select v-model="editAgentConfig[key]" :options="cap.options.map(opt => ({ value: opt, label: opt }))" />
                                         <small class="ts" style="display: block;">{{ cap.description }}</small>
                                     </label>
                                     <label v-else :title="'Default: ' + cap.default">
@@ -171,10 +167,9 @@
 
                         <div style="margin-top: 8px;">
                             <div style="display: flex; gap: 8px; align-items: flex-end;">
-                                <select v-model="newVaAccessTarget" style="margin-bottom: 0; flex: 1;">
-                                    <option value="">Select user...</option>
-                                    <option v-for="a in availableVaAccessTargets" :key="a.id" :value="a.id">{{ a.name }}</option>
-                                </select>
+                                <custom-select v-model="newVaAccessTarget" style="margin-bottom: 0; flex: 1;"
+                                    :options="availableVaAccessTargets.map(a => ({ value: a.id, label: a.name }))"
+                                    placeholder="Select user..." />
                                 <button class="btn btn-secondary btn-compact" @click="addVaAccessGrant">Grant</button>
                             </div>
                         </div>
@@ -226,10 +221,9 @@
 
                         <div style="margin-top: 8px;">
                             <div style="display: flex; gap: 8px; align-items: flex-end;">
-                                <select v-model="newVisibilityTarget" style="margin-bottom: 0; flex: 1;">
-                                    <option value="">Select agent...</option>
-                                    <option v-for="a in availableVisibilityTargets" :key="a.id" :value="a.id">{{ a.name }} ({{ [a.is_agent ? 'agent' : '', a.is_user ? 'user' : ''].filter(Boolean).join(', ') }})</option>
-                                </select>
+                                <custom-select v-model="newVisibilityTarget" style="margin-bottom: 0; flex: 1;"
+                                    :options="availableVisibilityTargets.map(a => ({ value: a.id, label: a.name + ' (' + [a.is_agent ? 'agent' : '', a.is_user ? 'user' : ''].filter(Boolean).join(', ') + ')' }))"
+                                    placeholder="Select agent..." />
                                 <button class="btn btn-secondary btn-compact" @click="addVisibilityGrant">Add</button>
                             </div>
                         </div>
@@ -353,10 +347,9 @@
                         </div>
                     </div>
                     <label>Template
-                        <select v-model="newActorTemplateId">
-                            <option :value="null">None</option>
-                            <option v-for="t in welcomeTemplates.filter(t => t.kind === 'welcome')" :key="t.id" :value="t.id">{{ t.name }}</option>
-                        </select>
+                        <custom-select v-model="newActorTemplateId"
+                            :options="[{ value: null, label: 'None' }].concat(welcomeTemplates.filter(t => t.kind === 'welcome').map(t => ({ value: t.id, label: t.name })))"
+                            placeholder="None" />
                     </label>
                 </div>
             </template>

@@ -27,9 +27,10 @@ import ActorDialogs from './views/ActorDialogs.js';
 import AgentDialog from './views/AgentDialog.js';
 import MiscDialogs from './views/MiscDialogs.js';
 import AccessView from './views/AccessView.js';
+import CustomSelect from './components/CustomSelect.js';
 
 createApp({
-    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView },
+    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView, CustomSelect },
     setup() {
         const currentView = ref('dashboard');
 
