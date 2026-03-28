@@ -70,6 +70,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     const newActorTemplateId = ref(null);
     const newActorCreating = ref(false);
     const newActorPassphrase = ref(null);
+    const createSource = ref('config'); // 'config' (full) or 'agents' (streamlined virtual agent)
 
     async function loadActorsConfig() {
         actorsConfigLoading.value = true;
@@ -468,15 +469,17 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
 
     // ─── Create Actor ───
 
-    function startCreateActor() {
+    function startCreateActor(source) {
         agentsModule.loadProviderRegistry();
         agentsModule.loadTemplates();
         actorDialogMode.value = 'create';
+        createSource.value = source || 'config';
+        const isAgentMode = createSource.value === 'agents';
         // Use a stub object so the dialog opens
-        selectedActorConfig.value = { id: null, name: '', is_agent: true, is_user: false, virtual: false };
+        selectedActorConfig.value = { id: null, name: '', is_agent: true, is_user: false, virtual: isAgentMode };
         actorConfigLoading.value = false;
         newActorName.value = '';
-        newActorVirtual.value = false;
+        newActorVirtual.value = isAgentMode;
         editAgentProvider.value = '';
         editAgentModel.value = '';
         editAgentPersonality.value = '';
@@ -644,7 +647,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentConfig,
         agentConfigSaving, onEditProviderChange, saveAgentConfiguration,
         // Create actor
-        newActorName, newActorVirtual,
+        createSource, newActorName, newActorVirtual,
         newActorUiAccess, newActorPassword,
         newActorTemplateId, newActorCreating, newActorPassphrase,
         startCreateActor, createActor,
