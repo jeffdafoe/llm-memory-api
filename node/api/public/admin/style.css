@@ -1604,6 +1604,35 @@ dialog article header button[aria-label="Close"]::after {
     border-radius: 3px;
 }
 
+/* Access column in agents list — lightweight text badges, not pills */
+.access-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.access-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.access-badge i {
+    font-size: 11px;
+    opacity: 0.6;
+}
+
+.access-badge--accent {
+    color: var(--accent-text);
+}
+
+.access-badge--accent i {
+    opacity: 1;
+}
+
 .actor-perm-table { margin-bottom: 0; }
 
 .actor-perm-table input[type="checkbox"] {
