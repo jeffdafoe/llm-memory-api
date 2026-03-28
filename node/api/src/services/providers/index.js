@@ -37,6 +37,8 @@ function resolveProvider(providerName) {
 
 // Create a call function for a given provider/model/apiKey/configuration.
 // This is the main entry point used by virtual-agent.js.
+// The returned function is wrapped with a request timeout (from config) so that
+// hung API calls don't block the retry pipeline indefinitely.
 function createProvider(provider, model, apiKey, configuration) {
     const mod = resolveProvider(provider);
     if (!mod) {
@@ -45,7 +47,24 @@ function createProvider(provider, model, apiKey, configuration) {
     // Resolve apiId if the model entry defines one (e.g. Anthropic short names → dated API IDs)
     const modelEntry = mod.models[model];
     const apiModel = (modelEntry && modelEntry.apiId) || model;
-    return mod.createCall(apiModel, apiKey, configuration);
+    const callFn = mod.createCall(apiModel, apiKey, configuration);
+
+    // Wrap with request timeout. If the provider call doesn't resolve within
+    // the configured limit, reject with a timeout error so retryWithBackoff
+    // can kick in. The abandoned fetch response is silently discarded by GC.
+    return function callWithTimeout(systemPrompt, userMessage) {
+        const timeoutSeconds = parseInt(config.get('virtual_agent_request_timeout')) || 120;
+        const timeoutMs = timeoutSeconds * 1000;
+
+        return Promise.race([
+            callFn(systemPrompt, userMessage),
+            new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error(`Provider request timed out after ${timeoutSeconds}s (${provider}/${model})`));
+                }, timeoutMs);
+            })
+        ]);
+    };
 }
 
 // Flatten a structured system prompt into a string.
