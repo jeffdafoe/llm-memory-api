@@ -33,11 +33,11 @@
                     <div class="agent-card-header">
                         <div>
                             <span class="agent-card-title"><i class="icon-user"></i>{{ createSource === 'agents' ? 'Identity' : 'Identity' }}</span>
-                            <div class="agent-card-description">How this {{ createSource === 'agents' ? 'agent' : 'actor' }} appears in the dashboard</div>
+                            <div class="agent-card-description">Choose a name for your agent</div>
                         </div>
                     </div>
                     <label>Name
-                        <input type="text" v-model="newActorName" placeholder="e.g. research" autofocus>
+                        <input type="text" v-model="newActorName" placeholder="e.g. Ted" autofocus>
                     </label>
                     <label v-if="createSource !== 'agents'" class="checkbox-label">
                         <input type="checkbox" v-model="newActorVirtual">
