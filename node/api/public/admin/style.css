@@ -652,7 +652,7 @@ table {
 thead th {
     font-size: 10px;
     font-weight: 600;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     padding: 8px 12px;
