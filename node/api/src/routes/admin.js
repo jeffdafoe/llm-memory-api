@@ -345,10 +345,30 @@ router.post('/admin/error-log', requirePerm('logs', 'read'), adminRoute('error-l
 // POST /admin/agents — list all agents
 router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-list', async (req, res) => {
     const visibleIds = await getVisibleActorIds(req.actorId);
+    // Subqueries for visibility and VA access summaries shown in the agent list
     let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
-                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, ac.configuration
+                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, ac.configuration,
+                COALESCE(vis.summary, 'self only') AS visibility_summary,
+                va.summary AS va_access_summary
          FROM agent_status s
-         LEFT JOIN agent_configuration ac ON ac.actor_id = s.actor_id`;
+         LEFT JOIN agent_configuration ac ON ac.actor_id = s.actor_id
+         LEFT JOIN LATERAL (
+             SELECT CASE
+                 WHEN EXISTS (SELECT 1 FROM actor_visibility_configuration WHERE actor_id = s.actor_id AND target_actor_id IS NULL)
+                     THEN 'all agents'
+                 ELSE (SELECT COUNT(*)::text || ' agent' || CASE WHEN COUNT(*) != 1 THEN 's' ELSE '' END
+                        FROM actor_visibility_configuration WHERE actor_id = s.actor_id AND target_actor_id IS NOT NULL)
+             END AS summary
+         ) vis ON true
+         LEFT JOIN LATERAL (
+             SELECT CASE
+                 WHEN NOT s.virtual THEN NULL
+                 WHEN EXISTS (SELECT 1 FROM virtual_agent_access WHERE virtual_agent_id = s.actor_id AND grantee_actor_id IS NULL)
+                     THEN 'public'
+                 ELSE (SELECT COUNT(*)::text || ' grant' || CASE WHEN COUNT(*) != 1 THEN 's' ELSE '' END
+                        FROM virtual_agent_access WHERE virtual_agent_id = s.actor_id AND grantee_actor_id IS NOT NULL)
+             END AS summary
+         ) va ON true`;
     const params = [];
     if (visibleIds !== null) {
         sql += ' WHERE s.actor_id = ANY($1)';
