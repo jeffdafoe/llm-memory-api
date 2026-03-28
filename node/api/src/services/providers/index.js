@@ -10,8 +10,9 @@ const anthropic = require('./anthropic');
 const google = require('./google');
 const openai = require('./openai');
 const perplexity = require('./perplexity');
+const xai = require('./xai');
 
-const providerModules = [anthropic, google, openai, perplexity];
+const providerModules = [anthropic, google, openai, perplexity, xai];
 
 // Build lookup maps: by name and by alias.
 const providersByName = {};
