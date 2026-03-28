@@ -59,6 +59,12 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Strict-Transport-Security "max-age=86400; includeSubDomains" always;
 
+    # Block WordPress/CMS scanning bots — return 444 (drop connection, no response body)
+    location ~* ^/(wp-admin|wp-login|wp-content|wp-includes|wordpress|xmlrpc\.php|wp-cron\.php) {
+        access_log off;
+        return 444;
+    }
+
     # Rate-limited auth endpoints — 5 req/s per IP, burst of 10 with delay
     location /v1/agent/login {
         limit_req zone=auth_limit burst=10 nodelay;
