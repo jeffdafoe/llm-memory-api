@@ -1,29 +1,40 @@
 <div>
 <!-- Unified Actor Dialog (create + edit) -->
 <dialog :open="selectedActorConfig !== null" @close="closeActorConfig()">
-    <article v-if="selectedActorConfig" class="actor-config-dialog" style="border-radius: 16px; padding: 0;">
-        <header style="padding: 24px 24px 0;">
-            <h3 :style="selectedActorConfig.is_agent ? { color: agentColor(selectedActorConfig.name) } : {}">
-                <template v-if="actorDialogMode === 'create'">
-                    {{ createSource === 'agents' ? 'Create Agent' : 'Create Actor' }}
-                </template>
-                <template v-else>
-                    <i class="icon-shield" style="opacity: 0.5; margin-right: 4px;"></i>
-                    {{ selectedActorConfig.name }}
-                    <span v-if="selectedActorConfig.is_agent" class="badge badge-type-agent">agent</span>
-                    <span v-if="selectedActorConfig.is_user" class="badge badge-type-user">user</span>
-                    <span v-if="selectedActorConfig.virtual" class="badge badge-type-agent" style="background: var(--accent); color: #000;">virtual</span>
-                </template>
-            </h3>
+    <article v-if="selectedActorConfig" class="actor-config-dialog">
+        <header>
+            <div>
+                <h3 :style="selectedActorConfig.is_agent ? { color: agentColor(selectedActorConfig.name) } : {}">
+                    <template v-if="actorDialogMode === 'create'">
+                        {{ createSource === 'agents' ? 'Create Agent' : 'Create Actor' }}
+                    </template>
+                    <template v-else>
+                        <i class="icon-shield" style="opacity: 0.5; margin-right: 4px;"></i>
+                        {{ selectedActorConfig.name }}
+                        <span v-if="selectedActorConfig.is_agent" class="badge badge-type-agent">agent</span>
+                        <span v-if="selectedActorConfig.is_user" class="badge badge-type-user">user</span>
+                        <span v-if="selectedActorConfig.virtual" class="badge badge-type-agent" style="background: var(--accent); color: #000;">virtual</span>
+                    </template>
+                </h3>
+                <div class="actor-dialog-subtitle" v-if="actorDialogMode === 'create'">
+                    {{ createSource === 'agents' ? 'Set the name and model configuration' : 'Set up identity and access' }}
+                </div>
+                <div class="actor-dialog-subtitle" v-else>
+                    Permissions, visibility, and access controls
+                </div>
+            </div>
             <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
         </header>
-        <div class="dialog-body" v-if="!actorConfigLoading" style="padding: 0 24px 24px;">
+        <div class="dialog-body" v-if="!actorConfigLoading">
 
             <!-- ─── Identity (create mode only) ─── -->
             <template v-if="actorDialogMode === 'create'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-user"></i>{{ createSource === 'agents' ? 'New Agent' : 'Identity' }}</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-user"></i>{{ createSource === 'agents' ? 'Identity' : 'Identity' }}</span>
+                            <div class="agent-card-description">How this {{ createSource === 'agents' ? 'agent' : 'actor' }} appears in the dashboard</div>
+                        </div>
                     </div>
                     <label>Name
                         <input type="text" v-model="newActorName" placeholder="e.g. research" autofocus>
@@ -39,7 +50,10 @@
             <template v-if="actorDialogMode === 'create'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-cpu"></i>Agent Configuration</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-cpu"></i>Model Configuration</span>
+                            <div class="agent-card-description">Provider and credentials used for requests</div>
+                        </div>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <label>Provider
@@ -97,15 +111,20 @@
             <template v-if="actorDialogMode === 'edit'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-share-2"></i>Sharing</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-share-2"></i>Sharing</span>
+                        </div>
+                        <span class="agent-card-state" :class="selectedActorConfig.visible_to_others ? 'agent-card-state--success' : ''">
+                            {{ selectedActorConfig.visible_to_others ? 'Visible' : 'Private' }}
+                        </span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-                            <input type="checkbox" v-model="selectedActorConfig.visible_to_others" @change="toggleActorVisibleToOthers">
-                            Visible to others for sharing
-                        </label>
+                    <div class="setting-row">
+                        <div class="setting-row-text">
+                            <div class="setting-row-title">Visible to others</div>
+                            <div class="setting-row-description">Other users can find this actor when sharing memories</div>
+                        </div>
+                        <input type="checkbox" v-model="selectedActorConfig.visible_to_others" @change="toggleActorVisibleToOthers">
                     </div>
-                    <p class="ts" style="margin-top: 6px;">When enabled, other users can find this actor when sharing memories.</p>
                 </div>
             </template>
 
@@ -113,14 +132,22 @@
             <template v-if="actorDialogMode === 'edit' && selectedActorConfig.virtual">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-shield"></i>Virtual Agent Access</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-users"></i>Virtual Agent Access</span>
+                            <div class="agent-card-description">Who can use this virtual agent (send mail/chat to trigger responses)</div>
+                        </div>
+                        <span class="agent-card-state" :class="vaAccessPublic ? 'agent-card-state--accent' : ''">
+                            {{ vaAccessPublic ? 'Public' : (vaAccessList.length + ' grant' + (vaAccessList.length !== 1 ? 's' : '')) }}
+                        </span>
                     </div>
-                    <p class="ts" style="margin-bottom: 8px;">Controls who can use this virtual agent (send mail/chat to trigger responses).</p>
 
-                    <label class="checkbox-label" style="margin-bottom: 12px;">
+                    <div class="setting-row" style="margin-bottom: 12px;">
+                        <div class="setting-row-text">
+                            <div class="setting-row-title">Public access</div>
+                            <div class="setting-row-description">Any user can use this agent</div>
+                        </div>
                         <input type="checkbox" v-model="vaAccessPublic" @change="toggleVaPublicAccess">
-                        Public — any user can use this agent
-                    </label>
+                    </div>
 
                     <div v-if="!vaAccessPublic">
                         <p class="ts" style="margin-bottom: 8px;">The creator always has access. Add specific users below.</p>
@@ -159,17 +186,22 @@
             <template v-if="actorDialogMode === 'edit'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-eye"></i>Who They Can See</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-eye"></i>Who They Can See</span>
+                            <div class="agent-card-description">Which other agents this actor can see when checking who's online</div>
+                        </div>
+                        <span class="agent-card-state" :class="actorHasWildcardVis ? 'agent-card-state--accent' : ''">
+                            {{ actorHasWildcardVis ? 'All agents' : (actorVisibilityGrants.length + ' grant' + (actorVisibilityGrants.length !== 1 ? 's' : '')) }}
+                        </span>
                     </div>
 
-                    <p class="ts" style="margin-bottom: 8px;">
-                        Which other agents this actor can see when checking who's online.
-                    </p>
-
-                    <label class="checkbox-label">
+                    <div class="setting-row" style="margin-bottom: 12px;">
+                        <div class="setting-row-text">
+                            <div class="setting-row-title">See all agents</div>
+                            <div class="setting-row-description">Wildcard visibility — can see every registered agent</div>
+                        </div>
                         <input type="checkbox" v-model="actorHasWildcardVis">
-                        Can see all agents
-                    </label>
+                    </div>
 
                     <div v-if="!actorHasWildcardVis">
                         <table class="actor-perm-table">
@@ -209,17 +241,22 @@
             <template v-if="actorDialogMode === 'edit'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-shield"></i>Namespace Permissions</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-folder"></i>Namespace Permissions</span>
+                            <div class="agent-card-description">All actors have implicit full access to their own namespace ({{ selectedActorConfig.name }})</div>
+                        </div>
+                        <span class="agent-card-state" :class="actorHasWildcardPerm ? 'agent-card-state--accent' : ''">
+                            {{ actorHasWildcardPerm ? 'Full access' : (actorPermissions.length + ' namespace' + (actorPermissions.length !== 1 ? 's' : '')) }}
+                        </span>
                     </div>
 
-                    <label class="checkbox-label">
+                    <div class="setting-row" style="margin-bottom: 12px;">
+                        <div class="setting-row-text">
+                            <div class="setting-row-title">Full access to all namespaces</div>
+                            <div class="setting-row-description">Read, write, and delete in every namespace</div>
+                        </div>
                         <input type="checkbox" v-model="actorHasWildcardPerm">
-                        Full access to all namespaces
-                    </label>
-
-                    <p class="ts" style="margin-bottom: 8px;">
-                        All actors have implicit full access to their own namespace ({{ selectedActorConfig.name }}).
-                    </p>
+                    </div>
 
                     <table v-if="!actorHasWildcardPerm" class="actor-perm-table">
                         <thead>
@@ -268,10 +305,13 @@
             <template v-if="actorDialogMode === 'edit'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-key"></i>UI Access</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-lock"></i>UI Access</span>
+                        </div>
+                        <span class="agent-card-state" :class="selectedActorConfig.is_user ? 'agent-card-state--success' : ''">
+                            {{ selectedActorConfig.is_user ? 'Password set' : 'No access' }}
+                        </span>
                     </div>
-                    <p v-if="selectedActorConfig.is_user" class="ts" style="margin-bottom: 8px;">This actor has UI login access.</p>
-                    <p v-else class="ts" style="margin-bottom: 8px;">This actor does not have UI login access. Set a password to enable it.</p>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input type="password" v-model="actorPasswordInput" :placeholder="selectedActorConfig.is_user ? 'New password' : 'Set password'" style="flex: 1; max-width: 20em;">
                         <button class="btn btn-primary btn-compact" @click="setActorPassword" :disabled="actorPasswordSaving || !actorPasswordInput">
@@ -288,7 +328,10 @@
             <template v-if="actorDialogMode === 'create' && createSource !== 'agents'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-key"></i>UI Access</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-lock"></i>UI Access</span>
+                            <div class="agent-card-description">Admin dashboard login credentials</div>
+                        </div>
                     </div>
                     <label class="checkbox-label">
                         <input type="checkbox" v-model="newActorUiAccess">
@@ -304,7 +347,10 @@
             <template v-if="actorDialogMode === 'create' && createSource !== 'agents' && !newActorVirtual">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-mail"></i>Welcome Template</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-mail"></i>Welcome Template</span>
+                            <div class="agent-card-description">Onboarding mail sent after creation</div>
+                        </div>
                     </div>
                     <label>Template
                         <select v-model="newActorTemplateId">
@@ -319,14 +365,22 @@
             <template v-if="actorDialogMode === 'edit' && selectedActorConfig.is_user">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-shield"></i>Admin Permissions</span>
+                        <div>
+                            <span class="agent-card-title"><i class="icon-shield"></i>Admin Permissions</span>
+                            <div class="agent-card-description">What this user can access in the admin dashboard</div>
+                        </div>
+                        <span class="agent-card-state" :class="actorHasWildcardAdmin ? 'agent-card-state--accent' : ''">
+                            {{ actorHasWildcardAdmin ? 'Full access' : (actorAdminPerms.filter(r => r.granted && r.granted.length > 0).length + ' resource' + (actorAdminPerms.filter(r => r.granted && r.granted.length > 0).length !== 1 ? 's' : '')) }}
+                        </span>
                     </div>
-                    <p class="ts" style="margin-bottom: 8px;">Controls what this user can access in the admin dashboard.</p>
 
-                    <label class="checkbox-label" style="margin-bottom: 12px;">
+                    <div class="setting-row" style="margin-bottom: 12px;">
+                        <div class="setting-row-text">
+                            <div class="setting-row-title">Full access</div>
+                            <div class="setting-row-description">All resources, all actions</div>
+                        </div>
                         <input type="checkbox" v-model="actorHasWildcardAdmin">
-                        Full access (all resources, all actions)
-                    </label>
+                    </div>
 
                     <div v-if="!actorHasWildcardAdmin">
                         <table style="margin-bottom: 0;">
