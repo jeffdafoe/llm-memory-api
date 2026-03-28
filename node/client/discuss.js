@@ -166,7 +166,7 @@ if (cliApiUrl && cliAgent && cliPassphrase) {
     if (!mcpPath) {
         if (cliAgent && cliPassphrase) {
             console.error('Could not find .mcp.json and no --api-url provided.');
-            console.error('Use --api-url https://memory.jeffdafoe.com/v1 or run from a project directory.');
+            console.error('Use --api-url https://llm-memory.net/v1 or run from a project directory.');
         } else {
             console.error('Could not find .mcp.json — run from a project directory or use --mcp-config <path>');
         }
