@@ -39,12 +39,12 @@
                             {{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}
                             <br v-if="agent.pricing_info"><small v-if="agent.pricing_info" style="opacity: 0.7;">{{ agent.pricing_info }}</small>
                         </td>
-                        <td class="ts">
-                            <span v-if="agent.visibility_summary" class="agent-card-state" :class="agent.visibility_summary === 'all agents' ? 'agent-card-state--accent' : ''">
-                                <i class="icon-eye" style="font-size: 11px;"></i> {{ agent.visibility_summary }}
+                        <td class="ts access-cell">
+                            <span v-if="agent.visibility_summary" class="access-badge" :class="agent.visibility_summary === 'all agents' ? 'access-badge--accent' : ''">
+                                <i class="icon-eye"></i> {{ agent.visibility_summary }}
                             </span>
-                            <span v-if="agent.va_access_summary" class="agent-card-state" :class="agent.va_access_summary === 'public' ? 'agent-card-state--accent' : ''" style="margin-left: 4px;">
-                                <i class="icon-users" style="font-size: 11px;"></i> {{ agent.va_access_summary }}
+                            <span v-if="agent.va_access_summary" class="access-badge" :class="agent.va_access_summary === 'public' ? 'access-badge--accent' : ''">
+                                <i class="icon-users"></i> {{ agent.va_access_summary }}
                             </span>
                         </td>
                         <td class="time-cell ts">

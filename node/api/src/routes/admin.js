@@ -356,6 +356,8 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
              SELECT CASE
                  WHEN EXISTS (SELECT 1 FROM actor_visibility_configuration WHERE actor_id = s.actor_id AND target_actor_id IS NULL)
                      THEN 'all agents'
+                 WHEN (SELECT COUNT(*) FROM actor_visibility_configuration WHERE actor_id = s.actor_id AND target_actor_id IS NOT NULL) = 0
+                     THEN 'self only'
                  ELSE (SELECT COUNT(*)::text || ' agent' || CASE WHEN COUNT(*) != 1 THEN 's' ELSE '' END
                         FROM actor_visibility_configuration WHERE actor_id = s.actor_id AND target_actor_id IS NOT NULL)
              END AS summary
@@ -365,6 +367,8 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
                  WHEN NOT s.virtual THEN NULL
                  WHEN EXISTS (SELECT 1 FROM virtual_agent_access WHERE virtual_agent_id = s.actor_id AND grantee_actor_id IS NULL)
                      THEN 'public'
+                 WHEN (SELECT COUNT(*) FROM virtual_agent_access WHERE virtual_agent_id = s.actor_id AND grantee_actor_id IS NOT NULL) = 0
+                     THEN 'creator only'
                  ELSE (SELECT COUNT(*)::text || ' grant' || CASE WHEN COUNT(*) != 1 THEN 's' ELSE '' END
                         FROM virtual_agent_access WHERE virtual_agent_id = s.actor_id AND grantee_actor_id IS NOT NULL)
              END AS summary
