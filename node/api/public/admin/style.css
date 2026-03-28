@@ -37,6 +37,7 @@ html, [data-theme="dark"] {
     --text-primary: #e4e4e7;
     --text-secondary: #a1a1aa;
     --text-muted: #71717a;
+    --text-heading: #b4b4be;
     --text-inverse: #1a1a2e;
 
     --accent: #3b82f6;
@@ -72,6 +73,7 @@ html, [data-theme="dark"] {
     --text-primary: #18181b;
     --text-secondary: #52525b;
     --text-muted: #a1a1aa;
+    --text-heading: #3f3f46;
     --text-inverse: #ffffff;
 
     --accent: #2563eb;
@@ -652,7 +654,7 @@ table {
 thead th {
     font-size: 10px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-heading);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     padding: 8px 12px;
