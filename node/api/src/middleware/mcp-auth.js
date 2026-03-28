@@ -136,7 +136,14 @@ async function mcpAuth(req, res, next) {
         // API key check failed — fall through
     }
 
-    res.set('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);
+    // Suppress OAuth discovery hint when a raw API key was presented but failed.
+    // API keys are 64-char hex (no colon); HMAC tokens always contain a colon.
+    // Sending the resource_metadata hint causes Claude Code to attempt OAuth
+    // discovery and cache a stale empty token, permanently breaking API key auth.
+    const looksLikeApiKey = token && /^[0-9a-f]{64}$/i.test(token);
+    if (!looksLikeApiKey) {
+        res.set('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);
+    }
     return res.status(401).json({
         error: 'invalid_token',
         error_description: 'Invalid token or API key'
