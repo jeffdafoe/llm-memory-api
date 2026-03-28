@@ -1328,7 +1328,7 @@ dialog article header button[aria-label="Close"]::after {
     top: 0;
     z-index: 2;
     background: var(--bg-elevated);
-    padding: 24px 24px 16px;
+    padding: 16px 24px 12px;
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
 }
@@ -1336,7 +1336,7 @@ dialog article header button[aria-label="Close"]::after {
 .actor-config-dialog > .dialog-body {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 24px 24px;
+    padding: 12px 24px 24px;
 }
 
 /* Subtitle below dialog title */
