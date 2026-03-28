@@ -95,15 +95,18 @@ async function tryApiKeyAuth(token) {
 async function mcpAuth(req, res, next) {
     const header = req.headers.authorization;
 
-    if (!header || !header.startsWith('Bearer ')) {
+    let token;
+    if (header && header.startsWith('Bearer ')) {
+        token = header.slice(7);
+    } else if (req.query.token) {
+        token = req.query.token;
+    } else {
         res.set('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);
         return res.status(401).json({
             error: 'unauthorized',
             error_description: 'Missing or invalid Authorization header'
         });
     }
-
-    const token = header.slice(7);
 
     // Try HMAC OAuth token first (fast path — no DB lookup)
     const hmacAgent = tryHmacAuth(token);
