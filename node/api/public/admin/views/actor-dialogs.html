@@ -35,8 +35,8 @@
                 </div>
             </template>
 
-            <!-- ─── Agent Configuration (create mode or edit mode for agents) ─── -->
-            <template v-if="actorDialogMode === 'create' || selectedActorConfig.is_agent">
+            <!-- ─── Agent Configuration (create mode only — edit uses agent-dialog profile editor) ─── -->
+            <template v-if="actorDialogMode === 'create'">
                 <div class="agent-card">
                     <div class="agent-card-header">
                         <span class="agent-card-title"><i class="icon-cpu"></i>Agent Configuration</span>
@@ -61,13 +61,10 @@
                         &#9888; {{ modelDeprecation(editAgentProvider, editAgentModel) }}
                     </small>
 
-                    <!-- Virtual agent fields — always shown for agents-source create, or when virtual -->
-                    <template v-if="(actorDialogMode === 'create' && (newActorVirtual || createSource === 'agents')) || (actorDialogMode === 'edit' && selectedActorConfig.virtual)">
-                        <label>Instructions
-                            <textarea v-model="editAgentPersonality" placeholder="Describe how this agent should behave. e.g. You are a helpful research assistant. Be thorough and cite sources." rows="4" style="resize: vertical;"></textarea>
-                        </label>
+                    <!-- Virtual agent fields — API key for create -->
+                    <template v-if="newActorVirtual || createSource === 'agents'">
                         <label>API Key
-                            <input type="password" v-model="editAgentApiKey" :placeholder="actorDialogMode === 'edit' ? '(unchanged — enter new key to replace)' : 'Provider API key (encrypted at rest)'">
+                            <input type="password" v-model="editAgentApiKey" placeholder="Provider API key (encrypted at rest)">
                         </label>
 
                         <!-- Model-specific configuration -->
@@ -93,11 +90,6 @@
                         </div>
                     </template>
 
-                    <div v-if="actorDialogMode === 'edit'" style="margin-top: 12px;">
-                        <button class="btn btn-primary btn-compact" @click="saveAgentConfiguration" :disabled="agentConfigSaving">
-                            {{ agentConfigSaving ? 'Saving...' : 'Save Configuration' }}
-                        </button>
-                    </div>
                 </div>
             </template>
 

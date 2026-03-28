@@ -532,7 +532,14 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
                 : 'Actor "' + data.name + '" created' + (data.welcome_mail_sent ? ' with welcome mail' : '');
             showToast(msg, 'success');
             loadActorsConfig();
-            agentsModule.loadAgents();
+            await agentsModule.loadAgents();
+
+            // Open the new agent in the detail editor
+            const newAgent = agentsModule.agents.value.find(a => a.agent === data.name);
+            if (newAgent) {
+                closeActorConfig();
+                agentsModule.viewAgent(newAgent);
+            }
         } catch (err) {
             console.error('Failed to create actor:', err);
             showToast('Failed: ' + err.message, 'error');
