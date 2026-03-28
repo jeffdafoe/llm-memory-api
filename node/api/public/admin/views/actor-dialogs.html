@@ -5,7 +5,7 @@
         <header style="padding: 24px 24px 0;">
             <h3 :style="selectedActorConfig.is_agent ? { color: agentColor(selectedActorConfig.name) } : {}">
                 <template v-if="actorDialogMode === 'create'">
-                    Create Actor
+                    {{ createSource === 'agents' ? 'Create Agent' : 'Create Actor' }}
                 </template>
                 <template v-else>
                     <i class="icon-shield" style="opacity: 0.5; margin-right: 4px;"></i>
@@ -23,12 +23,12 @@
             <template v-if="actorDialogMode === 'create'">
                 <div class="agent-card">
                     <div class="agent-card-header">
-                        <span class="agent-card-title"><i class="icon-user"></i>Identity</span>
+                        <span class="agent-card-title"><i class="icon-user"></i>{{ createSource === 'agents' ? 'New Agent' : 'Identity' }}</span>
                     </div>
                     <label>Name
                         <input type="text" v-model="newActorName" placeholder="e.g. research" autofocus>
                     </label>
-                    <label class="checkbox-label">
+                    <label v-if="createSource !== 'agents'" class="checkbox-label">
                         <input type="checkbox" v-model="newActorVirtual">
                         Virtual agent (API-backed, auto-responds)
                     </label>
@@ -61,10 +61,10 @@
                         &#9888; {{ modelDeprecation(editAgentProvider, editAgentModel) }}
                     </small>
 
-                    <!-- Virtual agent specific fields -->
-                    <template v-if="(actorDialogMode === 'create' && newActorVirtual) || (actorDialogMode === 'edit' && selectedActorConfig.virtual)">
-                        <label>Personality
-                            <input type="text" v-model="editAgentPersonality" placeholder="e.g. Contrarian. Challenges everything.">
+                    <!-- Virtual agent fields — always shown for agents-source create, or when virtual -->
+                    <template v-if="(actorDialogMode === 'create' && (newActorVirtual || createSource === 'agents')) || (actorDialogMode === 'edit' && selectedActorConfig.virtual)">
+                        <label>Instructions
+                            <textarea v-model="editAgentPersonality" placeholder="Describe how this agent should behave. e.g. You are a helpful research assistant. Be thorough and cite sources." rows="4" style="resize: vertical;"></textarea>
                         </label>
                         <label>API Key
                             <input type="password" v-model="editAgentApiKey" :placeholder="actorDialogMode === 'edit' ? '(unchanged — enter new key to replace)' : 'Provider API key (encrypted at rest)'">
@@ -292,8 +292,8 @@
                 </div>
             </template>
 
-            <!-- ─── UI Access (create mode) ─── -->
-            <template v-if="actorDialogMode === 'create'">
+            <!-- ─── UI Access (create mode, config source only) ─── -->
+            <template v-if="actorDialogMode === 'create' && createSource !== 'agents'">
                 <div class="agent-card">
                     <div class="agent-card-header">
                         <span class="agent-card-title"><i class="icon-key"></i>UI Access</span>
@@ -308,8 +308,8 @@
                 </div>
             </template>
 
-            <!-- ─── Welcome Template (create mode, non-virtual only) ─── -->
-            <template v-if="actorDialogMode === 'create' && !newActorVirtual">
+            <!-- ─── Welcome Template (create mode from config, non-virtual only) ─── -->
+            <template v-if="actorDialogMode === 'create' && createSource !== 'agents' && !newActorVirtual">
                 <div class="agent-card">
                     <div class="agent-card-header">
                         <span class="agent-card-title"><i class="icon-mail"></i>Welcome Template</span>
