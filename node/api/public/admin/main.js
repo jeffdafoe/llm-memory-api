@@ -30,7 +30,7 @@ import AccessView from './views/AccessView.js';
 import CustomSelect from './components/CustomSelect.js';
 
 createApp({
-    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView, CustomSelect },
+    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView },
     setup() {
         const currentView = ref('dashboard');
 
@@ -397,7 +397,7 @@ createApp({
 
         return appState;
     }
-}).directive('focus', {
+}).component('custom-select', CustomSelect).directive('focus', {
     // Auto-focus an element when it's mounted (used by inline rename inputs)
     mounted(el) { el.focus(); el.select(); }
 }).mount('#app');
