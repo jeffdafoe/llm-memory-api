@@ -1635,6 +1635,19 @@ dialog article header button[aria-label="Close"]::after {
     opacity: 1;
 }
 
+/* Name availability check in create dialog */
+.name-check {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.name-check--checking { color: var(--text-muted); }
+.name-check--available { color: var(--success); }
+.name-check--taken { color: var(--error); }
+.name-check--invalid { color: var(--error); }
+
 .actor-perm-table { margin-bottom: 0; }
 
 .actor-perm-table input[type="checkbox"] {
