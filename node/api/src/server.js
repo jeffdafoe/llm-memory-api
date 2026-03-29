@@ -60,6 +60,11 @@ app.get('/register', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'landing', 'register.html'));
 });
 
+// Agents detail page
+app.get('/agents', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'landing', 'agents.html'));
+});
+
 // Landing page for public domains, admin redirect for internal domains
 app.get('/', (req, res) => {
     const landingPage = path.join(__dirname, '..', 'public', 'landing', 'index.html');

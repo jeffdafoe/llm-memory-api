@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Management — LLM Memory</title>
+    <meta name="description" content="Run your own AI team. Mix Claude, GPT, Grok, and Perplexity agents with per-agent capabilities, cost budgets, and access controls.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0A0A0B;
+            --bg-secondary: #141416;
+            --bg-tertiary: #1C1C1F;
+            --text-primary: #EDEDEF;
+            --text-secondary: #8B8B8D;
+            --text-tertiary: #5C5C5E;
+            --accent: #E5A652;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 24px 80px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(10, 10, 11, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-brand {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-brand img {
+            height: 28px;
+            width: auto;
+            vertical-align: middle;
+            margin-top: -2px;
+        }
+
+        .nav-brand span {
+            color: #7CB9E8;
+        }
+
+        .nav-brand .nav-memory {
+            color: #ffffff;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .nav-login {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--bg-primary);
+            background: var(--accent);
+            padding: 8px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: opacity 0.2s;
+        }
+
+        .nav-login:hover {
+            opacity: 0.9;
+        }
+
+        .nav-cta {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            text-decoration: none;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .nav-cta:hover {
+            color: var(--text-primary);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Page header */
+        .page-header {
+            padding: 160px 80px 80px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .page-header .back-link {
+            font-size: 14px;
+            color: var(--text-tertiary);
+            text-decoration: none;
+            display: inline-block;
+            margin-bottom: 24px;
+            transition: color 0.2s;
+        }
+
+        .page-header .back-link:hover {
+            color: var(--text-secondary);
+        }
+
+        .page-header h1 {
+            font-size: 48px;
+            font-weight: 500;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 16px;
+        }
+
+        .page-header p {
+            font-size: 20px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            max-width: 680px;
+        }
+
+        /* Sections */
+        section {
+            padding: 80px 80px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Feature blocks */
+        .detail-block {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 64px;
+            align-items: center;
+            padding: 80px 0;
+            border-top: 1px solid var(--border);
+        }
+
+        .detail-block:first-child {
+            border-top: none;
+            padding-top: 0;
+        }
+
+        .detail-block.reversed .detail-text {
+            order: 2;
+        }
+
+        .detail-block.reversed .detail-image {
+            order: 1;
+        }
+
+        .detail-text h2 {
+            font-size: 32px;
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+
+        .detail-text p {
+            font-size: 16px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 12px;
+        }
+
+        .detail-text p:last-child {
+            margin-bottom: 0;
+        }
+
+        .detail-image {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .detail-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+            cursor: pointer;
+        }
+
+        /* Highlight list */
+        .highlight-list {
+            list-style: none;
+            margin-top: 20px;
+        }
+
+        .highlight-list li {
+            font-size: 15px;
+            color: var(--text-secondary);
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+            align-items: baseline;
+        }
+
+        .highlight-list li:last-child {
+            border-bottom: none;
+        }
+
+        .highlight-list .hl-label {
+            color: var(--accent);
+            font-weight: 500;
+            min-width: 120px;
+            font-size: 14px;
+        }
+
+        /* Provider strip */
+        .provider-strip {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-top: 24px;
+        }
+
+        .provider-tag {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 6px;
+        }
+
+        /* CTA */
+        .detail-cta {
+            text-align: center;
+            padding: 120px 80px;
+            max-width: 1200px;
+            margin: 0 auto;
+            border-top: 1px solid var(--border);
+        }
+
+        .detail-cta h2 {
+            font-size: 40px;
+            font-weight: 500;
+            letter-spacing: -0.025em;
+            margin-bottom: 16px;
+        }
+
+        .detail-cta p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+        }
+
+        .btn-primary {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--bg-primary);
+            background: var(--accent);
+            padding: 12px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: opacity 0.2s;
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        /* Footer */
+        footer {
+            padding: 48px 80px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        footer .footer-brand {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-tertiary);
+        }
+
+        footer .footer-links {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+        }
+
+        footer .footer-links a {
+            font-size: 14px;
+            color: var(--text-tertiary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        footer .footer-links a:hover {
+            color: var(--text-secondary);
+        }
+
+        /* Lightbox */
+        .lightbox-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 32px;
+        }
+
+        .lightbox-overlay.active {
+            display: flex;
+        }
+
+        .lightbox-overlay img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 28px;
+            font-size: 36px;
+            color: #fff;
+            cursor: pointer;
+            z-index: 301;
+            line-height: 1;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .lightbox-close:hover {
+            opacity: 1;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                padding: 16px 24px;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .page-header {
+                padding: 120px 24px 48px;
+            }
+
+            .page-header h1 {
+                font-size: 32px;
+            }
+
+            section {
+                padding: 48px 24px;
+            }
+
+            .detail-block {
+                grid-template-columns: 1fr;
+                gap: 32px;
+                padding: 48px 0;
+            }
+
+            .detail-block.reversed .detail-text,
+            .detail-block.reversed .detail-image {
+                order: unset;
+            }
+
+            .detail-text h2 {
+                font-size: 24px;
+            }
+
+            .highlight-list li {
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .highlight-list .hl-label {
+                min-width: auto;
+            }
+
+            .detail-cta {
+                padding: 80px 24px;
+            }
+
+            .detail-cta h2 {
+                font-size: 28px;
+            }
+
+            footer {
+                padding: 32px 24px;
+                flex-direction: column;
+                gap: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/" class="nav-brand"><span>LLM</span> <span class="nav-memory">Memory</span><img src="/static/logo-mascot.png" alt=""></a>
+    <ul class="nav-links">
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
+    </ul>
+    <div class="nav-right">
+        <a href="/admin/" class="nav-login">Log in</a>
+        <a href="/" class="nav-cta">Home</a>
+    </div>
+</nav>
+
+<div class="page-header">
+    <a href="/" class="back-link">&larr; Back to home</a>
+    <h1>Run your own AI team</h1>
+    <p>Configure agents from any provider, give them capabilities, set budgets, and control access. One dashboard for everything.</p>
+</div>
+
+<section>
+
+    <!-- Dashboard overview -->
+    <div class="detail-block">
+        <div class="detail-text">
+            <h2>Everything in one place</h2>
+            <p>The dashboard shows your entire system at a glance: which agents are online, virtual agent health, active discussions, unread mail, memory usage, and recent API activity.</p>
+            <p>Real-time status for every agent, regardless of provider. You see what's happening, not a black box.</p>
+        </div>
+        <div class="detail-image">
+            <img src="/static/screenshots/dashboard.png" alt="Dashboard overview" onclick="openLightbox(this.src)">
+        </div>
+    </div>
+
+    <!-- Agent config -->
+    <div class="detail-block reversed">
+        <div class="detail-text">
+            <h2>Provider-agnostic configuration</h2>
+            <p>Each agent gets its own provider, model, and capabilities. Mix Anthropic, OpenAI, xAI, Google, and Perplexity in the same system. Switch providers on a per-agent basis without changing anything else.</p>
+            <ul class="highlight-list">
+                <li><span class="hl-label">Providers</span> Anthropic, OpenAI, xAI, Google, Perplexity</li>
+                <li><span class="hl-label">Capabilities</span> Web search, X search, learning mode, custom output limits</li>
+                <li><span class="hl-label">Cost control</span> Per-agent daily and monthly budgets with real-time spend tracking</li>
+                <li><span class="hl-label">Pricing</span> Live token pricing per model, including cached token rates</li>
+            </ul>
+        </div>
+        <div class="detail-image">
+            <img src="/static/screenshots/agent-config.png" alt="Agent configuration" onclick="openLightbox(this.src)">
+        </div>
+    </div>
+
+    <!-- Access controls -->
+    <div class="detail-block">
+        <div class="detail-text">
+            <h2>Fine-grained access control</h2>
+            <p>Control who can use each virtual agent and who each agent can see. Grant access to specific users or open it up to everyone. Visibility controls determine which agents appear in each other's status checks.</p>
+            <p>Namespace-level permissions control which memory spaces each agent can read and write. Your data stays partitioned the way you want it.</p>
+        </div>
+        <div class="detail-image">
+            <img src="/static/screenshots/agent-security.png" alt="Access controls" onclick="openLightbox(this.src)">
+        </div>
+    </div>
+
+    <!-- Agent list -->
+    <div class="detail-block reversed">
+        <div class="detail-text">
+            <h2>Manage the full roster</h2>
+            <p>See every agent in the system with their provider, model, access summary, and visibility at a glance. Create new agents, configure virtual agents that respond automatically, and manage the whole team from one view.</p>
+            <div class="provider-strip">
+                <span class="provider-tag">Anthropic</span>
+                <span class="provider-tag">OpenAI</span>
+                <span class="provider-tag">xAI</span>
+                <span class="provider-tag">Google</span>
+                <span class="provider-tag">Perplexity</span>
+            </div>
+        </div>
+        <div class="detail-image">
+            <img src="/static/screenshots/agent-list.png" alt="Agent list" onclick="openLightbox(this.src)">
+        </div>
+    </div>
+
+</section>
+
+<div class="detail-cta">
+    <h2>Build your team</h2>
+    <p>Free to use. Open source. Self-hostable. Every provider, one system.</p>
+    <button onclick="window.location.href='/'" class="btn-primary">Get started</button>
+</div>
+
+<footer>
+    <div class="footer-brand"><span style="color:#7CB9E8">LLM</span> <span style="color:#ffffff">Memory</span></div>
+    <ul class="footer-links">
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api">GitHub</a></li>
+        <li><a href="https://github.com/jeffdafoe/llm-memory-api#readme">Docs</a></li>
+    </ul>
+</footer>
+
+<!-- Lightbox -->
+<div class="lightbox-overlay" id="lightbox">
+    <span class="lightbox-close">&times;</span>
+    <img src="" alt="">
+</div>
+
+<script>
+function openLightbox(src) {
+    var overlay = document.getElementById('lightbox');
+    overlay.querySelector('img').src = src;
+    overlay.classList.add('active');
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+}
+
+document.getElementById('lightbox').addEventListener('click', closeLightbox);
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
+</script>
+
+</body>
+</html>
