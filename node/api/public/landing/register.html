@@ -135,8 +135,8 @@
             font-size: 12px;
             color: var(--text-secondary);
             margin: 12px 0;
-            white-space: pre;
-            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         .copy-btn {
             display: inline-block;
@@ -157,6 +157,41 @@
         .step { display: none; }
         .step.active { display: block; }
 
+        .client-selector {
+            margin-bottom: 24px;
+        }
+        .client-selector label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .client-options {
+            display: flex;
+            gap: 8px;
+        }
+        .client-option {
+            flex: 1;
+            padding: 10px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+        }
+        .client-option:hover {
+            border-color: var(--text-tertiary);
+            color: var(--text-primary);
+        }
+        .client-option.active {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
         .back-link {
             display: block;
             text-align: center;
@@ -245,29 +280,67 @@
             <button class="copy-btn" onclick="copyPassphrase()">Copy Passphrase</button>
         </div>
 
-        <div class="guide-step">
-            <span class="guide-step-num">1</span>
-            <h3>Save your credentials</h3>
-            <p>Create a file called <code>.agent.json</code> in your project root. This tells your agent how to connect.</p>
-            <div class="config-block" id="configBlock"></div>
-            <button class="copy-btn" onclick="copyConfig()">Copy .agent.json</button>
+        <div class="client-selector">
+            <label>How will you connect?</label>
+            <div class="client-options">
+                <button class="client-option active" onclick="selectClient('claude-code')">Claude Code</button>
+                <button class="client-option" onclick="selectClient('claude-ai')">claude.ai</button>
+            </div>
         </div>
 
-        <div class="guide-step">
-            <span class="guide-step-num">2</span>
-            <h3>Add the MCP server</h3>
-            <p>Add LLM Memory to your <code>.mcp.json</code> so Claude can use it as a tool.</p>
-            <div class="config-block" id="mcpBlock"></div>
-            <button class="copy-btn" onclick="copyMcp()">Copy .mcp.json</button>
+        <!-- Claude Code instructions -->
+        <div id="instructions-claude-code" class="client-instructions">
+            <div class="guide-step">
+                <span class="guide-step-num">1</span>
+                <h3>Save your credentials</h3>
+                <p>Create a file called <code>.agent.json</code> in your project root (where you run Claude Code). This is used by client tools for authentication.</p>
+                <div class="config-block" id="configBlock"></div>
+                <button class="copy-btn" onclick="copyConfig()">Copy .agent.json</button>
+            </div>
+
+            <div class="guide-step">
+                <span class="guide-step-num">2</span>
+                <h3>Add the MCP server</h3>
+                <p>Create or edit <code>.mcp.json</code> in your project root. This connects Claude to LLM Memory.</p>
+                <div class="config-block" id="mcpBlock"></div>
+                <button class="copy-btn" onclick="copyMcp()">Copy .mcp.json</button>
+            </div>
+
+            <div class="guide-step">
+                <span class="guide-step-num">3</span>
+                <h3>Read your instructions</h3>
+                <p>Your agent already has onboarding instructions waiting. Start a Claude Code session and say:</p>
+                <div class="config-block">"Read your instructions"</div>
+                <p>This walks your agent through available tools, session workflow, and how to use memory across sessions.</p>
+            </div>
         </div>
 
-        <div class="guide-step">
-            <span class="guide-step-num">3</span>
-            <h3>Try it out</h3>
-            <p>Start a Claude Code session in your project directory. Claude will automatically connect to LLM Memory. Try asking it to save a note:</p>
-            <div class="config-block">"Save a note called hello-world with the content 'My memory is working!'"</div>
-            <p>Then in a new session, ask Claude to search for it:</p>
-            <div class="config-block">"Search my memory for hello world"</div>
+        <!-- claude.ai instructions -->
+        <div id="instructions-claude-ai" class="client-instructions" style="display:none">
+            <div class="guide-step">
+                <span class="guide-step-num">1</span>
+                <h3>Add the MCP integration</h3>
+                <p>In claude.ai, go to <strong>Settings → Integrations</strong> and add a new integration with this URL:</p>
+                <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
+                <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
+                <p>When prompted, enter your agent name as the Client ID and your passphrase as the Client Secret.</p>
+            </div>
+
+            <div class="guide-step">
+                <span class="guide-step-num">2</span>
+                <h3>Save your credentials</h3>
+                <p>Keep your agent name and passphrase somewhere safe. You'll need them if you reconnect or use other tools.</p>
+                <div class="config-block" id="configBlockAi"></div>
+                <button class="copy-btn" onclick="copyConfig()">Copy credentials</button>
+            </div>
+
+            <div class="guide-step">
+                <span class="guide-step-num">3</span>
+                <h3>Read your instructions</h3>
+                <p>Your agent already has onboarding instructions waiting. Start a new conversation and say:</p>
+                <div class="config-block">"Read your instructions using the llm-memory tools"</div>
+                <p>This walks your agent through available tools, session workflow, and how to use memory across sessions.</p>
+            </div>
         </div>
 
         <button class="btn btn-primary" onclick="window.location='/'">Done</button>
@@ -370,6 +443,8 @@ async function register() {
                 }
             }
         }, null, 2);
+        document.getElementById('configBlockAi').textContent =
+            'Agent name: ' + data.agent + '\nPassphrase: ' + data.passphrase;
         showStep(3);
     } catch (err) {
         showError(2, 'Something went wrong. Try again.');
@@ -404,6 +479,19 @@ function copyConfig() {
     navigator.clipboard.writeText(config);
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy .agent.json', 2000);
+}
+
+function selectClient(client) {
+    document.querySelectorAll('.client-option').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    document.querySelectorAll('.client-instructions').forEach(el => el.style.display = 'none');
+    document.getElementById('instructions-' + client).style.display = '';
+}
+
+function copyMcpUrl() {
+    navigator.clipboard.writeText('https://llm-memory.net/mcp');
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy URL', 2000);
 }
 
 // Auto-fill invite code from URL
