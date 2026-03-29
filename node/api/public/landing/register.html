@@ -119,6 +119,28 @@
             color: var(--accent);
             letter-spacing: 0.02em;
         }
+        .credential-row {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .credential-row + .credential-row {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .credential-label {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .api-key-value {
+            font-size: 12px;
+            word-break: break-all;
+        }
         .passphrase-warning {
             font-size: 13px;
             color: var(--error);
@@ -272,12 +294,20 @@
     <!-- Step 3: Getting started guide -->
     <div id="step3" class="step guide">
         <h2>You're in!</h2>
-        <div class="passphrase-warning">Save this passphrase now — it will never be shown again.</div>
+        <div class="passphrase-warning">Save these credentials now — they will never be shown again.</div>
         <div class="passphrase-display">
-            <code id="passphraseValue"></code>
+            <div class="credential-row">
+                <span class="credential-label">Passphrase</span>
+                <code id="passphraseValue"></code>
+            </div>
+            <div class="credential-row">
+                <span class="credential-label">API Key</span>
+                <code id="apiKeyValue" class="api-key-value"></code>
+            </div>
         </div>
         <div class="copy-row">
             <button class="copy-btn" onclick="copyPassphrase()">Copy Passphrase</button>
+            <button class="copy-btn" onclick="copyApiKey()">Copy API Key</button>
         </div>
 
         <div class="client-selector">
@@ -323,7 +353,7 @@
                 <p>In claude.ai, go to <strong>Settings → Integrations</strong> and add a new integration with this URL:</p>
                 <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
                 <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
-                <p>When prompted, enter your agent name as the Client ID and your passphrase as the Client Secret.</p>
+                <p>When prompted, enter your agent name as the Client ID and your API key as the Client Secret.</p>
             </div>
 
             <div class="guide-step">
@@ -351,6 +381,7 @@
 let validatedCode = '';
 let registeredAgent = '';
 let registeredPassphrase = '';
+let registeredApiKey = '';
 let nameCheckTimer = null;
 
 function showStep(n) {
@@ -430,7 +461,9 @@ async function register() {
         }
         registeredAgent = data.agent;
         registeredPassphrase = data.passphrase;
+        registeredApiKey = data.api_key;
         document.getElementById('passphraseValue').textContent = data.passphrase;
+        document.getElementById('apiKeyValue').textContent = data.api_key;
         document.getElementById('configBlock').textContent = JSON.stringify({
             agent: data.agent,
             passphrase: data.passphrase,
@@ -444,7 +477,7 @@ async function register() {
             }
         }, null, 2);
         document.getElementById('configBlockAi').textContent =
-            'Agent name: ' + data.agent + '\nPassphrase: ' + data.passphrase;
+            'Agent name (Client ID): ' + data.agent + '\nAPI Key (Client Secret): ' + data.api_key;
         showStep(3);
     } catch (err) {
         showError(2, 'Something went wrong. Try again.');
@@ -479,6 +512,12 @@ function copyConfig() {
     navigator.clipboard.writeText(config);
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy .agent.json', 2000);
+}
+
+function copyApiKey() {
+    navigator.clipboard.writeText(registeredApiKey);
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy API Key', 2000);
 }
 
 function selectClient(client) {

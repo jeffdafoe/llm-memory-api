@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const pool = require('../db');
 const generatePassphrase = require('eff-diceware-passphrase');
-const { generateSalt, hash: hashToken } = require('../services/hashing');
+const { generateSalt, hash: hashToken, generateKey } = require('../services/hashing');
 const { mailSend } = require('../services/mail');
 
 // Parse YAML-style frontmatter from template content (same logic as admin.js)
@@ -103,6 +103,43 @@ router.post('/api/register', async (req, res) => {
             [agentName, inv.id]
         );
 
+        // Get the new actor's ID for permission grants
+        const actorResult = await client.query('SELECT id FROM actors WHERE name = $1', [agentName]);
+        const actorId = actorResult.rows[0].id;
+
+        // Grant all MCP permissions (full tool access)
+        await client.query(
+            `INSERT INTO agent_permissions (actor_id, permission_id)
+             SELECT $1, id FROM permissions`,
+            [actorId]
+        );
+
+        // Grant namespace permissions on own namespace (read/write/delete)
+        await client.query(
+            `INSERT INTO namespace_permissions (actor_id, namespace, can_read, can_write, can_delete)
+             VALUES ($1, $2, true, true, true)`,
+            [actorId, agentName]
+        );
+
+        // Grant admin UI access (dashboard, agents, communications)
+        await client.query(
+            `INSERT INTO admin_permissions (actor_id, resource, action) VALUES
+             ($1, 'dashboard', 'read'),
+             ($1, 'agents', 'read'),
+             ($1, 'agents', 'write'),
+             ($1, 'comms', 'read')`,
+            [actorId]
+        );
+
+        // Generate API key for MCP/OAuth authentication
+        const apiKey = generateKey();
+        const apiKeySalt = generateSalt();
+        const apiKeyHash = hashToken(apiKey, apiKeySalt);
+        await client.query(
+            `INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, label) VALUES ($1, $2, $3, 'default')`,
+            [actorId, apiKeyHash, apiKeySalt]
+        );
+
         await client.query('COMMIT');
 
         // Apply default welcome template (same as admin-created agents)
@@ -135,7 +172,8 @@ router.post('/api/register', async (req, res) => {
             ok: true,
             agent: agentName,
             passphrase,
-            message: 'Account created. Save your passphrase — it will not be shown again.'
+            api_key: apiKey,
+            message: 'Account created. Save your passphrase and API key — they will not be shown again.'
         });
     } catch (err) {
         await client.query('ROLLBACK');
