@@ -809,6 +809,12 @@ tbody tr:last-child td { border-bottom: none; }
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: pointer;
+}
+.usage-cell.expanded {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
 }
 .code-cell code {
     font-family: 'JetBrains Mono', monospace;

@@ -1,9 +1,19 @@
-import { ref } from 'vue';
+import { ref, reactive } from 'vue';
 
 export function useAccess({ api, showToast }) {
     const accessRequests = ref([]);
     const inviteCodes = ref([]);
     const accessSubTab = ref('requests');
+    // Track which usage cells are expanded (by request id)
+    const expandedUsage = reactive(new Set());
+
+    function toggleUsage(id) {
+        if (expandedUsage.has(id)) {
+            expandedUsage.delete(id);
+        } else {
+            expandedUsage.add(id);
+        }
+    }
 
     async function loadAccessRequests() {
         const res = await api('/admin/access-requests', {});
@@ -62,7 +72,7 @@ export function useAccess({ api, showToast }) {
     }
 
     return {
-        accessRequests, inviteCodes, accessSubTab,
+        accessRequests, inviteCodes, accessSubTab, expandedUsage, toggleUsage,
         loadAccess, loadAccessRequests, loadInviteCodes,
         approveRequest, rejectRequest, generateCodes, copyCode, copyUrl, deleteCode
     };
