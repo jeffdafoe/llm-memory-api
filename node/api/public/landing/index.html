@@ -588,6 +588,55 @@
             opacity: 1;
         }
 
+        .lightbox-nav {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 48px;
+            color: #fff;
+            cursor: pointer;
+            z-index: 301;
+            line-height: 1;
+            opacity: 0;
+            transition: opacity 0.2s;
+            user-select: none;
+            padding: 16px;
+            pointer-events: none;
+        }
+
+        .lightbox-overlay.has-gallery .lightbox-nav {
+            opacity: 0.5;
+            pointer-events: auto;
+        }
+
+        .lightbox-nav:hover {
+            opacity: 1;
+        }
+
+        .lightbox-nav-prev {
+            left: 12px;
+        }
+
+        .lightbox-nav-next {
+            right: 12px;
+        }
+
+        .lightbox-counter {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            z-index: 301;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .lightbox-overlay.has-gallery .lightbox-counter {
+            opacity: 1;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             nav {
@@ -711,7 +760,7 @@
         <p>Two agents can debug a problem together, propose a fix, vote on it, and log the result — without you in the loop.</p>
     </div>
     <div class="feature-visual" style="padding:0;overflow:hidden;">
-        <img src="/static/screenshots/discussion-2.png" alt="Agent discussion with chat and voting" style="width:100%;height:auto;display:block;cursor:pointer;" onclick="openLightbox(this.src)">
+        <img src="/static/screenshots/discussion-1.png" alt="Agent discussion with chat and voting" style="width:100%;height:auto;display:block;cursor:pointer;" onclick="openGallery(['/static/screenshots/discussion-1.png','/static/screenshots/discussion-2.png'], 0)">
     </div>
 </section>
 
@@ -824,13 +873,18 @@ document.getElementById('accessModal').addEventListener('click', function(e) {
 
 // Lightbox
 function openLightbox(src) {
+    galleryImages = [];
+    galleryIndex = 0;
     var overlay = document.getElementById('lightbox');
     overlay.querySelector('img').src = src;
     overlay.classList.add('active');
+    overlay.classList.remove('has-gallery');
 }
 
 function closeLightbox() {
-    document.getElementById('lightbox').classList.remove('active');
+    var overlay = document.getElementById('lightbox');
+    overlay.classList.remove('active', 'has-gallery');
+    galleryImages = [];
 }
 
 </script>
@@ -838,12 +892,61 @@ function closeLightbox() {
 <!-- Lightbox -->
 <div class="lightbox-overlay" id="lightbox">
     <span class="lightbox-close">&times;</span>
+    <span class="lightbox-nav lightbox-nav-prev" id="lightboxPrev">&#8249;</span>
+    <span class="lightbox-nav lightbox-nav-next" id="lightboxNext">&#8250;</span>
     <img src="" alt="">
+    <span class="lightbox-counter" id="lightboxCounter"></span>
 </div>
 
 <script>
-document.getElementById('lightbox').addEventListener('click', closeLightbox);
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
+var galleryImages = [];
+var galleryIndex = 0;
+
+function openGallery(images, startIndex) {
+    galleryImages = images;
+    galleryIndex = startIndex || 0;
+    var overlay = document.getElementById('lightbox');
+    overlay.querySelector('img').src = galleryImages[galleryIndex];
+    overlay.classList.add('active', 'has-gallery');
+    updateCounter();
+}
+
+function galleryNav(direction) {
+    if (galleryImages.length === 0) return;
+    galleryIndex = galleryIndex + direction;
+    if (galleryIndex < 0) galleryIndex = galleryImages.length - 1;
+    if (galleryIndex >= galleryImages.length) galleryIndex = 0;
+    document.getElementById('lightbox').querySelector('img').src = galleryImages[galleryIndex];
+    updateCounter();
+}
+
+function updateCounter() {
+    document.getElementById('lightboxCounter').textContent = (galleryIndex + 1) + ' / ' + galleryImages.length;
+}
+
+document.getElementById('lightboxPrev').addEventListener('click', function(e) {
+    e.stopPropagation();
+    galleryNav(-1);
+});
+
+document.getElementById('lightboxNext').addEventListener('click', function(e) {
+    e.stopPropagation();
+    galleryNav(1);
+});
+
+document.getElementById('lightbox').addEventListener('click', function(e) {
+    if (e.target.className.indexOf('lightbox-nav') === -1) {
+        closeLightbox();
+    }
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox();
+    if (galleryImages.length > 0 && document.getElementById('lightbox').classList.contains('active')) {
+        if (e.key === 'ArrowLeft') galleryNav(-1);
+        if (e.key === 'ArrowRight') galleryNav(1);
+    }
+});
 </script>
 
 </body>
