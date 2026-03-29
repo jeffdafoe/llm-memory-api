@@ -84,10 +84,15 @@ router.post('/api/register', async (req, res) => {
         const salt = generateSalt();
         const passphraseHash = hashToken(passphrase, salt);
 
-        // Create actor
+        // Create actor (created_by is set to self after insert)
         await client.query(
             `INSERT INTO actors (name, token_hash, token_salt, status) VALUES ($1, $2, $3, 'active')`,
             [agentName, passphraseHash, salt]
+        );
+        // Set created_by to self so the agent owns itself
+        await client.query(
+            `UPDATE actors SET created_by = id WHERE name = $1`,
+            [agentName]
         );
 
         // Create agent_configuration
