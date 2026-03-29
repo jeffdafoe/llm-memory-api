@@ -55,6 +55,13 @@
   delegate_to: "{{ inventory_hostname }}"
   when: repo_root != project_root
 
+- name: Deploy maintenance page
+  copy:
+    src: "{{ repo_root }}/node/maintenance.html"
+    dest: "{{ project_root }}/maintenance.html"
+    remote_src: yes
+  when: repo_root != project_root
+
 - name: Deploy migrations
   synchronize:
     src: "{{ repo_root }}/migrations/"

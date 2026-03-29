@@ -67,6 +67,9 @@ app.get('/agents', (req, res) => {
 
 // Landing page for public domains, admin redirect for internal domains
 app.get('/', (req, res) => {
+    // Prevent browsers from caching the landing page (avoids stale redirect issues)
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
     const landingPage = path.join(__dirname, '..', 'public', 'landing', 'index.html');
     res.sendFile(landingPage, (err) => {
         if (err) res.redirect('/admin/');
