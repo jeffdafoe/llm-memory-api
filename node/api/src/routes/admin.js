@@ -37,6 +37,30 @@ function logAdmin(action, details) {
 // Check if the authenticated user can see a specific agent (by name).
 // Returns the resolved actor, or sends 404 and returns null.
 // Hidden actors are indistinguishable from nonexistent ones (no 403).
+// Check if the current user owns the target agent.
+// Superadmins (*:*) bypass this check. Non-superadmins can only write
+// to agents they created (actors.created_by = req.actorId) or themselves.
+async function requireOwnership(req, res, targetActorId) {
+    // Superadmin bypasses ownership check
+    const isSuperAdmin = await hasPermission(req.actorId, '*', '*');
+    if (isSuperAdmin) return true;
+
+    // Users can always edit themselves
+    if (targetActorId === req.actorId) return true;
+
+    // Check created_by
+    const result = await pool.query(
+        'SELECT created_by FROM actors WHERE id = $1',
+        [targetActorId]
+    );
+    if (result.rows.length > 0 && result.rows[0].created_by === req.actorId) {
+        return true;
+    }
+
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only modify agents you created' } });
+    return false;
+}
+
 async function requireVisibility(req, res, agentName) {
     const actor = await resolveByName(agentName);
     if (!actor) {
@@ -432,6 +456,7 @@ router.post('/admin/agents/instructions/save', requirePerm('agents', 'write'), a
     }
     const actor = await requireVisibility(req, res, agent);
     if (!actor) return;
+    if (!await requireOwnership(req, res, actor.id)) return;
     const result = await pool.query(
         'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id',
         [content, actor.id]
@@ -460,6 +485,7 @@ router.post('/admin/agents/expertise/save', requirePerm('agents', 'write'), admi
 
     const actor = await requireVisibility(req, res, agent);
     if (!actor) return;
+    if (!await requireOwnership(req, res, actor.id)) return;
     const result = await pool.query(
         'UPDATE actors SET expertise = $1 WHERE id = $2 RETURNING id',
         [json, actor.id]
@@ -489,6 +515,7 @@ router.post('/admin/agents/reset-passphrase', requirePerm('agents', 'write'), ad
 
     const actor = await requireVisibility(req, res, agent);
     if (!actor) return;
+    if (!await requireOwnership(req, res, actor.id)) return;
 
     const result = await pool.query(
         'UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3 RETURNING id',
@@ -1588,6 +1615,7 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
 
     const actor = await requireVisibility(req, res, agent);
     if (!actor) return;
+    if (!await requireOwnership(req, res, actor.id)) return;
     const existing = await pool.query('SELECT actor_id, virtual FROM agent_configuration WHERE actor_id = $1', [actor.id]);
     if (existing.rows.length === 0) {
         return res.status(404).json({
