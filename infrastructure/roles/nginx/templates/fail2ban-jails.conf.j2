@@ -1,6 +1,13 @@
+# SSH — tighten defaults: 3 failures in 10 minutes = 1 hour ban
+[sshd]
+enabled  = true
+backend  = systemd
+maxretry = 3
+findtime = 600
+bantime  = 3600
+
 # Ban IPs that repeatedly probe for WordPress/CMS paths
 # 3 hits within 10 minutes = banned for 1 hour
-
 [nginx-wordpress]
 enabled  = true
 filter   = nginx-wordpress
