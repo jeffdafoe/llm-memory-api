@@ -4,6 +4,23 @@ const router = express.Router();
 const pool = require('../db');
 const generatePassphrase = require('eff-diceware-passphrase');
 const { generateSalt, hash: hashToken } = require('../services/hashing');
+const { mailSend } = require('../services/mail');
+
+// Parse YAML-style frontmatter from template content (same logic as admin.js)
+function parseTemplateFrontmatter(content = '') {
+    const match = content.match(/^---\n([\s\S]*?)\n---\n\n?([\s\S]*)$/);
+    if (!match) return { frontmatter: {}, body: content };
+    const frontmatter = {};
+    for (const line of match[1].split('\n')) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+            const key = line.slice(0, colonIdx).trim();
+            const val = line.slice(colonIdx + 1).trim();
+            frontmatter[key] = val;
+        }
+    }
+    return { frontmatter, body: match[2] };
+}
 
 // POST /api/check-name — check if an agent name is available
 router.post('/api/check-name', async (req, res) => {
@@ -87,6 +104,32 @@ router.post('/api/register', async (req, res) => {
         );
 
         await client.query('COMMIT');
+
+        // Apply default welcome template (same as admin-created agents)
+        // Runs after commit so the agent exists even if template fails
+        try {
+            const tplResult = await pool.query(
+                "SELECT content FROM templates WHERE kind = 'welcome' ORDER BY id LIMIT 1"
+            );
+            if (tplResult.rows.length > 0) {
+                const rawContent = tplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const mailBody = tplBody.replace(/\{agent\}/g, agentName);
+
+                // Copy template body to startup_instructions (persistent)
+                await pool.query(
+                    'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = (SELECT id FROM actors WHERE name = $2)',
+                    [mailBody, agentName]
+                );
+
+                // Also send as welcome mail
+                const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, agentName);
+                await mailSend(agentName, 'system', mailSubject, mailBody);
+            }
+        } catch (tplErr) {
+            // Don't fail registration if template application fails
+            console.error('Registration welcome template error:', tplErr.message);
+        }
 
         res.json({
             ok: true,
