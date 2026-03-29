@@ -64,10 +64,16 @@
     dest: /etc/fail2ban/filter.d/nginx-wordpress.conf
   notify: Restart fail2ban
 
-- name: Deploy WordPress scanning jail
+- name: Remove old WordPress-only jail config
+  file:
+    path: /etc/fail2ban/jail.d/nginx-wordpress.conf
+    state: absent
+  notify: Restart fail2ban
+
+- name: Deploy fail2ban jails (sshd + nginx-wordpress)
   template:
-    src: fail2ban-wordpress-jail.conf.j2
-    dest: /etc/fail2ban/jail.d/nginx-wordpress.conf
+    src: fail2ban-jails.conf.j2
+    dest: /etc/fail2ban/jail.d/memory-api.conf
   notify: Restart fail2ban
 
 - name: Ensure fail2ban is running
