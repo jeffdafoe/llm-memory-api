@@ -38,6 +38,9 @@
                     </div>
                     <label>Name
                         <input type="text" v-model="newActorName" placeholder="e.g. Ted" autofocus>
+                        <small v-if="nameCheckMessage" class="name-check" :class="'name-check--' + nameCheckStatus">
+                            {{ nameCheckMessage }}
+                        </small>
                     </label>
                     <label v-if="createSource !== 'agents'" class="checkbox-label">
                         <input type="checkbox" v-model="newActorVirtual">
@@ -424,7 +427,7 @@
                 </div>
                 <div class="dialog-actions">
                     <button class="btn btn-secondary" @click="closeActorConfig()">{{ newActorPassphrase ? 'Done' : 'Cancel' }}</button>
-                    <button class="btn btn-primary" @click="createActor" :disabled="newActorCreating || !newActorName || newActorPassphrase">
+                    <button class="btn btn-primary" @click="createActor" :disabled="newActorCreating || !newActorName || newActorPassphrase || nameCheckStatus !== 'available'">
                         {{ newActorCreating ? 'Creating...' : 'Create' }}
                     </button>
                 </div>

@@ -1,5 +1,5 @@
 // actors-config.js — Actor permissions, visibility, and creation management (Configuration > Actors tab)
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, permissions }) {
     const actorsConfigList = ref([]);
@@ -71,6 +71,55 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     const newActorCreating = ref(false);
     const newActorPassphrase = ref(null);
     const createSource = ref('config'); // 'config' (full) or 'agents' (streamlined virtual agent)
+
+    // Live name availability check — debounced, calls /api/check-name
+    const nameCheckStatus = ref(''); // '', 'checking', 'available', 'taken', 'invalid'
+    const nameCheckMessage = ref('');
+    let nameCheckTimer = null;
+
+    watch(newActorName, (val) => {
+        const name = (val || '').trim().toLowerCase();
+        clearTimeout(nameCheckTimer);
+
+        if (!name) {
+            nameCheckStatus.value = '';
+            nameCheckMessage.value = '';
+            return;
+        }
+
+        // Client-side format validation (same regex as registration form)
+        if (!/^[a-z][a-z0-9_-]{1,30}$/.test(name)) {
+            nameCheckStatus.value = 'invalid';
+            nameCheckMessage.value = 'Letters, numbers, hyphens, underscores. Must start with a letter.';
+            return;
+        }
+
+        nameCheckStatus.value = 'checking';
+        nameCheckMessage.value = 'Checking...';
+
+        nameCheckTimer = setTimeout(async () => {
+            try {
+                const res = await fetch('/api/check-name', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                const data = await res.json();
+                // Guard against stale responses — only update if the name still matches
+                if ((newActorName.value || '').trim().toLowerCase() !== name) return;
+                if (data.available) {
+                    nameCheckStatus.value = 'available';
+                    nameCheckMessage.value = 'Available';
+                } else {
+                    nameCheckStatus.value = 'taken';
+                    nameCheckMessage.value = data.reason || 'Name taken';
+                }
+            } catch (err) {
+                nameCheckStatus.value = 'taken';
+                nameCheckMessage.value = 'Error checking name';
+            }
+        }, 400);
+    });
 
     async function loadActorsConfig() {
         actorsConfigLoading.value = true;
@@ -657,6 +706,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         createSource, newActorName, newActorVirtual,
         newActorUiAccess, newActorPassword,
         newActorTemplateId, newActorCreating, newActorPassphrase,
+        nameCheckStatus, nameCheckMessage,
         startCreateActor, createActor,
         closeDialogs
     };
