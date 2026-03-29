@@ -1,0 +1,9 @@
+# fail2ban filter for WordPress/CMS scanning bots
+# Matches nginx access log lines where the request targets common WordPress paths
+# and nginx returned 444 (connection dropped)
+
+[Definition]
+
+failregex = ^<HOST> .* "(GET|POST|HEAD) /(wp-admin|wp-login|wp-content|wp-includes|wordpress|xmlrpc\.php|wp-cron\.php)[^ ]* HTTP/[^"]*" 444
+
+ignoreregex =

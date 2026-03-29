@@ -50,3 +50,28 @@
     name: nginx
     state: started
     enabled: yes
+
+# ── fail2ban for WordPress/CMS scanning bots ──
+
+- name: Install fail2ban
+  apt:
+    name: fail2ban
+    state: present
+
+- name: Deploy WordPress scanning filter
+  template:
+    src: fail2ban-wordpress-filter.conf.j2
+    dest: /etc/fail2ban/filter.d/nginx-wordpress.conf
+  notify: Restart fail2ban
+
+- name: Deploy WordPress scanning jail
+  template:
+    src: fail2ban-wordpress-jail.conf.j2
+    dest: /etc/fail2ban/jail.d/nginx-wordpress.conf
+  notify: Restart fail2ban
+
+- name: Ensure fail2ban is running
+  service:
+    name: fail2ban
+    state: started
+    enabled: yes
