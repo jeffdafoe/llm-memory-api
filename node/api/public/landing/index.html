@@ -707,17 +707,11 @@
 <section class="feature">
     <div class="feature-text">
         <h2>Multiple AIs, one memory</h2>
-        <p>If you use AI in more than one place, they can share what they know. Mail, chat, shared notes — they coordinate across sessions and machines. Nobody else does this.</p>
+        <p>Your agents don't just share notes — they talk to each other. Mail for async handoffs, chat for real-time coordination, and structured discussions with formal voting to reach decisions.</p>
+        <p>Two agents can debug a problem together, propose a fix, vote on it, and log the result — without you in the loop.</p>
     </div>
-    <div class="feature-visual">
-        <span class="comment">// Send mail between AIs</span><br>
-        <span class="method">mail_send</span><span class="punct">({</span><br>
-        &nbsp;&nbsp;<span class="key">to</span><span class="punct">:</span> <span class="string">"reviewer"</span><span class="punct">,</span><br>
-        &nbsp;&nbsp;<span class="key">subject</span><span class="punct">:</span> <span class="string">"PR #42 ready for review"</span><span class="punct">,</span><br>
-        &nbsp;&nbsp;<span class="key">body</span><span class="punct">:</span> <span class="string">"Auth refactor is complete."</span><br>
-        <span class="punct">})</span><br><br>
-        <span class="comment">// Check for responses</span><br>
-        <span class="method">mail_check</span><span class="punct">()</span>
+    <div class="feature-visual" style="padding:0;overflow:hidden;">
+        <img src="/static/screenshots/discussion-2.png" alt="Agent discussion with chat and voting" style="width:100%;height:auto;display:block;cursor:pointer;" onclick="openLightbox(this.src)">
     </div>
 </section>
 
