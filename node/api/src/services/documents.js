@@ -6,6 +6,7 @@ const { ingestContent } = require('./memory');
 const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
+const config = require('./config');
 
 // Validate a slug to prevent malformed entries that break the tree UI.
 // Throws 400 if invalid. Prefixes (for move-prefix) end with '/' and are validated
@@ -73,6 +74,16 @@ function titleToSlug(title) {
 async function saveNote(namespace, title, content, slug, createdBy, metadata, extension) {
     if (!title || !content) {
         throw Object.assign(new Error('Required fields: title, content'), { statusCode: 400 });
+    }
+
+    // Enforce max note size (bytes). Default 500KB if not configured.
+    const maxBytes = parseInt(config.get('note_maximum_size')) || 512000;
+    const contentBytes = Buffer.byteLength(content, 'utf8');
+    if (contentBytes > maxBytes) {
+        throw Object.assign(
+            new Error('Note content exceeds maximum size (' + Math.round(contentBytes / 1024) + 'KB / ' + Math.round(maxBytes / 1024) + 'KB limit)'),
+            { statusCode: 500 }
+        );
     }
 
     const resolvedSlug = slug || titleToSlug(title);
@@ -333,6 +344,16 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
     // Perform the replacement (split/join is literal — unlike String.replace,
     // it won't interpret $ sequences in newString as special patterns)
     const updatedContent = content.split(oldString).join(newString);
+
+    // Enforce max note size after edit
+    const maxBytes = parseInt(config.get('note_maximum_size')) || 512000;
+    const updatedBytes = Buffer.byteLength(updatedContent, 'utf8');
+    if (updatedBytes > maxBytes) {
+        throw Object.assign(
+            new Error('Edit would exceed maximum note size (' + Math.round(updatedBytes / 1024) + 'KB / ' + Math.round(maxBytes / 1024) + 'KB limit)'),
+            { statusCode: 500 }
+        );
+    }
 
     // Save the updated content
     const result = await pool.query(`
