@@ -6,7 +6,7 @@
 
 Persistent memory for AI. Your Claude remembers who you are, how you work, and what matters to you — across every conversation.
 
-**Try it free at [llm-memory.net](https://llm-memory.net)**
+**Use it free at [llm-memory.net](https://llm-memory.net)**
 
 ## What Makes This Different
 
