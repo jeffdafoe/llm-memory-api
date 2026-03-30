@@ -3,6 +3,7 @@ const pool = require('../db');
 const { log } = require('../services/logger');
 const { requireByName, resolveByName } = require('../services/actors');
 const { apiRoute } = require('../middleware/route-wrapper');
+const sanitize = require('../sanitize');
 
 const router = Router();
 
@@ -23,7 +24,11 @@ function logChat(action, details) {
 }
 
 router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
-    let { from_agent, to_agents, discussion_id, message, channel } = req.body;
+    let { discussion_id, message, channel } = req.body;
+    let from_agent = sanitize.agentName(req.body.from_agent);
+    let to_agents = Array.isArray(req.body.to_agents)
+        ? req.body.to_agents.map(a => a === '*' ? a : sanitize.agentName(a))
+        : req.body.to_agents;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -140,7 +145,9 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
 }));
 
 router.post('/chat/receive', apiRoute('chat', 'receive', async (req, res) => {
-    let { agent, channel, after_id, from_agent } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    let from_agent = sanitize.agentName(req.body.from_agent);
+    const { channel, after_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -215,7 +222,8 @@ router.post('/chat/receive', apiRoute('chat', 'receive', async (req, res) => {
 }));
 
 router.post('/chat/ack', apiRoute('chat', 'ack', async (req, res) => {
-    let { agent, ids, message_ids } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    let { ids, message_ids } = req.body;
 
     // Accept both 'ids' (canonical) and 'message_ids' (legacy) — remove message_ids after 2026-04-15
     ids = ids || message_ids;
@@ -250,7 +258,8 @@ router.post('/chat/ack', apiRoute('chat', 'ack', async (req, res) => {
 }));
 
 router.post('/chat/status', apiRoute('chat', 'status', async (req, res) => {
-    let { agent, channel } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { channel } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {

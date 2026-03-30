@@ -6,6 +6,7 @@ const { notifyDiscussionInvite, sendSystemMessageToMany, sendDiscussionEvent } =
 const discussionService = require('../services/discussion');
 const { requireByName, resolveById } = require('../services/actors');
 const { apiRoute } = require('../middleware/route-wrapper');
+const sanitize = require('../sanitize');
 
 const router = Router();
 
@@ -38,7 +39,14 @@ async function requireJoined(discussionId, agent) {
 }
 
 router.post('/discussion/create', apiRoute('discussion', 'create', async (req, res) => {
-    let { topic, created_by, participants, optional_participants, channel, mode, context } = req.body;
+    let { topic, channel, mode, context } = req.body;
+    let created_by = sanitize.agentName(req.body.created_by);
+    let participants = Array.isArray(req.body.participants)
+        ? req.body.participants.map(sanitize.agentName)
+        : req.body.participants;
+    let optional_participants = Array.isArray(req.body.optional_participants)
+        ? req.body.optional_participants.map(sanitize.agentName)
+        : req.body.optional_participants;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -221,7 +229,8 @@ router.post('/discussion/create', apiRoute('discussion', 'create', async (req, r
 }));
 
 router.post('/discussion/list', apiRoute('discussion', 'list', async (req, res) => {
-    const { status, agent } = req.body;
+    const { status } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
 
     // For agent sessions, always scope to discussions the authenticated agent participates in.
     // The 'agent' body param is ignored for agent sessions — identity comes from auth.
@@ -346,7 +355,8 @@ router.post('/discussion/status', apiRoute('discussion', 'status', async (req, r
 }));
 
 router.post('/discussion/pending', apiRoute('discussion', 'pending', async (req, res) => {
-    let { agent, discussion_id } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { discussion_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -423,7 +433,8 @@ router.post('/discussion/pending', apiRoute('discussion', 'pending', async (req,
 }));
 
 router.post('/discussion/conclude', apiRoute('discussion', 'conclude', async (req, res) => {
-    let { discussion_id, agent } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { discussion_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -439,7 +450,8 @@ router.post('/discussion/conclude', apiRoute('discussion', 'conclude', async (re
 
 // Cancel an active or waiting discussion — sets status to 'cancelled', outcome to 'abandoned'
 router.post('/discussion/cancel', apiRoute('discussion', 'cancel', async (req, res) => {
-    let { discussion_id, agent } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { discussion_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -460,7 +472,8 @@ router.post('/discussion/cancel', apiRoute('discussion', 'cancel', async (req, r
 }));
 
 router.post('/discussion/join', apiRoute('discussion', 'join', async (req, res) => {
-    let { discussion_id, agent } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { discussion_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -539,7 +552,8 @@ router.post('/discussion/join', apiRoute('discussion', 'join', async (req, res) 
 }));
 
 router.post('/discussion/defer', apiRoute('discussion', 'defer', async (req, res) => {
-    let { discussion_id, agent } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { discussion_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -633,7 +647,8 @@ router.post('/discussion/defer', apiRoute('discussion', 'defer', async (req, res
 }));
 
 router.post('/discussion/leave', apiRoute('discussion', 'leave', async (req, res) => {
-    let { discussion_id, agent } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { discussion_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -678,7 +693,8 @@ router.post('/discussion/leave', apiRoute('discussion', 'leave', async (req, res
 }));
 
 router.post('/discussion/vote/propose', apiRoute('discussion', 'vote-propose', async (req, res) => {
-    let { discussion_id, proposed_by, question, type, threshold, closes_at } = req.body;
+    let { discussion_id, question, type, threshold, closes_at } = req.body;
+    let proposed_by = sanitize.agentName(req.body.proposed_by);
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -753,7 +769,8 @@ router.post('/discussion/vote/propose', apiRoute('discussion', 'vote-propose', a
 }));
 
 router.post('/discussion/vote/cast', apiRoute('discussion', 'vote-cast', async (req, res) => {
-    let { vote_id, agent, choice, reason } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { vote_id, choice, reason } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {

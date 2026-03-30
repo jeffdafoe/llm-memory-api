@@ -8,6 +8,7 @@ const { hash: hashToken, generateSalt, verify } = require('../services/hashing')
 const { SESSION_KIND } = require('../constants');
 const { broadcast } = require('../services/events');
 const { listNotes, readNote, saveNote } = require('../services/documents');
+const sanitize = require('../sanitize');
 const { requireAccess, validateNamespace } = require('../services/namespace-permissions');
 const config = require('../services/config');
 const { apiRoute } = require('../middleware/route-wrapper');
@@ -49,7 +50,8 @@ function generateSessionToken() {
 // No auth required — the passphrase in the body is the credential.
 // Also cleans up expired sessions lazily on each call.
 router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
-    const { agent, passphrase, subsystem } = req.body;
+    const { passphrase, subsystem } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
 
     if (!agent || !passphrase) {
         return res.status(400).json({

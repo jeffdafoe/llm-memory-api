@@ -13,13 +13,14 @@ const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { resolveEffectiveLimits } = require('../services/virtual-agent');
-const { requireByName, resolveByName, resolveById } = require('../services/actors');
+const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName } = require('../services/actors');
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
 const { requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
 const notePerms = require('../services/note-permissions');
 const { apiRoute } = require('../middleware/route-wrapper');
+const sanitize = require('../sanitize');
 
 const router = Router();
 
@@ -426,7 +427,7 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
 
 // POST /admin/agents/instructions/read — read an agent's startup instructions
 router.post('/admin/agents/instructions/read', requirePerm('agents', 'read'), adminRoute('agents-instructions-read', async (req, res) => {
-    const { agent } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
     if (!agent) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
@@ -448,7 +449,8 @@ router.post('/admin/agents/instructions/read', requirePerm('agents', 'read'), ad
 
 // POST /admin/agents/instructions/save — save an agent's startup instructions
 router.post('/admin/agents/instructions/save', requirePerm('agents', 'write'), adminRoute('agents-instructions-save', async (req, res) => {
-    const { agent, content } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
+    const { content } = req.body;
     if (!agent || content === undefined) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: agent, content' }
@@ -472,7 +474,8 @@ router.post('/admin/agents/instructions/save', requirePerm('agents', 'write'), a
 
 // POST /admin/agents/expertise/save — update an agent's expertise list
 router.post('/admin/agents/expertise/save', requirePerm('agents', 'write'), adminRoute('agents-expertise-save', async (req, res) => {
-    const { agent, expertise } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
+    const { expertise } = req.body;
     if (!agent || !Array.isArray(expertise)) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: agent, expertise (array of strings)' }
@@ -501,7 +504,7 @@ router.post('/admin/agents/expertise/save', requirePerm('agents', 'write'), admi
 
 // POST /admin/agents/reset-passphrase — generate new passphrase, invalidate all sessions
 router.post('/admin/agents/reset-passphrase', requirePerm('agents', 'write'), adminRoute('agents-reset-passphrase', async (req, res) => {
-    const { agent } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
     if (!agent) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
@@ -750,7 +753,8 @@ router.post('/admin/chat/delete', requirePerm('comms', 'delete'), adminRoute('ch
 
 // POST /admin/mail/send — send mail to an agent from the admin dashboard
 router.post('/admin/mail/send', requirePerm('comms', 'write'), adminRoute('mail-send', async (req, res) => {
-    const { to, subject, body } = req.body;
+    const to = sanitize.agentName(req.body.to);
+    const { subject, body } = req.body;
 
     if (!to || !subject || !body) {
         return res.status(400).json({
@@ -1430,11 +1434,19 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
         }
     }
 
-    // Check if actor already exists
-    const existingActor = await resolveByName(actorName);
-    if (existingActor) {
+    // Check if actor name is available (existing actors + namespace collisions)
+    const availability = await checkNameAvailability(actorName);
+    if (!availability.available) {
         return res.status(409).json({
-            error: { code: 'ALREADY_EXISTS', message: 'Actor already exists: ' + actorName }
+            error: { code: 'ALREADY_EXISTS', message: availability.reason }
+        });
+    }
+
+    // Virtual agent moderation check (skips gracefully if VA not configured)
+    const moderation = await moderateActorName(actorName);
+    if (!moderation.approved) {
+        return res.status(400).json({
+            error: { code: 'NAME_REJECTED', message: moderation.reason }
         });
     }
 
@@ -1539,7 +1551,8 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
 // POST /admin/agents/read — get full agent detail (includes configuration JSON)
 // Accepts optional `timezone` (IANA string, e.g. "America/New_York") for local day boundary.
 router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('agents-read', async (req, res) => {
-    const { agent, timezone } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
+    const { timezone } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
@@ -1603,7 +1616,8 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
 
 // POST /admin/agents/update — update virtual agent config
 router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('agents-update', async (req, res) => {
-    const { agent, personality, api_key, configuration, provider, model,
+    const agent = sanitize.agentName(req.body.agent);
+    const { personality, api_key, configuration, provider, model,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
 
@@ -1697,7 +1711,8 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
 
 // POST /admin/agents/usage — get usage history for an agent
 router.post('/admin/agents/usage', requirePerm('agents', 'read'), adminRoute('agents-usage', async (req, res) => {
-    const { agent, limit } = req.body;
+    const agent = sanitize.agentName(req.body.agent);
+    const { limit } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }

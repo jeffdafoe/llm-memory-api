@@ -5,6 +5,7 @@ const pool = require('../db');
 const generatePassphrase = require('eff-diceware-passphrase');
 const { generateSalt, hash: hashToken, generateKey } = require('../services/hashing');
 const { mailSend } = require('../services/mail');
+const { checkNameAvailability, moderateActorName } = require('../services/actors');
 
 // Parse YAML-style frontmatter from template content (same logic as admin.js)
 function parseTemplateFrontmatter(content = '') {
@@ -32,8 +33,8 @@ router.post('/api/check-name', async (req, res) => {
     if (!/^[a-z][a-z0-9_-]{1,30}$/.test(agentName)) {
         return res.json({ available: false, reason: 'Name must start with a letter, 2-31 chars, only lowercase letters, numbers, hyphens, underscores.' });
     }
-    const existing = await pool.query('SELECT id FROM actors WHERE name = $1', [agentName]);
-    res.json({ available: existing.rows.length === 0 });
+    const result = await checkNameAvailability(agentName);
+    res.json(result);
 });
 
 // POST /api/register — redeem invite code, create agent, return passphrase
@@ -71,11 +72,18 @@ router.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'This invite code has expired' });
         }
 
-        // Check name availability
-        const existing = await client.query('SELECT id FROM actors WHERE name = $1', [agentName]);
-        if (existing.rows.length > 0) {
+        // Check name availability (existing actors, existing namespaces)
+        const availability = await checkNameAvailability(agentName);
+        if (!availability.available) {
             await client.query('ROLLBACK');
-            return res.status(409).json({ error: 'Agent name already taken' });
+            return res.status(409).json({ error: availability.reason });
+        }
+
+        // Virtual agent moderation check (skips gracefully if VA not configured)
+        const moderation = await moderateActorName(agentName);
+        if (!moderation.approved) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: moderation.reason });
         }
 
         // Generate passphrase

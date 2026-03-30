@@ -107,4 +107,108 @@ async function canAccessVirtualAgent(actorId, virtualAgentId) {
     return result.rows[0].has_access;
 }
 
-module.exports = { resolveByName, resolveById, resolveMultipleByName, requireByName, clearCache, canAccessVirtualAgent };
+// Check if a name is available for use as a new actor/agent.
+// Checks against existing actors and existing document namespaces.
+async function checkNameAvailability(name) {
+    const existing = await resolveByName(name);
+    if (existing) {
+        return { available: false, reason: 'Name already taken.' };
+    }
+
+    // Check against existing namespaces in documents — catches namespaces
+    // that don't correspond to an actor (e.g. "shared")
+    const nsResult = await pool.query(
+        'SELECT 1 FROM documents WHERE namespace = $1 LIMIT 1', [name]
+    );
+    if (nsResult.rows.length > 0) {
+        return { available: false, reason: 'This name conflicts with an existing namespace.' };
+    }
+
+    return { available: true };
+}
+
+// Send a proposed actor name to the "actor-name-check" virtual agent for
+// moderation.  Returns { approved: true } or { approved: false, reason }.
+// Gracefully degrades — if the VA doesn't exist, has no API key, or times
+// out, the name is approved by default so registration isn't blocked.
+const MODERATION_AGENT = 'actor-name-check';
+const MODERATION_TIMEOUT_MS = 15000;
+
+async function moderateActorName(name) {
+    try {
+        // Load the virtual agent's config
+        const agentRow = await pool.query(
+            `SELECT ac.id AS actor_id, ac.name AS agent, agc.virtual, agc.provider,
+                    agc.model, agc.api_key, agc.personality, agc.startup_instructions,
+                    agc.max_tokens, agc.temperature, agc.cache_prompts, agc.configuration
+             FROM agent_configuration agc
+             JOIN actors ac ON ac.id = agc.actor_id
+             WHERE ac.name = $1`,
+            [MODERATION_AGENT]
+        );
+
+        if (agentRow.rows.length === 0 || !agentRow.rows[0].virtual) {
+            return { approved: true };  // VA doesn't exist — skip moderation
+        }
+
+        const agent = agentRow.rows[0];
+        if (!agent.api_key || !agent.provider || !agent.model) {
+            return { approved: true };  // VA not configured — skip moderation
+        }
+
+        const { createProvider, decryptApiKey } = require('./provider');
+
+        const apiKey = decryptApiKey(agent.api_key);
+        const conf = {};
+        if (agent.max_tokens) conf.max_tokens = agent.max_tokens;
+        if (agent.temperature != null) conf.temperature = agent.temperature;
+        if (agent.cache_prompts) conf.cache_prompts = true;
+        if (agent.configuration) {
+            try {
+                Object.assign(conf, JSON.parse(agent.configuration));
+            } catch (_) {}
+        }
+
+        // Use the VA's personality/instructions as system prompt, with a
+        // fallback if instructions haven't been set yet.
+        let systemPrompt = agent.startup_instructions || agent.personality || '';
+        if (!systemPrompt.trim()) {
+            systemPrompt = 'You are a name moderation agent. Evaluate whether the proposed username is appropriate for a professional platform. Reply with exactly APPROVED or REJECTED followed by a brief reason.';
+        }
+
+        const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
+
+        // Race the provider call against a timeout
+        const result = await Promise.race([
+            providerFn(systemPrompt, `Proposed username: ${name}`),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Moderation timeout')), MODERATION_TIMEOUT_MS)
+            )
+        ]);
+
+        const response = (result.text || '').trim();
+
+        // Parse response — look for APPROVED or REJECTED at the start
+        if (response.toUpperCase().startsWith('APPROVED')) {
+            return { approved: true };
+        }
+        if (response.toUpperCase().startsWith('REJECTED')) {
+            // Extract reason after "REJECTED" — skip colon/dash/space separators
+            const reason = response.slice(8).replace(/^[\s:—-]+/, '').trim();
+            return { approved: false, reason: reason || 'Name not allowed.' };
+        }
+
+        // Ambiguous response — approve by default, log it
+        const { log } = require('./logger');
+        log('actors', 'moderation-ambiguous', { name, response: response.slice(0, 200) });
+        return { approved: true };
+
+    } catch (err) {
+        // Any failure — log and approve (don't block registration)
+        const { log } = require('./logger');
+        log('actors', 'moderation-error', { name, error: err.message });
+        return { approved: true };
+    }
+}
+
+module.exports = { resolveByName, resolveById, resolveMultipleByName, requireByName, clearCache, canAccessVirtualAgent, checkNameAvailability, moderateActorName };
