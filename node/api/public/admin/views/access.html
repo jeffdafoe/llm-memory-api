@@ -28,7 +28,7 @@
             </thead>
             <tbody>
                 <tr v-for="r in accessRequests" :key="r.id">
-                    <td>{{ r.email }}</td>
+                    <td class="email-cell">{{ r.email }} <button class="btn btn-sm btn-secondary btn-copy-inline" @click="copyUrl(r.email)" title="Copy email">Copy</button></td>
                     <td class="usage-cell" :class="{ expanded: expandedUsage.has(r.id) }" @click="toggleUsage(r.id)" :title="expandedUsage.has(r.id) ? '' : r.usage_description">{{ r.usage_description }}</td>
                     <td>
                         <span class="status-badge" :class="r.status">{{ r.status }}</span>
