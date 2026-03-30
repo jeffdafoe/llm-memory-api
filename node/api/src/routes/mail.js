@@ -1,11 +1,14 @@
 const { Router } = require('express');
 const { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 const { apiRoute } = require('../middleware/route-wrapper');
+const sanitize = require('../sanitize');
 
 const router = Router();
 
 router.post('/mail/send', apiRoute('mail', 'send', async (req, res) => {
-    let { to_agent, from_agent, subject, body, in_reply_to } = req.body;
+    let { from_agent, subject, body, in_reply_to } = req.body;
+    const to_agent = sanitize.agentName(req.body.to_agent);
+    from_agent = sanitize.agentName(from_agent);
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -20,7 +23,7 @@ router.post('/mail/send', apiRoute('mail', 'send', async (req, res) => {
 }));
 
 router.post('/mail/check', apiRoute('mail', 'check', async (req, res) => {
-    let { agent } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -35,7 +38,8 @@ router.post('/mail/check', apiRoute('mail', 'check', async (req, res) => {
 }));
 
 router.post('/mail/receive', apiRoute('mail', 'receive', async (req, res) => {
-    let { agent, ids } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const { ids } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -50,7 +54,8 @@ router.post('/mail/receive', apiRoute('mail', 'receive', async (req, res) => {
 }));
 
 router.post('/mail/edit', apiRoute('mail', 'edit', async (req, res) => {
-    let { id, from_agent, subject, body } = req.body;
+    let { id, subject, body } = req.body;
+    let from_agent = sanitize.agentName(req.body.from_agent);
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -65,7 +70,8 @@ router.post('/mail/edit', apiRoute('mail', 'edit', async (req, res) => {
 }));
 
 router.post('/mail/unsend', apiRoute('mail', 'unsend', async (req, res) => {
-    let { id, from_agent } = req.body;
+    const { id } = req.body;
+    let from_agent = sanitize.agentName(req.body.from_agent);
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -80,7 +86,8 @@ router.post('/mail/unsend', apiRoute('mail', 'unsend', async (req, res) => {
 }));
 
 router.post('/mail/ack', apiRoute('mail', 'ack', async (req, res) => {
-    let { agent, ids, message_ids } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    let { ids, message_ids } = req.body;
 
     // Accept both 'ids' (canonical) and 'message_ids' (legacy) — remove message_ids after 2026-04-15
     ids = ids || message_ids;
@@ -98,7 +105,9 @@ router.post('/mail/ack', apiRoute('mail', 'ack', async (req, res) => {
 }));
 
 router.post('/mail/sent', apiRoute('mail', 'sent', async (req, res) => {
-    let { agent, to, limit, offset } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const to = sanitize.agentName(req.body.to);
+    const { limit, offset } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -113,7 +122,9 @@ router.post('/mail/sent', apiRoute('mail', 'sent', async (req, res) => {
 }));
 
 router.post('/mail/history', apiRoute('mail', 'history', async (req, res) => {
-    let { agent, from, limit, offset } = req.body;
+    let agent = sanitize.agentName(req.body.agent);
+    const from = sanitize.agentName(req.body.from);
+    const { limit, offset } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {

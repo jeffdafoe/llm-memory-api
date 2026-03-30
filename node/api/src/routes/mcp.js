@@ -26,6 +26,7 @@ const { broadcast } = require('../services/events');
 const { requireByName, resolveByName } = require('../services/actors');
 const { requireAccess, hasAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
 const { hasNoteAccess, listSharesByOwner, listSharedDocuments } = require('../services/note-permissions');
+const sanitize = require('../sanitize');
 
 const router = Router();
 
@@ -824,7 +825,7 @@ const TOOL_HANDLERS = {
         const fromAgent = validateIdentity(args.from, agent, 'from');
         let toAgents = null;
         if (args.to) {
-            toAgents = [args.to];
+            toAgents = [args.to === '*' ? '*' : sanitize.agentName(args.to)];
         }
         // Auto-detect discussion_id from channel name pattern
         let discussionId = args.discussion_id;
@@ -866,7 +867,7 @@ const TOOL_HANDLERS = {
 
     // --- Mail ---
     async mail_send(args, agent, namespace, actorId) {
-        const data = await mailSend(args.to, validateIdentity(args.from, agent, 'from'), args.subject, args.body, args.in_reply_to);
+        const data = await mailSend(sanitize.agentName(args.to), validateIdentity(args.from, agent, 'from'), args.subject, args.body, args.in_reply_to);
         // Refresh activity indicator
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
@@ -924,7 +925,7 @@ const TOOL_HANDLERS = {
     },
 
     async mail_sent(args, agent, namespace) {
-        const data = await mailSent(validateIdentity(args.agent, agent, 'agent'), { to: args.to, limit: args.limit, offset: args.offset });
+        const data = await mailSent(validateIdentity(args.agent, agent, 'agent'), { to: sanitize.agentName(args.to), limit: args.limit, offset: args.offset });
         if (data.messages.length === 0) {
             return 'No sent mail found.';
         }
@@ -943,7 +944,7 @@ const TOOL_HANDLERS = {
     },
 
     async mail_history(args, agent, namespace) {
-        const data = await mailHistory(validateIdentity(args.agent, agent, 'agent'), { from: args.from, limit: args.limit, offset: args.offset });
+        const data = await mailHistory(validateIdentity(args.agent, agent, 'agent'), { from: sanitize.agentName(args.from), limit: args.limit, offset: args.offset });
         if (data.messages.length === 0) {
             return 'No mail history found.';
         }
@@ -1076,8 +1077,11 @@ const TOOL_HANDLERS = {
     // --- Discussion ---
     async discussion_create(args, agent, namespace) {
         const creator = validateIdentity(args.created_by, agent, 'created_by');
+        const participants = Array.isArray(args.participants)
+            ? args.participants.map(sanitize.agentName)
+            : args.participants;
         const data = await discussionCreate(
-            args.topic, creator, args.participants,
+            args.topic, creator, participants,
             null, args.channel, args.mode, args.context
         );
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
