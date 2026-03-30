@@ -663,6 +663,21 @@ thead th {
     background: var(--bg-surface);
 }
 
+thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+thead th.sortable:hover {
+    color: var(--text-primary);
+}
+
+thead th.sortable .sort-arrow {
+    font-size: 8px;
+    margin-left: 3px;
+    opacity: 0.7;
+}
+
 tbody td {
     padding: 7px 12px;
     border-bottom: 1px solid var(--border-subtle);

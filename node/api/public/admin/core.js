@@ -395,4 +395,54 @@ function useCore() {
     };
 }
 
-export { useCore };
+// Reusable table sort composable.
+// Usage:
+//   const { sortKey, sortDir, toggleSort, sorted } = useSortable(items, 'name');
+//   <th class="sortable" @click="toggleSort('name')">Name <span v-html="sortArrow('name')"></span></th>
+//   <tr v-for="item in sorted" ...>
+function useSortable(items, defaultKey, defaultDir) {
+    const sortKey = ref(defaultKey || '');
+    const sortDir = ref(defaultDir || 'asc');
+
+    function toggleSort(key) {
+        if (sortKey.value === key) {
+            sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortKey.value = key;
+            sortDir.value = 'asc';
+        }
+    }
+
+    function sortArrow(key) {
+        if (sortKey.value !== key) return '';
+        return sortDir.value === 'asc' ? '&#9650;' : '&#9660;';
+    }
+
+    const sorted = computed(() => {
+        if (!sortKey.value || !items.value) return items.value;
+        var key = sortKey.value;
+        var dir = sortDir.value === 'asc' ? 1 : -1;
+        return [...items.value].sort(function(a, b) {
+            var aVal = a[key];
+            var bVal = b[key];
+            // Nulls/undefined sort last
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
+            // Dates
+            if (aVal instanceof Date) return dir * (aVal - bVal);
+            // Strings
+            if (typeof aVal === 'string') {
+                return dir * aVal.localeCompare(bVal, undefined, { sensitivity: 'base' });
+            }
+            // Numbers / booleans
+            if (aVal < bVal) return -dir;
+            if (aVal > bVal) return dir;
+            return 0;
+        });
+    });
+
+    return { sortKey, sortDir, toggleSort, sortArrow, sorted };
+}
+
+export { useCore, useSortable };

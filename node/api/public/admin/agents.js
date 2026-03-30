@@ -1,9 +1,13 @@
 // agents.js — Agents list, detail, welcome templates, provider registry
 import { ref } from 'vue';
+import { useSortable } from './core.js';
 
 function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
     const selectedAgent = ref(null);
+
+    // Sortable table — default sort by agent name
+    const agentSort = useSortable(agents, 'agent', 'asc');
 
     // Provider registry (loaded once from backend)
     const providerRegistry = ref([]);
@@ -539,6 +543,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
 
     return {
         agents, selectedAgent,
+        agentsSorted: agentSort.sorted, agentSortKey: agentSort.sortKey, agentSortDir: agentSort.sortDir,
+        toggleAgentSort: agentSort.toggleSort, agentSortArrow: agentSort.sortArrow,
         // Provider registry
         providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, configVersionFor, modelDeprecation,
         parseAgentConfig, capabilityVisible, capabilityDisabled, formatConfigValue,

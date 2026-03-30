@@ -1,9 +1,13 @@
 // actors-config.js — Actor permissions, visibility, and creation management (Configuration > Actors tab)
 import { ref, computed, watch } from 'vue';
+import { useSortable } from './core.js';
 
 function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, permissions }) {
     const actorsConfigList = ref([]);
     const actorsConfigLoading = ref(false);
+
+    // Sortable table — default sort by name
+    const actorSort = useSortable(actorsConfigList, 'name', 'asc');
 
     // Detail dialog state
     const selectedActorConfig = ref(null);
@@ -679,6 +683,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
 
     return {
         actorsConfigList, actorsConfigLoading,
+        actorsSorted: actorSort.sorted, actorSortKey: actorSort.sortKey, actorSortDir: actorSort.sortDir,
+        toggleActorSort: actorSort.toggleSort, actorSortArrow: actorSort.sortArrow,
         selectedActorConfig, actorConfigLoading, actorDialogMode,
         actorPermissions, actorHasWildcardPerm,
         actorVisibilityGrants, actorHasWildcardVis,
