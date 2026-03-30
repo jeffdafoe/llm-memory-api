@@ -17,7 +17,7 @@ const { requireByName, resolveByName, resolveById } = require('../services/actor
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
-const { hasPermission, requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
+const { requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
 const notePerms = require('../services/note-permissions');
 const { apiRoute } = require('../middleware/route-wrapper');
 
