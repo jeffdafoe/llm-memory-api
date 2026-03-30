@@ -121,6 +121,9 @@ config.init().then(() => {
     const { startErrorPing } = require('./services/virtual-agent');
     startErrorPing();
 
+    const { startStaleVoteScanner } = require('./services/discussion');
+    startStaleVoteScanner();
+
     const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
     });

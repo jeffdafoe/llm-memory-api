@@ -733,6 +733,12 @@ async function discussionLeave(discussionId, agent) {
         });
     });
 
+    // Re-evaluate any open votes — the reduced participant count may now
+    // satisfy the threshold (e.g. the leaver was the only one who hadn't voted).
+    reEvaluateOpenVotes(discussionId).catch(err => {
+        logDiscussion('leave-vote-reeval-error', { discussion_id: discussionId, error: err.message });
+    });
+
     return { discussion_id: discussionId, agent, status: 'left' };
 }
 
@@ -909,6 +915,65 @@ async function voteStatus(voteId) {
     return { vote: updated.rows[0], ballots: ballots.rows };
 }
 
+// Re-evaluate all open votes for a discussion. Called when a participant
+// leaves — the reduced participant count may satisfy the threshold.
+async function reEvaluateOpenVotes(discussionId) {
+    const openVotes = await pool.query(
+        'SELECT id FROM discussion_votes WHERE discussion_id = $1 AND status = $2',
+        [discussionId, 'open']
+    );
+    for (const row of openVotes.rows) {
+        await evaluateVote(row.id);
+    }
+}
+
+// --- Stale vote scanner ---
+// Periodically finds open votes that have been open longer than the
+// configured threshold and closes them by triggering evaluation with
+// an auto-set closes_at so evaluateVote sees them as expired.
+
+const DEFAULT_STALE_VOTE_MINUTES = 30;
+const SCAN_INTERVAL_MS = 60 * 1000;  // check every minute
+let staleVoteTimer = null;
+
+function startStaleVoteScanner() {
+    if (staleVoteTimer) return;  // singleton
+    staleVoteTimer = setInterval(scanStaleVotes, SCAN_INTERVAL_MS);
+    staleVoteTimer.unref();  // don't keep the process alive
+    logDiscussion('stale-vote-scanner-started', { intervalMs: SCAN_INTERVAL_MS });
+}
+
+async function scanStaleVotes() {
+    try {
+        const thresholdMinutes = parseInt(config.get('discussion_stale_vote_timeout')) || DEFAULT_STALE_VOTE_MINUTES;
+
+        // Find open votes with no closes_at that are older than the threshold
+        const stale = await pool.query(
+            `SELECT id, discussion_id FROM discussion_votes
+             WHERE status = 'open'
+               AND closes_at IS NULL
+               AND proposed_at < NOW() - INTERVAL '1 minute' * $1`,
+            [thresholdMinutes]
+        );
+
+        if (stale.rows.length === 0) return;
+
+        logDiscussion('stale-votes-found', { count: stale.rows.length, thresholdMinutes });
+
+        for (const row of stale.rows) {
+            // Set closes_at to now so evaluateVote treats it as expired
+            await pool.query(
+                'UPDATE discussion_votes SET closes_at = NOW() WHERE id = $1 AND status = $2',
+                [row.id, 'open']
+            );
+            await evaluateVote(row.id);
+            logDiscussion('stale-vote-closed', { vote_id: row.id, discussion_id: row.discussion_id });
+        }
+    } catch (err) {
+        logDiscussion('stale-vote-scan-error', { error: err.message });
+    }
+}
+
 module.exports = {
     discussionCreate,
     discussionList,
@@ -922,5 +987,6 @@ module.exports = {
     voteCast,
     voteStatus,
     evaluateVote,
-    evaluateReadiness
+    evaluateReadiness,
+    startStaleVoteScanner
 };
