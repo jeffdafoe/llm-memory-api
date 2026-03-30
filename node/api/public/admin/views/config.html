@@ -30,15 +30,15 @@
                 <thead>
                     <tr>
                         <th class="col-activity"></th>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Personality</th>
-                        <th>Provider / Model</th>
-                        <th class="time-cell">Last Seen</th>
+                        <th class="sortable" @click="toggleActorSort('name')">Name <span class="sort-arrow" v-html="actorSortArrow('name')"></span></th>
+                        <th class="sortable" @click="toggleActorSort('is_agent')">Type <span class="sort-arrow" v-html="actorSortArrow('is_agent')"></span></th>
+                        <th class="sortable" @click="toggleActorSort('personality')">Personality <span class="sort-arrow" v-html="actorSortArrow('personality')"></span></th>
+                        <th class="sortable" @click="toggleActorSort('provider')">Provider / Model <span class="sort-arrow" v-html="actorSortArrow('provider')"></span></th>
+                        <th class="sortable time-cell" @click="toggleActorSort('last_seen')">Last Seen <span class="sort-arrow" v-html="actorSortArrow('last_seen')"></span></th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="actor in actorsConfigList" :key="actor.id" class="clickable" @click="actor.is_agent ? viewAgent({ agent: actor.name, ...actor }) : openActorConfig(actor)">
+                    <tr v-for="actor in actorsSorted" :key="actor.id" class="clickable" @click="actor.is_agent ? viewAgent({ agent: actor.name, ...actor }) : openActorConfig(actor)">
                         <td style="text-align:center; width:30px;">
                             <template v-if="actor.is_agent">
                                 <span v-if="actor.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>

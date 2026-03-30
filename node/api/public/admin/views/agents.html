@@ -18,16 +18,16 @@
                 <thead>
                     <tr>
                         <th></th>
-                        <th>Agent</th>
-                        <th>Personality</th>
-                        <th>Provider / Model</th>
+                        <th class="sortable" @click="toggleAgentSort('agent')">Agent <span class="sort-arrow" v-html="agentSortArrow('agent')"></span></th>
+                        <th class="sortable" @click="toggleAgentSort('personality')">Personality <span class="sort-arrow" v-html="agentSortArrow('personality')"></span></th>
+                        <th class="sortable" @click="toggleAgentSort('provider')">Provider / Model <span class="sort-arrow" v-html="agentSortArrow('provider')"></span></th>
                         <th>Who Can See</th>
                         <th>Who Can Use</th>
-                        <th class="time-cell">Last Seen</th>
+                        <th class="sortable time-cell" @click="toggleAgentSort('last_seen')">Last Seen <span class="sort-arrow" v-html="agentSortArrow('last_seen')"></span></th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="agent in agents" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
+                    <tr v-for="agent in agentsSorted" :key="agent.agent" @click="viewAgent(agent)" class="clickable">
                         <td style="text-align:center;">
                             <span v-if="agent.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                             <span v-else :class="'status-dot status-dot-' + agent.status" :title="agent.status"></span>
