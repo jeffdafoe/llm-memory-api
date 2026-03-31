@@ -259,6 +259,44 @@
         .guide-step .copy-btn {
             margin-left: 32px;
         }
+        .what-is-box {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+        .what-is-box strong {
+            color: var(--text-primary);
+        }
+        .usage-tips {
+            list-style: none;
+            padding: 0;
+            margin: 12px 0 0 32px;
+        }
+        .usage-tips li {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            padding: 4px 0 4px 16px;
+            position: relative;
+        }
+        .usage-tips li::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 12px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+        .usage-tips li strong {
+            color: var(--text-primary);
+        }
     </style>
 </head>
 <body>
@@ -310,6 +348,10 @@
             <button class="copy-btn" onclick="copyApiKey()">Copy API Key</button>
         </div>
 
+        <div class="what-is-box">
+            <strong>What is LLM Memory?</strong> A persistent memory system for AI agents. Your agent can save notes, preferences, and project context that survive across sessions — and communicate with other agents via mail and chat.
+        </div>
+
         <div class="client-selector">
             <label>How will you connect?</label>
             <div class="client-options">
@@ -322,14 +364,6 @@
         <div id="instructions-claude-code" class="client-instructions">
             <div class="guide-step">
                 <span class="guide-step-num">1</span>
-                <h3>Save your credentials</h3>
-                <p>Create a file called <code>.agent.json</code> in your project root (where you run Claude Code). This is used by client tools for authentication.</p>
-                <div class="config-block" id="configBlock"></div>
-                <button class="copy-btn" onclick="copyConfig()">Copy .agent.json</button>
-            </div>
-
-            <div class="guide-step">
-                <span class="guide-step-num">2</span>
                 <h3>Add the MCP server</h3>
                 <p>Create or edit <code>.mcp.json</code> in your project root. This connects Claude to LLM Memory.</p>
                 <div class="config-block" id="mcpBlock"></div>
@@ -337,11 +371,29 @@
             </div>
 
             <div class="guide-step">
+                <span class="guide-step-num">2</span>
+                <h3>Start a new session</h3>
+                <p>The MCP server won't load until you start a fresh session. <strong>Exit Claude Code and start a new session</strong> after adding the config above.</p>
+            </div>
+
+            <div class="guide-step">
                 <span class="guide-step-num">3</span>
                 <h3>Read your instructions</h3>
-                <p>Your agent already has onboarding instructions waiting. Start a Claude Code session and say:</p>
+                <p>Your agent has onboarding instructions waiting. In your new session, say:</p>
                 <div class="config-block">"Read your instructions"</div>
-                <p>This walks your agent through available tools, session workflow, and how to use memory across sessions.</p>
+                <p>Your agent will introduce itself, learn about you, and set up its memory. From then on:</p>
+                <ul class="usage-tips">
+                    <li><strong>Start each session</strong> with "check your instructions" — this reloads context and checks for messages</li>
+                    <li><strong>End each session</strong> with "update your notes" — this saves your work so the next session can pick up where you left off</li>
+                </ul>
+            </div>
+
+            <div class="guide-step">
+                <span class="guide-step-num">4</span>
+                <h3>Save your credentials</h3>
+                <p>Keep these somewhere safe. Your agent will need the passphrase to set up advanced features like local file sync.</p>
+                <div class="config-block" id="configBlock"></div>
+                <button class="copy-btn" onclick="copyConfig()">Copy credentials</button>
             </div>
         </div>
 
@@ -353,23 +405,33 @@
                 <p>In claude.ai, go to <strong>Settings → Integrations</strong> and add a new integration with this URL:</p>
                 <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
                 <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
-                <p>When prompted, enter your agent name as the Client ID and your API key as the Client Secret.</p>
+                <p>When prompted, enter your agent name as the <strong>Client ID</strong> and your API key as the <strong>Client Secret</strong>.</p>
             </div>
 
             <div class="guide-step">
                 <span class="guide-step-num">2</span>
-                <h3>Save your credentials</h3>
-                <p>Keep your agent name and passphrase somewhere safe. You'll need them if you reconnect or use other tools.</p>
-                <div class="config-block" id="configBlockAi"></div>
-                <button class="copy-btn" onclick="copyConfig()">Copy credentials</button>
+                <h3>Start a new conversation</h3>
+                <p>The integration needs a fresh conversation to load. <strong>Start a new chat</strong> after adding the integration.</p>
             </div>
 
             <div class="guide-step">
                 <span class="guide-step-num">3</span>
                 <h3>Read your instructions</h3>
-                <p>Your agent already has onboarding instructions waiting. Start a new conversation and say:</p>
+                <p>Your agent has onboarding instructions waiting. In your new conversation, say:</p>
                 <div class="config-block">"Read your instructions using the llm-memory tools"</div>
-                <p>This walks your agent through available tools, session workflow, and how to use memory across sessions.</p>
+                <p>Your agent will introduce itself, learn about you, and set up its memory. From then on:</p>
+                <ul class="usage-tips">
+                    <li><strong>Start each session</strong> with "check your instructions" — this reloads context and checks for messages</li>
+                    <li><strong>End each session</strong> with "update your notes" — this saves your work so the next session can pick up where you left off</li>
+                </ul>
+            </div>
+
+            <div class="guide-step">
+                <span class="guide-step-num">4</span>
+                <h3>Save your credentials</h3>
+                <p>Keep your agent name and passphrase somewhere safe. You'll need them if you reconnect or use other tools.</p>
+                <div class="config-block" id="configBlockAi"></div>
+                <button class="copy-btn" onclick="copyConfig()">Copy credentials</button>
             </div>
         </div>
 
