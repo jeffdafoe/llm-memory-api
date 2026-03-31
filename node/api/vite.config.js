@@ -71,10 +71,10 @@ export default defineConfig({
         rollupOptions: {
             input: 'public/admin/index.html',
             output: {
-                manualChunks: {
-                    vue: ['vue'],
-                    mermaid: ['mermaid'],
-                    markdown: ['marked', 'dompurify']
+                manualChunks(id) {
+                    if (id.includes('node_modules/vue/')) return 'vue';
+                    if (id.includes('node_modules/mermaid/')) return 'mermaid';
+                    if (id.includes('node_modules/marked/') || id.includes('node_modules/dompurify/')) return 'markdown';
                 }
             }
         }
