@@ -144,12 +144,8 @@ router.post('/api/register', async (req, res) => {
             [actorId]
         );
 
-        // Grant namespace permissions on own namespace (read/write/delete)
-        await client.query(
-            `INSERT INTO namespace_permissions (actor_id, namespace, can_read, can_write, can_delete)
-             VALUES ($1, $2, true, true, true)`,
-            [actorId, agentName]
-        );
+        // Own-namespace access is implicit (enforced in namespace-permissions.js hasAccess).
+        // No namespace_permissions row needed.
 
         // Grant admin UI access (dashboard, agents, communications)
         await client.query(
