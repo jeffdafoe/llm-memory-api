@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  go-client:
+    name: Go Client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go/client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/client/go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build (linux/amd64)
+        run: go build ./cmd/memory-sync/
+
+      - name: Build (windows/amd64)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go build ./cmd/memory-sync/
+
+      - name: Build (darwin/arm64)
+        env:
+          GOOS: darwin
+          GOARCH: arm64
+        run: go build ./cmd/memory-sync/
+
+      - name: Test
+        run: go test ./...

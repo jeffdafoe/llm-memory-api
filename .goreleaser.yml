@@ -1,0 +1,43 @@
+version: 2
+
+project_name: llm-memory-client
+
+before:
+  hooks:
+    - go vet ./...
+
+builds:
+  - id: memory-sync
+    main: ./cmd/memory-sync/
+    dir: go/client
+    binary: memory-sync
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: memory-sync
+    builds:
+      - memory-sync
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "memory-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^ci:'
+      - '^chore:'

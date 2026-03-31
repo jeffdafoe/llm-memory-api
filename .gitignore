@@ -7,3 +7,8 @@ infrastructure/local-secrets.yml
 .mcp.json
 node/api/public/admin/dist/
 node/api/preview-server.js
+
+# Go build artifacts
+*.exe
+go/client/memory-sync
+dist/
