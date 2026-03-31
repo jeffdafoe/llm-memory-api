@@ -50,7 +50,8 @@ function generateSessionToken() {
 // No auth required — the passphrase in the body is the credential.
 // Also cleans up expired sessions lazily on each call.
 router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
-    const { passphrase, subsystem } = req.body;
+    const { passphrase } = req.body;
+    const subsystem = sanitize.identifier(req.body.subsystem);
     const agent = sanitize.agentName(req.body.agent);
 
     if (!agent || !passphrase) {
@@ -337,10 +338,10 @@ router.post('/agent/expertise', apiRoute('agent', 'expertise', async (req, res) 
         });
     }
 
-    // Validate each entry is a non-empty string
+    // Validate each entry is a non-empty string, sanitize content
     const cleaned = expertise
         .filter(e => typeof e === 'string' && e.trim().length > 0)
-        .map(e => e.trim().toLowerCase());
+        .map(e => sanitize.content(e.trim().toLowerCase()));
 
     const json = JSON.stringify(cleaned);
 
@@ -369,7 +370,8 @@ router.post('/agent/profile', apiRoute('agent', 'profile', async (req, res) => {
         });
     }
 
-    const { provider, model } = req.body;
+    const provider = req.body.provider !== undefined ? sanitize.identifier(req.body.provider) : undefined;
+    const model = req.body.model !== undefined ? sanitize.identifier(req.body.model) : undefined;
     if (provider === undefined && model === undefined) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'At least one field required: provider, model' }
@@ -476,7 +478,7 @@ router.post('/agent/instructions/save', apiRoute('agent', 'instructions-save', a
         });
     }
 
-    const { content } = req.body;
+    const content = sanitize.content(req.body.content);
     if (content === undefined) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: content' }

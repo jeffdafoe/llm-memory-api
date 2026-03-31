@@ -620,7 +620,7 @@ const TOOL_HANDLERS = {
         if (!targetNs || targetNs === '*') {
             readable = await getReadableNamespaces(actorId, agent, 'agent');
         }
-        const data = await searchMemory(args.query, targetNs, args.limit || 5, readable, actorId);
+        const data = await searchMemory(sanitize.content(args.query), targetNs, args.limit || 5, readable, actorId);
         const lines = data.results.map(r => {
             return `[${r.namespace}] ${r.source_file} — ${r.heading || '(no heading)'} (${(r.similarity * 100).toFixed(1)}%)\n${r.chunk_text}`;
         });
@@ -631,7 +631,7 @@ const TOOL_HANDLERS = {
         const targetNs = args.namespace || namespace;
         validateNamespace(targetNs);
         await requireAccess(actorId, agent, 'agent', targetNs, 'delete');
-        const data = await deleteMemory(targetNs, args.source_file);
+        const data = await deleteMemory(targetNs, sanitize.identifier(args.source_file));
         return `Deleted ${data.chunks_deleted} chunks for ${args.source_file}`;
     },
 
@@ -649,7 +649,7 @@ const TOOL_HANDLERS = {
                 );
             }
         }
-        const doc = await saveNote(targetNs, args.title, args.content, args.slug, agent);
+        const doc = await saveNote(targetNs, sanitize.content(args.title), sanitize.content(args.content), sanitize.identifier(args.slug), agent);
         // Refresh activity indicator
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
@@ -743,7 +743,7 @@ const TOOL_HANDLERS = {
                 );
             }
         }
-        const result = await editNote(targetNs, args.slug, args.old_string, args.new_string, args.replace_all);
+        const result = await editNote(targetNs, sanitize.identifier(args.slug), sanitize.content(args.old_string), sanitize.content(args.new_string), args.replace_all);
         return `Edited: ${result.namespace}/${result.slug} (${result.replacements} replacement${result.replacements === 1 ? '' : 's'})`;
     },
 
@@ -757,7 +757,7 @@ const TOOL_HANDLERS = {
         if (targetNs !== sourceNs) {
             await requireAccess(actorId, agent, 'agent', targetNs, 'write');
         }
-        const doc = await moveNote(sourceNs, args.slug, args.new_slug, args.new_namespace);
+        const doc = await moveNote(sourceNs, sanitize.identifier(args.slug), sanitize.identifier(args.new_slug), args.new_namespace);
         return `Moved: ${sourceNs}/${args.slug} → ${doc.namespace}/${doc.slug}`;
     },
 
@@ -772,7 +772,7 @@ const TOOL_HANDLERS = {
         if (!targetNs || targetNs === '*') {
             readable = await getReadableNamespaces(actorId, agent, 'agent');
         }
-        let results = await grepNotes(args.pattern, targetNs, args.limit, readable);
+        let results = await grepNotes(sanitize.content(args.pattern), targetNs, args.limit, readable);
         if (results.length === 0) {
             return `No notes matching "${args.pattern}".`;
         }
@@ -813,11 +813,12 @@ const TOOL_HANDLERS = {
         if (!args.content) {
             throw Object.assign(new Error('Required field: content'), { statusCode: 400 });
         }
+        const instrContent = sanitize.content(args.content);
         await pool.query(
             'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2',
-            [args.content, actorId]
+            [instrContent, actorId]
         );
-        return `Instructions saved (${args.content.length} characters)`;
+        return `Instructions saved (${instrContent.length} characters)`;
     },
 
     // --- Chat ---
@@ -835,7 +836,7 @@ const TOOL_HANDLERS = {
                 discussionId = parseInt(match[1], 10);
             }
         }
-        const data = await chatSend(fromAgent, toAgents, discussionId, args.message, args.channel);
+        const data = await chatSend(fromAgent, toAgents, discussionId, sanitize.content(args.message), args.channel);
         const targets = data.to_agents.map(r => r.agent).join(', ');
         return `Message sent to ${targets}`;
     },
@@ -867,7 +868,7 @@ const TOOL_HANDLERS = {
 
     // --- Mail ---
     async mail_send(args, agent, namespace, actorId) {
-        const data = await mailSend(sanitize.agentName(args.to), validateIdentity(args.from, agent, 'from'), args.subject, args.body, args.in_reply_to);
+        const data = await mailSend(sanitize.agentName(args.to), validateIdentity(args.from, agent, 'from'), sanitize.content(args.subject), sanitize.content(args.body), args.in_reply_to);
         // Refresh activity indicator
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
@@ -915,7 +916,7 @@ const TOOL_HANDLERS = {
     },
 
     async mail_edit(args, agent, namespace) {
-        const data = await mailEdit(args.id, agent, args.subject, args.body);
+        const data = await mailEdit(args.id, agent, sanitize.content(args.subject), sanitize.content(args.body));
         return `Mail ${data.id} updated (to: ${data.to_agent}, subject: "${data.subject}")`;
     },
 
@@ -1023,7 +1024,7 @@ const TOOL_HANDLERS = {
 
         const cleaned = args.expertise
             .filter(e => typeof e === 'string' && e.trim().length > 0)
-            .map(e => e.trim().toLowerCase());
+            .map(e => sanitize.content(e.trim().toLowerCase()));
 
         const json = JSON.stringify(cleaned);
         await pool.query('UPDATE actors SET expertise = $1 WHERE id = $2', [json, actorId]);
@@ -1041,11 +1042,11 @@ const TOOL_HANDLERS = {
 
         if (args.provider !== undefined) {
             sets.push(`provider = $${idx++}`);
-            vals.push(args.provider);
+            vals.push(sanitize.identifier(args.provider));
         }
         if (args.model !== undefined) {
             sets.push(`model = $${idx++}`);
-            vals.push(args.model);
+            vals.push(sanitize.identifier(args.model));
         }
         vals.push(actorId);
 
@@ -1081,8 +1082,8 @@ const TOOL_HANDLERS = {
             ? args.participants.map(sanitize.agentName)
             : args.participants;
         const data = await discussionCreate(
-            args.topic, creator, participants,
-            null, args.channel, args.mode, args.context
+            sanitize.content(args.topic), creator, participants,
+            null, sanitize.identifier(args.channel), args.mode, sanitize.content(args.context)
         );
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
         const channel = args.channel || `discussion-${data.discussion.id}`;
@@ -1180,14 +1181,14 @@ const TOOL_HANDLERS = {
     async discussion_vote_propose(args, agent, namespace) {
         const proposer = validateIdentity(args.proposed_by, agent, 'proposed_by');
         const data = await votePropose(
-            args.discussion_id, proposer, args.question,
+            args.discussion_id, proposer, sanitize.content(args.question),
             args.type, args.threshold, args.closes_at
         );
         return `Vote #${data.vote.id} proposed in discussion #${data.vote.discussion_id}: "${data.vote.question}" (${data.vote.type}, ${data.vote.threshold})`;
     },
 
     async discussion_vote_cast(args, agent, namespace) {
-        const data = await voteCast(args.vote_id, validateIdentity(args.agent, agent, 'agent'), args.choice, args.reason);
+        const data = await voteCast(args.vote_id, validateIdentity(args.agent, agent, 'agent'), args.choice, sanitize.content(args.reason));
         return `Vote cast on #${data.vote_id}: choice ${data.choice}. Vote status: ${data.vote_status}`;
     },
 

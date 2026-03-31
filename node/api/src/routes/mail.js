@@ -6,9 +6,11 @@ const sanitize = require('../sanitize');
 const router = Router();
 
 router.post('/mail/send', apiRoute('mail', 'send', async (req, res) => {
-    let { from_agent, subject, body, in_reply_to } = req.body;
+    let { in_reply_to } = req.body;
+    let from_agent = sanitize.agentName(req.body.from_agent);
     const to_agent = sanitize.agentName(req.body.to_agent);
-    from_agent = sanitize.agentName(from_agent);
+    const subject = sanitize.content(req.body.subject);
+    const body = sanitize.content(req.body.body);
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -54,7 +56,9 @@ router.post('/mail/receive', apiRoute('mail', 'receive', async (req, res) => {
 }));
 
 router.post('/mail/edit', apiRoute('mail', 'edit', async (req, res) => {
-    let { id, subject, body } = req.body;
+    const { id } = req.body;
+    const subject = sanitize.content(req.body.subject);
+    const body = sanitize.content(req.body.body);
     let from_agent = sanitize.agentName(req.body.from_agent);
 
     // Enforce agent identity (skip for admin user sessions)

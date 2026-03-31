@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus } = require('../services/memory');
 const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
 const { apiRoute } = require('../middleware/route-wrapper');
+const sanitize = require('../sanitize');
 
 const router = Router();
 
@@ -15,7 +16,9 @@ function getActor(req) {
 }
 
 router.post('/memory/ingest', apiRoute('memory', 'ingest', async (req, res) => {
-    const { namespace, source_file, content } = req.body;
+    const { namespace } = req.body;
+    const source_file = sanitize.identifier(req.body.source_file);
+    const content = sanitize.content(req.body.content);
 
     if (!namespace || !source_file || !content) {
         return res.status(400).json({
@@ -52,7 +55,8 @@ router.post('/memory/ingest/status', apiRoute('memory', 'ingest-status', async (
 }));
 
 router.post('/memory/search', apiRoute('memory', 'search', async (req, res) => {
-    const { query, namespace, limit } = req.body;
+    const query = sanitize.content(req.body.query);
+    const { namespace, limit } = req.body;
 
     if (!query) {
         return res.status(400).json({
@@ -91,7 +95,8 @@ router.post('/memory/cleanup', apiRoute('memory', 'cleanup', async (req, res) =>
 }));
 
 router.post('/memory/delete', apiRoute('memory', 'delete', async (req, res) => {
-    const { namespace, source_file } = req.body;
+    const { namespace } = req.body;
+    const source_file = sanitize.identifier(req.body.source_file);
 
     if (!namespace || !source_file) {
         return res.status(400).json({
