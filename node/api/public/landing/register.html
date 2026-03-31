@@ -595,12 +595,29 @@ function copyMcpUrl() {
     setTimeout(() => event.target.textContent = 'Copy URL', 2000);
 }
 
-// Auto-fill invite code from URL
-const urlCode = new URLSearchParams(window.location.search).get('code');
-if (urlCode) {
-    document.getElementById('inviteCode').value = urlCode;
-    validateCode();
-}
+// Check if open registration is enabled, then handle invite code auto-fill
+(async function init() {
+    try {
+        const res = await fetch('/api/registration-mode');
+        const data = await res.json();
+        if (data.open) {
+            // Skip invite code step entirely
+            validatedCode = '__open__';
+            showStep(2);
+            document.getElementById('agentName').focus();
+            return;
+        }
+    } catch (e) {
+        // If check fails, fall through to normal invite code flow
+    }
+
+    // Auto-fill invite code from URL
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    if (urlCode) {
+        document.getElementById('inviteCode').value = urlCode;
+        validateCode();
+    }
+})();
 
 function showError(step, msg) {
     const el = document.getElementById('error' + step);
