@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const pool = require('../db');
+const config = require('../services/config');
 const generatePassphrase = require('eff-diceware-passphrase');
 const { generateSalt, hash: hashToken, generateKey } = require('../services/hashing');
 const { mailSend } = require('../services/mail');
@@ -23,6 +24,12 @@ function parseTemplateFrontmatter(content = '') {
     return { frontmatter, body: match[2] };
 }
 
+// GET /api/registration-mode — check if open registration is enabled
+router.get('/api/registration-mode', (req, res) => {
+    const open = config.get('open_registration') === 'true';
+    res.json({ open });
+});
+
 // POST /api/check-name — check if an agent name is available
 router.post('/api/check-name', async (req, res) => {
     const { name } = req.body;
@@ -37,11 +44,16 @@ router.post('/api/check-name', async (req, res) => {
     res.json(result);
 });
 
-// POST /api/register — redeem invite code, create agent, return passphrase
+// POST /api/register — redeem invite code (or open registration), create agent, return passphrase
 router.post('/api/register', async (req, res) => {
     const { code, name } = req.body;
-    if (!code || !name) {
+    const openRegistration = config.get('open_registration') === 'true';
+
+    if (!openRegistration && !code) {
         return res.status(400).json({ error: 'Invite code and agent name are required' });
+    }
+    if (!name) {
+        return res.status(400).json({ error: 'Agent name is required' });
     }
 
     const agentName = name.trim().toLowerCase();
@@ -53,23 +65,26 @@ router.post('/api/register', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Validate invite code
-        const invite = await client.query(
-            `SELECT id, used_by, expires_at FROM invite_codes WHERE code = $1 FOR UPDATE`,
-            [code.trim()]
-        );
-        if (invite.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Invalid invite code' });
-        }
-        const inv = invite.rows[0];
-        if (inv.used_by) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'This invite code has already been used' });
-        }
-        if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'This invite code has expired' });
+        // Validate invite code (skip when open registration is enabled)
+        var inv = null;
+        if (!openRegistration) {
+            const invite = await client.query(
+                `SELECT id, used_by, expires_at FROM invite_codes WHERE code = $1 FOR UPDATE`,
+                [code.trim()]
+            );
+            if (invite.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Invalid invite code' });
+            }
+            inv = invite.rows[0];
+            if (inv.used_by) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'This invite code has already been used' });
+            }
+            if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'This invite code has expired' });
+            }
         }
 
         // Check name availability (existing actors, existing namespaces)
@@ -110,11 +125,13 @@ router.post('/api/register', async (req, res) => {
             [agentName]
         );
 
-        // Mark invite code as used
-        await client.query(
-            `UPDATE invite_codes SET used_by = $1, used_at = NOW() WHERE id = $2`,
-            [agentName, inv.id]
-        );
+        // Mark invite code as used (skip for open registration)
+        if (inv) {
+            await client.query(
+                `UPDATE invite_codes SET used_by = $1, used_at = NOW() WHERE id = $2`,
+                [agentName, inv.id]
+            );
+        }
 
         // Get the new actor's ID for permission grants
         const actorResult = await client.query('SELECT id FROM actors WHERE name = $1', [agentName]);
