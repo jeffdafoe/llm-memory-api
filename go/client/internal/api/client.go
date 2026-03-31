@@ -13,7 +13,7 @@ import (
     "net/http"
     "time"
 
-    "github.com/bill1st/llm-memory-api/go/client/internal/config"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/config"
 )
 
 // HTTPError represents a non-2xx response from the API.
