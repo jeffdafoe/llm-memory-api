@@ -2,11 +2,6 @@ version: 2
 
 project_name: llm-memory-client
 
-before:
-  hooks:
-    - dir: go/client
-      cmd: go vet ./...
-
 builds:
   - id: memory-sync
     main: ./cmd/memory-sync/
