@@ -4,7 +4,7 @@ project_name: llm-memory-client
 
 before:
   hooks:
-    - go vet ./...
+    - cd go/client && go vet ./...
 
 builds:
   - id: memory-sync
@@ -23,12 +23,14 @@ builds:
 
 archives:
   - id: memory-sync
-    builds:
+    ids:
       - memory-sync
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     name_template: "memory-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
