@@ -12,7 +12,7 @@ import (
     "strings"
     "time"
 
-    "github.com/bill1st/llm-memory-api/go/client/internal/api"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/api"
 )
 
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
