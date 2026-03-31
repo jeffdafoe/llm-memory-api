@@ -21,9 +21,9 @@ import (
     "path/filepath"
     "syscall"
 
-    "github.com/bill1st/llm-memory-api/go/client/internal/api"
-    "github.com/bill1st/llm-memory-api/go/client/internal/config"
-    "github.com/bill1st/llm-memory-api/go/client/internal/memsync"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/api"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/config"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/memsync"
 )
 
 func main() {

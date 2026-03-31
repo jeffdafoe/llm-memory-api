@@ -11,7 +11,7 @@ import (
     "strings"
     "time"
 
-    "github.com/bill1st/llm-memory-api/go/client/internal/api"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/api"
 )
 
 // MemorySync runs Phase 1: bidirectional sync of memory/*.md files.

@@ -8,7 +8,7 @@ import (
     "strings"
     "time"
 
-    "github.com/bill1st/llm-memory-api/go/client/internal/api"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/api"
 )
 
 // NoteSync runs Phase 3: sync configured note slug/prefix mappings to
