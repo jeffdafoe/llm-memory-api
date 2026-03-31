@@ -15,7 +15,7 @@
         "eff-diceware-passphrase": "^3.0.0",
         "express": "^4.21.0",
         "lucide-static": "^0.577.0",
-        "marked": "^17.0.4",
+        "marked": "^17.0.5",
         "mermaid": "^11.13.0",
         "pg": "^8.13.0",
         "pgvector": "^0.2.0",
