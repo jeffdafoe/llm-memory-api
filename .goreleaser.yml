@@ -4,7 +4,8 @@ project_name: llm-memory-client
 
 before:
   hooks:
-    - cd go/client && go vet ./...
+    - dir: go/client
+      cmd: go vet ./...
 
 builds:
   - id: memory-sync
