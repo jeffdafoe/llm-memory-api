@@ -24,7 +24,9 @@ function logChat(action, details) {
 }
 
 router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
-    let { discussion_id, message, channel } = req.body;
+    let { discussion_id } = req.body;
+    let message = sanitize.content(req.body.message);
+    let channel = req.body.channel;
     let from_agent = sanitize.agentName(req.body.from_agent);
     let to_agents = Array.isArray(req.body.to_agents)
         ? req.body.to_agents.map(a => a === '*' ? a : sanitize.agentName(a))

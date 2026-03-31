@@ -39,7 +39,10 @@ async function requireJoined(discussionId, agent) {
 }
 
 router.post('/discussion/create', apiRoute('discussion', 'create', async (req, res) => {
-    let { topic, channel, mode, context } = req.body;
+    let { mode } = req.body;
+    let topic = sanitize.content(req.body.topic);
+    let channel = sanitize.identifier(req.body.channel);
+    let context = sanitize.content(req.body.context);
     let created_by = sanitize.agentName(req.body.created_by);
     let participants = Array.isArray(req.body.participants)
         ? req.body.participants.map(sanitize.agentName)
@@ -693,7 +696,8 @@ router.post('/discussion/leave', apiRoute('discussion', 'leave', async (req, res
 }));
 
 router.post('/discussion/vote/propose', apiRoute('discussion', 'vote-propose', async (req, res) => {
-    let { discussion_id, question, type, threshold, closes_at } = req.body;
+    let { discussion_id, type, threshold, closes_at } = req.body;
+    let question = sanitize.content(req.body.question);
     let proposed_by = sanitize.agentName(req.body.proposed_by);
 
     // Enforce agent identity (skip for admin user sessions)
@@ -770,7 +774,8 @@ router.post('/discussion/vote/propose', apiRoute('discussion', 'vote-propose', a
 
 router.post('/discussion/vote/cast', apiRoute('discussion', 'vote-cast', async (req, res) => {
     let agent = sanitize.agentName(req.body.agent);
-    const { vote_id, choice, reason } = req.body;
+    const { vote_id, choice } = req.body;
+    const reason = sanitize.content(req.body.reason);
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {

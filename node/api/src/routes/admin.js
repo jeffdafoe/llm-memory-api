@@ -97,7 +97,8 @@ router.use(requireUser);
 
 // POST /admin/login
 router.post('/admin/login', async (req, res) => {
-    const { username, password } = req.body;
+    const username = sanitize.agentName(req.body.username);
+    const { password } = req.body;
 
     if (!username || !password) {
         return res.status(400).json({
@@ -754,7 +755,8 @@ router.post('/admin/chat/delete', requirePerm('comms', 'delete'), adminRoute('ch
 // POST /admin/mail/send — send mail to an agent from the admin dashboard
 router.post('/admin/mail/send', requirePerm('comms', 'write'), adminRoute('mail-send', async (req, res) => {
     const to = sanitize.agentName(req.body.to);
-    const { subject, body } = req.body;
+    const subject = sanitize.content(req.body.subject);
+    const body = sanitize.content(req.body.body);
 
     if (!to || !subject || !body) {
         return res.status(400).json({
@@ -877,7 +879,10 @@ router.post('/admin/notes/read', requirePerm('notes', 'read'), adminRoute('notes
 
 // POST /admin/notes/save — save (update) a note
 router.post('/admin/notes/save', requirePerm('notes', 'write'), adminRoute('notes-save', async (req, res) => {
-    const { namespace, slug, title, content, extension } = req.body;
+    const { namespace, extension } = req.body;
+    const slug = sanitize.identifier(req.body.slug);
+    const title = sanitize.content(req.body.title);
+    const content = sanitize.content(req.body.content);
     if (!namespace || !slug || !title || content === undefined) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: namespace, slug, title, content' }
@@ -1305,7 +1310,10 @@ router.post('/admin/templates/read', requirePerm('templates', 'read'), adminRout
 
 // POST /admin/templates/save — create or update a template
 router.post('/admin/templates/save', requirePerm('templates', 'write'), adminRoute('templates-save', async (req, res) => {
-    const { id, name, kind, description, content } = req.body;
+    const { id, kind } = req.body;
+    const name = sanitize.content(req.body.name);
+    const description = sanitize.content(req.body.description);
+    const content = sanitize.content(req.body.content);
     if (!name || !content) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required fields: name, content' }
