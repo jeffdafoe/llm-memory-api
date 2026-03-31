@@ -14,11 +14,12 @@ jobs:
       run:
         working-directory: go/client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go/client/go.mod
+          cache: false
 
       - name: Vet
         run: go vet ./...
