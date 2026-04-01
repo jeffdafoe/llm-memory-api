@@ -101,6 +101,16 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+app.get('/llms.txt', (req, res) => {
+    res.type('text/plain');
+    res.sendFile(path.join(__dirname, '..', 'public', 'llms.txt'));
+});
+
+app.get('/openapi.yaml', (req, res) => {
+    res.type('text/yaml');
+    res.sendFile(path.join(__dirname, '..', 'public', 'openapi.yaml'));
+});
+
 // Global error handler — catches unhandled errors (JSON parse failures, etc.)
 // and returns a clean JSON response instead of Express's default HTML stack trace.
 app.use((err, req, res, next) => {
