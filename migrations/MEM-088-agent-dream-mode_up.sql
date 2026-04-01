@@ -12,3 +12,7 @@ ALTER TABLE agent_configuration ADD COLUMN last_dream_at TIMESTAMPTZ;
 
 -- Global switch for dream processing (cron job checks this before running)
 INSERT INTO config (key, value) VALUES ('dream_processing_enabled', 'false');
+
+-- Search tuning for dream notes
+INSERT INTO config (key, value) VALUES ('search_decay_halflife_dream', '30');
+INSERT INTO config (key, value) VALUES ('search_dream_weight', '1.0');

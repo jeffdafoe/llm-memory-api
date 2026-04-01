@@ -113,14 +113,16 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         reference: parseNonNegativeFinite(config.get('search_decay_halflife_reference')),
         instruction: parseNonNegativeFinite(config.get('search_decay_halflife_instruction')),
         conversation: parseNonNegativeFinite(config.get('search_decay_halflife_conversation')),
+        dream: parseNonNegativeFinite(config.get('search_decay_halflife_dream')),
     };
     const accessBoostMax = parseNonNegativeFinite(config.get('search_access_boost_max'));
     const accessBoostWindowDays = parseNonNegativeFinite(config.get('search_access_boost_window_days'));
     const accessBoostWindowSeconds = accessBoostWindowDays * 86400;
 
-    // Conversation weight: multiplier applied to conversation results so they
-    // don't outrank same-relevance curated notes. 1.0 = no penalty, 0.0 = invisible.
+    // Kind weight multipliers: applied to results so noisy kinds don't outrank
+    // same-relevance curated notes. 1.0 = no penalty, 0.0 = invisible.
     const conversationWeight = parseNonNegativeFinite(config.get('search_conversation_weight'), 0.7);
+    const dreamWeight = parseNonNegativeFinite(config.get('search_dream_weight'), 1.0);
 
     // Build params array incrementally. All config values are bound, not interpolated.
     // paramIdx tracks the next available $N placeholder.
@@ -200,11 +202,14 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     });
     const decayExpression = `CASE ${decayCases.join(' ')} ELSE 1.0 END`;
 
-    // Kind-level weight multiplier (currently only conversations are penalized)
+    // Kind-level weight multipliers
     const convWeightIdx = paramIdx;
     params.push(conversationWeight);
     paramIdx++;
-    const kindWeightExpression = `CASE WHEN d.kind = 'conversation' THEN $${convWeightIdx} ELSE 1.0 END`;
+    const dreamWeightIdx = paramIdx;
+    params.push(dreamWeight);
+    paramIdx++;
+    const kindWeightExpression = `CASE WHEN d.kind = 'conversation' THEN $${convWeightIdx} WHEN d.kind = 'dream' THEN $${dreamWeightIdx} ELSE 1.0 END`;
 
     // Access boost: linear ramp-down from max to 0 over the window.
     // Uses epoch math with bound params.
