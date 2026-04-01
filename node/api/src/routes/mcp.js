@@ -791,7 +791,7 @@ const TOOL_HANDLERS = {
     // --- Instructions ---
     async read_instructions(args, agent, namespace, actorId) {
         const result = await pool.query(
-            'SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1',
+            'SELECT startup_instructions, dream_mode FROM agent_configuration WHERE actor_id = $1',
             [actorId]
         );
         if (result.rows.length === 0) {
@@ -806,6 +806,15 @@ const TOOL_HANDLERS = {
         if (agentInstructions) {
             parts.push(agentInstructions);
         }
+
+        // Append dream bootstrap if agent has dreaming enabled
+        if (result.rows[0].dream_mode && result.rows[0].dream_mode !== 'none') {
+            const dreamBootstrap = config.get('dream_bootstrap') || '';
+            if (dreamBootstrap) {
+                parts.push(dreamBootstrap);
+            }
+        }
+
         return parts.length > 0 ? parts.join('\n\n') : '(no instructions set)';
     },
 

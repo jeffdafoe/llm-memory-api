@@ -1038,7 +1038,7 @@ function startProxyServer() {
                         }, state);
                     } else {
                         res.writeHead(404);
-                        res.end(JSON.stringify({ error: `Unknown endpoint: ${urlPath}` }));
+                        res.end(JSON.stringify({ error: 'Unknown endpoint' }));
                         return;
                     }
 

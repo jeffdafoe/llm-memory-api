@@ -166,8 +166,11 @@ server {
         add_header Cache-Control "no-store" always;
     }
 
-    # All other requests — no rate limit
+    # All other requests — rate limited to prevent DB exhaustion via auth checks
     location / {
+        limit_req zone=api_limit burst=60 nodelay;
+        limit_req_status 429;
+
         proxy_pass http://127.0.0.1:{{ memory_api_port }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

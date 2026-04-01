@@ -23,7 +23,10 @@
                     Permissions, visibility, and access controls
                 </div>
             </div>
-            <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
+            <div style="display:flex; gap:4px;">
+                <button v-if="actorDialogMode === 'edit' && canDo('actors', 'write')" class="btn btn-ghost btn-compact btn-danger" @click="deleteActor" :disabled="actorDeleting" title="Delete Actor"><i class="icon-trash-2"></i></button>
+                <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
+            </div>
         </header>
         <div class="dialog-body" v-if="!actorConfigLoading">
 
@@ -73,6 +76,13 @@
                     <small v-if="modelDeprecation(editAgentProvider, editAgentModel)" style="color: var(--error); display: block; margin: 4px 0;">
                         &#9888; {{ modelDeprecation(editAgentProvider, editAgentModel) }}
                     </small>
+
+                    <label>Dream Mode
+                        <custom-select v-model="editAgentDreamMode"
+                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
+                            placeholder="None" />
+                        <small class="ts">Post-session log analysis: companion (emotional/personal) or technical (work/code-focused)</small>
+                    </label>
 
                     <!-- Virtual agent fields — API key for create -->
                     <template v-if="newActorVirtual || createSource === 'agents'">

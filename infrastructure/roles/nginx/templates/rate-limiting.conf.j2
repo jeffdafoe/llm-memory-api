@@ -1,3 +1,4 @@
 # Rate limiting zones — managed by Ansible
 # Included in the http {} block via conf.d
 limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=5r/s;
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=30r/s;
