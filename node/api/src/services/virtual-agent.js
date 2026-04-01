@@ -321,6 +321,50 @@ function buildExtractionPrompt(interactionType, contextHint) {
     }
 }
 
+// Log the full interaction transcript as a note in the agent's namespace.
+// Fire-and-forget — call with .catch() from the handler.
+// Gives reviewable history of what VAs were asked and what they said.
+async function logTranscript(agentName, systemPrompt, userMessage, response, usage, triggerType, meta) {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const datePart = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const suffix = Math.random().toString(36).substring(2, 6);
+    const slug = `conversations/${datePart}-${timePart}-${suffix}`;
+
+    // Flatten structured prompt for readable logging
+    const { flattenPrompt } = require('./provider');
+    let systemText = (typeof systemPrompt === 'string') ? systemPrompt : flattenPrompt(systemPrompt);
+    let userText = (typeof userMessage === 'string') ? userMessage : flattenPrompt(userMessage);
+
+    // Truncate context if too large (keep under 100KB to stay well within 500KB note cap)
+    const MAX_CONTEXT = 100000;
+    if (systemText.length + userText.length > MAX_CONTEXT) {
+        // Keep the user message (most recent/relevant) and truncate system prompt
+        const available = MAX_CONTEXT - userText.length;
+        if (available > 1000) {
+            systemText = systemText.substring(0, available) + '\n\n[... truncated ...]';
+        } else {
+            systemText = '[truncated — too large]';
+            userText = userText.substring(0, MAX_CONTEXT) + '\n\n[... truncated ...]';
+        }
+    }
+
+    // Build metadata header
+    const metaLines = [
+        `- **Trigger:** ${triggerType}`,
+        meta.requestingAgent ? `- **From:** ${meta.requestingAgent}` : null,
+        meta.discussionId ? `- **Discussion:** #${meta.discussionId}` : null,
+        meta.model ? `- **Model:** ${meta.model}` : null,
+        usage ? `- **Tokens:** ${usage.input_tokens || '?'} in / ${usage.output_tokens || '?'} out` : null,
+    ].filter(Boolean).join('\n');
+
+    const content = `## Metadata\n${metaLines}\n\n## System Prompt\n\n${systemText}\n\n## User Message\n\n${userText}\n\n## Response\n\n${response}`;
+
+    const title = `${triggerType} — ${datePart} ${timePart}`;
+    await saveNote(agentName, title, content, slug, agentName);
+}
+
 // Extract learnings from an interaction and save as a note in the agent's namespace.
 // Fire-and-forget — call with .catch() from the handler.
 async function extractLearnings(agent, systemPrompt, userMessage, response, interactionType, contextHint, provider) {
@@ -819,6 +863,13 @@ async function handleVirtualAgent(payload) {
                 });
             }
 
+            // Fire-and-forget transcript logging
+            logTranscript(agent.agent, systemPrompt, userMessage, response, usage, 'discussion', {
+                requestingAgent: null, discussionId, model: agent.model
+            }).catch(err => {
+                logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
+            });
+
         } catch (err) {
             // Provider failed — remove the agent from the discussion so it
             // doesn't block other participants. Error ping will recover it later.
@@ -924,6 +975,13 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Fire-and-forget learning extraction
         extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent, providerFn).catch(err => {
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
+        });
+
+        // Fire-and-forget transcript logging
+        logTranscript(agent.agent, systemPrompt, userMessage, response, usage, 'chat', {
+            requestingAgent: fromAgent, model: agent.model
+        }).catch(err => {
+            logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
         logError('virtual-agent', 'direct-chat-error', {
@@ -1032,6 +1090,13 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         // Fire-and-forget learning extraction
         extractLearnings(agent, systemPrompt, userMessage, response, 'mail', null, providerFn).catch(err => {
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
+        });
+
+        // Fire-and-forget transcript logging
+        logTranscript(agent.agent, systemPrompt, userMessage, response, usage, 'mail', {
+            requestingAgent: fromAgent, model: agent.model
+        }).catch(err => {
+            logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
         logError('virtual-agent', 'direct-mail-error', {
