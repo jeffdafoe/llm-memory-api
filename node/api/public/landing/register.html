@@ -534,7 +534,11 @@ async function register() {
         document.getElementById('mcpBlock').textContent = JSON.stringify({
             mcpServers: {
                 'llm-memory': {
-                    url: 'https://llm-memory.net/mcp'
+                    type: 'http',
+                    url: 'https://llm-memory.net/mcp',
+                    headers: {
+                        Authorization: 'Bearer ' + data.api_key
+                    }
                 }
             }
         }, null, 2);
@@ -556,7 +560,11 @@ function copyMcp() {
     const mcp = JSON.stringify({
         mcpServers: {
             'llm-memory': {
-                url: 'https://llm-memory.net/mcp'
+                type: 'http',
+                url: 'https://llm-memory.net/mcp',
+                headers: {
+                    Authorization: 'Bearer ' + registeredApiKey
+                }
             }
         }
     }, null, 2);
