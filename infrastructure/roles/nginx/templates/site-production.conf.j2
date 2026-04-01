@@ -143,6 +143,13 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # Downloadable tools (Go binaries etc.)
+    location /tools/ {
+        alias /var/www/tools/;
+        expires 1h;
+        add_header Cache-Control "public";
+    }
+
 {% if domain not in public_domains %}
     # Root URL → admin dashboard (internal domain only)
     location = / {
