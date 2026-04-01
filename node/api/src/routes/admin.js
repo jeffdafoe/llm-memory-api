@@ -2528,4 +2528,17 @@ router.post('/admin/virtual-agent-access/revoke', requirePerm('actors', 'write')
     res.json({ revoked: true });
 }));
 
+// ---- Dream Processing ----
+
+// POST /admin/dream/run — trigger nightly dream consolidation job
+// Designed to be called by cron. Requires admin auth with agents:write permission.
+router.post('/admin/dream/run', requirePerm('agents', 'write'), adminRoute('dream-run', async (req, res) => {
+    const { runDream } = require('../services/dream');
+
+    logAdmin('dream_run', { user_id: req.authenticatedUser.id });
+
+    const result = await runDream();
+    res.json(result);
+}));
+
 module.exports = router;

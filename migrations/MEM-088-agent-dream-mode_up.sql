@@ -9,3 +9,6 @@ ALTER TABLE agent_configuration ADD CONSTRAINT chk_agent_configuration_dream_mod
 
 -- Tracks when this agent was last processed by the dream job
 ALTER TABLE agent_configuration ADD COLUMN last_dream_at TIMESTAMPTZ;
+
+-- Global switch for dream processing (cron job checks this before running)
+INSERT INTO config (key, value) VALUES ('dream_processing_enabled', 'false');
