@@ -2079,6 +2079,131 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
     res.json(response);
 }));
 
+// POST /admin/actors/delete — permanently delete an actor and all associated data
+router.post('/admin/actors/delete', requirePerm('actors', 'write'), adminRoute('actors-delete', async (req, res) => {
+    const actorId = parseInt(req.body.actor_id);
+    if (!Number.isInteger(actorId) || actorId <= 0) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
+    }
+
+    // Cannot delete yourself
+    if (actorId === req.actorId) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Cannot delete your own account' } });
+    }
+
+    // Look up the actor
+    const actorResult = await pool.query('SELECT id, name FROM actors WHERE id = $1', [actorId]);
+    if (actorResult.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
+    }
+    const actor = actorResult.rows[0];
+
+    // Find virtual agents owned by this actor (created_by = actorId, virtual = true)
+    const ownedVAs = await pool.query(
+        `SELECT a.id, a.name FROM actors a
+         JOIN agent_configuration ac ON ac.actor_id = a.id
+         WHERE a.created_by = $1 AND ac.virtual = true`,
+        [actorId]
+    );
+    const allActorIds = [actorId, ...ownedVAs.rows.map(r => r.id)];
+    const allActorNames = [actor.name, ...ownedVAs.rows.map(r => r.name)];
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Delete in dependency order for all actor IDs (actor + their virtual agents)
+        for (const id of allActorIds) {
+            // Discussion system
+            await client.query('DELETE FROM discussion_ballots WHERE actor_id = $1', [id]);
+            await client.query('DELETE FROM discussion_votes WHERE proposed_by_actor_id = $1', [id]);
+            await client.query('DELETE FROM discussion_participants WHERE actor_id = $1', [id]);
+
+            // Chat & mail
+            await client.query('DELETE FROM chat_messages WHERE from_actor_id = $1 OR to_actor_id = $1', [id]);
+            await client.query('DELETE FROM mail WHERE from_actor_id = $1 OR to_actor_id = $1', [id]);
+
+            // Sessions & keys
+            await client.query('DELETE FROM sessions WHERE actor_id = $1', [id]);
+            await client.query('DELETE FROM mcp_sessions WHERE actor_id = $1', [id]);
+            await client.query('DELETE FROM agent_api_keys WHERE actor_id = $1', [id]);
+
+            // Permissions
+            await client.query('DELETE FROM agent_permissions WHERE actor_id = $1', [id]);
+            // These have ON DELETE CASCADE but explicit is clearer
+            await client.query('DELETE FROM namespace_permissions WHERE actor_id = $1', [id]);
+            await client.query('DELETE FROM admin_permissions WHERE actor_id = $1', [id]);
+            await client.query('DELETE FROM actor_visibility_configuration WHERE actor_id = $1 OR target_actor_id = $1', [id]);
+            await client.query('DELETE FROM note_permissions WHERE grantee_actor_id = $1 OR granted_by = $1', [id]);
+            await client.query('DELETE FROM virtual_agent_access WHERE virtual_agent_id = $1 OR grantee_actor_id = $1', [id]);
+
+            // Usage & sync
+            await client.query('DELETE FROM virtual_agent_usage WHERE actor_id = $1', [id]);
+            await client.query('DELETE FROM note_synchronization WHERE actor_id = $1', [id]);
+
+            // Logs — SET NULL (keep log history, just detach the actor)
+            await client.query('UPDATE system_errors SET actor_id = NULL WHERE actor_id = $1', [id]);
+            await client.query('UPDATE error_log SET actor_id = NULL WHERE actor_id = $1', [id]);
+            await client.query('UPDATE request_log SET actor_id = NULL WHERE actor_id = $1', [id]);
+
+            // Detach documents created_by (before deleting namespace docs)
+            await client.query('UPDATE documents SET created_by_actor_id = NULL WHERE created_by_actor_id = $1', [id]);
+        }
+
+        // Delete discussions created by any of the actors (after participants/votes/ballots are gone)
+        for (const id of allActorIds) {
+            await client.query('DELETE FROM discussions WHERE created_by_actor_id = $1', [id]);
+        }
+
+        // Delete documents and memory chunks by namespace (actor name = namespace)
+        for (const name of allActorNames) {
+            await client.query('DELETE FROM memory_chunks WHERE namespace = $1', [name]);
+            await client.query('DELETE FROM documents WHERE namespace = $1', [name]);
+        }
+
+        // Clear created_by references from other actors pointing to these
+        await client.query('UPDATE actors SET created_by = NULL WHERE created_by = ANY($1::int[])', [allActorIds]);
+
+        // Delete agent_configuration rows (must come before actors due to FK)
+        for (const id of allActorIds) {
+            await client.query('DELETE FROM agent_configuration WHERE actor_id = $1', [id]);
+        }
+
+        // Delete the actors themselves (owned VAs first, then the main actor)
+        for (const va of ownedVAs.rows) {
+            await client.query('DELETE FROM actors WHERE id = $1', [va.id]);
+        }
+        await client.query('DELETE FROM actors WHERE id = $1', [actorId]);
+
+        await client.query('COMMIT');
+
+        // Clear permission caches
+        for (const id of allActorIds) {
+            clearAdminPermissionsCache(id);
+        }
+
+        logAdmin('actor_delete', {
+            actor_id: actorId,
+            actor_name: actor.name,
+            deleted_virtual_agents: ownedVAs.rows.map(r => r.name),
+            user_id: req.authenticatedUser.id
+        });
+
+        res.json({
+            message: 'Actor deleted',
+            deleted: {
+                actor: actor.name,
+                virtual_agents: ownedVAs.rows.map(r => r.name)
+            }
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}));
+
 // ═══════════════════════════════════════════════════════════════════
 //   Access Requests
 // ═══════════════════════════════════════════════════════════════════

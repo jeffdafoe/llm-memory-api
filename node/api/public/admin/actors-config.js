@@ -66,6 +66,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     const actorPasswordInput = ref('');
     const actorPasswordSaving = ref(false);
 
+    // Delete state
+    const actorDeleting = ref(false);
+
     // ─── Create Actor ───
     const newActorName = ref('');
     const newActorVirtual = ref(false);
@@ -669,6 +672,32 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         }
     }
 
+    // ─── Delete Actor ───
+
+    async function deleteActor() {
+        if (!selectedActorConfig.value) return;
+        const name = selectedActorConfig.value.name;
+        const confirmed = await showConfirm('Permanently delete "' + name + '" and ALL associated data (notes, mail, chat, discussions, virtual agents they own)? This cannot be undone.');
+        if (!confirmed) return;
+        actorDeleting.value = true;
+        try {
+            const data = await api('/admin/actors/delete', { actor_id: selectedActorConfig.value.id });
+            let msg = 'Deleted actor "' + name + '"';
+            if (data.deleted.virtual_agents && data.deleted.virtual_agents.length > 0) {
+                msg += ' and virtual agents: ' + data.deleted.virtual_agents.join(', ');
+            }
+            showToast(msg, 'success');
+            closeActorConfig();
+            loadActorsConfig();
+            agentsModule.loadAgents();
+        } catch (err) {
+            console.error('Failed to delete actor:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            actorDeleting.value = false;
+        }
+    }
+
     // Actors available for VA access (exclude self, already-granted, and virtual agents)
     const availableVaAccessTargets = computed(() => {
         if (!selectedActorConfig.value) return [];
@@ -708,6 +737,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         // Agent configuration editing
         editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentConfig,
         agentConfigSaving, onEditProviderChange, saveAgentConfiguration,
+        // Delete actor
+        actorDeleting, deleteActor,
         // Create actor
         createSource, newActorName, newActorVirtual,
         newActorUiAccess, newActorPassword,

@@ -416,6 +416,21 @@
                 </div>
             </template>
 
+            <!-- ─── Danger Zone ─── -->
+            <template v-if="actorDialogMode === 'edit' && canDo('actors', 'write')">
+                <div class="agent-card" style="border-color: var(--error);">
+                    <div class="agent-card-header">
+                        <div>
+                            <span class="agent-card-title" style="color: var(--error);"><i class="icon-trash"></i>Delete Actor</span>
+                            <div class="agent-card-description">Permanently delete this actor and all associated data (notes, mail, chat, discussions, sessions, virtual agents they own). This cannot be undone.</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-compact" style="background: var(--error); color: #fff; border: none;" @click="deleteActor" :disabled="actorDeleting">
+                        {{ actorDeleting ? 'Deleting...' : 'Delete ' + selectedActorConfig.name }}
+                    </button>
+                </div>
+            </template>
+
             <!-- ─── Create result / actions ─── -->
             <template v-if="actorDialogMode === 'create'">
                 <div v-if="newActorPassphrase && !newActorVirtual" class="passphrase-bar passphrase-result">
