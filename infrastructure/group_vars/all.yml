@@ -17,7 +17,6 @@ git_repository: "https://github.com/jeffdafoe/llm-memory-api.git"
 # Internal domains redirect / → /admin/
 public_domains:
   - llm-memory.net
-  - llm-memory.org
 
 # SSL — certbot_email and server_names are prompted during install
 # and stored in local-secrets.yml (gitignored)
