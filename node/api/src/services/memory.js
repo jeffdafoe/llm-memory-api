@@ -3,7 +3,7 @@
 
 const pool = require('../db');
 const { embed } = require('./embeddings');
-const { chunkByHeading } = require('./chunker');
+const { chunkByHeading, chunkConversation } = require('./chunker');
 const pgvector = require('pgvector');
 const config = require('./config');
 
@@ -56,7 +56,9 @@ function preprocessQuery(query) {
 }
 
 async function ingestContent(namespace, sourceFile, content) {
-    const chunks = chunkByHeading(content);
+    // Use conversation-aware chunking for conversation logs, heading-based for everything else
+    const isConversation = sourceFile.startsWith('conversations/');
+    const chunks = isConversation ? chunkConversation(content) : chunkByHeading(content);
 
     if (chunks.length === 0) {
         throw Object.assign(new Error('No chunks extracted from content'), { statusCode: 400 });
