@@ -56,10 +56,12 @@ router.post('/api/register', async (req, res) => {
         return res.status(400).json({ error: 'Agent name is required' });
     }
 
-    const { password } = req.body;
+    const { password, dream_mode } = req.body;
     if (!password || password.length < 8) {
         return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
+    const validDreamModes = ['none', 'companion', 'technical'];
+    const dreamMode = validDreamModes.includes(dream_mode) ? dream_mode : 'none';
 
     const agentName = name.trim().toLowerCase();
     if (!/^[a-z][a-z0-9_-]{1,30}$/.test(agentName)) {
@@ -129,9 +131,9 @@ router.post('/api/register', async (req, res) => {
 
         // Create agent_configuration
         await client.query(
-            `INSERT INTO agent_configuration (actor_id, provider, model)
-             VALUES ((SELECT id FROM actors WHERE name = $1), NULL, NULL)`,
-            [agentName]
+            `INSERT INTO agent_configuration (actor_id, provider, model, dream_mode)
+             VALUES ((SELECT id FROM actors WHERE name = $1), NULL, NULL, $2)`,
+            [agentName, dreamMode]
         );
 
         // Mark invite code as used (skip for open registration)

@@ -1,0 +1,11 @@
+-- MEM-088: Add dream_mode to agent_configuration
+-- Controls post-session conversation log analysis behavior per agent.
+-- Values: 'none' (disabled), 'companion' (emotional/personal), 'technical' (work/code-focused)
+
+ALTER TABLE agent_configuration ADD COLUMN dream_mode VARCHAR(20) NOT NULL DEFAULT 'none';
+
+ALTER TABLE agent_configuration ADD CONSTRAINT chk_agent_configuration_dream_mode
+    CHECK (dream_mode IN ('none', 'companion', 'technical'));
+
+-- Tracks when this agent was last processed by the dream job
+ALTER TABLE agent_configuration ADD COLUMN last_dream_at TIMESTAMPTZ;

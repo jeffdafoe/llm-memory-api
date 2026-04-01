@@ -224,6 +224,66 @@
         }
         .back-link:hover { color: var(--text-secondary); }
 
+        .dream-mode-section {
+            margin-bottom: 16px;
+        }
+        .dream-mode-section > label {
+            margin-bottom: 4px;
+        }
+        .dream-mode-description {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            margin-bottom: 12px;
+        }
+        .dream-mode-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .dream-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            text-align: left;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+            width: 100%;
+        }
+        .dream-option:hover { border-color: var(--text-tertiary); }
+        .dream-option.selected { border-color: var(--accent); }
+        .dream-option-radio {
+            width: 16px;
+            height: 16px;
+            min-width: 16px;
+            border-radius: 50%;
+            border: 2px solid var(--border);
+            margin-top: 2px;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .dream-option.selected .dream-option-radio {
+            border-color: var(--accent);
+            background: var(--accent);
+            box-shadow: inset 0 0 0 3px var(--bg-primary);
+        }
+        .dream-option-text { flex: 1; }
+        .dream-option-title {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .dream-option-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+            line-height: 1.4;
+        }
+
         .guide { max-width: 520px; width: 100%; }
         .guide-step {
             margin-bottom: 28px;
@@ -330,6 +390,37 @@
         <label for="passwordConfirm">Confirm Password</label>
         <input type="password" id="passwordConfirm" placeholder="Confirm password" oninput="checkPasswords()">
         <div id="passwordStatus" class="name-status"></div>
+
+        <div class="dream-mode-section">
+            <label>Dream Mode</label>
+            <div class="dream-mode-description">
+                Each night, your agent can review the day's conversations and consolidate learnings into memory. Choose a processing style, or disable it.
+            </div>
+            <div class="dream-mode-options">
+                <button type="button" class="dream-option selected" onclick="selectDreamMode('none', this)">
+                    <div class="dream-option-radio"></div>
+                    <div class="dream-option-text">
+                        <div class="dream-option-title">None</div>
+                        <div class="dream-option-desc">No post-session processing. Your agent only remembers what it explicitly saves during the session.</div>
+                    </div>
+                </button>
+                <button type="button" class="dream-option" onclick="selectDreamMode('technical', this)">
+                    <div class="dream-option-radio"></div>
+                    <div class="dream-option-text">
+                        <div class="dream-option-title">Technical</div>
+                        <div class="dream-option-desc">Focuses on code decisions, architecture patterns, debugging insights, and project context. Best for development workflows.</div>
+                    </div>
+                </button>
+                <button type="button" class="dream-option" onclick="selectDreamMode('companion', this)">
+                    <div class="dream-option-radio"></div>
+                    <div class="dream-option-text">
+                        <div class="dream-option-title">Companion</div>
+                        <div class="dream-option-desc">Focuses on personal context, preferences, emotional tone, and relationship continuity. Best for personal assistant use.</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
         <button class="btn btn-primary" id="registerBtn" onclick="register()" disabled>Create Account</button>
         <button class="btn btn-secondary" onclick="goBack()">Back</button>
     </div>
@@ -456,6 +547,13 @@ let registeredApiKey = '';
 let registeredPassword = '';
 let nameCheckTimer = null;
 let nameAvailable = false;
+let selectedDream = 'none';
+
+function selectDreamMode(mode, el) {
+    selectedDream = mode;
+    document.querySelectorAll('.dream-option').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+}
 
 function showStep(n) {
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
@@ -567,7 +665,7 @@ async function register() {
         const res = await fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: validatedCode, name, password })
+            body: JSON.stringify({ code: validatedCode, name, password, dream_mode: selectedDream })
         });
         const data = await res.json();
         if (!res.ok) {

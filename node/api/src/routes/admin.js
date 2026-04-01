@@ -1406,7 +1406,7 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
     const { name, provider, model, welcome_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
-            ui_access, password } = req.body;
+            ui_access, password, dream_mode } = req.body;
 
     if (!name || !name.trim()) {
         return res.status(400).json({
@@ -1487,8 +1487,8 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
 
         // Create agent configuration
         await client.query(
-            `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration, dream_mode)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [actorId, provider || null, model || null,
              isVirtual === true, personality || null,
              parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
@@ -1496,7 +1496,8 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
              cache_prompts === true, learning_enabled !== false,
              max_tokens != null ? parseInt(max_tokens) : null,
              temperature != null ? parseFloat(temperature) : null,
-             configuration ? JSON.stringify(configuration) : null]
+             configuration ? JSON.stringify(configuration) : null,
+             ['none', 'companion', 'technical'].includes(dream_mode) ? dream_mode : 'none']
         );
 
         await client.query('COMMIT');
@@ -1569,7 +1570,8 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
     const result = await pool.query(
         `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
                 agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
-                agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key
+                agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key,
+                agc.dream_mode
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
          WHERE agc.actor_id = $1`,
@@ -1627,7 +1629,7 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
     const agent = sanitize.agentName(req.body.agent);
     const { personality, api_key, configuration, provider, model,
             cost_budget_daily, cost_budget_monthly,
-            cache_prompts, learning_enabled, max_tokens, temperature } = req.body;
+            cache_prompts, learning_enabled, max_tokens, temperature, dream_mode } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -1698,6 +1700,15 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
     if (temperature !== undefined) {
         params.push(temperature === null || temperature === '' ? null : parseFloat(temperature));
         updates.push(`temperature = $${idx++}`);
+    }
+    if (dream_mode !== undefined) {
+        if (!['none', 'companion', 'technical'].includes(dream_mode)) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'dream_mode must be none, companion, or technical' }
+            });
+        }
+        params.push(dream_mode);
+        updates.push(`dream_mode = $${idx++}`);
     }
 
     if (updates.length === 0) {

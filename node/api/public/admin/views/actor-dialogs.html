@@ -77,6 +77,13 @@
                         &#9888; {{ modelDeprecation(editAgentProvider, editAgentModel) }}
                     </small>
 
+                    <label>Dream Mode
+                        <custom-select v-model="editAgentDreamMode"
+                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
+                            placeholder="None" />
+                        <small class="ts">Post-session log analysis: companion (emotional/personal) or technical (work/code-focused)</small>
+                    </label>
+
                     <!-- Virtual agent fields — API key for create -->
                     <template v-if="newActorVirtual || createSource === 'agents'">
                         <label>API Key
