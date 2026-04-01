@@ -55,7 +55,7 @@ app.use('/v1', adminRoutes);
 // Registration endpoints (public, no auth)
 app.use(registrationRoutes);
 
-// Client tools (public downloads — memory-sync.js etc.)
+// Client tools (public downloads — discuss.js, discuss-launch.js)
 app.use('/tools', express.static(path.join(__dirname, '..', '..', 'client'), {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.js')) {
