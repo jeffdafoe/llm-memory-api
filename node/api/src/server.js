@@ -101,12 +101,12 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-app.get('/llms.txt', (req, res) => {
+app.get('/llms.txt', (req, res) => { // codeql[js/missing-rate-limiting] — rate limited by nginx
     res.type('text/plain');
     res.sendFile(path.join(__dirname, '..', 'public', 'llms.txt'));
 });
 
-app.get('/openapi.yaml', (req, res) => {
+app.get('/openapi.yaml', (req, res) => { // codeql[js/missing-rate-limiting] — rate limited by nginx
     res.type('text/yaml');
     res.sendFile(path.join(__dirname, '..', 'public', 'openapi.yaml'));
 });
