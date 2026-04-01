@@ -1,26 +1,32 @@
-const { Pool } = require('pg');
-const pgvector = require('pgvector/pg');
+const { Pool, types } = require('pg');
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL
 });
 
-// Register pgvector types on every new connection.
-// Pool.on('connect') doesn't await async handlers (EventEmitter is sync),
-// so the registerTypes query races against the first real query. We solve
-// this by eagerly registering on a throwaway client at startup (init()),
-// then re-registering on each new connection for long-running pools where
-// connections get recycled.
-pool.on('connect', (client) => {
-    pgvector.registerTypes(client).catch(() => {});
-});
+// Parse pgvector text representations into JS values.
+// vector/halfvec: "[1,2,3]" → [1, 2, 3]
+function parseVector(value) {
+    if (value === null) return null;
+    return value.substring(1, value.length - 1).split(',').map(Number);
+}
 
-// Call once before any queries. Checks out a client, registers types,
-// and releases it — guarantees the first real query never races.
+// Register pgvector type parsers globally via pg.types so every client
+// gets them automatically — no per-connection handler needed, no race.
+// Must be called once before any queries that return vector columns.
 async function init() {
     const client = await pool.connect();
     try {
-        await pgvector.registerTypes(client);
+        const result = await client.query(
+            "SELECT typname, oid FROM pg_type WHERE typname IN ('vector', 'halfvec', 'sparsevec')"
+        );
+        for (const row of result.rows) {
+            if (row.typname === 'vector' || row.typname === 'halfvec') {
+                types.setTypeParser(row.oid, parseVector);
+            } else if (row.typname === 'sparsevec') {
+                // sparsevec is not used in this codebase, skip for now
+            }
+        }
     } finally {
         client.release();
     }
