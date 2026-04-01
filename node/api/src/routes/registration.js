@@ -56,6 +56,13 @@ router.post('/api/register', async (req, res) => {
         return res.status(400).json({ error: 'Agent name is required' });
     }
 
+    const { password, dream_mode } = req.body;
+    if (!password || password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const validDreamModes = ['none', 'companion', 'technical'];
+    const dreamMode = validDreamModes.includes(dream_mode) ? dream_mode : 'none';
+
     const agentName = name.trim().toLowerCase();
     if (!/^[a-z][a-z0-9_-]{1,30}$/.test(agentName)) {
         return res.status(400).json({ error: 'Name must start with a letter, 2-31 chars, only lowercase letters, numbers, hyphens, underscores.' });
@@ -107,10 +114,14 @@ router.post('/api/register', async (req, res) => {
         const salt = generateSalt();
         const passphraseHash = hashToken(passphrase, salt);
 
+        // Hash the dashboard password
+        const passwordSalt = generateSalt();
+        const passwordHash = hashToken(password, passwordSalt);
+
         // Create actor (created_by is set to self after insert)
         await client.query(
-            `INSERT INTO actors (name, token_hash, token_salt, status) VALUES ($1, $2, $3, 'active')`,
-            [agentName, passphraseHash, salt]
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status) VALUES ($1, $2, $3, $4, $5, 'active')`,
+            [agentName, passphraseHash, salt, passwordHash, passwordSalt]
         );
         // Set created_by to self so the agent owns itself
         await client.query(
@@ -120,9 +131,9 @@ router.post('/api/register', async (req, res) => {
 
         // Create agent_configuration
         await client.query(
-            `INSERT INTO agent_configuration (actor_id, provider, model)
-             VALUES ((SELECT id FROM actors WHERE name = $1), NULL, NULL)`,
-            [agentName]
+            `INSERT INTO agent_configuration (actor_id, provider, model, dream_mode)
+             VALUES ((SELECT id FROM actors WHERE name = $1), NULL, NULL, $2)`,
+            [agentName, dreamMode]
         );
 
         // Mark invite code as used (skip for open registration)

@@ -34,6 +34,11 @@
                         <button v-if="!agentProfileEditing && canDo('agents', 'write')" class="btn btn-ghost btn-compact" @click="startEditProfile" title="Edit"><i class="icon-edit"></i></button>
                     </div>
                     <div v-if="selectedAgent.personality" class="agent-identity-meta" style="font-style: italic; margin-top: 2px;">{{ selectedAgent.personality }}</div>
+                    <div v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="agent-identity-meta" style="margin-top: 2px;">
+                        <span class="badge" :style="{ background: selectedAgent.dream_mode === 'companion' ? '#7c3aed22' : '#0891b222', color: selectedAgent.dream_mode === 'companion' ? '#7c3aed' : '#0891b2' }">
+                            <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'" style="margin-right: 3px;"></i>{{ selectedAgent.dream_mode }} dream
+                        </span>
+                    </div>
                 </div>
             </div>
 
@@ -56,6 +61,12 @@
                 </small>
                 <label>Personality
                     <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
+                </label>
+                <label>Dream Mode
+                    <custom-select v-model="agentProfileDreamMode"
+                        :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
+                        placeholder="None" />
+                    <small class="ts">Post-session log analysis: companion (emotional/personal) or technical (work/code-focused)</small>
                 </label>
                 <label v-if="selectedAgent.virtual">API Key
                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">

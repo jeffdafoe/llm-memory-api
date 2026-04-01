@@ -19,6 +19,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     const editAgentModel = ref('');
     const editAgentPersonality = ref('');
     const editAgentApiKey = ref('');
+    const editAgentDreamMode = ref('none');
     const editAgentConfig = ref({});
     const agentConfigSaving = ref(false);
 
@@ -65,6 +66,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     // UI Access (password) state
     const actorPasswordInput = ref('');
     const actorPasswordSaving = ref(false);
+
+    // Delete state
+    const actorDeleting = ref(false);
 
     // ─── Create Actor ───
     const newActorName = ref('');
@@ -537,6 +541,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         editAgentModel.value = '';
         editAgentPersonality.value = '';
         editAgentApiKey.value = '';
+        editAgentDreamMode.value = 'none';
         editAgentConfig.value = {};
         newActorUiAccess.value = false;
         newActorPassword.value = '';
@@ -565,6 +570,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             if (newActorUiAccess.value && newActorPassword.value) {
                 body.ui_access = true;
                 body.password = newActorPassword.value;
+            }
+            if (editAgentDreamMode.value && editAgentDreamMode.value !== 'none') {
+                body.dream_mode = editAgentDreamMode.value;
             }
             if (newActorTemplateId.value && !newActorVirtual.value) {
                 body.welcome_template_id = newActorTemplateId.value;
@@ -669,6 +677,32 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         }
     }
 
+    // ─── Delete Actor ───
+
+    async function deleteActor() {
+        if (!selectedActorConfig.value) return;
+        const name = selectedActorConfig.value.name;
+        const confirmed = await showConfirm('Permanently delete "' + name + '" and ALL associated data (notes, mail, chat, discussions, virtual agents they own)? This cannot be undone.');
+        if (!confirmed) return;
+        actorDeleting.value = true;
+        try {
+            const data = await api('/admin/actors/delete', { actor_id: selectedActorConfig.value.id });
+            let msg = 'Deleted actor "' + name + '"';
+            if (data.deleted.virtual_agents && data.deleted.virtual_agents.length > 0) {
+                msg += ' and virtual agents: ' + data.deleted.virtual_agents.join(', ');
+            }
+            showToast(msg, 'success');
+            closeActorConfig();
+            loadActorsConfig();
+            agentsModule.loadAgents();
+        } catch (err) {
+            console.error('Failed to delete actor:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            actorDeleting.value = false;
+        }
+    }
+
     // Actors available for VA access (exclude self, already-granted, and virtual agents)
     const availableVaAccessTargets = computed(() => {
         if (!selectedActorConfig.value) return [];
@@ -706,8 +740,10 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         // UI Access
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Agent configuration editing
-        editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentConfig,
+        editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentDreamMode, editAgentConfig,
         agentConfigSaving, onEditProviderChange, saveAgentConfiguration,
+        // Delete actor
+        actorDeleting, deleteActor,
         // Create actor
         createSource, newActorName, newActorVirtual,
         newActorUiAccess, newActorPassword,

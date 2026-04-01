@@ -51,6 +51,7 @@ async function getPermissions(actorId) {
 // Try HMAC OAuth token auth. Format: "agent:hmac_hex".
 // Returns agent name on success, null on failure.
 function tryHmacAuth(token) {
+    if (typeof token !== 'string') return null;
     const colonIndex = token.indexOf(':');
     if (colonIndex === -1) return null;
 
@@ -98,7 +99,7 @@ async function mcpAuth(req, res, next) {
     let token;
     if (header && header.startsWith('Bearer ')) {
         token = header.slice(7);
-    } else if (req.query.token) {
+    } else if (req.query.token && typeof req.query.token === 'string') {
         token = req.query.token;
     } else {
         res.set('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);

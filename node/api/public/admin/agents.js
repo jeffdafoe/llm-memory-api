@@ -30,6 +30,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentProfileModel = ref('');
     const agentProfileApiKey = ref('');
     const agentProfilePersonality = ref('');
+    const agentProfileDreamMode = ref('none');
     const agentProfileSaving = ref(false);
 
     // Cost budgets
@@ -204,6 +205,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentProfileProvider.value = selectedAgent.value.provider || '';
         agentProfileModel.value = selectedAgent.value.model || '';
         agentProfilePersonality.value = selectedAgent.value.personality || '';
+        agentProfileDreamMode.value = selectedAgent.value.dream_mode || 'none';
         agentProfileApiKey.value = '';
     }
 
@@ -223,7 +225,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
                 agent: selectedAgent.value.agent,
                 provider: agentProfileProvider.value || null,
                 model: agentProfileModel.value || null,
-                personality: agentProfilePersonality.value || null
+                personality: agentProfilePersonality.value || null,
+                dream_mode: agentProfileDreamMode.value || 'none'
             };
             if (agentProfileApiKey.value) {
                 body.api_key = agentProfileApiKey.value;
@@ -232,6 +235,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             selectedAgent.value.provider = agentProfileProvider.value || null;
             selectedAgent.value.model = agentProfileModel.value || null;
             selectedAgent.value.personality = agentProfilePersonality.value || null;
+            selectedAgent.value.dream_mode = agentProfileDreamMode.value || 'none';
             agentProfileEditing.value = false;
             showToast('Profile updated', 'success');
         } catch (err) {
@@ -552,7 +556,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentInstructions, agentInstructionsEditing, agentInstructionsExpanded, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
-        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileSaving,
+        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileDreamMode, agentProfileSaving,
         loadAgents, viewAgent,
         startEditProfile, onProfileProviderChange, saveProfile,
         costBudgetEditing, costBudgetDailyValue, costBudgetMonthlyValue, startEditCostBudget, saveCostBudget,

@@ -54,6 +54,7 @@ function slugToKind(slug) {
     if (slug.startsWith('instructions/')) return 'instruction';
     if (slug.startsWith('notes/codebase/')) return 'reference';
     if (slug.startsWith('conversations/')) return 'conversation';
+    if (slug.startsWith('dreams/')) return 'dream';
     if (slug.startsWith('tasks/done/')) return 'task';
     if (slug.startsWith('tasks/')) return 'task';
     if (slug.startsWith('learnings/')) return 'learning';
