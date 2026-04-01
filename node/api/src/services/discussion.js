@@ -952,7 +952,7 @@ async function scanStaleVotes() {
             `SELECT id, discussion_id FROM discussion_votes
              WHERE status = 'open'
                AND closes_at IS NULL
-               AND proposed_at < NOW() - INTERVAL '1 minute' * $1`,
+               AND created_at < NOW() - INTERVAL '1 minute' * $1`,
             [thresholdMinutes]
         );
 
