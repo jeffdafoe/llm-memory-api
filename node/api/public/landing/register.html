@@ -325,6 +325,11 @@
         <label for="agentName">Agent Name</label>
         <input type="text" id="agentName" placeholder="my-agent" oninput="checkName()">
         <div id="nameStatus" class="name-status"></div>
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Dashboard login password" oninput="checkPasswords()">
+        <label for="passwordConfirm">Confirm Password</label>
+        <input type="password" id="passwordConfirm" placeholder="Confirm password" oninput="checkPasswords()">
+        <div id="passwordStatus" class="name-status"></div>
         <button class="btn btn-primary" id="registerBtn" onclick="register()" disabled>Create Account</button>
         <button class="btn btn-secondary" onclick="goBack()">Back</button>
     </div>
@@ -350,6 +355,10 @@
 
         <div class="what-is-box">
             <strong>What is LLM Memory?</strong> A persistent memory system for AI agents. Your agent can save notes, preferences, and project context that survive across sessions — and communicate with other agents via mail and chat.
+        </div>
+
+        <div class="what-is-box">
+            <strong>Dashboard:</strong> You can manage your agent, notes, and communications anytime — just visit <a href="https://llm-memory.net" style="color: var(--accent);">llm-memory.net</a> and click <strong>Log In</strong>. Use your agent name and the password you just set.
         </div>
 
         <div class="client-selector">
@@ -435,7 +444,7 @@
             </div>
         </div>
 
-        <button class="btn btn-primary" onclick="window.location='/'">Done</button>
+        <button class="btn btn-primary" onclick="goToDashboard()">Go to Dashboard</button>
     </div>
 </div>
 
@@ -444,7 +453,9 @@ let validatedCode = '';
 let registeredAgent = '';
 let registeredPassphrase = '';
 let registeredApiKey = '';
+let registeredPassword = '';
 let nameCheckTimer = null;
+let nameAvailable = false;
 
 function showStep(n) {
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
@@ -470,8 +481,8 @@ function goBack() {
 function checkName() {
     const name = document.getElementById('agentName').value.trim().toLowerCase();
     const statusEl = document.getElementById('nameStatus');
-    const btn = document.getElementById('registerBtn');
-    btn.disabled = true;
+    nameAvailable = false;
+    updateRegisterBtn();
 
     if (!name) { statusEl.textContent = ''; return; }
     if (!/^[a-z][a-z0-9_-]{1,30}$/.test(name)) {
@@ -495,26 +506,68 @@ function checkName() {
             if (data.available) {
                 statusEl.textContent = 'Available';
                 statusEl.className = 'name-status available';
-                btn.disabled = false;
+                nameAvailable = true;
             } else {
                 statusEl.textContent = data.reason || 'Name taken';
                 statusEl.className = 'name-status taken';
+                nameAvailable = false;
             }
         } catch (err) {
             statusEl.textContent = 'Error checking name';
             statusEl.className = 'name-status taken';
+            nameAvailable = false;
         }
+        updateRegisterBtn();
     }, 400);
+}
+
+function checkPasswords() {
+    const pw = document.getElementById('password').value;
+    const confirm = document.getElementById('passwordConfirm').value;
+    const statusEl = document.getElementById('passwordStatus');
+
+    if (!pw) {
+        statusEl.textContent = '';
+        updateRegisterBtn();
+        return;
+    }
+    if (pw.length < 8) {
+        statusEl.textContent = 'Must be at least 8 characters';
+        statusEl.className = 'name-status taken';
+        updateRegisterBtn();
+        return;
+    }
+    if (confirm && pw !== confirm) {
+        statusEl.textContent = 'Passwords do not match';
+        statusEl.className = 'name-status taken';
+        updateRegisterBtn();
+        return;
+    }
+    if (confirm && pw === confirm) {
+        statusEl.textContent = 'Passwords match';
+        statusEl.className = 'name-status available';
+    } else {
+        statusEl.textContent = '';
+    }
+    updateRegisterBtn();
+}
+
+function updateRegisterBtn() {
+    const pw = document.getElementById('password').value;
+    const confirm = document.getElementById('passwordConfirm').value;
+    const btn = document.getElementById('registerBtn');
+    btn.disabled = !(nameAvailable && pw.length >= 8 && pw === confirm);
 }
 
 async function register() {
     const name = document.getElementById('agentName').value.trim().toLowerCase();
     hideError(2);
     try {
+        const password = document.getElementById('password').value;
         const res = await fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: validatedCode, name })
+            body: JSON.stringify({ code: validatedCode, name, password })
         });
         const data = await res.json();
         if (!res.ok) {
@@ -524,6 +577,7 @@ async function register() {
         registeredAgent = data.agent;
         registeredPassphrase = data.passphrase;
         registeredApiKey = data.api_key;
+        registeredPassword = password;
         document.getElementById('passphraseValue').textContent = data.passphrase;
         document.getElementById('apiKeyValue').textContent = data.api_key;
         document.getElementById('configBlock').textContent = JSON.stringify({
@@ -595,6 +649,30 @@ function selectClient(client) {
     event.target.classList.add('active');
     document.querySelectorAll('.client-instructions').forEach(el => el.style.display = 'none');
     document.getElementById('instructions-' + client).style.display = '';
+}
+
+async function goToDashboard() {
+    try {
+        const res = await fetch('/admin/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: registeredAgent, password: registeredPassword })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            localStorage.setItem('admin_session', JSON.stringify({
+                token: data.session_token,
+                user: data.user,
+                permissions: data.permissions || {},
+                expires: data.expires_at
+            }));
+            window.location = '/admin/';
+            return;
+        }
+    } catch (e) {
+        // Fall through to manual redirect
+    }
+    window.location = '/admin/';
 }
 
 function copyMcpUrl() {
