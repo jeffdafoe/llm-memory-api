@@ -11,13 +11,11 @@ ALTER TABLE agent_configuration ADD CONSTRAINT chk_agent_configuration_dream_mod
 ALTER TABLE agent_configuration ADD COLUMN last_dream_at TIMESTAMPTZ;
 
 -- Global switch for dream processing
-INSERT INTO config (key, value) VALUES ('dream_processing_enabled', 'false');
+INSERT INTO config (key, value, description) VALUES ('dream_processing_enabled', 'false', 'Global switch for dream processing. Set to true to enable nightly conversation log analysis.');
 
--- Cron schedule for dream processing (e.g. '0 3 * * *' for 3am daily). Empty = disabled.
-INSERT INTO config (key, value) VALUES ('dream_cron_schedule', '');
+INSERT INTO config (key, value, description) VALUES ('dream_cron_schedule', '', 'Cron expression for dream processing schedule (e.g. 0 3 * * * for 3am daily). Empty to disable.');
 
--- Bootstrap text appended to agent instructions when dream mode is enabled
-INSERT INTO config (key, value) VALUES ('dream_bootstrap', 'The dream system is enabled for your account. Each night, your conversation logs are analyzed and consolidated into memory notes under dreams/ in your namespace.');
+INSERT INTO config (key, value, description) VALUES ('dream_bootstrap', 'The dream system is enabled for your account. Each night, your conversation logs are analyzed and consolidated into memory notes under dreams/ in your namespace.', 'Text appended to agent instructions when dream mode is enabled. Empty to skip.');
 
 -- Recreate agent_status view to include dream_mode
 CREATE OR REPLACE VIEW agent_status AS
@@ -53,5 +51,5 @@ FROM actors ac
 JOIN agent_configuration agc ON agc.actor_id = ac.id;
 
 -- Search tuning for dream notes
-INSERT INTO config (key, value) VALUES ('search_decay_halflife_dream', '30');
-INSERT INTO config (key, value) VALUES ('search_dream_weight', '1.0');
+INSERT INTO config (key, value, description) VALUES ('search_decay_halflife_dream', '30', 'Half-life in days for dream note search decay. Notes lose 50% relevance after this many days. 0 to disable decay.');
+INSERT INTO config (key, value, description) VALUES ('search_dream_weight', '1.0', 'Search weight multiplier for dream notes. 1.0 = no penalty, lower values reduce ranking relative to other note types.');
