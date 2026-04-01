@@ -55,16 +55,6 @@ app.use('/v1', adminRoutes);
 // Registration endpoints (public, no auth)
 app.use(registrationRoutes);
 
-// Client tools (public downloads — memory-sync.js etc.)
-app.use('/tools', express.static(path.join(__dirname, '..', '..', 'client'), {
-    setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript');
-            res.setHeader('Cache-Control', 'public, max-age=3600');
-        }
-    }
-}));
-
 // Registration page
 app.get('/register', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'landing', 'register.html'));

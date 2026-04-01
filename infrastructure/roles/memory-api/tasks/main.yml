@@ -141,3 +141,6 @@
     minute: "0"
     hour: "2"
     job: "{{ project_root }}/scripts/pg-backup.sh >> /var/log/llm-memory-api/pg-backup.log 2>&1"
+
+- name: Deploy tools (Go client binaries)
+  include_tasks: deploy-tools.yml
