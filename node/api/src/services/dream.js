@@ -340,4 +340,40 @@ async function runDream() {
     return { processed: results.length, results };
 }
 
-module.exports = { runDream, prefilterLog };
+// Start the dream scheduler. Reads dream_cron_schedule from config
+// and schedules runDream() accordingly. Called once at server startup.
+let scheduledTask = null;
+
+function startDreamScheduler() {
+    const cron = require('node-cron');
+    const schedule = config.get('dream_cron_schedule') || '';
+
+    if (!schedule) {
+        logDream('scheduler', { message: 'No dream_cron_schedule configured, scheduler disabled' });
+        return;
+    }
+
+    if (!cron.validate(schedule)) {
+        logDream('scheduler-error', { message: 'Invalid cron expression: ' + schedule });
+        return;
+    }
+
+    // Stop any existing scheduled task (in case of hot reload)
+    if (scheduledTask) {
+        scheduledTask.stop();
+    }
+
+    scheduledTask = cron.schedule(schedule, async () => {
+        logDream('cron-trigger', { schedule });
+        try {
+            const result = await runDream();
+            logDream('cron-complete', { result });
+        } catch (err) {
+            logDream('cron-error', { error: err.message });
+        }
+    });
+
+    logDream('scheduler', { message: 'Dream scheduler started', schedule });
+}
+
+module.exports = { runDream, prefilterLog, startDreamScheduler };

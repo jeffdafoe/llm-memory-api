@@ -10,8 +10,11 @@ ALTER TABLE agent_configuration ADD CONSTRAINT chk_agent_configuration_dream_mod
 -- Tracks when this agent was last processed by the dream job
 ALTER TABLE agent_configuration ADD COLUMN last_dream_at TIMESTAMPTZ;
 
--- Global switch for dream processing (cron job checks this before running)
+-- Global switch for dream processing
 INSERT INTO config (key, value) VALUES ('dream_processing_enabled', 'false');
+
+-- Cron schedule for dream processing (e.g. '0 3 * * *' for 3am daily). Empty = disabled.
+INSERT INTO config (key, value) VALUES ('dream_cron_schedule', '');
 
 -- Bootstrap text appended to agent instructions when dream mode is enabled
 INSERT INTO config (key, value) VALUES ('dream_bootstrap', 'The dream system is enabled for your account. Each night, your conversation logs are analyzed and consolidated into memory notes under dreams/ in your namespace.');

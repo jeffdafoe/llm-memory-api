@@ -134,6 +134,9 @@ config.init().then(() => {
     const { startStaleVoteScanner } = require('./services/discussion');
     startStaleVoteScanner();
 
+    const { startDreamScheduler } = require('./services/dream');
+    startDreamScheduler();
+
     const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
     });
