@@ -9,7 +9,7 @@
         "build:admin": "vite build"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.27.1",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "@picocss/pico": "^2.1.1",
         "dompurify": "^3.3.3",
         "eff-diceware-passphrase": "^3.0.0",
