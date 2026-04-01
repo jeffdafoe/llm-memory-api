@@ -23,7 +23,10 @@
                     Permissions, visibility, and access controls
                 </div>
             </div>
-            <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
+            <div style="display:flex; gap:4px;">
+                <button v-if="actorDialogMode === 'edit' && canDo('actors', 'write')" class="btn btn-ghost btn-compact btn-danger" @click="deleteActor" :disabled="actorDeleting" title="Delete Actor"><i class="icon-trash-2"></i></button>
+                <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
+            </div>
         </header>
         <div class="dialog-body" v-if="!actorConfigLoading">
 
@@ -413,21 +416,6 @@
                             {{ actorConfigSaving ? 'Saving...' : 'Save All' }}
                         </button>
                     </div>
-                </div>
-            </template>
-
-            <!-- ─── Danger Zone ─── -->
-            <template v-if="actorDialogMode === 'edit' && canDo('actors', 'write')">
-                <div class="agent-card" style="border-color: var(--error);">
-                    <div class="agent-card-header">
-                        <div>
-                            <span class="agent-card-title" style="color: var(--error);"><i class="icon-trash"></i>Delete Actor</span>
-                            <div class="agent-card-description">Permanently delete this actor and all associated data (notes, mail, chat, discussions, sessions, virtual agents they own). This cannot be undone.</div>
-                        </div>
-                    </div>
-                    <button class="btn btn-compact" style="background: var(--error); color: #fff; border: none;" @click="deleteActor" :disabled="actorDeleting">
-                        {{ actorDeleting ? 'Deleting...' : 'Delete ' + selectedActorConfig.name }}
-                    </button>
                 </div>
             </template>
 
