@@ -458,13 +458,23 @@ router.post('/agent/instructions/read', apiRoute('agent', 'instructions-read', a
     }
 
     const result = await pool.query(
-        'SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1',
+        'SELECT startup_instructions, dream_mode FROM agent_configuration WHERE actor_id = $1',
         [req.actorId]
     );
 
+    let instructions = result.rows[0]?.startup_instructions || null;
+
+    // Append dream bootstrap if agent has dreaming enabled
+    if (result.rows[0]?.dream_mode && result.rows[0].dream_mode !== 'none') {
+        const dreamBootstrap = config.get('dream_bootstrap') || '';
+        if (dreamBootstrap) {
+            instructions = (instructions || '') + '\n\n' + dreamBootstrap;
+        }
+    }
+
     res.json({
         agent,
-        instructions: result.rows[0]?.startup_instructions || null
+        instructions
     });
 }));
 
