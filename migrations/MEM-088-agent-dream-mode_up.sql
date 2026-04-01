@@ -13,8 +13,8 @@ ALTER TABLE agent_configuration ADD COLUMN last_dream_at TIMESTAMPTZ;
 -- Global switch for dream processing (cron job checks this before running)
 INSERT INTO config (key, value) VALUES ('dream_processing_enabled', 'false');
 
--- Bootstrap text appended to dream agent instructions when processing an agent's logs
-INSERT INTO config (key, value) VALUES ('dream_bootstrap', 'Your account has nightly dream processing enabled. Each night, your conversation logs from the day are reviewed and consolidated into structured memory notes. These notes appear in your namespace under dreams/ and are available via semantic search in future sessions. The dream process extracts corrections, decisions, preferences, and context that should persist — things that came up naturally in conversation but might not have been explicitly saved. You do not need to do anything special during your sessions for this to work.');
+-- Bootstrap text appended to agent instructions when dream mode is enabled
+INSERT INTO config (key, value) VALUES ('dream_bootstrap', 'The dream system is enabled for your account. Each night, your conversation logs are analyzed and consolidated into memory notes under dreams/ in your namespace.');
 
 -- Recreate agent_status view to include dream_mode
 CREATE OR REPLACE VIEW agent_status AS
