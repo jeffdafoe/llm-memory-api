@@ -14,7 +14,7 @@
         "dompurify": "^3.3.3",
         "eff-diceware-passphrase": "^3.0.0",
         "express": "^5.2.1",
-        "lucide-static": "^0.577.0",
+        "lucide-static": "^1.7.0",
         "marked": "^17.0.5",
         "mermaid": "^11.13.0",
         "pg": "^8.20.0",
