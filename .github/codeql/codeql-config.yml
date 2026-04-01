@@ -1,0 +1,8 @@
+name: "llm-memory-api CodeQL config"
+
+# Rate limiting is handled at the nginx reverse proxy layer,
+# not in Express. Suppress the missing-rate-limiting query
+# to avoid false positives on every route handler.
+query-filters:
+    - exclude:
+          id: js/missing-rate-limiting
