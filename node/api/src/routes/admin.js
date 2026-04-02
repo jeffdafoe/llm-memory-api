@@ -2091,7 +2091,7 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
 }));
 
 // POST /admin/actors/delete — permanently delete an actor and all associated data
-router.post('/admin/actors/delete', requirePerm('actors', 'write'), adminRoute('actors-delete', async (req, res) => { // codeql[js/missing-rate-limiting] — rate limited by nginx
+router.post('/admin/actors/delete', requirePerm('actors', 'write'), adminRoute('actors-delete', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     if (!Number.isInteger(actorId) || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
