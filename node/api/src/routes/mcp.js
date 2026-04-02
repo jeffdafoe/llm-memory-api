@@ -815,6 +815,16 @@ const TOOL_HANDLERS = {
             }
         }
 
+        // Append context/soul if it exists — the living soul document maintained by dream processing
+        try {
+            const soul = await readNote(namespace, 'context/soul');
+            if (soul && soul.content) {
+                parts.push(soul.content);
+            }
+        } catch (e) {
+            // Note doesn't exist yet — that's fine, skip silently
+        }
+
         return parts.length > 0 ? parts.join('\n\n') : '(no instructions set)';
     },
 

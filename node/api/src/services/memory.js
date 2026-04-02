@@ -56,6 +56,12 @@ function preprocessQuery(query) {
 }
 
 async function ingestContent(namespace, sourceFile, content) {
+    // Context documents (e.g. context/soul) are injected directly into sessions,
+    // not indexed for search — skip chunking entirely.
+    if (sourceFile.startsWith('context/')) {
+        return { chunks_created: 0 };
+    }
+
     // Use conversation-aware chunking for conversation logs, heading-based for everything else
     const isConversation = sourceFile.startsWith('conversations/');
     const chunks = isConversation ? chunkConversation(content) : chunkByHeading(content);
