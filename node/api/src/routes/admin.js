@@ -1096,7 +1096,12 @@ router.post('/admin/notes/search', requirePerm('notes', 'read'), adminRoute('not
 // POST /admin/notes/namespaces — get list of namespaces with note counts
 router.post('/admin/notes/namespaces', requirePerm('notes', 'read'), adminRoute('notes-namespaces', async (req, res) => {
     const result = await pool.query(
-        'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
+        `SELECT d.namespace, COUNT(*) AS count, COALESCE(nu.total_bytes, 0) AS total_bytes
+         FROM documents d
+         LEFT JOIN namespace_usage nu ON nu.namespace = d.namespace
+         WHERE d.deleted_at IS NULL
+         GROUP BY d.namespace, nu.total_bytes
+         ORDER BY d.namespace`
     );
     let namespaces = result.rows;
     // Filter to readable namespaces
@@ -1185,6 +1190,33 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
     }
     res.json({ ok: true });
 });
+
+// POST /admin/notes/usage — namespace storage usage (note count + total bytes).
+// Optionally filter by namespace. Joins actors table to show agent name.
+router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('notes-usage', async (req, res) => {
+    const { namespace } = req.body;
+    let sql, params;
+    if (namespace) {
+        sql = `
+            SELECT nu.namespace, nu.note_count, nu.total_bytes, nu.updated_at,
+                   ac.name AS agent
+            FROM namespace_usage nu
+            LEFT JOIN actors ac ON ac.name = nu.namespace
+            WHERE nu.namespace = $1
+            ORDER BY nu.namespace`;
+        params = [namespace];
+    } else {
+        sql = `
+            SELECT nu.namespace, nu.note_count, nu.total_bytes, nu.updated_at,
+                   ac.name AS agent
+            FROM namespace_usage nu
+            LEFT JOIN actors ac ON ac.name = nu.namespace
+            ORDER BY nu.total_bytes DESC`;
+        params = [];
+    }
+    const result = await pool.query(sql, params);
+    res.json({ usage: result.rows });
+}));
 
 // ---- Note Synchronization CRUD ----
 

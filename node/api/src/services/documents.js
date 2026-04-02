@@ -8,6 +8,19 @@ const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 const config = require('./config');
 
+// Update namespace_usage counters. Fire-and-forget — usage tracking
+// should never block or fail a document operation.
+function updateUsage(namespace, countDelta, bytesDelta) {
+    pool.query(`
+        INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (namespace) DO UPDATE SET
+            note_count = GREATEST(0, namespace_usage.note_count + $2),
+            total_bytes = GREATEST(0, namespace_usage.total_bytes + $3),
+            updated_at = NOW()
+    `, [namespace, countDelta, bytesDelta]).catch(() => {});
+}
+
 // Validate a slug to prevent malformed entries that break the tree UI.
 // Throws 400 if invalid. Prefixes (for move-prefix) end with '/' and are validated
 // with allowTrailingSlash=true.
@@ -106,7 +119,7 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     // Check if an active note already exists at this slug
     // Case-insensitive lookup — slugs are preserved as-is, only matching is lowered
     const existing = await pool.query(
-        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
+        'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [namespace, resolvedSlug]
     );
 
@@ -178,6 +191,17 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     }
 
     const doc = result.rows[0];
+
+    // Update namespace usage counters
+    const newBytes = content.length;
+    if (existing.rows.length > 0) {
+        // Update — bytes delta only
+        const oldBytes = existing.rows[0].content_length || 0;
+        updateUsage(namespace, 0, newBytes - oldBytes);
+    } else {
+        // Insert — +1 note, +bytes
+        updateUsage(namespace, 1, newBytes);
+    }
 
     // Resolve created_by_actor_id to name for API response
     if (doc.created_by_actor_id) {
@@ -278,13 +302,14 @@ async function deleteNote(namespace, slug) {
         UPDATE documents
         SET deleted_at = NOW()
         WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL
-        RETURNING id
+        RETURNING id, LENGTH(content) AS content_length
     `, [namespace, slug]);
 
     if (result.rows.length === 0) {
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
 
+    updateUsage(namespace, -1, -(result.rows[0].content_length || 0));
     broadcast('note_updated', { namespace, slug, operation: 'deleted' });
 
     return { deleted: true, slug };
@@ -296,13 +321,14 @@ async function restoreNote(namespace, slug) {
         UPDATE documents d
         SET deleted_at = NULL
         WHERE d.namespace = $1 AND LOWER(d.slug) = LOWER($2) AND d.deleted_at IS NOT NULL
-        RETURNING d.id, d.namespace, d.slug, d.title
+        RETURNING d.id, d.namespace, d.slug, d.title, LENGTH(d.content) AS content_length
     `, [namespace, slug]);
 
     if (result.rows.length === 0) {
         throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
     }
 
+    updateUsage(namespace, 1, result.rows[0].content_length || 0);
     broadcast('note_updated', { namespace, slug, operation: 'restored' });
 
     return result.rows[0];
@@ -364,6 +390,9 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
         WHERE d.namespace = $2 AND LOWER(d.slug) = LOWER($3)
         RETURNING d.id, d.namespace, d.slug, d.title, d.created_by_actor_id, d.created_at, d.updated_at
     `, [updatedContent, namespace, slug]);
+
+    // Update usage — bytes delta only (note count unchanged)
+    updateUsage(namespace, 0, updatedContent.length - content.length);
 
     // Resolve created_by_actor_id to name
     if (result.rows[0] && result.rows[0].created_by_actor_id) {
@@ -483,7 +512,7 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
 
     // Verify source exists and isn't deleted
     const source = await pool.query(
-        'SELECT id, title FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
+        'SELECT id, title, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [namespace, slug]
     );
     if (source.rows.length === 0) {
@@ -518,6 +547,13 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
     );
 
     const doc = result.rows[0];
+
+    // Update usage if namespace changed — move bytes from old to new
+    if (targetNamespace !== namespace) {
+        const bytes = source.rows[0].content_length || 0;
+        updateUsage(namespace, -1, -bytes);
+        updateUsage(targetNamespace, 1, bytes);
+    }
 
     // Resolve created_by_actor_id to name for API response
     if (doc.created_by_actor_id) {

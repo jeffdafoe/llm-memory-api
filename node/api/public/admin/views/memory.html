@@ -30,7 +30,7 @@
                     <i class="icon-folder"></i>
                     <i v-if="isSynced(ns.namespace, '')" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
                     <strong>{{ ns.namespace }}</strong>
-                    <span class="tree-count">({{ ns.count }})</span>
+                    <span class="tree-count">({{ ns.count }} &middot; {{ formatBytes(ns.total_bytes) }})</span>
                 </div>
                 <div v-if="expandedNamespaces[ns.namespace]" class="tree-children">
                     <template v-for="node in notesTrees[ns.namespace]" :key="node.path">
