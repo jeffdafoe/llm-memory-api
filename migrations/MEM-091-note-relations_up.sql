@@ -19,3 +19,9 @@ CREATE TABLE note_relations (
 CREATE INDEX idx_note_relations_source ON note_relations(source_namespace, source_slug);
 CREATE INDEX idx_note_relations_target ON note_relations(target_namespace, target_slug);
 CREATE INDEX idx_note_relations_type ON note_relations(relation_type);
+
+-- Search graph boost: score bump for results connected to top results via relations.
+-- 0 = disabled, 0.05-0.1 = gentle boost. Applied as post-processing after vector search.
+INSERT INTO config (key, value, description) VALUES
+    ('search_graph_boost', '0.05', 'Score boost for search results connected to top results via note relations. 0 = disabled.')
+ON CONFLICT (key) DO NOTHING;
