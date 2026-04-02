@@ -90,6 +90,10 @@
                             <input type="password" v-model="editAgentApiKey" placeholder="Provider API key (encrypted at rest)">
                         </label>
 
+                        <label class="checkbox-label">
+                            <input type="checkbox" v-model="editAgentLearningEnabled"> Learning enabled
+                        </label>
+
                         <!-- Model-specific configuration -->
                         <div v-if="editAgentProvider && editAgentModel && Object.keys(capabilitiesFor(editAgentProvider, editAgentModel)).length" style="margin-top: 8px;">
                             <template v-for="(cap, key) in capabilitiesFor(editAgentProvider, editAgentModel)" :key="key">

@@ -20,6 +20,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     const editAgentPersonality = ref('');
     const editAgentApiKey = ref('');
     const editAgentDreamMode = ref('none');
+    const editAgentLearningEnabled = ref(true);
     const editAgentConfig = ref({});
     const agentConfigSaving = ref(false);
 
@@ -542,6 +543,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         editAgentPersonality.value = '';
         editAgentApiKey.value = '';
         editAgentDreamMode.value = 'none';
+        editAgentLearningEnabled.value = true;
         editAgentConfig.value = {};
         newActorUiAccess.value = false;
         newActorPassword.value = '';
@@ -573,6 +575,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             }
             if (editAgentDreamMode.value && editAgentDreamMode.value !== 'none') {
                 body.dream_mode = editAgentDreamMode.value;
+            }
+            if (!editAgentLearningEnabled.value) {
+                body.learning_enabled = false;
             }
             if (newActorTemplateId.value && !newActorVirtual.value) {
                 body.welcome_template_id = newActorTemplateId.value;
@@ -740,7 +745,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         // UI Access
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Agent configuration editing
-        editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentDreamMode, editAgentConfig,
+        editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentDreamMode, editAgentLearningEnabled, editAgentConfig,
         agentConfigSaving, onEditProviderChange, saveAgentConfiguration,
         // Delete actor
         actorDeleting, deleteActor,
