@@ -15,6 +15,7 @@ const config = require('../services/config');
 // Services
 const { searchMemory, deleteMemory } = require('../services/memory');
 const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
+const { createRelation, deleteRelation: deleteRel, getRelations, getGraph } = require('../services/relations');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 const {
@@ -169,6 +170,53 @@ const TOOLS = [
                 limit: { type: 'number', description: 'Max matching notes to return (default: 20)' }
             },
             required: ['pattern']
+        }
+    },
+    // --- Relation tools ---
+    {
+        name: 'create_relation',
+        description: 'Create a directional relation between two notes (e.g. depends-on, references, supersedes, led-to, related, subtask-of). Relations build a knowledge graph across notes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                source_slug: { type: 'string', description: 'Source note slug (in your namespace unless source_namespace specified)' },
+                source_namespace: { type: 'string', description: 'Source namespace (default: your namespace)' },
+                target_slug: { type: 'string', description: 'Target note slug' },
+                target_namespace: { type: 'string', description: 'Target namespace (default: your namespace)' },
+                relation_type: { type: 'string', description: 'Relation type: depends-on, references, supersedes, led-to, related, subtask-of' },
+                metadata: { type: 'object', description: 'Optional context about the relation' }
+            },
+            required: ['source_slug', 'target_slug', 'relation_type']
+        }
+    },
+    {
+        name: 'delete_relation',
+        description: 'Delete a relation between two notes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                source_slug: { type: 'string', description: 'Source note slug' },
+                source_namespace: { type: 'string', description: 'Source namespace (default: your namespace)' },
+                target_slug: { type: 'string', description: 'Target note slug' },
+                target_namespace: { type: 'string', description: 'Target namespace (default: your namespace)' },
+                relation_type: { type: 'string', description: 'Relation type to delete' }
+            },
+            required: ['source_slug', 'target_slug', 'relation_type']
+        }
+    },
+    {
+        name: 'get_related',
+        description: 'Get notes related to a given note via the relation graph. Returns direct relations by default, or traverses the graph up to a specified depth.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                slug: { type: 'string', description: 'Note slug to find relations for' },
+                namespace: { type: 'string', description: 'Namespace (default: your namespace)' },
+                direction: { type: 'string', description: 'Filter direction: outgoing, incoming, or both (default: both)' },
+                type: { type: 'string', description: 'Filter by relation type (optional)' },
+                depth: { type: 'number', description: 'Graph traversal depth (default: 1, max: 5). Depth > 1 returns a full graph with nodes and edges.' }
+            },
+            required: ['slug']
         }
     },
     // --- Instructions tools ---
@@ -553,6 +601,9 @@ const TOOL_PERMISSIONS = {
     restore_note: 'mcp_delete_note',
     edit_note: 'mcp_save_note',
     move_note: 'mcp_save_note',
+    create_relation: 'mcp_save_note',
+    delete_relation: 'mcp_delete_note',
+    get_related: 'mcp_read_note',
     grep: 'mcp_search',
     read_instructions: 'mcp_read_note',
     save_instructions: 'mcp_save_note',
@@ -786,6 +837,57 @@ const TOOL_HANDLERS = {
             return `${header}\n${lines}`;
         });
         return sections.join('\n\n---\n\n');
+    },
+
+    // --- Relations ---
+    async create_relation(args, agent, namespace, actorId) {
+        const sourceNs = args.source_namespace || namespace;
+        const targetNs = args.target_namespace || namespace;
+        const result = await createRelation(sourceNs, args.source_slug, targetNs, args.target_slug, args.relation_type, agent, args.metadata, false);
+        return `Relation created: ${sourceNs}/${args.source_slug} —[${args.relation_type}]→ ${targetNs}/${args.target_slug}`;
+    },
+
+    async delete_relation(args, agent, namespace, actorId) {
+        const sourceNs = args.source_namespace || namespace;
+        const targetNs = args.target_namespace || namespace;
+        await deleteRel(sourceNs, args.source_slug, targetNs, args.target_slug, args.relation_type);
+        return `Relation deleted: ${sourceNs}/${args.source_slug} —[${args.relation_type}]→ ${targetNs}/${args.target_slug}`;
+    },
+
+    async get_related(args, agent, namespace, actorId) {
+        const ns = args.namespace || namespace;
+        const depth = args.depth || 1;
+
+        // Depth > 1 returns full graph (nodes + edges)
+        if (depth > 1) {
+            const graph = await getGraph(ns, args.slug, depth);
+            if (graph.edges.length === 0) {
+                return 'No relations found for ' + ns + '/' + args.slug;
+            }
+            const lines = ['Graph for ' + ns + '/' + args.slug + ' (depth ' + depth + '):', ''];
+            lines.push('Nodes: ' + graph.nodes.map(n => n.namespace + '/' + n.slug + (n.root ? ' (root)' : '')).join(', '));
+            lines.push('');
+            for (const e of graph.edges) {
+                lines.push('  ' + e.source + ' —[' + e.type + ']→ ' + e.target + (e.auto_extracted ? ' (auto)' : ''));
+            }
+            return lines.join('\n');
+        }
+
+        // Depth 1 returns flat list of direct relations
+        const relations = await getRelations(ns, args.slug, args.direction || 'both', args.type);
+        if (relations.length === 0) {
+            return 'No relations found for ' + ns + '/' + args.slug;
+        }
+        const lines = ['Relations for ' + ns + '/' + args.slug + ':', ''];
+        for (const r of relations) {
+            const isOutgoing = r.source_namespace === ns && r.source_slug.toLowerCase() === args.slug.toLowerCase();
+            if (isOutgoing) {
+                lines.push('  → [' + r.relation_type + '] ' + r.target_namespace + '/' + r.target_slug + (r.auto_extracted ? ' (auto)' : ''));
+            } else {
+                lines.push('  ← [' + r.relation_type + '] ' + r.source_namespace + '/' + r.source_slug + (r.auto_extracted ? ' (auto)' : ''));
+            }
+        }
+        return lines.join('\n');
     },
 
     // --- Instructions ---

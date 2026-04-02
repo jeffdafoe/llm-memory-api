@@ -1218,6 +1218,30 @@ router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('note
     res.json({ usage: result.rows });
 }));
 
+// POST /admin/notes/relations — get relations for a note.
+// Params: namespace, slug, direction (outgoing/incoming/both), type (optional).
+router.post('/admin/notes/relations', requirePerm('notes', 'read'), adminRoute('notes-relations', async (req, res) => {
+    const { namespace, slug, direction, type } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
+    }
+    const { getRelations } = require('../services/relations');
+    const relations = await getRelations(namespace, slug, direction || 'both', type);
+    res.json({ relations });
+}));
+
+// POST /admin/notes/graph — graph traversal from a note.
+// Params: namespace, slug, depth (1-5, default 2).
+router.post('/admin/notes/graph', requirePerm('notes', 'read'), adminRoute('notes-graph', async (req, res) => {
+    const { namespace, slug, depth } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
+    }
+    const { getGraph } = require('../services/relations');
+    const graph = await getGraph(namespace, slug, depth || 2);
+    res.json(graph);
+}));
+
 // ---- Note Synchronization CRUD ----
 
 // POST /admin/notes/sync/list — list sync mappings, optionally filtered by actor_id
