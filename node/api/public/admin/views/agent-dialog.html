@@ -59,14 +59,14 @@
                 <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
                     &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
                 </small>
-                <label>Personality
-                    <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
-                </label>
                 <label>Dream Mode
                     <custom-select v-model="agentProfileDreamMode"
                         :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
                         placeholder="None" />
                     <small class="ts">Post-session log analysis: companion (emotional/personal) or technical (work/code-focused)</small>
+                </label>
+                <label>Personality
+                    <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
                 </label>
                 <label v-if="selectedAgent.virtual">API Key
                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
