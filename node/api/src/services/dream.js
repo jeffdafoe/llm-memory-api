@@ -260,6 +260,7 @@ async function runDream() {
                 context: 'dream',
                 skipRateLimit: true,
                 skipCostLimit: true,
+                skipRetry: false,
             });
 
             // Parse the response — extract title and content
@@ -298,6 +299,7 @@ async function runDream() {
                         context: 'soul',
                         skipRateLimit: true,
                         skipCostLimit: true,
+                        skipRetry: false,
                     });
 
                     if (updatedSoul && updatedSoul.trim()) {
@@ -328,6 +330,12 @@ async function runDream() {
         } catch (err) {
             logDream('error', { agent: agent.name, error: err.message });
             results.push({ agent: agent.name, error: err.message });
+        }
+
+        // Delay between agents to avoid hammering the provider
+        const interDelay = parseInt(config.get('dream_interagent_delay')) || 2000;
+        if (interDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, interDelay));
         }
     }
 

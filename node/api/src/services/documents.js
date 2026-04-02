@@ -279,6 +279,15 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug: resolvedSlug, operation: 'saved' });
 
+    // LLM-powered enrichment — generates keywords, tags, and suggested relations (fire-and-forget)
+    const { enrichNote } = require('./enrichment');
+    var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
+    enrichNote(namespace, resolvedSlug, title, content, parsedMeta).catch(err => {
+        handleError(null, 'documents', 'NOTE_ENRICHMENT_FAILED', {
+            namespace, slug: resolvedSlug, error: err.message
+        }).catch(() => {});
+    });
+
     return doc;
 }
 

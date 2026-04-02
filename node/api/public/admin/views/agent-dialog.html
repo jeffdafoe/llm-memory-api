@@ -53,6 +53,7 @@
                     <label>Model
                         <custom-select v-model="agentProfileModel"
                             :options="[{ value: '', label: 'None' }].concat(modelsForProvider(agentProfileProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                            :allow-custom="agentProfileProvider === 'openrouter'"
                             placeholder="None" />
                     </label>
                 </div>

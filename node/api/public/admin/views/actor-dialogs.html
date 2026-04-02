@@ -70,6 +70,7 @@
                         <label>Model
                             <custom-select v-model="editAgentModel"
                                 :options="[{ value: '', label: 'None' }].concat(modelsForProvider(editAgentProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                                :allow-custom="editAgentProvider === 'openrouter'"
                                 placeholder="None" />
                         </label>
                     </div>

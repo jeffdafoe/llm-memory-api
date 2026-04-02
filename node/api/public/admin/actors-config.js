@@ -395,6 +395,12 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     // ─── Agent Configuration Save ───
 
     function onEditProviderChange() {
+        // For providers that support custom model IDs (e.g. OpenRouter), don't
+        // auto-reset the model — let the user type whatever they want.
+        if (editAgentProvider.value === 'openrouter') {
+            agentsModule.loadOpenRouterCatalog();
+            return;
+        }
         const models = agentsModule.modelsForProvider(editAgentProvider.value);
         if (models.length > 0) {
             editAgentModel.value = models[0].id;

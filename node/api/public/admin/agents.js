@@ -13,6 +13,10 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const providerRegistry = ref([]);
     const providerRegistryLoaded = ref(false);
 
+    // OpenRouter dynamic model catalog (fetched lazily on first use)
+    const openrouterCatalog = ref(null); // null = not fetched, [] = fetched
+    const openrouterCatalogLoading = ref(false);
+
     // Agent detail
     const agentInstructions = ref('');
     const agentInstructionsEditing = ref(false);
@@ -72,11 +76,48 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    // Lazily fetch the full OpenRouter model catalog from the backend cache.
+    // Called when OpenRouter is selected as provider. Non-blocking — the dropdown
+    // shows static models immediately and adds dynamic ones when the fetch completes.
+    async function loadOpenRouterCatalog() {
+        if (openrouterCatalog.value !== null || openrouterCatalogLoading.value) return;
+        openrouterCatalogLoading.value = true;
+        try {
+            const data = await api('/admin/providers/openrouter/models');
+            openrouterCatalog.value = (data.models || []).map(m => ({
+                id: m.id,
+                label: m.name || m.id,
+                pricing: m.pricing
+            }));
+        } catch (err) {
+            console.error('Failed to load OpenRouter catalog:', err);
+            openrouterCatalog.value = [];
+        } finally {
+            openrouterCatalogLoading.value = false;
+        }
+    }
+
     // Return models array for a given provider name: [{ id, label, deprecated }]
     function modelsForProvider(providerName) {
         if (!providerName) return [];
         const provider = providerRegistry.value.find(p => p.name === providerName);
         if (!provider) return [];
+
+        // For OpenRouter, models come entirely from the dynamic catalog
+        if (providerName === 'openrouter' && openrouterCatalog.value) {
+            return openrouterCatalog.value
+                .map(m => {
+                    var pricingStr = '';
+                    if (m.pricing) {
+                        var inp = m.pricing.input != null ? '$' + Number(m.pricing.input).toFixed(2) : '?';
+                        var out = m.pricing.output != null ? '$' + Number(m.pricing.output).toFixed(2) : '?';
+                        pricingStr = ' (' + inp + '/' + out + ')';
+                    }
+                    return { id: m.id, label: m.label + pricingStr };
+                })
+                .sort((a, b) => a.label.localeCompare(b.label));
+        }
+
         return Object.entries(provider.models).map(([id, info]) => ({
             id,
             label: info.label,
@@ -85,13 +126,30 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     }
 
     // Return capabilities object for a given provider + model
+    // Default capabilities for OpenRouter models (applied to all models since
+    // the registry is fully dynamic — no static model entries to carry caps).
+    const openrouterDefaultCaps = {
+        temperature: {
+            type: 'number', label: 'Temperature',
+            description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+            default: 0.7, min: 0, max: 2.0, step: 0.1
+        },
+        max_tokens: {
+            type: 'number', label: 'Max Output Tokens',
+            description: 'Maximum number of tokens the model will generate in its response.',
+            default: 4096, min: 1, max: 32768
+        }
+    };
+
     function capabilitiesFor(providerName, modelId) {
         if (!providerName || !modelId) return {};
         const provider = providerRegistry.value.find(p => p.name === providerName);
         if (!provider) return {};
         const model = provider.models[modelId];
-        if (!model) return {};
-        return model.capabilities || {};
+        if (model) return model.capabilities || {};
+        // For providers with dynamic registries, return default capabilities
+        if (providerName === 'openrouter') return openrouterDefaultCaps;
+        return {};
     }
 
     // Return configVersion for a given provider + model, or null
@@ -208,10 +266,20 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentProfilePersonality.value = selectedAgent.value.personality || '';
         agentProfileDreamMode.value = selectedAgent.value.dream_mode || 'none';
         agentProfileApiKey.value = '';
+        // Pre-fetch catalog if editing an agent already on OpenRouter
+        if (agentProfileProvider.value === 'openrouter') {
+            loadOpenRouterCatalog();
+        }
     }
 
     function onProfileProviderChange() {
-        // When provider changes, reset model if it doesn't exist in new provider
+        // When provider changes, reset model if it doesn't exist in new provider.
+        // For providers that support custom model IDs (e.g. OpenRouter), keep
+        // the current value even if it's not in the static registry.
+        if (agentProfileProvider.value === 'openrouter') {
+            loadOpenRouterCatalog();
+            return;
+        }
         const models = modelsForProvider(agentProfileProvider.value);
         const exists = models.find(m => m.id === agentProfileModel.value);
         if (!exists) {
@@ -555,7 +623,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentsSorted: agentSort.sorted, agentSortKey: agentSort.sortKey, agentSortDir: agentSort.sortDir,
         toggleAgentSort: agentSort.toggleSort, agentSortArrow: agentSort.sortArrow,
         // Provider registry
-        providerRegistry, loadProviderRegistry, modelsForProvider, capabilitiesFor, configVersionFor, modelDeprecation,
+        providerRegistry, loadProviderRegistry, modelsForProvider, loadOpenRouterCatalog, capabilitiesFor, configVersionFor, modelDeprecation,
         parseAgentConfig, capabilityVisible, capabilityDisabled, formatConfigValue,
         // Agent detail
         agentInstructions, agentInstructionsEditing, agentInstructionsExpanded, agentInstructionsEditContent, agentInstructionsSaving,

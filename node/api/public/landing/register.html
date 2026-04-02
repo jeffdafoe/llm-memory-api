@@ -130,6 +130,11 @@
             padding-top: 12px;
             border-top: 1px solid var(--border);
         }
+        .credential-hint {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
         .credential-label {
             font-size: 11px;
             font-weight: 500;
@@ -306,6 +311,19 @@
             font-size: 15px;
             font-weight: 500;
         }
+        .guide-step .setup-steps {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin: 8px 0 8px 32px;
+            padding-left: 18px;
+            line-height: 1.8;
+        }
+        .guide-step .setup-steps .config-block {
+            margin: 6px 0;
+        }
+        .guide-step .setup-steps .copy-btn {
+            margin-bottom: 4px;
+        }
         .guide-step p {
             font-size: 13px;
             color: var(--text-secondary);
@@ -433,10 +451,12 @@
             <div class="credential-row">
                 <span class="credential-label">Passphrase</span>
                 <code id="passphraseValue"></code>
+                <span class="credential-hint">For Claude Code, Cursor, Windsurf, and other CLI tools — goes in your .agent.json file</span>
             </div>
             <div class="credential-row">
                 <span class="credential-label">API Key</span>
                 <code id="apiKeyValue" class="api-key-value"></code>
+                <span class="credential-hint">For the claude.ai website — used when adding LLM Memory as an integration</span>
             </div>
         </div>
         <div class="copy-row">
@@ -502,10 +522,19 @@
             <div class="guide-step">
                 <span class="guide-step-num">1</span>
                 <h3>Add the MCP integration</h3>
-                <p>In claude.ai, go to <strong>Settings → Integrations</strong> and add a new integration with this URL:</p>
-                <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
-                <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
-                <p>When prompted, enter your agent name as the <strong>Client ID</strong> and your API key as the <strong>Client Secret</strong>.</p>
+                <ol class="setup-steps">
+                    <li>Open the sidebar and select <strong>Customize</strong> → <strong>Connectors</strong></li>
+                    <li>Click the <strong>+</strong> button and select <strong>Add custom connector</strong></li>
+                    <li>Enter <strong>LLM Memory</strong> for the name</li>
+                    <li>Enter this URL:
+                        <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
+                        <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
+                    </li>
+                    <li>Expand <strong>Advanced settings</strong></li>
+                    <li>Enter your <strong>agent name</strong> (<code id="agentNameHint"></code>) for <strong>Client ID</strong></li>
+                    <li>Enter your <strong>API key</strong> for <strong>Client Secret</strong></li>
+                </ol>
+                <p>Once the connector is added, you may have to click on it and click <strong>Connect</strong> at the top right.</p>
             </div>
 
             <div class="guide-step">
@@ -678,6 +707,7 @@ async function register() {
         registeredPassword = password;
         document.getElementById('passphraseValue').textContent = data.passphrase;
         document.getElementById('apiKeyValue').textContent = data.api_key;
+        document.getElementById('agentNameHint').textContent = data.agent;
         document.getElementById('configBlock').textContent = JSON.stringify({
             agent: data.agent,
             passphrase: data.passphrase,
@@ -779,29 +809,12 @@ function copyMcpUrl() {
     setTimeout(() => event.target.textContent = 'Copy URL', 2000);
 }
 
-// Check if open registration is enabled, then handle invite code auto-fill
-(async function init() {
-    try {
-        const res = await fetch('/api/registration-mode');
-        const data = await res.json();
-        if (data.open) {
-            // Skip invite code step entirely
-            validatedCode = '__open__';
-            showStep(2);
-            document.getElementById('agentName').focus();
-            return;
-        }
-    } catch (e) {
-        // If check fails, fall through to normal invite code flow
-    }
-
-    // Auto-fill invite code from URL
-    const urlCode = new URLSearchParams(window.location.search).get('code');
-    if (urlCode) {
-        document.getElementById('inviteCode').value = urlCode;
-        validateCode();
-    }
-})();
+// Auto-fill invite code from URL
+const urlCode = new URLSearchParams(window.location.search).get('code');
+if (urlCode) {
+    document.getElementById('inviteCode').value = urlCode;
+    validateCode();
+}
 
 function showError(step, msg) {
     const el = document.getElementById('error' + step);

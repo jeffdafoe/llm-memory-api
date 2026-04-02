@@ -407,6 +407,13 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     sql += ` ORDER BY CASE s.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, s.last_seen DESC NULLS LAST`;
     const result = await pool.query(sql, params);
 
+    // If any agent uses OpenRouter, pre-fetch the catalog so formatPricing
+    // can show real pricing instead of a placeholder.
+    if (result.rows.some(r => r.provider === 'openrouter')) {
+        const { fetchCatalog } = require('../services/providers/openrouter');
+        await fetchCatalog();
+    }
+
     // Compute pricing_info for each agent via provider formatPricing
     for (const row of result.rows) {
         if (row.provider && row.model) {
@@ -801,6 +808,23 @@ router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRou
     const { getDefaultConfiguration } = require('../services/provider');
     const defaults = getDefaultConfiguration(provider, model);
     res.json({ defaults });
+}));
+
+// POST /admin/providers/openrouter/models — lazily fetch full OpenRouter model catalog
+router.post('/admin/providers/openrouter/models', requirePerm('config', 'read'), adminRoute('openrouter-models', async (req, res) => {
+    const { fetchCatalog } = require('../services/providers/openrouter');
+    const catalog = await fetchCatalog();
+    // Convert Map to array of { id, name, pricing } for the UI
+    const models = [];
+    for (const [id, entry] of catalog) {
+        models.push({
+            id,
+            name: entry.name,
+            pricing: { input: entry.input, output: entry.output, cache_read: entry.cache_read },
+            context_length: entry.context_length
+        });
+    }
+    res.json({ models });
 }));
 
 // Config keys whose values must never be sent to the client
@@ -1745,6 +1769,10 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
 
     // Add pricing info string for display, accounting for agent's service tier
     if (row.provider && row.model) {
+        if (row.provider === 'openrouter') {
+            const { fetchCatalog } = require('../services/providers/openrouter');
+            await fetchCatalog();
+        }
         let agentConfig = {};
         if (row.configuration) {
             if (typeof row.configuration === 'object') {
@@ -1915,6 +1943,12 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('act
          LEFT JOIN actors creator ON creator.id = a.created_by
          ORDER BY a.name`
     );
+
+    // Pre-fetch OpenRouter catalog if any actor uses it
+    if (result.rows.some(r => r.provider === 'openrouter')) {
+        const { fetchCatalog } = require('../services/providers/openrouter');
+        await fetchCatalog();
+    }
 
     // Compute pricing_info for agents that have provider+model
     for (const row of result.rows) {
