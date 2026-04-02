@@ -110,25 +110,22 @@ function prefilterLog(content) {
     return result.join('\n');
 }
 
-// Verify a dream agent exists and is owned by system.
-// Returns the agent name if valid, null otherwise.
-async function verifyDreamAgent(modeName) {
-    const agentName = 'dream-' + modeName;
-
+// Find a dream agent by expertise tag. Verifies it exists, is system-owned,
+// and has provider/model/api_key configured. Returns the agent name or null.
+async function findDreamAgent(expertiseTag) {
+    // Find an agent with this expertise tag, owned by system
     const result = await pool.query(
         `SELECT ac.id, ac.name, ac.created_by, agc.provider, agc.model, agc.api_key
          FROM actors ac
          JOIN agent_configuration agc ON agc.actor_id = ac.id
-         WHERE ac.name = $1`,
-        [agentName]
+         WHERE $1 = ANY(ac.expertise)`,
+        [expertiseTag]
     );
 
     if (result.rows.length === 0) {
-        logDream('error', { message: 'Dream agent not found: ' + agentName });
+        logDream('error', { message: 'No agent found with expertise: ' + expertiseTag });
         return null;
     }
-
-    const agent = result.rows[0];
 
     // Verify system ownership
     const systemActor = await pool.query("SELECT id FROM actors WHERE name = 'system'");
@@ -136,17 +133,20 @@ async function verifyDreamAgent(modeName) {
         logDream('error', { message: 'System actor not found' });
         return null;
     }
-    if (agent.created_by !== systemActor.rows[0].id) {
-        logDream('error', { message: agentName + ' is not owned by system (created_by=' + agent.created_by + ')' });
+
+    // Find the first system-owned match
+    const agent = result.rows.find(r => r.created_by === systemActor.rows[0].id);
+    if (!agent) {
+        logDream('error', { message: 'Agent with expertise "' + expertiseTag + '" is not owned by system' });
         return null;
     }
 
     if (!agent.api_key || !agent.provider || !agent.model) {
-        logDream('error', { message: agentName + ' missing provider/model/api_key' });
+        logDream('error', { message: agent.name + ' (expertise: ' + expertiseTag + ') missing provider/model/api_key' });
         return null;
     }
 
-    return agentName;
+    return agent.name;
 }
 
 // Slugify a title for note storage
@@ -166,11 +166,11 @@ async function runDream() {
         return { skipped: true, reason: 'disabled' };
     }
 
-    // Verify dream agents (snapshot + soul) exist and are system-owned
-    const companionAgentName = await verifyDreamAgent('companion');
-    const technicalAgentName = await verifyDreamAgent('technical');
-    const companionSoulAgentName = await verifyDreamAgent('companion-soul');
-    const technicalSoulAgentName = await verifyDreamAgent('technical-soul');
+    // Find dream agents by expertise tag
+    const companionAgentName = await findDreamAgent('dream-companion');
+    const technicalAgentName = await findDreamAgent('dream-technical');
+    const companionSoulAgentName = await findDreamAgent('dream-companion-soul');
+    const technicalSoulAgentName = await findDreamAgent('dream-technical-soul');
 
     if (!companionAgentName && !technicalAgentName) {
         logDream('abort', { reason: 'Neither dream agent found or valid' });
