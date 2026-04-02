@@ -21,6 +21,48 @@ function updateUsage(namespace, countDelta, bytesDelta) {
     `, [namespace, countDelta, bytesDelta]).catch(() => {});
 }
 
+// Check if adding `additionalBytes` to this namespace would exceed the storage quota.
+// Returns null if within quota, or an error message string if over.
+async function checkQuota(namespace, additionalBytes) {
+    // Get current usage
+    const usageResult = await pool.query(
+        'SELECT total_bytes FROM namespace_usage WHERE namespace = $1',
+        [namespace]
+    );
+    const currentBytes = usageResult.rows.length > 0 ? parseInt(usageResult.rows[0].total_bytes) : 0;
+
+    // Resolve quota: per-agent override > global default
+    const agentResult = await pool.query(
+        `SELECT agc.storage_quota
+         FROM agent_configuration agc
+         JOIN actors ac ON ac.id = agc.actor_id
+         WHERE ac.name = $1`,
+        [namespace]
+    );
+
+    let quota = null;
+    if (agentResult.rows.length > 0 && agentResult.rows[0].storage_quota != null) {
+        quota = parseInt(agentResult.rows[0].storage_quota);
+    } else {
+        try {
+            quota = parseInt(config.get('default_storage_quota'));
+        } catch (e) {
+            // Config key doesn't exist — no quota enforcement
+            return null;
+        }
+    }
+
+    if (!quota || quota <= 0) return null; // No quota or unlimited
+
+    const projected = currentBytes + additionalBytes;
+    if (projected > quota) {
+        const usedMB = (currentBytes / (1024 * 1024)).toFixed(1);
+        const quotaMB = (quota / (1024 * 1024)).toFixed(1);
+        return 'Storage quota exceeded (' + usedMB + ' MB / ' + quotaMB + ' MB limit)';
+    }
+    return null;
+}
+
 // Validate a slug to prevent malformed entries that break the tree UI.
 // Throws 400 if invalid. Prefixes (for move-prefix) end with '/' and are validated
 // with allowTrailingSlash=true.
@@ -122,6 +164,17 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [namespace, resolvedSlug]
     );
+
+    // Check storage quota before writing
+    const additionalBytes = existing.rows.length > 0
+        ? content.length - (existing.rows[0].content_length || 0) // update: delta only
+        : content.length; // insert: full size
+    if (additionalBytes > 0) {
+        const quotaError = await checkQuota(namespace, additionalBytes);
+        if (quotaError) {
+            throw Object.assign(new Error(quotaError), { statusCode: 413 });
+        }
+    }
 
     // Resolve createdBy name to actor_id (only needed for inserts)
     let createdByActorId = null;
@@ -316,19 +369,31 @@ async function deleteNote(namespace, slug) {
 }
 
 async function restoreNote(namespace, slug) {
+    // Check the note exists and get its size before restoring
+    const check = await pool.query(
+        'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NOT NULL',
+        [namespace, slug]
+    );
+    if (check.rows.length === 0) {
+        throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
+    }
+
+    // Check storage quota before restoring
+    const restoreBytes = check.rows[0].content_length || 0;
+    const quotaError = await checkQuota(namespace, restoreBytes);
+    if (quotaError) {
+        throw Object.assign(new Error(quotaError), { statusCode: 413 });
+    }
+
     // Clear the deleted_at flag to restore the note and its vector chunks
     const result = await pool.query(`
         UPDATE documents d
         SET deleted_at = NULL
-        WHERE d.namespace = $1 AND LOWER(d.slug) = LOWER($2) AND d.deleted_at IS NOT NULL
-        RETURNING d.id, d.namespace, d.slug, d.title, LENGTH(d.content) AS content_length
-    `, [namespace, slug]);
+        WHERE d.id = $1
+        RETURNING d.id, d.namespace, d.slug, d.title
+    `, [check.rows[0].id]);
 
-    if (result.rows.length === 0) {
-        throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
-    }
-
-    updateUsage(namespace, 1, result.rows[0].content_length || 0);
+    updateUsage(namespace, 1, restoreBytes);
     broadcast('note_updated', { namespace, slug, operation: 'restored' });
 
     return result.rows[0];
@@ -381,6 +446,15 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
             new Error('Edit would exceed maximum note size (' + Math.round(updatedBytes / 1024) + 'KB / ' + Math.round(maxBytes / 1024) + 'KB limit)'),
             { statusCode: 500 }
         );
+    }
+
+    // Check storage quota if edit increases size
+    const editDelta = updatedContent.length - content.length;
+    if (editDelta > 0) {
+        const quotaError = await checkQuota(namespace, editDelta);
+        if (quotaError) {
+            throw Object.assign(new Error(quotaError), { statusCode: 413 });
+        }
     }
 
     // Save the updated content

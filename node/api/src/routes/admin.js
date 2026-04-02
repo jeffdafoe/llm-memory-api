@@ -1602,7 +1602,8 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
     const result = await pool.query(
         `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
                 agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
-                agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key,
+                agc.cost_budget_daily, agc.cost_budget_monthly, agc.storage_quota,
+                agc.api_key IS NOT NULL AS has_api_key,
                 agc.dream_mode
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
@@ -1660,7 +1661,7 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
 router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('agents-update', async (req, res) => {
     const agent = sanitize.agentName(req.body.agent);
     const { personality, api_key, configuration, provider, model,
-            cost_budget_daily, cost_budget_monthly,
+            cost_budget_daily, cost_budget_monthly, storage_quota,
             cache_prompts, learning_enabled, max_tokens, temperature, dream_mode } = req.body;
 
     if (!agent) {
@@ -1732,6 +1733,10 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
     if (temperature !== undefined) {
         params.push(temperature === null || temperature === '' ? null : parseFloat(temperature));
         updates.push(`temperature = $${idx++}`);
+    }
+    if (storage_quota !== undefined) {
+        params.push(storage_quota === null || storage_quota === '' ? null : parseInt(storage_quota));
+        updates.push(`storage_quota = $${idx++}`);
     }
     if (dream_mode !== undefined) {
         if (!['none', 'companion', 'technical'].includes(dream_mode)) {

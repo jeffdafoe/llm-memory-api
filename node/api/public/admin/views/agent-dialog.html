@@ -171,6 +171,7 @@
                 </div>
                 <div v-if="!agentSettingsEditing" style="font-size: 13px; line-height: 1.8;">
                     <span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span>
+                    <br><span>Storage quota: <strong>{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default' }}</strong></span>
                     <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
                         <br><span>{{ cap.label }}: <strong>{{ formatConfigValue(key, parseAgentConfig(selectedAgent)[key], cap) }}</strong></span>
                     </template>
@@ -182,6 +183,9 @@
                 <div v-if="agentSettingsEditing">
                     <label class="checkbox-label">
                         <input type="checkbox" v-model="agentSettingsLearningEnabled"> Learning enabled
+                    </label>
+                    <label>Storage quota (MB)
+                        <input type="number" v-model="agentSettingsStorageQuota" placeholder="blank = default" min="1">
                     </label>
                     <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
                         <div v-if="capabilityVisible(cap, agentSettingsConfig)" style="margin-bottom: 8px;" :style="capabilityDisabled(cap, agentSettingsConfig) ? { opacity: 0.45 } : {}">

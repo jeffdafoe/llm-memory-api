@@ -45,6 +45,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     // Agent settings (dynamic configuration)
     const agentSettingsEditing = ref(false);
     const agentSettingsLearningEnabled = ref(true);
+    const agentSettingsStorageQuota = ref('');
     const agentSettingsConfig = ref({});
     const agentSettingsSaving = ref(false);
 
@@ -291,6 +292,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         loadProviderRegistry();
         agentSettingsEditing.value = true;
         agentSettingsLearningEnabled.value = selectedAgent.value.learning_enabled !== false;
+        agentSettingsStorageQuota.value = selectedAgent.value.storage_quota != null ? Math.round(selectedAgent.value.storage_quota / (1024 * 1024)) : '';
 
         // Load config, filling in defaults from capabilities where not set
         const conf = parseAgentConfig(selectedAgent.value);
@@ -312,13 +314,16 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             if (version != null) {
                 configCopy._configVersion = version;
             }
+            const quotaBytes = agentSettingsStorageQuota.value !== '' ? parseInt(agentSettingsStorageQuota.value) * 1024 * 1024 : null;
             const body = {
                 agent: selectedAgent.value.agent,
                 learning_enabled: agentSettingsLearningEnabled.value,
+                storage_quota: quotaBytes,
                 configuration: configCopy
             };
             await api('/admin/agents/update', body);
             selectedAgent.value.learning_enabled = body.learning_enabled;
+            selectedAgent.value.storage_quota = quotaBytes;
             selectedAgent.value.configuration = JSON.stringify(configCopy);
             // Sync legacy columns for display consistency
             if (agentSettingsConfig.value.cache_prompts !== undefined) {
@@ -561,7 +566,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         startEditProfile, onProfileProviderChange, saveProfile,
         costBudgetEditing, costBudgetDailyValue, costBudgetMonthlyValue, startEditCostBudget, saveCostBudget,
         agentUsageHistory, agentUsageLoading, loadUsageHistory,
-        agentSettingsEditing, agentSettingsLearningEnabled, agentSettingsConfig, agentSettingsSaving,
+        agentSettingsEditing, agentSettingsLearningEnabled, agentSettingsStorageQuota, agentSettingsConfig, agentSettingsSaving,
         startEditSettings, saveSettings,
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,
