@@ -62,9 +62,19 @@ async function ingestContent(namespace, sourceFile, content) {
         return { chunks_created: 0 };
     }
 
-    // Use conversation-aware chunking for conversation logs, heading-based for everything else
+    // Use conversation-aware chunking for conversation logs, heading-based for everything else.
+    // Conversation chunk params are configurable — smaller windows produce more focused embeddings.
     const isConversation = sourceFile.startsWith('conversations/');
-    const chunks = isConversation ? chunkConversation(content) : chunkByHeading(content);
+    let chunks;
+    if (isConversation) {
+        const config = require('./config');
+        const windowSize = parseInt(config.get('conversation_chunk_window')) || 5;
+        const overlap = parseInt(config.get('conversation_chunk_overlap')) || 2;
+        const maxChars = parseInt(config.get('conversation_chunk_max_chars')) || 0;
+        chunks = chunkConversation(content, windowSize, overlap, maxChars);
+    } else {
+        chunks = chunkByHeading(content);
+    }
 
     if (chunks.length === 0) {
         throw Object.assign(new Error('No chunks extracted from content'), { statusCode: 400 });

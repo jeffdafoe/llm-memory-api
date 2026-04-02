@@ -39,10 +39,12 @@ function chunkByHeading(content) {
 // Conversation format: lines like "[HH:MM speaker] text"
 // Splits into windows of `windowSize` messages with `overlap` messages carried
 // over between chunks for context continuity. The header block (everything
-// before the first message line) is prepended to each chunk.
-function chunkConversation(content, windowSize, overlap) {
-    windowSize = windowSize || 20;
-    overlap = overlap || 4;
+// before the first message line) is prepended to each chunk. If `maxChars`
+// is set, the window closes early when accumulated text exceeds that limit.
+function chunkConversation(content, windowSize, overlap, maxChars) {
+    windowSize = windowSize || 5;
+    overlap = overlap || 2;
+    maxChars = maxChars || 0; // 0 = no char limit
 
     const lines = content.split('\n');
     const messagePattern = /^\[\d{2}:\d{2}\s/;
@@ -91,7 +93,19 @@ function chunkConversation(content, windowSize, overlap) {
     let start = 0;
 
     while (start < messages.length) {
-        const end = Math.min(start + windowSize, messages.length);
+        // Build window: take up to windowSize messages, but stop early if
+        // accumulated text exceeds maxChars (produces more focused embeddings).
+        let end = Math.min(start + windowSize, messages.length);
+        if (maxChars > 0) {
+            let charCount = 0;
+            for (let i = start; i < end; i++) {
+                charCount += messages[i].length;
+                if (charCount > maxChars && i > start) {
+                    end = i;
+                    break;
+                }
+            }
+        }
         const windowMessages = messages.slice(start, end);
 
         // Build chunk text with header for context
@@ -115,8 +129,11 @@ function chunkConversation(content, windowSize, overlap) {
             });
         }
 
-        // Advance by windowSize minus overlap, but always advance at least 1
-        const step = Math.max(1, windowSize - overlap);
+        // Advance by actual window size minus overlap, but always advance at least 1.
+        // Uses (end - start) instead of windowSize because the char limit may have
+        // closed the window early.
+        const actualWindow = end - start;
+        const step = Math.max(1, actualWindow - overlap);
         start += step;
     }
 
