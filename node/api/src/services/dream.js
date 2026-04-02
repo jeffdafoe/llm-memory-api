@@ -59,21 +59,6 @@ const SIGNAL_PATTERNS = [
 // How many context lines to include before and after a signal match
 const CONTEXT_LINES = 5;
 
-// System prompt for the soul synthesis call. The dream VA's startup_instructions
-// are used for the nightly snapshot; this separate prompt is used for updating
-// the living soul document. Kept concise — the VA only needs to merge and prune.
-const SOUL_SYNTHESIS_PROMPT = `You maintain a living document called "context/soul" that captures the essence of an agent's relationship with its user. You will receive the current soul document (which may be empty if this is the first run) and tonight's dream snapshot.
-
-Your job: produce an updated soul document that integrates new insights from the snapshot while keeping the document concise and current.
-
-Rules:
-- Replace outdated information rather than appending. If a preference changed, update it — don't list both old and new.
-- Keep the document under 2000 words. If it's getting long, compress or drop the least important details.
-- Use clear sections with markdown headings. Organize by topic, not by date.
-- Write in third person about the user (e.g. "Jeff prefers..." not "You prefer...").
-- Include concrete details — names, specific preferences, exact patterns — not vague summaries.
-- If the snapshot contains nothing new or meaningful, return the existing soul unchanged.
-- Output ONLY the updated soul document, no preamble or explanation.`;
 
 function logDream(action, details) {
     log('dream', action, details);
@@ -181,9 +166,11 @@ async function runDream() {
         return { skipped: true, reason: 'disabled' };
     }
 
-    // Verify both dream agents exist and are system-owned
+    // Verify dream agents (snapshot + soul) exist and are system-owned
     const companionAgentName = await verifyDreamAgent('companion');
     const technicalAgentName = await verifyDreamAgent('technical');
+    const companionSoulAgentName = await verifyDreamAgent('companion-soul');
+    const technicalSoulAgentName = await verifyDreamAgent('technical-soul');
 
     if (!companionAgentName && !technicalAgentName) {
         logDream('abort', { reason: 'Neither dream agent found or valid' });
@@ -290,35 +277,37 @@ async function runDream() {
             logDream('saved', { agent: agent.name, slug, titleLength: title.length, contentLength: content.length });
 
             // Soul synthesis: update context/soul with tonight's snapshot
-            try {
-                let existingSoul = '';
+            const soulAgentName = agent.dream_mode === 'companion' ? companionSoulAgentName : technicalSoulAgentName;
+            if (soulAgentName) {
                 try {
-                    const soulNote = await readNote(agent.name, 'context/soul');
-                    existingSoul = soulNote.content || '';
-                } catch (e) {
-                    // No soul yet — first run, start fresh
+                    let existingSoul = '';
+                    try {
+                        const soulNote = await readNote(agent.name, 'context/soul');
+                        existingSoul = soulNote.content || '';
+                    } catch (e) {
+                        // No soul yet — first run, start fresh
+                    }
+
+                    const soulUserMessage = '## Current soul document\n\n'
+                        + (existingSoul || '(empty — first run)')
+                        + '\n\n## Tonight\'s dream snapshot\n\n'
+                        + content;
+
+                    const { text: updatedSoul } = await invokeAgent(soulAgentName, {
+                        userMessage: soulUserMessage,
+                        context: 'soul',
+                        skipRateLimit: true,
+                        skipCostLimit: true,
+                    });
+
+                    if (updatedSoul && updatedSoul.trim()) {
+                        await saveNote(agent.name, 'Soul', updatedSoul.trim(), 'context/soul', soulAgentName);
+                        logDream('soul-updated', { agent: agent.name, size: updatedSoul.length });
+                    }
+                } catch (soulErr) {
+                    // Soul update failure shouldn't block the rest of the dream process
+                    logDream('soul-error', { agent: agent.name, error: soulErr.message });
                 }
-
-                const soulUserMessage = '## Current soul document\n\n'
-                    + (existingSoul || '(empty — first run)')
-                    + '\n\n## Tonight\'s dream snapshot\n\n'
-                    + content;
-
-                const { text: updatedSoul } = await invokeAgent(dreamAgentName, {
-                    systemPrompt: SOUL_SYNTHESIS_PROMPT,
-                    userMessage: soulUserMessage,
-                    context: 'soul',
-                    skipRateLimit: true,
-                    skipCostLimit: true,
-                });
-
-                if (updatedSoul && updatedSoul.trim()) {
-                    await saveNote(agent.name, 'Soul', updatedSoul.trim(), 'context/soul', dreamAgentName);
-                    logDream('soul-updated', { agent: agent.name, size: updatedSoul.length });
-                }
-            } catch (soulErr) {
-                // Soul update failure shouldn't block the rest of the dream process
-                logDream('soul-error', { agent: agent.name, error: soulErr.message });
             }
 
             // Update last_dream_at
