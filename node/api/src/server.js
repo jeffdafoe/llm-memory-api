@@ -86,6 +86,37 @@ app.post('/api/access-request', async (req, res) => {
         return res.status(400).json({ error: 'Input too long' });
     }
     try {
+        const config = require('./services/config');
+        const openRegistration = config.get('open_registration') === 'true';
+
+        if (openRegistration) {
+            // Auto-approve: insert request as approved, generate invite code, return it
+            const crypto = require('crypto');
+            const code = crypto.randomBytes(16).toString('hex');
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                const reqResult = await client.query(
+                    `INSERT INTO access_requests (email, usage_description, status, reviewed_at)
+                     VALUES ($1, $2, 'approved', NOW()) RETURNING id`,
+                    [email.trim(), usage.trim()]
+                );
+                await client.query(
+                    `INSERT INTO invite_codes (code, created_by, access_request_id, expires_at)
+                     VALUES ($1, 'system', $2, NOW() + INTERVAL '7 days')`,
+                    [code, reqResult.rows[0].id]
+                );
+                await client.query('COMMIT');
+            } catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            } finally {
+                client.release();
+            }
+            return res.json({ ok: true, auto_approved: true, code });
+        }
+
+        // Normal flow: save as pending for manual review
         await pool.query(
             'INSERT INTO access_requests (email, usage_description) VALUES ($1, $2)',
             [email.trim(), usage.trim()]

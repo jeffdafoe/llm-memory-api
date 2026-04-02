@@ -13,7 +13,7 @@ const { logError } = require('../services/logger');
 const config = require('../services/config');
 
 // Services
-const { searchMemory, deleteMemory } = require('../services/memory');
+const { searchMemory } = require('../services/memory');
 const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
@@ -51,18 +51,6 @@ const TOOLS = [
                 limit: { type: 'number', description: 'Max results (default: 5)' }
             },
             required: ['query']
-        }
-    },
-    {
-        name: 'delete',
-        description: 'Delete all chunks for a specific source file from memory',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                source_file: { type: 'string', description: 'Source file name to delete' },
-                namespace: { type: 'string', description: 'Namespace (default: agent namespace)' }
-            },
-            required: ['source_file']
         }
     },
     // --- Document tools ---
@@ -545,7 +533,6 @@ const TOOLS = [
 // Permission required for each tool
 const TOOL_PERMISSIONS = {
     search: 'mcp_search',
-    delete: 'mcp_delete_memory',
     save_note: 'mcp_save_note',
     list_notes: 'mcp_list_notes',
     read_note: 'mcp_read_note',
@@ -627,13 +614,6 @@ const TOOL_HANDLERS = {
         return lines.join('\n\n---\n\n') || 'No results found.';
     },
 
-    async delete(args, agent, namespace, actorId) {
-        const targetNs = args.namespace || namespace;
-        validateNamespace(targetNs);
-        await requireAccess(actorId, agent, 'agent', targetNs, 'delete');
-        const data = await deleteMemory(targetNs, sanitize.identifier(args.source_file));
-        return `Deleted ${data.chunks_deleted} chunks for ${args.source_file}`;
-    },
 
     // --- Documents ---
     async save_note(args, agent, namespace, actorId) {
@@ -813,6 +793,16 @@ const TOOL_HANDLERS = {
             if (dreamBootstrap) {
                 parts.push(dreamBootstrap);
             }
+        }
+
+        // Append context/soul if it exists — the living soul document maintained by dream processing
+        try {
+            const soul = await readNote(namespace, 'context/soul');
+            if (soul && soul.content) {
+                parts.push(soul.content);
+            }
+        } catch (e) {
+            // Note doesn't exist yet — that's fine, skip silently
         }
 
         return parts.length > 0 ? parts.join('\n\n') : '(no instructions set)';
@@ -1176,6 +1166,7 @@ const TOOL_HANDLERS = {
         const data = await discussionJoin(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));
         return `${data.agent} joined discussion #${data.discussion_id}.`;
     },
+
 
     async discussion_leave(args, agent, namespace) {
         const data = await discussionLeave(args.discussion_id, validateIdentity(args.agent, agent, 'agent'));

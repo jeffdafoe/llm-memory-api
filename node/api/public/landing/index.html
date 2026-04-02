@@ -858,6 +858,12 @@ async function submitAccessForm() {
             const data = await res.json();
             throw new Error(data.error || 'Something went wrong');
         }
+        const data = await res.json();
+        if (data.auto_approved && data.code) {
+            // Open registration — redirect straight to register with the invite code
+            window.location.href = '/register?code=' + encodeURIComponent(data.code);
+            return;
+        }
         document.getElementById('accessForm').style.display = 'none';
         document.getElementById('accessSuccess').style.display = '';
     } catch (err) {

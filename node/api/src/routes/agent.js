@@ -472,6 +472,16 @@ router.post('/agent/instructions/read', apiRoute('agent', 'instructions-read', a
         }
     }
 
+    // Append context/soul if it exists — the living soul document maintained by dream processing
+    try {
+        const soul = await readNote(agent, 'context/soul');
+        if (soul && soul.content) {
+            instructions = (instructions || '') + '\n\n' + soul.content;
+        }
+    } catch (e) {
+        // Note doesn't exist yet — that's fine, skip silently
+    }
+
     res.json({
         agent,
         instructions

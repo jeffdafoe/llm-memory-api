@@ -1623,6 +1623,11 @@ dialog article header button[aria-label="Close"]::after {
     text-align: center;
 }
 
+.custom-select__option--custom {
+    font-style: italic;
+    color: var(--accent);
+}
+
 /* Scrollbar styling for dropdown */
 .custom-select__options::-webkit-scrollbar {
     width: 6px;

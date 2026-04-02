@@ -9,10 +9,11 @@ const config = require('../config');
 const anthropic = require('./anthropic');
 const google = require('./google');
 const openai = require('./openai');
+const openrouter = require('./openrouter');
 const perplexity = require('./perplexity');
 const xai = require('./xai');
 
-const providerModules = [anthropic, google, openai, perplexity, xai];
+const providerModules = [anthropic, google, openai, openrouter, perplexity, xai];
 
 // Build lookup maps: by name and by alias.
 const providersByName = {};

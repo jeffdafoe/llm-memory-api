@@ -2,7 +2,7 @@
 import 'lucide-static/font/lucide.css';
 import './style.css';
 
-import { createApp, ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
+import { createApp, ref, computed, watch, nextTick, onMounted, onUnmounted, provide } from 'vue';
 import { useCore } from './core.js';
 import { createEventsModule } from './events.js';
 import { useAgents } from './agents.js';
@@ -10,6 +10,7 @@ import { useDiscussions } from './discussions.js';
 import { useChat } from './chat.js';
 import { useMail } from './mail.js';
 import { useNotes } from './notes.js';
+import { useGraph } from './graph.js';
 import { useApiLog } from './apilog.js';
 import { useErrorLog } from './errorlog.js';
 import { useConfig } from './config.js';
@@ -140,6 +141,7 @@ createApp({
         const chatModule = useChat({ ...deps, dashboard: dashboardModule.dashboard });
         const mailModule = useMail({ ...deps, dashboard: dashboardModule.dashboard });
         const notesModule = useNotes(deps);
+        const graphModule = useGraph(deps);
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
@@ -377,6 +379,27 @@ createApp({
             ...mailModule,
             // Notes
             ...notesModule,
+            // Graph
+            ...graphModule,
+            // Graph bridge functions (need access to both graph + notes modules)
+            toggleGraphMode() {
+                graphModule.graphMode.value = !graphModule.graphMode.value;
+                if (graphModule.graphMode.value) {
+                    graphModule.loadGraphData().then(() => {
+                        nextTick(() => graphModule.renderGraph('graph-container'));
+                    });
+                } else {
+                    graphModule.destroyGraph();
+                }
+            },
+            onGraphFilterChange() {
+                graphModule.renderGraph('graph-container');
+            },
+            openNoteFromGraph(node) {
+                graphModule.graphMode.value = false;
+                graphModule.destroyGraph();
+                nextTick(() => notesModule.openNote(node.namespace, node.slug));
+            },
             // API Log
             ...apiLogModule,
             // Error Log

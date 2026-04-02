@@ -41,6 +41,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const expandedNamespaces = ref({});
     const expandedFolders = ref({});
     const selectedNote = ref(null);
+    const noteRelations = ref([]);
 
     // ---- Sync mappings ----
     const allSyncMappings = ref([]);         // all mappings for sync indicator icons
@@ -422,6 +423,11 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
             }
 
             selectedNote.value = note;
+
+            // Load related notes (fire-and-forget — don't block the note from rendering)
+            api('/admin/notes/relations', { namespace, slug, direction: 'both' })
+                .then(data => { noteRelations.value = data.relations || []; })
+                .catch(() => { noteRelations.value = []; });
         } catch (err) {
             console.error('Failed to open note:', err);
         }
@@ -1054,7 +1060,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
+        selectedNote, noteRelations, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
         notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
