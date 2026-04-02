@@ -70,6 +70,7 @@
                         <label>Model
                             <custom-select v-model="editAgentModel"
                                 :options="[{ value: '', label: 'None' }].concat(modelsForProvider(editAgentProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                                :allow-custom="editAgentProvider === 'openrouter'"
                                 placeholder="None" />
                         </label>
                     </div>
@@ -88,6 +89,10 @@
                     <template v-if="newActorVirtual || createSource === 'agents'">
                         <label>API Key
                             <input type="password" v-model="editAgentApiKey" placeholder="Provider API key (encrypted at rest)">
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" v-model="editAgentLearningEnabled"> Learning enabled
                         </label>
 
                         <!-- Model-specific configuration -->

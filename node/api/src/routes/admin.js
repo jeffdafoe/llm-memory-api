@@ -407,6 +407,13 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     sql += ` ORDER BY CASE s.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, s.last_seen DESC NULLS LAST`;
     const result = await pool.query(sql, params);
 
+    // If any agent uses OpenRouter, pre-fetch the catalog so formatPricing
+    // can show real pricing instead of a placeholder.
+    if (result.rows.some(r => r.provider === 'openrouter')) {
+        const { fetchCatalog } = require('../services/providers/openrouter');
+        await fetchCatalog();
+    }
+
     // Compute pricing_info for each agent via provider formatPricing
     for (const row of result.rows) {
         if (row.provider && row.model) {
@@ -803,6 +810,23 @@ router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRou
     res.json({ defaults });
 }));
 
+// POST /admin/providers/openrouter/models — lazily fetch full OpenRouter model catalog
+router.post('/admin/providers/openrouter/models', requirePerm('config', 'read'), adminRoute('openrouter-models', async (req, res) => {
+    const { fetchCatalog } = require('../services/providers/openrouter');
+    const catalog = await fetchCatalog();
+    // Convert Map to array of { id, name, pricing } for the UI
+    const models = [];
+    for (const [id, entry] of catalog) {
+        models.push({
+            id,
+            name: entry.name,
+            pricing: { input: entry.input, output: entry.output, cache_read: entry.cache_read },
+            context_length: entry.context_length
+        });
+    }
+    res.json({ models });
+}));
+
 // Config keys whose values must never be sent to the client
 const SECRET_CONFIG_KEYS = new Set([
     'mcp_oauth_bearer_secret',
@@ -1096,7 +1120,12 @@ router.post('/admin/notes/search', requirePerm('notes', 'read'), adminRoute('not
 // POST /admin/notes/namespaces — get list of namespaces with note counts
 router.post('/admin/notes/namespaces', requirePerm('notes', 'read'), adminRoute('notes-namespaces', async (req, res) => {
     const result = await pool.query(
-        'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
+        `SELECT d.namespace, COUNT(*) AS count, COALESCE(nu.total_bytes, 0) AS total_bytes
+         FROM documents d
+         LEFT JOIN namespace_usage nu ON nu.namespace = d.namespace
+         WHERE d.deleted_at IS NULL
+         GROUP BY d.namespace, nu.total_bytes
+         ORDER BY d.namespace`
     );
     let namespaces = result.rows;
     // Filter to readable namespaces
@@ -1185,6 +1214,135 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
     }
     res.json({ ok: true });
 });
+
+// POST /admin/notes/usage — namespace storage usage (note count + total bytes).
+// Optionally filter by namespace. Joins actors table to show agent name.
+router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('notes-usage', async (req, res) => {
+    const { namespace } = req.body;
+    let sql, params;
+    if (namespace) {
+        sql = `
+            SELECT nu.namespace, nu.note_count, nu.total_bytes, nu.updated_at,
+                   ac.name AS agent
+            FROM namespace_usage nu
+            LEFT JOIN actors ac ON ac.name = nu.namespace
+            WHERE nu.namespace = $1
+            ORDER BY nu.namespace`;
+        params = [namespace];
+    } else {
+        sql = `
+            SELECT nu.namespace, nu.note_count, nu.total_bytes, nu.updated_at,
+                   ac.name AS agent
+            FROM namespace_usage nu
+            LEFT JOIN actors ac ON ac.name = nu.namespace
+            ORDER BY nu.total_bytes DESC`;
+        params = [];
+    }
+    const result = await pool.query(sql, params);
+    res.json({ usage: result.rows });
+}));
+
+// POST /admin/notes/relations — get relations for a note.
+// Params: namespace, slug, direction (outgoing/incoming/both), type (optional).
+// Filters to namespaces the user can read.
+router.post('/admin/notes/relations', requirePerm('notes', 'read'), adminRoute('notes-relations', async (req, res) => {
+    const { namespace, slug, direction, type } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
+    }
+    const { getRelations } = require('../services/relations');
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    let relations = await getRelations(namespace, slug, direction || 'both', type);
+    if (readable !== null) {
+        relations = relations.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
+    }
+    res.json({ relations });
+}));
+
+// POST /admin/notes/graph — graph traversal from a note.
+// Params: namespace, slug, depth (1-5, default 2).
+// Filters nodes/edges to readable namespaces.
+router.post('/admin/notes/graph', requirePerm('notes', 'read'), adminRoute('notes-graph', async (req, res) => {
+    const { namespace, slug, depth } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
+    }
+    const { getGraph } = require('../services/relations');
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    const graph = await getGraph(namespace, slug, depth || 2);
+    if (readable !== null) {
+        graph.edges = graph.edges.filter(e => {
+            const sNs = e.source.split('/')[0];
+            const tNs = e.target.split('/')[0];
+            return readable.includes(sNs) && readable.includes(tNs);
+        });
+        const reachable = new Set();
+        for (const e of graph.edges) {
+            reachable.add(e.source);
+            reachable.add(e.target);
+        }
+        // Always keep root node
+        const rootKey = namespace + '/' + slug;
+        reachable.add(rootKey);
+        graph.nodes = graph.nodes.filter(n => reachable.has(n.namespace + '/' + n.slug));
+    }
+    res.json(graph);
+}));
+
+// POST /admin/notes/graph-all — all relations, optionally filtered by namespace.
+// For the graph overview mode. Filters to readable namespaces.
+router.post('/admin/notes/graph-all', requirePerm('notes', 'read'), adminRoute('notes-graph-all', async (req, res) => {
+    const { namespace } = req.body;
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+
+    let sql, params;
+    if (namespace) {
+        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
+                      relation_type, auto_extracted, created_at
+               FROM note_relations
+               WHERE source_namespace = $1 OR target_namespace = $1
+               ORDER BY created_at DESC`;
+        params = [namespace];
+    } else {
+        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
+                      relation_type, auto_extracted, created_at
+               FROM note_relations
+               ORDER BY created_at DESC`;
+        params = [];
+    }
+    const result = await pool.query(sql, params);
+
+    // Filter to readable namespaces
+    let rows = result.rows;
+    if (readable !== null) {
+        rows = rows.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
+    }
+
+    // Build nodes + edges
+    const nodeSet = new Set();
+    const nodes = [];
+    const edges = [];
+    for (const row of rows) {
+        const sourceKey = row.source_namespace + '/' + row.source_slug;
+        const targetKey = row.target_namespace + '/' + row.target_slug;
+        if (!nodeSet.has(sourceKey)) {
+            nodeSet.add(sourceKey);
+            nodes.push({ namespace: row.source_namespace, slug: row.source_slug });
+        }
+        if (!nodeSet.has(targetKey)) {
+            nodeSet.add(targetKey);
+            nodes.push({ namespace: row.target_namespace, slug: row.target_slug });
+        }
+        edges.push({
+            id: row.id,
+            source: sourceKey,
+            target: targetKey,
+            type: row.relation_type,
+            auto_extracted: row.auto_extracted
+        });
+    }
+    res.json({ nodes, edges });
+}));
 
 // ---- Note Synchronization CRUD ----
 
@@ -1570,7 +1728,8 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
     const result = await pool.query(
         `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
                 agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
-                agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key,
+                agc.cost_budget_daily, agc.cost_budget_monthly, agc.storage_quota,
+                agc.api_key IS NOT NULL AS has_api_key,
                 agc.dream_mode
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
@@ -1610,6 +1769,10 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
 
     // Add pricing info string for display, accounting for agent's service tier
     if (row.provider && row.model) {
+        if (row.provider === 'openrouter') {
+            const { fetchCatalog } = require('../services/providers/openrouter');
+            await fetchCatalog();
+        }
         let agentConfig = {};
         if (row.configuration) {
             if (typeof row.configuration === 'object') {
@@ -1628,7 +1791,7 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
 router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('agents-update', async (req, res) => {
     const agent = sanitize.agentName(req.body.agent);
     const { personality, api_key, configuration, provider, model,
-            cost_budget_daily, cost_budget_monthly,
+            cost_budget_daily, cost_budget_monthly, storage_quota,
             cache_prompts, learning_enabled, max_tokens, temperature, dream_mode } = req.body;
 
     if (!agent) {
@@ -1700,6 +1863,10 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
     if (temperature !== undefined) {
         params.push(temperature === null || temperature === '' ? null : parseFloat(temperature));
         updates.push(`temperature = $${idx++}`);
+    }
+    if (storage_quota !== undefined) {
+        params.push(storage_quota === null || storage_quota === '' ? null : parseInt(storage_quota));
+        updates.push(`storage_quota = $${idx++}`);
     }
     if (dream_mode !== undefined) {
         if (!['none', 'companion', 'technical'].includes(dream_mode)) {
@@ -1776,6 +1943,12 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('act
          LEFT JOIN actors creator ON creator.id = a.created_by
          ORDER BY a.name`
     );
+
+    // Pre-fetch OpenRouter catalog if any actor uses it
+    if (result.rows.some(r => r.provider === 'openrouter')) {
+        const { fetchCatalog } = require('../services/providers/openrouter');
+        await fetchCatalog();
+    }
 
     // Compute pricing_info for agents that have provider+model
     for (const row of result.rows) {

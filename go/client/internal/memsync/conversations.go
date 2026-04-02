@@ -23,7 +23,6 @@ var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 // to avoid exceeding nginx body size limits.
 func ConversationSync(client *api.Client, projectDir string, agentName string, userName string, retentionDays int) error {
     cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour)
-    activeThreshold := 1 * time.Minute
 
     // Scan for JSONL session files
     entries, err := os.ReadDir(projectDir)
@@ -56,10 +55,6 @@ func ConversationSync(client *api.Client, projectDir string, agentName string, u
 
         // Skip files outside retention window
         if info.ModTime().Before(cutoff) {
-            continue
-        }
-        // Skip files modified recently (likely active sessions)
-        if time.Since(info.ModTime()) < activeThreshold {
             continue
         }
 

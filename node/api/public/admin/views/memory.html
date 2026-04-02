@@ -1,9 +1,64 @@
 <div style="flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden;">
     <div class="page-header">
         <h2>Memories</h2>
+        <button class="inline-button" :class="{ active: graphMode }" @click="toggleGraphMode" style="margin-left: 8px;" title="Toggle graph view">
+            <i class="icon-git-branch"></i> {{ graphMode ? 'Notes' : 'Graph' }}
+        </button>
     </div>
     <div class="page-content" style="padding-bottom: 0; overflow: hidden;">
-    <div class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
+
+    <!-- Graph view -->
+    <div v-if="graphMode" style="display: flex; flex-direction: column; height: 100%;">
+        <div style="display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border);">
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                Namespace
+                <select v-model="graphNamespaceFilter" @change="onGraphFilterChange" style="font-size: 12px; padding: 2px 6px;">
+                    <option value="">All</option>
+                    <option v-for="ns in notesNamespaces" :key="ns.namespace" :value="ns.namespace">{{ ns.namespace }}</option>
+                </select>
+            </label>
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                Type
+                <select v-model="graphTypeFilter" @change="onGraphFilterChange" style="font-size: 12px; padding: 2px 6px;">
+                    <option value="">All</option>
+                    <option value="depends-on">depends-on</option>
+                    <option value="references">references</option>
+                    <option value="supersedes">supersedes</option>
+                    <option value="led-to">led-to</option>
+                    <option value="related">related</option>
+                    <option value="subtask-of">subtask-of</option>
+                </select>
+            </label>
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                <input type="checkbox" v-model="graphShowAuto" @change="onGraphFilterChange" style="width: auto;"> Auto-extracted
+            </label>
+            <button class="btn btn-ghost btn-compact" @click="onGraphFilterChange" title="Refresh"><i class="icon-refresh-cw"></i></button>
+            <span v-if="graphLoading" class="ts" style="margin-left: 4px;">Loading...</span>
+        </div>
+        <div style="display: flex; flex: 1; min-height: 0;">
+            <div id="graph-container" style="flex: 1;"></div>
+            <!-- Node detail panel -->
+            <div v-if="graphSelectedNode" style="width: 280px; border-left: 1px solid var(--border); padding: 12px; overflow-y: auto; font-size: 13px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>Note Details</strong>
+                    <button class="btn btn-ghost btn-compact" @click="graphSelectedNode = null"><i class="icon-x"></i></button>
+                </div>
+                <div style="margin-bottom: 6px;">
+                    <span class="ts">Namespace</span><br>
+                    <span :style="{ color: nsColor(graphSelectedNode.namespace) }">{{ graphSelectedNode.namespace }}</span>
+                </div>
+                <div style="margin-bottom: 6px;">
+                    <span class="ts">Slug</span><br>
+                    <span style="word-break: break-all;">{{ graphSelectedNode.slug }}</span>
+                </div>
+                <button class="btn btn-primary btn-compact" style="margin-top: 8px;" @click="openNoteFromGraph(graphSelectedNode)">
+                    <i class="icon-file-text"></i> Open Note
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div v-show="!graphMode" class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
     <div class="notes-sidebar">
         <div class="notes-sidebar-header">
             <form @submit.prevent="searchNotes" class="notes-search-form">
@@ -30,7 +85,7 @@
                     <i class="icon-folder"></i>
                     <i v-if="isSynced(ns.namespace, '')" class="icon-refresh-cw tree-sync-icon" title="Synced"></i>
                     <strong>{{ ns.namespace }}</strong>
-                    <span class="tree-count">({{ ns.count }})</span>
+                    <span class="tree-count">({{ ns.count }} &middot; {{ formatBytes(ns.total_bytes) }})</span>
                 </div>
                 <div v-if="expandedNamespaces[ns.namespace]" class="tree-children">
                     <template v-for="node in notesTrees[ns.namespace]" :key="node.path">
@@ -119,6 +174,30 @@
             <div v-else-if="isMermaid" ref="mermaidContainer" class="notes-body notes-mermaid" v-html="renderedNoteContent">
             </div>
             <div v-else class="notes-body notes-markdown" v-html="renderedNoteContent">
+            </div>
+            <!-- See also: related notes from the graph -->
+            <div v-if="noteRelations.length > 0 && !notesEditing" style="border-top: 1px solid var(--border); padding: 10px 16px; font-size: 12px;">
+                <strong style="color: var(--text-muted);">See also</strong>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+                    <template v-for="r in noteRelations" :key="r.id">
+                        <span v-if="r.source_namespace === selectedNote.namespace && r.source_slug.toLowerCase() === selectedNote.slug.toLowerCase()"
+                              class="access-badge" style="cursor: pointer; font-size: 11px;"
+                              @click="openNote(r.target_namespace, r.target_slug)"
+                              :title="r.relation_type + (r.auto_extracted ? ' (auto)' : '')">
+                            <i class="icon-arrow-right" style="font-size: 9px;"></i>
+                            {{ r.target_namespace }}/{{ r.target_slug }}
+                            <span class="ts">{{ r.relation_type }}</span>
+                        </span>
+                        <span v-else
+                              class="access-badge" style="cursor: pointer; font-size: 11px;"
+                              @click="openNote(r.source_namespace, r.source_slug)"
+                              :title="r.relation_type + (r.auto_extracted ? ' (auto)' : '')">
+                            <i class="icon-arrow-left" style="font-size: 9px;"></i>
+                            {{ r.source_namespace }}/{{ r.source_slug }}
+                            <span class="ts">{{ r.relation_type }}</span>
+                        </span>
+                    </template>
+                </div>
             </div>
         </div>
     </div>
