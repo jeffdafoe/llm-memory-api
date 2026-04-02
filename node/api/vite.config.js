@@ -75,6 +75,7 @@ export default defineConfig({
                     if (id.includes('node_modules/vue/')) return 'vue';
                     if (id.includes('node_modules/mermaid/')) return 'mermaid';
                     if (id.includes('node_modules/marked/') || id.includes('node_modules/dompurify/')) return 'markdown';
+                    if (id.includes('node_modules/d3-')) return 'd3';
                 }
             }
         }
