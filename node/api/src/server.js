@@ -125,8 +125,8 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Load config from DB before accepting requests
-config.init().then(() => {
+// Register pgvector types, then load config, then start server
+pool.init().then(() => config.init()).then(() => {
     // Register virtual agent handler (depends on config being loaded)
     const { startErrorPing } = require('./services/virtual-agent');
     startErrorPing();
