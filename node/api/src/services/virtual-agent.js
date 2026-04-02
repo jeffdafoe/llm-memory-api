@@ -114,15 +114,13 @@ async function pingErroredAgents() {
 
 async function pingAgent(agentName) {
     try {
-        const agent = await loadAgent(agentName);
-        if (!agent || !agent.api_key || !agent.provider || !agent.model) return;
-
-        const apiKey = decryptApiKey(agent.api_key);
-        const conf = buildProviderConf(agent);
-        const provider = createProvider(agent.provider, agent.model, apiKey, conf);
-
-        const { usage } = await provider('Respond with OK.', 'ping');
-        await recordUsage(agent.agent, agent.provider, agent.model, usage, 'ping');
+        await invokeAgent(agentName, {
+            systemPrompt: 'Respond with OK.',
+            userMessage: 'ping',
+            context: 'ping',
+            skipRateLimit: true,
+            skipCostLimit: true,
+        });
         await setAgentStatus(agentName, 'available');
         logVA('error-ping-recovered', { agent: agentName });
     } catch (err) {
@@ -254,6 +252,87 @@ function logVA(action, details) {
     log('virtual-agent', action, details);
 }
 
+// Programmatic interface for invoking a virtual agent's LLM.
+// Handles: load agent, build provider config, decrypt key, call provider, record usage.
+// Options:
+//   systemPrompt  — override the agent's startup_instructions (default: use agent's)
+//   userMessage    — required, the user/input message
+//   context        — usage tracking label (e.g. 'dream', 'soul', 'learning')
+//   skipRateLimit  — bypass rate limiter (default: false)
+//   skipCostLimit  — bypass cost limit check (default: false)
+//   skipRetry      — don't use retryWithBackoff (default: true — callers manage their own error handling)
+// Returns: { text, usage, cost } or throws on error.
+async function invokeAgent(agentName, options) {
+    if (!options || !options.userMessage) {
+        throw new Error('invokeAgent: userMessage is required');
+    }
+
+    const agent = await loadAgent(agentName);
+    if (!agent) {
+        throw new Error('Agent not found: ' + agentName);
+    }
+    if (!agent.api_key || !agent.provider || !agent.model) {
+        throw new Error('Agent ' + agentName + ' missing provider/model/api_key');
+    }
+
+    // Rate limit check (unless skipped)
+    if (!options.skipRateLimit) {
+        if (isRateLimited(agentName)) {
+            throw new Error('Agent ' + agentName + ' is rate-limited');
+        }
+    }
+
+    // Cost limit check (unless skipped)
+    if (!options.skipCostLimit) {
+        const costCheck = await isOverCostLimit(agent);
+        if (costCheck.limited) {
+            throw new Error('Agent ' + agentName + ' over cost limit: ' + costCheck.reason);
+        }
+    }
+
+    const apiKey = decryptApiKey(agent.api_key);
+    const conf = buildProviderConf(agent);
+    const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
+
+    // Use agent's startup_instructions unless caller provides a system prompt override
+    const systemPrompt = options.systemPrompt !== undefined ? options.systemPrompt : (agent.startup_instructions || '');
+
+    const callFn = async () => {
+        return await providerFn(systemPrompt, options.userMessage);
+    };
+
+    let result;
+    if (options.skipRetry !== false) {
+        // Default: no retry, caller handles errors
+        result = await callFn();
+    } else {
+        // Use retry with backoff
+        result = await retryWithBackoff(agentName, callFn);
+    }
+
+    const { text, usage } = result;
+
+    // Record rate limit call
+    if (!options.skipRateLimit) {
+        recordCall(agentName);
+    }
+
+    // Record usage
+    const cost = calculateCost(agent.provider, agent.model, usage);
+    const actor = await requireByName(agentName);
+    await pool.query(
+        `INSERT INTO virtual_agent_usage (actor_id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [actor.id, agent.provider, agent.model, usage.input_tokens || 0, usage.output_tokens || 0,
+         usage.cache_creation_input_tokens || 0, usage.cache_read_input_tokens || 0,
+         cost, options.context || null]
+    );
+
+    logVA('invoke', { agent: agentName, context: options.context || null, cost: cost.toFixed(6),
+        input: usage.input_tokens || 0, output: usage.output_tokens || 0 });
+
+    return { text, usage, cost };
+}
 
 // Check if learning extraction is enabled for an agent.
 // Global toggle must be on, and per-agent column can disable.
@@ -367,19 +446,15 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
 
 // Extract learnings from an interaction and save as a note in the agent's namespace.
 // Fire-and-forget — call with .catch() from the handler.
-async function extractLearnings(agent, systemPrompt, userMessage, response, interactionType, contextHint, provider) {
+async function extractLearnings(agent, systemPrompt, userMessage, response, interactionType, contextHint) {
     if (!isLearningEnabled(agent)) return;
 
     // Flatten structured prompt for token estimation and extraction context.
-    // Extraction is a one-shot call — no caching benefit.
     const { flattenPrompt } = require('./provider');
     const flatPrompt = flattenPrompt(systemPrompt);
 
     // Check minimum token threshold
     const minTokens = parseInt(config.get('virtual_agent_learning_min_tokens')) || 500;
-    // We don't have exact token counts here, but we can estimate from the usage
-    // that was already recorded. Instead, use a character-based heuristic:
-    // average ~4 chars per token, so check total chars of input+output.
     const totalChars = (flatPrompt + userMessage + response).length;
     const estimatedTokens = Math.ceil(totalChars / 4);
     if (estimatedTokens < minTokens) {
@@ -388,13 +463,15 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
     }
 
     const extractionPrompt = buildExtractionPrompt(interactionType, contextHint);
-
-    // Build the extraction user message: the full interaction context + extraction prompt
     const extractionUserMessage = `System prompt:\n${flatPrompt}\n\nUser message:\n${userMessage}\n\nYour response:\n${response}\n\n---\n\n${extractionPrompt}`;
-    const extractionSystemPrompt = 'You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.';
 
-    const { text: extractionResult, usage } = await provider(extractionSystemPrompt, extractionUserMessage);
-    await recordUsage(agent.agent, agent.provider, agent.model, usage, 'learning');
+    const { text: extractionResult } = await invokeAgent(agent.agent, {
+        systemPrompt: 'You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.',
+        userMessage: extractionUserMessage,
+        context: 'learning',
+        skipRateLimit: true,
+        skipCostLimit: true,
+    });
 
     // Check for NONE response
     if (extractionResult.trim().toUpperCase() === 'NONE' || extractionResult.trim() === '') {
@@ -858,7 +935,7 @@ async function handleVirtualAgent(payload) {
 
             // Fire-and-forget learning extraction (skip for vote responses)
             if (triggerType !== 'vote-proposed') {
-                extractLearnings(agent, systemPrompt, userMessage, response, 'discussion', discussion.topic, providerFn).catch(err => {
+                extractLearnings(agent, systemPrompt, userMessage, response, 'discussion', discussion.topic).catch(err => {
                     logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
                 });
             }
@@ -973,7 +1050,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         logVA('direct-chat-responded', { agent: agent.agent, to: fromAgent, responseLength: response.length });
 
         // Fire-and-forget learning extraction
-        extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent, providerFn).catch(err => {
+        extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent).catch(err => {
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
         });
 
@@ -1088,7 +1165,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         logVA('direct-mail-responded', { agent: agent.agent, to: fromAgent, mailId, responseLength: response.length });
 
         // Fire-and-forget learning extraction
-        extractLearnings(agent, systemPrompt, userMessage, response, 'mail', null, providerFn).catch(err => {
+        extractLearnings(agent, systemPrompt, userMessage, response, 'mail', null).catch(err => {
             logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
         });
 
@@ -1129,4 +1206,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent };

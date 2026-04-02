@@ -6,9 +6,8 @@
 const pool = require('../db');
 const config = require('./config');
 const { log } = require('./logger');
-const { createProvider, decryptApiKey } = require('./provider');
 const { saveNote } = require('./documents');
-const { requireByName } = require('./actors');
+const { invokeAgent } = require('./virtual-agent');
 
 // Signal patterns that indicate memory-worthy content.
 // Used to pre-filter conversation logs before sending to the dream agent,
@@ -110,18 +109,15 @@ function prefilterLog(content) {
     return result.join('\n');
 }
 
-// Load the dream virtual agent and verify it's system-owned.
-// Returns the agent data or null with an error logged.
-async function loadDreamAgent(modeName) {
+// Verify a dream agent exists and is owned by system.
+// Returns the agent name if valid, null otherwise.
+async function verifyDreamAgent(modeName) {
     const agentName = 'dream-' + modeName;
 
     const result = await pool.query(
-        `SELECT ac.id AS actor_id, ac.name AS agent, ac.created_by,
-                agc.provider, agc.model, agc.api_key, agc.configuration,
-                agc.startup_instructions, agc.personality, agc.virtual,
-                agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature
-         FROM agent_configuration agc
-         JOIN actors ac ON ac.id = agc.actor_id
+        `SELECT ac.id, ac.name, ac.created_by, agc.provider, agc.model, agc.api_key
+         FROM actors ac
+         JOIN agent_configuration agc ON agc.actor_id = ac.id
          WHERE ac.name = $1`,
         [agentName]
     );
@@ -149,42 +145,7 @@ async function loadDreamAgent(modeName) {
         return null;
     }
 
-    return agent;
-}
-
-// Build provider configuration from agent data (same logic as virtual-agent.js)
-function buildConf(agent) {
-    let conf = {};
-    if (agent.configuration) {
-        try { conf = JSON.parse(agent.configuration); } catch (e) { /* ignore */ }
-    }
-    if (conf.cache_prompts === undefined) {
-        conf.cache_prompts = agent.cache_prompts || false;
-    }
-    if (conf.max_tokens === undefined && agent.max_tokens != null) {
-        conf.max_tokens = agent.max_tokens;
-    }
-    if (conf.temperature === undefined && agent.temperature != null) {
-        conf.temperature = agent.temperature;
-    }
-    return conf;
-}
-
-// Record cost usage for the dream agent
-async function recordDreamUsage(agentName, provider, model, usage) {
-    const { calculateCost } = require('./providers');
-    const cost = calculateCost(provider, model, usage);
-    const actor = await requireByName(agentName);
-
-    await pool.query(
-        `INSERT INTO virtual_agent_usage (actor_id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [actor.id, provider, model, usage.input_tokens || 0, usage.output_tokens || 0,
-         usage.cache_creation_input_tokens || 0, usage.cache_read_input_tokens || 0,
-         cost, 'dream']
-    );
-
-    logDream('usage', { agent: agentName, cost: cost.toFixed(6), input: usage.input_tokens || 0, output: usage.output_tokens || 0 });
+    return agentName;
 }
 
 // Slugify a title for note storage
@@ -204,11 +165,11 @@ async function runDream() {
         return { skipped: true, reason: 'disabled' };
     }
 
-    // Load both dream agents
-    const companionAgent = await loadDreamAgent('companion');
-    const technicalAgent = await loadDreamAgent('technical');
+    // Verify both dream agents exist and are system-owned
+    const companionAgentName = await verifyDreamAgent('companion');
+    const technicalAgentName = await verifyDreamAgent('technical');
 
-    if (!companionAgent && !technicalAgent) {
+    if (!companionAgentName && !technicalAgentName) {
         logDream('abort', { reason: 'Neither dream agent found or valid' });
         return { error: 'No valid dream agents found. Both dream-companion and dream-technical must exist and be owned by system.' };
     }
@@ -234,8 +195,8 @@ async function runDream() {
     for (const agent of agents.rows) {
         try {
             // Pick the right dream agent
-            const dreamAgent = agent.dream_mode === 'companion' ? companionAgent : technicalAgent;
-            if (!dreamAgent) {
+            const dreamAgentName = agent.dream_mode === 'companion' ? companionAgentName : technicalAgentName;
+            if (!dreamAgentName) {
                 results.push({ agent: agent.name, error: 'dream-' + agent.dream_mode + ' agent not available' });
                 continue;
             }
@@ -285,20 +246,18 @@ async function runDream() {
                 filteredSize: filtered.length
             });
 
-            // Build the prompt — dream agent's startup_instructions + the filtered log
-            const systemPrompt = dreamAgent.startup_instructions || '';
+            // Call the dream agent's LLM via invokeAgent
+            // Uses the dream VA's startup_instructions as system prompt (default behavior)
             const userMessage = 'Conversation logs for agent "' + agent.name + '":\n\n'
                 + filtered
                 + '\n\nAlso provide a brief title summarizing the overarching subject of the day.';
 
-            // Call the dream agent's LLM
-            const apiKey = decryptApiKey(dreamAgent.api_key);
-            const conf = buildConf(dreamAgent);
-            const providerFn = createProvider(dreamAgent.provider, dreamAgent.model, apiKey, conf);
-            const { text: response, usage } = await providerFn(systemPrompt, userMessage);
-
-            // Record cost against the dream agent
-            await recordDreamUsage(dreamAgent.agent, dreamAgent.provider, dreamAgent.model, usage);
+            const { text: response } = await invokeAgent(dreamAgentName, {
+                userMessage,
+                context: 'dream',
+                skipRateLimit: true,
+                skipCostLimit: true,
+            });
 
             // Parse the response — extract title and content
             // Expected: the LLM provides a title line and then the consolidated content
@@ -310,7 +269,7 @@ async function runDream() {
             const dateStr = new Date().toISOString().slice(0, 10);
             const slug = 'dreams/' + dateStr + '-' + slugify(title);
 
-            await saveNote(agent.name, title + ' (' + dateStr + ')', content, slug, dreamAgent.agent);
+            await saveNote(agent.name, title + ' (' + dateStr + ')', content, slug, dreamAgentName);
 
             logDream('saved', { agent: agent.name, slug, titleLength: title.length, contentLength: content.length });
 
@@ -328,7 +287,6 @@ async function runDream() {
                 logCount: logs.rows.length,
                 filteredSize: filtered.length,
                 responseSize: response.length,
-                tokens: (usage.input_tokens || 0) + (usage.output_tokens || 0)
             });
         } catch (err) {
             logDream('error', { agent: agent.name, error: err.message });
