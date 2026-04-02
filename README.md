@@ -109,3 +109,8 @@ Node.js 20, Express, PostgreSQL 17, pgvector, Nginx, Ansible, Vite
 ## License
 
 MIT
+
+## Support
+
+If you encounter any issues installing or using this software, or if you need support for using llm-memory.net, feel free to ask here [https://github.com/jeffdafoe/llm-memory-api/discussions/new?category=q-a]
+
