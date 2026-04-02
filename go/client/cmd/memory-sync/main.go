@@ -24,6 +24,7 @@ import (
     "github.com/jeffdafoe/llm-memory-api/go/client/internal/api"
     "github.com/jeffdafoe/llm-memory-api/go/client/internal/config"
     "github.com/jeffdafoe/llm-memory-api/go/client/internal/memsync"
+    "github.com/jeffdafoe/llm-memory-api/go/client/internal/selfupdate"
 )
 
 func main() {
@@ -32,12 +33,24 @@ func main() {
     configPath := flag.String("config", "", "Path to .agent.json (default: .agent.json in current directory)")
     userName := flag.String("user", "user", "Label for user messages in conversation logs")
     notesOnly := flag.Bool("notes-only", false, "Skip memory sync and conversation upload; only run note directory sync")
+    showVersion := flag.Bool("version", false, "Print version and exit")
+    noUpdate := flag.Bool("no-update", false, "Skip automatic update check")
 
     // Deprecated alias — accept silently
     flag.String("local-dir", "", "")
     flag.String("prefix", "", "")
 
     flag.Parse()
+
+    if *showVersion {
+        fmt.Printf("memory-sync v%s\n", selfupdate.Version)
+        os.Exit(0)
+    }
+
+    // Check for updates before doing anything else
+    if !*noUpdate {
+        selfupdate.Check()
+    }
 
     // Support deprecated --local-dir as alias for --project-dir
     if *projectDir == "" {
