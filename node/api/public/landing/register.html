@@ -716,7 +716,7 @@ async function register() {
         });
         const data = await res.json();
         if (!res.ok) {
-            showError(2, data.error || 'Registration failed');
+            showError(3, data.error || 'Registration failed');
             return;
         }
         registeredAgent = data.agent;
