@@ -394,6 +394,9 @@ createApp({
             nextTick(function() { notesModule.openNote(note.namespace, note.slug); });
         }
 
+        // Wire graph node clicks to open the note dialog directly
+        graphModule.setOnNodeClick(openNoteFromGraph);
+
         // Flatten everything into the template namespace
         const appState = {
             currentView,

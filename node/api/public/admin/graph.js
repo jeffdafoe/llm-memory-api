@@ -39,6 +39,7 @@ export function useGraph({ api, showToast }) {
     const graphTypeFilter = ref('');
     const graphShowAuto = ref(true);
     const graphSelectedNode = ref(null);
+    let onNodeClick = null;
 
     let simulation = null;
     let svgElement = null;
@@ -230,7 +231,11 @@ export function useGraph({ api, showToast }) {
             .style('cursor', 'pointer')
             .on('click', (event, d) => {
                 event.stopPropagation();
-                graphSelectedNode.value = d;
+                if (onNodeClick) {
+                    onNodeClick(d);
+                } else {
+                    graphSelectedNode.value = d;
+                }
             });
 
         // Node circles — sized by connection count
@@ -330,5 +335,6 @@ export function useGraph({ api, showToast }) {
         renderGraph,
         destroyGraph,
         nsColor,
+        setOnNodeClick(fn) { onNodeClick = fn; },
     };
 }
