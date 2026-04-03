@@ -716,7 +716,12 @@ async function register() {
         });
         const data = await res.json();
         if (!res.ok) {
-            showError('dream', data.error || 'Registration failed');
+            if (data.field === 'name') {
+                showStep('name');
+                showError('name', data.error || 'Registration failed');
+            } else {
+                showError('dream', data.error || 'Registration failed');
+            }
             return;
         }
         registeredAgent = data.agent;
