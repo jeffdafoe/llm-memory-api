@@ -284,7 +284,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
            AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
     const chatParams = [];
     if (hasFilter) {
-        chatSql += ' AND cm.from_actor_id = ANY($1) AND cm.to_actor_id = ANY($1)';
+        chatSql += ' AND (cm.from_actor_id = ANY($1) OR cm.to_actor_id = ANY($1))';
         chatParams.push(idsArray);
     }
     chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cm.sent_at DESC LIMIT 15`;
@@ -297,7 +297,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
          WHERE m.deleted_at IS NULL`;
     const mailParams = [];
     if (hasFilter) {
-        mailSql += ' AND m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+        mailSql += ' AND (m.from_actor_id = ANY($1) OR m.to_actor_id = ANY($1))';
         mailParams.push(idsArray);
     }
     mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
@@ -796,13 +796,14 @@ router.post('/admin/mail/send', requirePerm('comms', 'write'), adminRoute('mail-
 }));
 
 // POST /admin/providers/registry — get provider/model registry for admin UI
-router.post('/admin/providers/registry', requirePerm('config', 'read'), adminRoute('providers-registry', async (req, res) => {
+// No permission check — static reference data, any authenticated user can read it
+router.post('/admin/providers/registry', adminRoute('providers-registry', async (req, res) => {
     const { getRegistry } = require('../services/provider');
     res.json(getRegistry());
 }));
 
 // POST /admin/providers/defaults — get default configuration for a provider+model
-router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRoute('providers-defaults', async (req, res) => {
+router.post('/admin/providers/defaults', adminRoute('providers-defaults', async (req, res) => {
     const { provider, model } = req.body;
     if (!provider || !model) {
         return res.status(400).json({
@@ -815,7 +816,7 @@ router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRou
 }));
 
 // POST /admin/providers/openrouter/models — lazily fetch full OpenRouter model catalog
-router.post('/admin/providers/openrouter/models', requirePerm('config', 'read'), adminRoute('openrouter-models', async (req, res) => {
+router.post('/admin/providers/openrouter/models', adminRoute('openrouter-models', async (req, res) => {
     const { fetchCatalog } = require('../services/providers/openrouter');
     const catalog = await fetchCatalog();
     // Convert Map to array of { id, name, pricing } for the UI
@@ -1436,7 +1437,7 @@ router.post('/admin/notes/sync/delete', requirePerm('notes', 'write'), adminRout
 
 // ---- Templates CRUD ----
 
-const TEMPLATE_KINDS = new Set(['welcome']);
+const TEMPLATE_KINDS = new Set(['welcome', 'welcome-note']);
 
 // Parse YAML-style frontmatter from template content.
 // Returns { frontmatter: { key: value, ... }, body: "remaining content" }
@@ -1589,7 +1590,7 @@ function parseCostBudget(value, fieldName) {
 
 // POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
 router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('actors-create', async (req, res) => {
-    const { name, provider, model, welcome_template_id, virtual: isVirtual, personality,
+    const { name, provider, model, welcome_template_id, welcome_note_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
             ui_access, password, dream_mode } = req.body;
@@ -1726,7 +1727,33 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
         }
     }
 
-    logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
+    // Apply welcome-note template if selected (non-virtual only)
+    // Saves a getting-started note in the new agent's namespace
+    let welcomeNoteSaved = false;
+    if (welcome_note_template_id && !isVirtual) {
+        try {
+            const noteTplResult = await pool.query(
+                'SELECT content FROM templates WHERE id = $1 AND kind = $2',
+                [welcome_note_template_id, 'welcome-note']
+            );
+            if (noteTplResult.rows.length > 0) {
+                const rawContent = noteTplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const noteBody = tplBody.replace(/\{agent\}/g, actorName);
+                const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, actorName);
+                const noteSlug = frontmatter.slug || 'instructions/getting-started';
+                await saveNote(actorName, noteTitle, noteBody, noteSlug, actorId);
+                welcomeNoteSaved = true;
+            }
+        } catch (noteErr) {
+            console.error('Post-commit welcome-note template error:', noteErr.message);
+            if (!postCommitError) {
+                postCommitError = 'Actor created but welcome note failed: ' + noteErr.message;
+            }
+        }
+    }
+
+    logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, welcome_note: welcomeNoteSaved, user_id: req.authenticatedUser.id });
 
     const response = {
         name: actorName,
@@ -1735,6 +1762,7 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
         ui_access: !!ui_access,
         status: 'active',
         welcome_mail_sent: welcomeMailSent,
+        welcome_note_saved: welcomeNoteSaved,
         message: isVirtual ? 'Virtual agent created.' : 'Actor created. Save the passphrase — it will not be shown again.'
     };
     if (postCommitError) {
