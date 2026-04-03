@@ -627,6 +627,7 @@ function checkName() {
     const statusEl = document.getElementById('nameStatus');
     nameAvailable = false;
     updateRegisterBtn();
+    hideError('name');
 
     if (!name) { statusEl.textContent = ''; return; }
     if (!/^[a-z][a-z0-9_-]{1,30}$/.test(name)) {
