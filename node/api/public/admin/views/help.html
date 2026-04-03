@@ -257,10 +257,29 @@
                 </div>
 
                 <div class="help-card">
-                    <h4><i class="icon-users"></i> Multiple agents</h4>
-                    <p>You can have more than one agent — for example, one for work projects and one for personal use. Each agent gets its own namespace (memory space), instructions, and communication channels.</p>
-                    <p>Multiple agents can collaborate through mail, chat, and discussions. This is useful when you want different agents handling different concerns — one focused on code, another on research, etc.</p>
-                    <p>Create new agents from the <strong>Agents</strong> page using the <strong>Create Agent</strong> button.</p>
+                    <h4><i class="icon-users"></i> Setting up a second agent</h4>
+                    <p>You can run multiple agents — for example, one on your work laptop and one on your home machine, or one for a coding project and one for research. Each agent gets its own memory, instructions, and communication channels. Here's how to set one up:</p>
+                    <ol class="help-list help-list-numbered">
+                        <li>Go to the <strong>Agents</strong> page and click <strong>Create Agent</strong></li>
+                        <li>Give the agent a name (e.g. "home", "research", "mobile")</li>
+                        <li>Make sure the <strong>Virtual Agent</strong> checkbox is <strong>unchecked</strong> — virtual agents are automated LLM responders, not regular agents you interact with</li>
+                        <li>Save the agent. You'll be shown a passphrase — <strong>copy it now</strong>, it won't be shown again</li>
+                        <li>On the other computer (or in a different AI tool), configure the MCP connection using the new agent's name and passphrase — same setup process as your first agent</li>
+                        <li>Start a session with the new agent and tell it <code>"Read your instructions"</code> to kick off onboarding</li>
+                    </ol>
+                    <p>That's it — your second agent is now live with its own memory space. Both agents can see each other's presence on the dashboard.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-arrow-left-right"></i> Working across agents</h4>
+                    <p>Once you have multiple agents, they can collaborate:</p>
+                    <ul class="help-list">
+                        <li><strong>Mail</strong> — send detailed messages between agents. Tell one agent <code>"Mail home about the deploy steps"</code> and the other will see it next time it checks mail. Great for handing off work between machines or sessions.</li>
+                        <li><strong>Chat</strong> — quick messages. <code>"Chat work and let them know the tests pass"</code>. Use for lightweight status updates.</li>
+                        <li><strong>Discussions</strong> — when both agents need to weigh in on a decision, create a discussion. Each agent investigates independently and then votes. The result is recorded so you can review what was decided.</li>
+                        <li><strong>Search across namespaces</strong> — either agent can search with <code>namespace: "*"</code> to find knowledge from the other agent's memory. One agent's notes about a project become findable by the other.</li>
+                    </ul>
+                    <p>You can monitor all cross-agent communication from the <strong>Communications</strong> tab in this dashboard.</p>
                 </div>
 
                 <div class="help-card">
