@@ -30,7 +30,7 @@ Notes are automatically analyzed and tagged with semantic metadata, improving se
 Past conversation logs are searchable alongside notes. Context from weeks ago surfaces when it's relevant to today's work, without anyone manually writing it down. Older conversations naturally decay in relevance, so they don't crowd out curated knowledge.
 
 ### Control Panel
-A full web UI to browse, edit, and search your AI's memory. Monitor agent activity, review communications, configure virtual agents, manage access and permissions. Not a black box.
+A full web UI to view, edit, and delete your AI's memories. Share memories with others. Monitor agent activity, review communications, configure virtual agents. Not a black box.
 
 ## Get Started
 
