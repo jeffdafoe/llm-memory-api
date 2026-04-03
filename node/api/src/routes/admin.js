@@ -675,7 +675,7 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
     }
     if (hasFilter) {
         params.push(Array.from(visibleIds));
-        conditions.push('cm.from_actor_id = ANY($' + params.length + ') AND cm.to_actor_id = ANY($' + params.length + ')');
+        conditions.push('(cm.from_actor_id = ANY($' + params.length + ') OR cm.to_actor_id = ANY($' + params.length + '))');
     }
     sql += ' WHERE ' + conditions.join(' AND ');
     sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
@@ -698,7 +698,7 @@ router.post('/admin/mail', requirePerm('comms', 'read'), adminRoute('mail-list',
     const params = [];
     if (hasFilter) {
         params.push(Array.from(visibleIds));
-        sql += ' WHERE m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+        sql += ' WHERE (m.from_actor_id = ANY($1) OR m.to_actor_id = ANY($1))';
     }
     sql += ` ORDER BY m.sent_at DESC LIMIT $${params.length + 1}`;
     params.push(limit);
@@ -715,14 +715,14 @@ router.post('/admin/mail/delete', requirePerm('comms', 'delete'), adminRoute('ma
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+    // Scope delete to messages visible to this admin (sender or recipient must be visible)
     const visibleIds = await getVisibleActorIds(req.actorId);
     let sql = 'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
     const params = [id];
     if (visibleIds !== null) {
         const idsArray = Array.from(visibleIds);
         params.push(idsArray);
-        sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+        sql += ' AND (from_actor_id = ANY($2) OR to_actor_id = ANY($2))';
     }
     sql += ' RETURNING id';
     const result = await pool.query(sql, params);
@@ -743,14 +743,14 @@ router.post('/admin/chat/delete', requirePerm('comms', 'delete'), adminRoute('ch
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+    // Scope delete to messages visible to this admin (sender or recipient must be visible)
     const visibleIds = await getVisibleActorIds(req.actorId);
     let sql = 'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
     const params = [id];
     if (visibleIds !== null) {
         const idsArray = Array.from(visibleIds);
         params.push(idsArray);
-        sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+        sql += ' AND (from_actor_id = ANY($2) OR to_actor_id = ANY($2))';
     }
     sql += ' RETURNING id';
     const result = await pool.query(sql, params);
