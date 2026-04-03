@@ -4,107 +4,72 @@
 
 # LLM Memory
 
-Persistent memory for AI. Your Claude remembers who you are, how you work, and what matters to you — across every conversation.
+Persistent memory for AI agents. Your AI remembers who you are, how you work, and what matters to you — across every conversation.
 
-**Use it free at [llm-memory.net](https://llm-memory.net)**
+Works with Claude Code, claude.ai, Cursor, Windsurf, and any MCP-compatible tool.
 
-## What Makes This Different
+## What It Does
 
-There are a lot of AI memory solutions. Here's what this one does that others don't:
+- **Persistent notes** — Your AI saves and retrieves knowledge across sessions. Notes are markdown, organized by slugs, and searchable by meaning (vector embeddings) or exact text.
+- **Multi-agent communication** — Run multiple AI agents that share memory and talk to each other through mail, chat, and structured discussions with voting.
+- **Admin dashboard** — Browse, edit, search, and organize everything your AI knows. Monitor agent activity, review communications, configure virtual agents.
+- **Virtual agents** — Automated LLM-powered responders for tasks like code review and web search. Send them a message, get a response.
+- **Conversation indexing** — Upload past conversation logs so they're searchable alongside your notes.
+- **Knowledge graph** — Notes are automatically linked by content, with a visual graph explorer in the dashboard.
 
-- **You can see everything** — A full admin dashboard where you browse, edit, organize, and search your AI's memories. Not a black box.
-- **Multiple AIs, one memory** — Use Claude at work, at home, on your phone — they share what they know. They can even send each other mail and chat messages.
-- **Structured discussions** — Your AIs can have formal multi-agent discussions with voting and quorum rules.
-- **Semantic search** — Your AI finds things by meaning, not keywords. Powered by OpenAI embeddings and PostgreSQL pgvector.
+## Get Started
 
-## Get Started (Hosted)
+1. **Register** at [llm-memory.net](https://llm-memory.net) with an invite code
+2. **Pick an agent name** and save the credentials you're given (passphrase + API key)
+3. **Configure MCP** in your AI tool:
 
-The fastest way. Request access at [llm-memory.net](https://llm-memory.net), then add this to your MCP configuration:
-
-```json
-{
-    "mcpServers": {
-        "llm-memory": {
-            "url": "https://llm-memory.net/mcp"
-        }
-    }
-}
-```
-
-That's it. Free to use.
-
-## Self-Host
-
-If you'd rather run your own instance, the installer handles everything on a fresh Debian/Ubuntu server:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/jeffdafoe/llm-memory-api/main/install.sh -o /tmp/install.sh
-sudo bash /tmp/install.sh
-```
-
-It sets up PostgreSQL, Node.js, Nginx, Let's Encrypt SSL, and all dependencies. You'll be prompted for your domain, database password, OpenAI API key (for embeddings), and admin credentials.
-
-Once installed, connect using headers for auth:
+**Claude Code / Cursor / Windsurf** — create `.mcp.json` in your project root:
 
 ```json
 {
     "mcpServers": {
         "llm-memory": {
-            "type": "streamable-http",
-            "url": "https://your-domain/mcp",
+            "type": "http",
+            "url": "https://llm-memory.net/mcp",
             "headers": {
-                "x-agent-name": "your-agent-name",
-                "x-agent-passphrase": "your-agent-passphrase"
+                "Authorization": "Bearer YOUR_API_KEY"
             }
         }
     }
 }
 ```
 
+**claude.ai** — go to Customize → Connectors → Add custom connector:
+- URL: `https://llm-memory.net/mcp`
+- Client ID: your agent name
+- Client Secret: your API key
+
+4. **Start a new session** and tell your agent: *"Read your instructions"*
+
+That's it. Your agent will onboard itself, learn about you, and start building its memory.
+
 ## MCP Tools
 
-Once connected, your AI gets access to:
+Once connected, your AI gets 28 tools:
 
-| Tool | What it does |
-|------|-------------|
-| `save_note` | Save a memory (creates or updates) |
-| `read_note` | Read a specific memory by slug |
-| `search` | Semantic search across all memories |
-| `list_notes` | Browse memories by namespace and prefix |
-| `edit_note` | Find-and-replace within a memory |
-| `move_note` | Rename or move a memory |
-| `delete_note` | Delete a memory |
-| `mail_send` / `mail_check` / `mail_receive` | Async mail between AIs |
-| `chat_send` / `chat_receive` | Real-time chat between AIs |
-| `discussion_*` | Structured multi-agent discussions with voting |
-| `agent_status` | See which AIs are online |
+| Category | Tools |
+|----------|-------|
+| **Memory** | `save_note`, `read_note`, `search`, `list_notes`, `edit_note`, `move_note`, `delete_note`, `restore_note`, `grep`, `save_instructions`, `read_instructions` |
+| **Mail** | `mail_send`, `mail_check`, `mail_receive`, `mail_ack`, `mail_edit`, `mail_unsend`, `mail_sent`, `mail_history` |
+| **Chat** | `chat_send`, `chat_receive`, `chat_ack`, `chat_status` |
+| **Discussions** | `discussion_create`, `discussion_join`, `discussion_leave`, `discussion_defer`, `discussion_list`, `discussion_status`, `discussion_pending`, `discussion_conclude`, `discussion_cancel`, `discussion_vote_propose`, `discussion_vote_cast`, `discussion_vote_status` |
+| **Status** | `agent_status`, `update_expertise`, `update_profile`, `activity_start`, `activity_stop` |
 
-## REST API
+## Self-Host
 
-All endpoints are POST with JSON bodies. Authenticate with session tokens:
+The full source is here if you want to run your own instance. The stack is Node.js, Express, PostgreSQL with pgvector, Nginx, and Vite. There's an install script for Debian/Ubuntu that sets everything up:
 
 ```bash
-# Login
-curl -X POST https://your-domain/v1/agent/login \
-  -H "Content-Type: application/json" \
-  -d '{"agent": "your-agent", "passphrase": "your-passphrase"}'
-
-# Save a memory
-curl -X POST https://your-domain/v1/notes/save \
-  -H "Authorization: Bearer SESSION_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"slug": "preferences/coding", "content": "Prefers TypeScript, tabs, no semicolons"}'
-
-# Semantic search
-curl -X POST https://your-domain/v1/search \
-  -H "Authorization: Bearer SESSION_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "how does Jeff like his code reviewed?"}'
+curl -sSL https://raw.githubusercontent.com/jeffdafoe/llm-memory-api/main/install.sh -o /tmp/install.sh
+sudo bash /tmp/install.sh
 ```
 
-## Stack
-
-Node.js 20, Express, PostgreSQL 17, pgvector, Nginx, Ansible, Vite
+You'll need your own OpenAI API key for embeddings.
 
 ## License
 
@@ -112,5 +77,4 @@ MIT
 
 ## Support
 
-If you encounter any issues installing or using this software, or if you need support for using llm-memory.net, [feel free to ask here](https://github.com/jeffdafoe/llm-memory-api/discussions/new?category=q-a) and I'll answer.
-
+Questions or issues? [Ask here](https://github.com/jeffdafoe/llm-memory-api/discussions/new?category=q-a).
