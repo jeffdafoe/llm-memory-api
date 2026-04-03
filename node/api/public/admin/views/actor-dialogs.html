@@ -370,6 +370,19 @@
                             placeholder="None" />
                     </label>
                 </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div>
+                            <span class="agent-card-title"><i class="icon-file-text"></i>Getting Started Note</span>
+                            <div class="agent-card-description">Saved to the agent's namespace as a note</div>
+                        </div>
+                    </div>
+                    <label>Template
+                        <custom-select v-model="newActorNoteTemplateId"
+                            :options="[{ value: null, label: 'None' }].concat(welcomeTemplates.filter(t => t.kind === 'welcome-note').map(t => ({ value: t.id, label: t.name })))"
+                            placeholder="None" />
+                    </label>
+                </div>
             </template>
 
             <!-- ─── Admin Permissions (edit mode, UI users only) ─── -->

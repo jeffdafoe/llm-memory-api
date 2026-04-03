@@ -1436,7 +1436,7 @@ router.post('/admin/notes/sync/delete', requirePerm('notes', 'write'), adminRout
 
 // ---- Templates CRUD ----
 
-const TEMPLATE_KINDS = new Set(['welcome']);
+const TEMPLATE_KINDS = new Set(['welcome', 'welcome-note']);
 
 // Parse YAML-style frontmatter from template content.
 // Returns { frontmatter: { key: value, ... }, body: "remaining content" }
@@ -1589,7 +1589,7 @@ function parseCostBudget(value, fieldName) {
 
 // POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
 router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('actors-create', async (req, res) => {
-    const { name, provider, model, welcome_template_id, virtual: isVirtual, personality,
+    const { name, provider, model, welcome_template_id, welcome_note_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
             ui_access, password, dream_mode } = req.body;
@@ -1726,7 +1726,33 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
         }
     }
 
-    logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
+    // Apply welcome-note template if selected (non-virtual only)
+    // Saves a getting-started note in the new agent's namespace
+    let welcomeNoteSaved = false;
+    if (welcome_note_template_id && !isVirtual) {
+        try {
+            const noteTplResult = await pool.query(
+                'SELECT content FROM templates WHERE id = $1 AND kind = $2',
+                [welcome_note_template_id, 'welcome-note']
+            );
+            if (noteTplResult.rows.length > 0) {
+                const rawContent = noteTplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const noteBody = tplBody.replace(/\{agent\}/g, actorName);
+                const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, actorName);
+                const noteSlug = frontmatter.slug || 'instructions/getting-started';
+                await saveNote(actorName, noteTitle, noteBody, noteSlug, actorId);
+                welcomeNoteSaved = true;
+            }
+        } catch (noteErr) {
+            console.error('Post-commit welcome-note template error:', noteErr.message);
+            if (!postCommitError) {
+                postCommitError = 'Actor created but welcome note failed: ' + noteErr.message;
+            }
+        }
+    }
+
+    logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, welcome_note: welcomeNoteSaved, user_id: req.authenticatedUser.id });
 
     const response = {
         name: actorName,
@@ -1735,6 +1761,7 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
         ui_access: !!ui_access,
         status: 'active',
         welcome_mail_sent: welcomeMailSent,
+        welcome_note_saved: welcomeNoteSaved,
         message: isVirtual ? 'Virtual agent created.' : 'Actor created. Save the passphrase — it will not be shown again.'
     };
     if (postCommitError) {
