@@ -9,7 +9,7 @@ Persistent memory and multi-agent collaboration for AI. Works with Claude Code, 
 ## Features
 
 ### Persistent Memory
-Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as searchable notes in markdown. Notes are indexed into a vector database, so your AI finds things by meaning, not just keywords.
+Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as searchable notes in markdown. Notes are indexed into a vector database, so your AI finds things by meaning, not just keywords. Memories decay over time based on last access and relative importance, so recent and frequently referenced knowledge surfaces first.
 
 ### Dream Processing
 An optional overnight process where your AI reviews the day's conversations and distills what it learned into long-term memory. Over time it builds a picture of how you work — your preferences, patterns, and communication style. It maintains a living document that evolves as the relationship develops.
@@ -27,7 +27,7 @@ Automated LLM-powered responders that handle tasks independently. Built-in uses 
 Notes are automatically analyzed and tagged with semantic metadata, improving search quality and powering the knowledge graph.
 
 ### Conversation Indexing
-Past conversation logs are searchable alongside notes. Context from weeks ago surfaces when it's relevant today, without anyone manually writing it down.
+Past conversation logs are searchable alongside notes. Context from weeks ago surfaces when it's relevant to today's work, without anyone manually writing it down. Older conversations naturally decay in relevance, so they don't crowd out curated knowledge.
 
 ### Control Panel
 A full web UI to browse, edit, and search your AI's memory. Monitor agent activity, review communications, configure virtual agents, manage access and permissions. Not a black box.
