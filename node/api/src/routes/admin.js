@@ -1176,11 +1176,15 @@ router.post('/admin/notes/reindex', requirePerm('notes', 'write'), adminRoute('n
                     // Enrichment module not available — skip silently
                 }
             }
+            const { autoExtractRelations } = require('../services/relations');
 
             for (const doc of docs.rows) {
                 try {
                     const result = await ingestContent(doc.namespace, doc.slug, doc.content);
                     reindexState.chunks_created += result.chunks_created;
+
+                    // Auto-extract slug references as relations
+                    autoExtractRelations(doc.namespace, doc.slug, doc.content).catch(() => {});
 
                     // Fire-and-forget enrichment for each note (skips conversations/dreams internally)
                     if (enrichModule) {
