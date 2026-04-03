@@ -409,42 +409,57 @@
         <input type="password" id="passwordConfirm" placeholder="Confirm password" oninput="checkPasswords()">
         <div id="passwordStatus" class="name-status"></div>
 
+        <button class="btn btn-primary" id="step2Btn" onclick="showStep(3)" disabled>Continue</button>
+        <button class="btn btn-secondary" onclick="goBack()">Back</button>
+    </div>
+
+    <!-- Step 3: Dream processing -->
+    <div id="step3" class="step">
+        <h2>Dream Processing</h2>
+        <div class="subtitle">Configure how your agent learns between sessions.</div>
+        <div id="error3" class="error-msg" style="display:none"></div>
+
+        <div class="dream-mode-description">
+            Each night, your agent's conversation logs are reviewed and consolidated into persistent memory notes. Over time, this builds a <strong>soul document</strong> — a living summary of your working relationship, preferences, and patterns that your agent reads at the start of every session.
+        </div>
+
         <div class="dream-mode-section">
-            <label>Dream Mode</label>
-            <div class="dream-mode-description">
-                Each night, your agent can review the day's conversations and consolidate learnings into memory. Choose a processing style, or disable it.
-            </div>
+            <label>Processing Style</label>
             <div class="dream-mode-options">
                 <button type="button" class="dream-option selected" onclick="selectDreamMode('none', this)">
                     <div class="dream-option-radio"></div>
                     <div class="dream-option-text">
                         <div class="dream-option-title">None</div>
-                        <div class="dream-option-desc">No post-session processing. Your agent only remembers what it explicitly saves during the session.</div>
+                        <div class="dream-option-desc">No overnight processing. Your agent only remembers what it explicitly saves during sessions.</div>
                     </div>
                 </button>
                 <button type="button" class="dream-option" onclick="selectDreamMode('technical', this)">
                     <div class="dream-option-radio"></div>
                     <div class="dream-option-text">
                         <div class="dream-option-title">Technical</div>
-                        <div class="dream-option-desc">Focuses on code decisions, architecture patterns, debugging insights, and project context. Best for development workflows.</div>
+                        <div class="dream-option-desc">Extracts code decisions, architecture patterns, debugging insights, and project context. Best for development workflows.</div>
                     </div>
                 </button>
                 <button type="button" class="dream-option" onclick="selectDreamMode('companion', this)">
                     <div class="dream-option-radio"></div>
                     <div class="dream-option-text">
                         <div class="dream-option-title">Companion</div>
-                        <div class="dream-option-desc">Focuses on personal context, preferences, emotional tone, and relationship continuity. Best for personal assistant use.</div>
+                        <div class="dream-option-desc">Captures personal context, preferences, emotional tone, and relationship continuity. Best for personal assistant use.</div>
                     </div>
                 </button>
             </div>
         </div>
 
-        <button class="btn btn-primary" id="registerBtn" onclick="register()" disabled>Create Account</button>
-        <button class="btn btn-secondary" onclick="goBack()">Back</button>
+        <div class="dream-mode-description" style="margin-top: 12px;">
+            You can change this anytime in the dashboard. Dream processing runs at 4 AM UTC and only processes conversations uploaded since the last run.
+        </div>
+
+        <button class="btn btn-primary" id="registerBtn" onclick="register()">Create Account</button>
+        <button class="btn btn-secondary" onclick="showStep(2)">Back</button>
     </div>
 
-    <!-- Step 3: Getting started guide -->
-    <div id="step3" class="step guide">
+    <!-- Step 4: Getting started guide -->
+    <div id="step4" class="step guide">
         <h2>You're in!</h2>
         <div class="passphrase-warning">Save these credentials now — they will never be shown again.</div>
         <div class="passphrase-display">
@@ -684,7 +699,8 @@ function checkPasswords() {
 function updateRegisterBtn() {
     const pw = document.getElementById('password').value;
     const confirm = document.getElementById('passwordConfirm').value;
-    const btn = document.getElementById('registerBtn');
+    // Enable the Continue button on step 2 (step2Btn) when name + password are valid
+    const btn = document.getElementById('step2Btn');
     btn.disabled = !(nameAvailable && pw.length >= 8 && pw === confirm);
 }
 
@@ -728,9 +744,9 @@ async function register() {
         }, null, 2);
         document.getElementById('configBlockAi').textContent =
             'Agent name (Client ID): ' + data.agent + '\nAPI Key (Client Secret): ' + data.api_key;
-        showStep(3);
+        showStep(4);
     } catch (err) {
-        showError(2, 'Something went wrong. Try again.');
+        showError(3, 'Something went wrong. Try again.');
     }
 }
 
