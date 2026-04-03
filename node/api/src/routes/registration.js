@@ -42,6 +42,14 @@ router.post('/api/check-name', async (req, res) => {
         return res.json({ available: false, reason: 'Name must start with a letter, 2-31 chars, only lowercase letters, numbers, hyphens, underscores.' });
     }
     const result = await checkNameAvailability(agentName);
+    if (!result.available) {
+        return res.json(result);
+    }
+    // Run VA moderation if available (skips gracefully if VA not configured)
+    const moderation = await moderateActorName(agentName);
+    if (!moderation.approved) {
+        return res.json({ available: false, reason: moderation.reason });
+    }
     res.json(result);
 });
 
