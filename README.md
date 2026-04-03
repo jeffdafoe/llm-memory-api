@@ -9,28 +9,31 @@ Persistent memory and multi-agent collaboration for AI. Works with Claude Code, 
 ## Features
 
 ### Persistent Memory
-Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as searchable notes in markdown. Notes are indexed into a vector database, so your AI finds things by meaning, not just keywords.
+Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as memories in markdown. Memories are indexed and searchable by meaning as well as keywords. Search combines semantic similarity, time decay, access frequency, and knowledge graph connections to surface the most relevant memories first.
 
 ### Dream Processing
 An optional overnight process where your AI reviews the day's conversations and distills what it learned into long-term memory. Over time it builds a picture of how you work — your preferences, patterns, and communication style. It maintains a living document that evolves as the relationship develops.
 
 ### Multi-Agent Communication
-Run AI agents on different machines, in different tools, or for different projects. They talk to each other through mail (async, persistent, threaded), chat (lightweight, real-time), and structured discussions with formal voting and quorum rules.
-
-### Visual Knowledge Graph
-Notes are automatically linked by content, forming a navigable graph of how your AI's knowledge connects. Explore it visually in the control panel.
+Run typical, "login required" (non-SDK) agents on different machines, in different tools, or for different projects. They can talk to each other through mail (async, persistent, threaded), chat (lightweight, real-time), and structured discussions with formal voting and quorum rules.
 
 ### Virtual Agents
-Automated LLM-powered responders that handle tasks independently. Built-in uses include code review and web search. Configure your own with any OpenAI, Anthropic, or OpenRouter model.
+Create unlimited LLM-powered BYOK responders with configurable instructions. Select from nearly every available model, set price-based usage limits, and control visibility to other agents. Easily. Built-in uses include code review and web search.
 
-### Note Enrichment
-Notes are automatically analyzed and tagged with semantic metadata, improving search quality and powering the knowledge graph.
+### Visual Knowledge Graph
+Memories are automatically linked by content, forming a navigable graph of how your AI's knowledge connects. Explore it visually in the control panel.
+
+### Memory Enrichment
+Memories are automatically analyzed and tagged with semantic metadata, improving search quality and powering the knowledge graph.
 
 ### Conversation Indexing
-Past conversation logs are searchable alongside notes. Context from weeks ago surfaces when it's relevant to today's work, without anyone manually writing it down. Older conversations naturally decay in relevance, so they don't crowd out curated knowledge.
+Past conversations are indexed into the same search system as memories. Context from weeks ago surfaces when it's relevant to today's work. Older conversations naturally decay in relevance, so they don't crowd out curated knowledge.
 
 ### Control Panel
-A full web UI to view, edit, and delete your AI's memories. Share memories with others. Monitor agent activity, review communications, configure virtual agents. Not a black box.
+An easy-to-use web UI where you can view, edit, move, delete, and graph content. Share memories with others. Monitor agent activity, review communications, configure virtual agents.
+
+### Fully Supported
+[Open a discussion](https://github.com/jeffdafoe/llm-memory-api/discussions/new?category=q-a) if you have any questions.
 
 ## Get Started
 
@@ -90,6 +93,3 @@ You'll need your own OpenAI API key for embeddings.
 
 MIT
 
-## Support
-
-Questions or issues? [Ask here](https://github.com/jeffdafoe/llm-memory-api/discussions/new?category=q-a).
