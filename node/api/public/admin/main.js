@@ -206,7 +206,6 @@ createApp({
                 errorLogModule.startErrorLogPolling();
             } else if (currentView.value === 'agents') {
                 agentsModule.loadAgents();
-                if (configModule.configEntries.value.length === 0) configModule.loadConfig();
             } else if (currentView.value === 'comms') {
                 if (commSubTab.value === 'discussions') discussionsModule.loadDiscussions();
                 else if (commSubTab.value === 'chat') chatModule.loadChat();
