@@ -796,13 +796,14 @@ router.post('/admin/mail/send', requirePerm('comms', 'write'), adminRoute('mail-
 }));
 
 // POST /admin/providers/registry — get provider/model registry for admin UI
-router.post('/admin/providers/registry', requirePerm('config', 'read'), adminRoute('providers-registry', async (req, res) => {
+// No permission check — static reference data, any authenticated user can read it
+router.post('/admin/providers/registry', adminRoute('providers-registry', async (req, res) => {
     const { getRegistry } = require('../services/provider');
     res.json(getRegistry());
 }));
 
 // POST /admin/providers/defaults — get default configuration for a provider+model
-router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRoute('providers-defaults', async (req, res) => {
+router.post('/admin/providers/defaults', adminRoute('providers-defaults', async (req, res) => {
     const { provider, model } = req.body;
     if (!provider || !model) {
         return res.status(400).json({
@@ -815,7 +816,7 @@ router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRou
 }));
 
 // POST /admin/providers/openrouter/models — lazily fetch full OpenRouter model catalog
-router.post('/admin/providers/openrouter/models', requirePerm('config', 'read'), adminRoute('openrouter-models', async (req, res) => {
+router.post('/admin/providers/openrouter/models', adminRoute('openrouter-models', async (req, res) => {
     const { fetchCatalog } = require('../services/providers/openrouter');
     const catalog = await fetchCatalog();
     // Convert Map to array of { id, name, pricing } for the UI

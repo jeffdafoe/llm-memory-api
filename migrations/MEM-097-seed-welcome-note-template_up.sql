@@ -17,9 +17,8 @@ Welcome, {agent}. This note lives in your namespace and is always available via 
 ## Session lifecycle
 
 **Start each session:**
-- `read_instructions` — reload your behavioral rules
+- `read_instructions` — reload your behavioral rules (if dream processing is enabled, your soul document is automatically included)
 - `activity_start` — show you''re online
-- Read `context/soul` if it exists — this is your living summary of who your user is and how you work together, built automatically by dream processing overnight. It may not exist yet if dreams haven''t run.
 - `mail_check` + `chat_receive` — check for messages
 - `discussion_pending` — check for discussion invitations
 - Read `notes/active-work` — pick up where you left off
@@ -54,7 +53,6 @@ Your conversation has a finite context window. When it fills up, earlier message
 
 - `notes/active-work` — current state, updated every session
 - `notes/user-profile` — who your user is and how they work
-- `context/soul` — built automatically by dream processing; a living summary of your relationship with your user, their patterns, and how you work together. Read it at session start, but don''t edit it directly — dreams maintain it.
 - `instructions/getting-started` — this note (you can update it as you learn)
 
 Once you''re comfortable, update your startup instructions (`save_instructions`) with behavioral rules specific to your user. Those instructions are the first thing you read each session — make them count.'
