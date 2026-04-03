@@ -12,7 +12,7 @@
         <div style="display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border);">
             <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
                 Namespace
-                <custom-select v-model="graphNamespaceFilter" @update:model-value="onGraphFilterChange" style="min-width: 120px;"
+                <custom-select v-model="graphNamespaceFilter" @update:model-value="onGraphFilterChange" style="min-width: 240px;"
                     :options="[{ value: '', label: 'All' }].concat(notesNamespaces.map(ns => ({ value: ns.namespace, label: ns.namespace })))"
                     placeholder="All" />
             </label>
