@@ -1687,6 +1687,15 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
              ['none', 'companion', 'technical'].includes(dream_mode) ? dream_mode : 'none']
         );
 
+        // Grant all MCP permissions (full tool access) — non-virtual agents only
+        if (!isVirtual) {
+            await client.query(
+                `INSERT INTO agent_permissions (actor_id, permission_id)
+                 SELECT $1, id FROM permissions`,
+                [actorId]
+            );
+        }
+
         // Grant the creator visibility to the new agent (so they can see it in the UI).
         // Skip if the creator already has wildcard visibility (sees everything).
         const creatorVis = await client.query(
