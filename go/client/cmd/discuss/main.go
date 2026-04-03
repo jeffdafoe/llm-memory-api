@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/client/internal/discuss"
+	"github.com/jeffdafoe/llm-memory-api/go/client/internal/selfupdate"
 )
 
 // Embed the discussion prompt template into the binary so it doesn't
@@ -42,6 +43,15 @@ import (
 var embeddedTemplate string
 
 func main() {
+	// Check for --version flag before anything else
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Printf("discuss v%s\n", selfupdate.Version)
+		os.Exit(0)
+	}
+
+	// Self-update check
+	selfupdate.Check("discuss")
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
