@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -277,6 +278,14 @@ func (p *ProxyServer) handleConclude(w http.ResponseWriter, r *http.Request) {
 		"agent":         p.agent,
 	}, &result)
 	if err != nil {
+		// When a conclude vote passes, the server auto-concludes the discussion.
+		// If the subagent then calls /conclude, it gets NOT_JOINED because
+		// participation was already cleared. Treat this as success.
+		if strings.Contains(err.Error(), "NOT_JOINED") {
+			p.logger.Log("Conclude returned NOT_JOINED — discussion already concluded by vote")
+			p.writeJSON(w, map[string]string{"status": "already_concluded"})
+			return
+		}
 		p.writeError(w, 502, err.Error())
 		return
 	}
