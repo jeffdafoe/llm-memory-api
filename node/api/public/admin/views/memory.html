@@ -9,25 +9,18 @@
 
     <!-- Graph view -->
     <div v-if="graphMode" style="display: flex; flex-direction: column; height: 100%;">
-        <div style="display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border);">
+        <div style="display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border);">
             <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
                 Namespace
-                <select v-model="graphNamespaceFilter" @change="onGraphFilterChange" style="font-size: 12px; padding: 2px 6px;">
-                    <option value="">All</option>
-                    <option v-for="ns in notesNamespaces" :key="ns.namespace" :value="ns.namespace">{{ ns.namespace }}</option>
-                </select>
+                <custom-select v-model="graphNamespaceFilter" @update:model-value="onGraphFilterChange"
+                    :options="[{ value: '', label: 'All' }].concat(notesNamespaces.map(ns => ({ value: ns.namespace, label: ns.namespace })))"
+                    placeholder="All" />
             </label>
             <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
                 Type
-                <select v-model="graphTypeFilter" @change="onGraphFilterChange" style="font-size: 12px; padding: 2px 6px;">
-                    <option value="">All</option>
-                    <option value="depends-on">depends-on</option>
-                    <option value="references">references</option>
-                    <option value="supersedes">supersedes</option>
-                    <option value="led-to">led-to</option>
-                    <option value="related">related</option>
-                    <option value="subtask-of">subtask-of</option>
-                </select>
+                <custom-select v-model="graphTypeFilter" @update:model-value="onGraphFilterChange"
+                    :options="[{ value: '', label: 'All' }, { value: 'depends-on', label: 'depends-on' }, { value: 'references', label: 'references' }, { value: 'supersedes', label: 'supersedes' }, { value: 'led-to', label: 'led-to' }, { value: 'related', label: 'related' }, { value: 'subtask-of', label: 'subtask-of' }]"
+                    placeholder="All" />
             </label>
             <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
                 <input type="checkbox" v-model="graphShowAuto" @change="onGraphFilterChange" style="width: auto;"> Auto-extracted
@@ -57,6 +50,31 @@
             </div>
         </div>
     </div>
+
+    <!-- Note preview dialog (opens over graph) -->
+    <dialog ref="graphNoteDialog" @click="closeGraphNoteDialog($event)">
+        <article style="width: 90vw; max-width: 900px; max-height: 85vh;">
+            <header>
+                <div>
+                    <h3 v-if="graphNoteData">{{ graphNoteData.title }}</h3>
+                    <div v-if="graphNoteData" class="notes-meta" style="margin-top: 4px;">
+                        <span class="badge badge-accent" style="font-size:10px; padding:1px 6px; margin-right:6px;">{{ graphNoteData.namespace }}</span>
+                        <span class="mono">{{ graphNoteData.slug }}</span>
+                    </div>
+                </div>
+                <button aria-label="Close" @click="closeGraphNoteDialog()"></button>
+            </header>
+            <div class="dialog-body" style="overflow-y: auto; flex: 1; min-height: 0;">
+                <div v-if="graphNoteLoading" class="muted">Loading...</div>
+                <div v-else-if="graphNoteData" class="notes-markdown" v-html="graphNoteRendered"></div>
+            </div>
+            <div class="dialog-actions" v-if="graphNoteData">
+                <button class="btn btn-secondary btn-compact" @click="goToNoteFromGraph()">
+                    <i class="icon-edit-2"></i> Open in Editor
+                </button>
+            </div>
+        </article>
+    </dialog>
 
     <div v-show="!graphMode" class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
     <div class="notes-sidebar">

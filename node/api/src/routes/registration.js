@@ -6,6 +6,7 @@ const config = require('../services/config');
 const generatePassphrase = require('eff-diceware-passphrase');
 const { generateSalt, hash: hashToken, generateKey } = require('../services/hashing');
 const { mailSend } = require('../services/mail');
+const { saveNote } = require('../services/documents');
 const { checkNameAvailability, moderateActorName } = require('../services/actors');
 
 // Parse YAML-style frontmatter from template content (same logic as admin.js)
@@ -196,6 +197,24 @@ router.post('/api/register', async (req, res) => {
         } catch (tplErr) {
             // Don't fail registration if template application fails
             console.error('Registration welcome template error:', tplErr.message);
+        }
+
+        // Save getting-started note from welcome-note template (if one exists)
+        try {
+            const noteTplResult = await pool.query(
+                "SELECT content FROM templates WHERE kind = 'welcome-note' ORDER BY id LIMIT 1"
+            );
+            if (noteTplResult.rows.length > 0) {
+                const rawContent = noteTplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const noteBody = tplBody.replace(/\{agent\}/g, agentName);
+                const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, agentName);
+                const noteSlug = frontmatter.slug || 'instructions/getting-started';
+                await saveNote(agentName, noteTitle, noteBody, noteSlug, actorId);
+            }
+        } catch (noteErr) {
+            // Don't fail registration if note creation fails
+            console.error('Registration welcome-note template error:', noteErr.message);
         }
 
         res.json({

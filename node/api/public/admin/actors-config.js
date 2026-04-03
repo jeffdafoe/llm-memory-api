@@ -77,6 +77,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     const newActorUiAccess = ref(false);
     const newActorPassword = ref('');
     const newActorTemplateId = ref(null);
+    const newActorNoteTemplateId = ref(null);
     const newActorCreating = ref(false);
     const newActorPassphrase = ref(null);
     const createSource = ref('config'); // 'config' (full) or 'agents' (streamlined virtual agent)
@@ -554,6 +555,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         newActorUiAccess.value = false;
         newActorPassword.value = '';
         newActorTemplateId.value = null;
+        newActorNoteTemplateId.value = null;
         newActorCreating.value = false;
         newActorPassphrase.value = null;
     }
@@ -588,6 +590,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             if (newActorTemplateId.value && !newActorVirtual.value) {
                 body.welcome_template_id = newActorTemplateId.value;
             }
+            if (newActorNoteTemplateId.value && !newActorVirtual.value) {
+                body.welcome_note_template_id = newActorNoteTemplateId.value;
+            }
             const data = await api('/admin/actors/create', body);
             newActorPassphrase.value = data.passphrase;
 
@@ -599,9 +604,12 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
                 });
             }
 
+            var extras = [];
+            if (data.welcome_mail_sent) extras.push('welcome mail');
+            if (data.welcome_note_saved) extras.push('getting-started note');
             const msg = data.virtual
                 ? 'Virtual agent "' + data.name + '" created'
-                : 'Actor "' + data.name + '" created' + (data.welcome_mail_sent ? ' with welcome mail' : '');
+                : 'Actor "' + data.name + '" created' + (extras.length ? ' with ' + extras.join(' + ') : '');
             showToast(msg, 'success');
             loadActorsConfig();
             await agentsModule.loadAgents();
@@ -758,7 +766,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         // Create actor
         createSource, newActorName, newActorVirtual,
         newActorUiAccess, newActorPassword,
-        newActorTemplateId, newActorCreating, newActorPassphrase,
+        newActorTemplateId, newActorNoteTemplateId, newActorCreating, newActorPassphrase,
         nameCheckStatus, nameCheckMessage,
         startCreateActor, createActor,
         closeDialogs
