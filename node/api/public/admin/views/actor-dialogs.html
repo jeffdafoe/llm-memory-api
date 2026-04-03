@@ -24,7 +24,7 @@
                 </div>
             </div>
             <div style="display:flex; gap:4px;">
-                <button v-if="actorDialogMode === 'edit' && canDo('agents', 'write')" class="btn btn-ghost btn-compact btn-danger" @click="deleteActor" :disabled="actorDeleting" title="Delete Actor"><i class="icon-trash-2"></i></button>
+                <button v-if="actorDialogMode === 'edit' && canDo('agents', 'write') && selectedActorConfig.name !== user.username" class="btn btn-ghost btn-compact btn-danger" @click="deleteActor" :disabled="actorDeleting" title="Delete Actor"><i class="icon-trash-2"></i></button>
                 <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
             </div>
         </header>
