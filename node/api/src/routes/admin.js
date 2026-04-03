@@ -284,7 +284,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
            AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
     const chatParams = [];
     if (hasFilter) {
-        chatSql += ' AND cm.from_actor_id = ANY($1) AND cm.to_actor_id = ANY($1)';
+        chatSql += ' AND (cm.from_actor_id = ANY($1) OR cm.to_actor_id = ANY($1))';
         chatParams.push(idsArray);
     }
     chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cm.sent_at DESC LIMIT 15`;
@@ -297,7 +297,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
          WHERE m.deleted_at IS NULL`;
     const mailParams = [];
     if (hasFilter) {
-        mailSql += ' AND m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+        mailSql += ' AND (m.from_actor_id = ANY($1) OR m.to_actor_id = ANY($1))';
         mailParams.push(idsArray);
     }
     mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
