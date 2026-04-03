@@ -39,7 +39,7 @@ When a session starts from a continuation summary, treat operational details in 
 - **Scripts**: `node/api/scripts/` — operational scripts deployed with the app (e.g., `db-cleanup.sh` for cron)
 - **Migrations**: `migrations/` — raw SQL, sequential MEM-XXX numbering
 - **Infrastructure**: `infrastructure/` — Ansible playbooks, roles, and templates for deployment
-- **Discussion transport**: `node/client/discuss.js` — Node CLI for multi-agent discussions
+- **Discussion transport**: `go/client/cmd/discuss/` — Go binary for multi-agent discussions (replaces legacy `node/client/discuss.js`)
 
 ## Deployment
 

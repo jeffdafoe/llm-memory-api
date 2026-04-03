@@ -849,4 +849,26 @@ router.post('/agent/sync-mappings', apiRoute('agent', 'sync-mappings', async (re
     res.json({ mappings: result.rows, exclude_slugs: excludeSlugs });
 }));
 
+// POST /agent/config — return whitelisted config values.
+// Agents don't need admin permissions to read these — they're operational
+// parameters that tools like the discuss binary need at runtime.
+// Add keys here as needed.
+const AGENT_CONFIG_KEYS = new Set([
+    'discussion_end_timeout_realtime',
+    'discussion_maxrounds',
+]);
+
+router.post('/agent/config', apiRoute('agent', 'agent-config', async (req, res) => {
+    const keys = [...AGENT_CONFIG_KEYS];
+    const result = await pool.query(
+        'SELECT key, value FROM config WHERE key = ANY($1)',
+        [keys]
+    );
+    const config_values = {};
+    for (const row of result.rows) {
+        config_values[row.key] = row.value;
+    }
+    res.json({ config: config_values });
+}));
+
 module.exports = router;
