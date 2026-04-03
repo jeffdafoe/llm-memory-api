@@ -618,6 +618,33 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         });
     }
 
+    // ─── Delete Agent ───
+
+    const agentDeleting = ref(false);
+
+    async function deleteAgent() {
+        if (!selectedAgent.value) return;
+        const name = selectedAgent.value.agent;
+        const confirmed = await showConfirm('Permanently delete "' + name + '" and ALL associated data (notes, mail, chat, discussions)? This cannot be undone.');
+        if (!confirmed) return;
+        agentDeleting.value = true;
+        try {
+            const data = await api('/admin/actors/delete', { actor_id: selectedAgent.value.actor_id });
+            let msg = 'Deleted "' + name + '"';
+            if (data.deleted && data.deleted.virtual_agents && data.deleted.virtual_agents.length > 0) {
+                msg += ' and virtual agents: ' + data.deleted.virtual_agents.join(', ');
+            }
+            showToast(msg, 'success');
+            selectedAgent.value = null;
+            loadAgents();
+        } catch (err) {
+            console.error('Failed to delete agent:', err);
+            showToast('Failed: ' + err.message, 'error');
+        } finally {
+            agentDeleting.value = false;
+        }
+    }
+
     function closeDialogs() {
         selectedAgent.value = null;
     }
@@ -644,6 +671,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,
         resetAgentPassphrase,
+        agentDeleting, deleteAgent,
         // Templates
         welcomeTemplates, templateEditing, templateEditId,
         templateEditName, templateEditKind, templateEditDescription, templateEditContent, templateSaving,
