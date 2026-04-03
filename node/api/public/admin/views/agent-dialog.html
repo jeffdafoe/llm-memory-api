@@ -4,7 +4,7 @@
         <header>
             <div></div>
             <div style="display:flex; gap:4px;">
-                <button v-if="canDo('agents', 'write')" class="btn btn-ghost btn-compact btn-danger" @click="deleteAgent" :disabled="agentDeleting" title="Delete Agent"><i class="icon-trash-2"></i></button>
+                <button v-if="canDo('agents', 'write') && selectedAgent.agent !== user.username" class="btn btn-ghost btn-compact btn-danger" @click="deleteAgent" :disabled="agentDeleting" title="Delete Agent"><i class="icon-trash-2"></i></button>
                 <button v-if="canDo('agents', 'read')" class="btn btn-ghost btn-compact" @click="openActorConfig(selectedAgent.agent)" title="Permissions"><i class="icon-shield"></i></button>
                 <button v-if="!agentPassphraseConfirming && !agentNewPassphrase && canDo('agents', 'write')" class="btn btn-ghost btn-compact" @click="agentPassphraseConfirming = true" title="Reset Passphrase"><i class="icon-key"></i></button>
                 <button aria-label="Close" rel="prev" @click="selectedAgent = null"></button>
