@@ -373,7 +373,7 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     const visibleIds = await getVisibleActorIds(req.actorId);
     // Subqueries for visibility and VA access summaries shown in the agent list
     let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
-                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, ac.configuration,
+                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, s.storage_quota, ac.configuration,
                 COALESCE(vis.summary, 'self only') AS visibility_summary,
                 va.summary AS va_access_summary
          FROM agent_status s
@@ -430,7 +430,11 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
         delete row.configuration;
     }
 
-    res.json({ agents: result.rows });
+    // Include global default storage quota so the frontend can display it
+    const config = require('../services/config');
+    const defaultStorageQuota = parseInt(config.get('default_storage_quota')) || 52428800;
+
+    res.json({ agents: result.rows, default_storage_quota: defaultStorageQuota });
 }));
 
 // POST /admin/agents/instructions/read — read an agent's startup instructions
