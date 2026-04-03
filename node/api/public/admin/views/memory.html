@@ -12,13 +12,13 @@
         <div style="display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border);">
             <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
                 Namespace
-                <custom-select v-model="graphNamespaceFilter" @update:model-value="onGraphFilterChange"
+                <custom-select v-model="graphNamespaceFilter" @update:model-value="onGraphFilterChange" style="min-width: 120px;"
                     :options="[{ value: '', label: 'All' }].concat(notesNamespaces.map(ns => ({ value: ns.namespace, label: ns.namespace })))"
                     placeholder="All" />
             </label>
             <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
                 Type
-                <custom-select v-model="graphTypeFilter" @update:model-value="onGraphFilterChange"
+                <custom-select v-model="graphTypeFilter" @update:model-value="onGraphFilterChange" style="min-width: 120px;"
                     :options="[{ value: '', label: 'All' }, { value: 'depends-on', label: 'depends-on' }, { value: 'references', label: 'references' }, { value: 'supersedes', label: 'supersedes' }, { value: 'led-to', label: 'led-to' }, { value: 'related', label: 'related' }, { value: 'subtask-of', label: 'subtask-of' }]"
                     placeholder="All" />
             </label>
@@ -30,24 +30,6 @@
         </div>
         <div style="display: flex; flex: 1; min-height: 0;">
             <div id="graph-container" style="flex: 1;"></div>
-            <!-- Node detail panel -->
-            <div v-if="graphSelectedNode" style="width: 280px; border-left: 1px solid var(--border); padding: 12px; overflow-y: auto; font-size: 13px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <strong>Note Details</strong>
-                    <button class="btn btn-ghost btn-compact" @click="graphSelectedNode = null"><i class="icon-x"></i></button>
-                </div>
-                <div style="margin-bottom: 6px;">
-                    <span class="ts">Namespace</span><br>
-                    <span :style="{ color: nsColor(graphSelectedNode.namespace) }">{{ graphSelectedNode.namespace }}</span>
-                </div>
-                <div style="margin-bottom: 6px;">
-                    <span class="ts">Slug</span><br>
-                    <span style="word-break: break-all;">{{ graphSelectedNode.slug }}</span>
-                </div>
-                <button class="btn btn-primary btn-compact" style="margin-top: 8px;" @click="openNoteFromGraph(graphSelectedNode)">
-                    <i class="icon-file-text"></i> Open Note
-                </button>
-            </div>
         </div>
     </div>
 
