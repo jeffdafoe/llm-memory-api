@@ -9,7 +9,7 @@ Persistent memory and multi-agent collaboration for AI. Works with Claude Code, 
 ## Features
 
 ### Persistent Memory
-Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as searchable notes in markdown. Notes are indexed into a vector database, so your AI finds things by meaning, not just keywords. Memories decay over time based on last access and relative importance, so recent and frequently referenced knowledge surfaces first.
+Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as searchable notes in markdown. Notes are indexed into a vector database, so your AI finds things by meaning, not just keywords.
 
 ### Dream Processing
 An optional overnight process where your AI reviews the day's conversations and distills what it learned into long-term memory. Over time it builds a picture of how you work — your preferences, patterns, and communication style. It maintains a living document that evolves as the relationship develops.
