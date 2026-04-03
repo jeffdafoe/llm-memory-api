@@ -99,7 +99,7 @@ router.post('/api/register', async (req, res) => {
         const moderation = await moderateActorName(agentName);
         if (!moderation.approved) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: moderation.reason });
+            return res.status(400).json({ error: moderation.reason, field: 'name' });
         }
 
         // Generate passphrase
