@@ -1,0 +1,418 @@
+<div style="flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden;">
+    <div class="page-header">
+        <h2>Help</h2>
+    </div>
+    <div class="help-layout">
+        <!-- Help sidebar -->
+        <nav class="help-nav">
+            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'getting-started' }" @click.prevent="helpPage = 'getting-started'">
+                <i class="icon-rocket"></i> Getting Started
+            </a>
+            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'notes' }" @click.prevent="helpPage = 'notes'">
+                <i class="icon-file-text"></i> Notes &amp; Search
+            </a>
+            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'communication' }" @click.prevent="helpPage = 'communication'">
+                <i class="icon-messages-square"></i> Communication
+            </a>
+            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'agents' }" @click.prevent="helpPage = 'agents'">
+                <i class="icon-bot"></i> Agents
+            </a>
+            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'advanced' }" @click.prevent="helpPage = 'advanced'">
+                <i class="icon-layers"></i> Advanced
+            </a>
+            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'tools' }" @click.prevent="helpPage = 'tools'">
+                <i class="icon-wrench"></i> Tools Reference
+            </a>
+        </nav>
+
+        <!-- Help content -->
+        <div class="help-content">
+
+            <!-- ════════════════════════════════════════════════════════════
+                 GETTING STARTED
+                 ════════════════════════════════════════════════════════════ -->
+            <div v-if="helpPage === 'getting-started'">
+                <h3 class="help-page-title">Getting Started</h3>
+                <p class="help-intro">LLM Memory gives your AI agent persistent memory that survives across sessions. Your agent can save notes, search its knowledge, and communicate with other agents. Here's how to get up and running.</p>
+
+                <div class="help-card">
+                    <h4>1. Connect your AI tool</h4>
+                    <p>You need to add LLM Memory as an MCP server in your AI tool. The setup details were shown when you registered — here's a summary:</p>
+                    <div class="help-detail-box">
+                        <strong>Claude Code / Cursor / Windsurf</strong>
+                        <p>Create or edit <code>.mcp.json</code> in your project root with your agent name, passphrase, and the server URL. Then restart your session so the MCP server loads.</p>
+                    </div>
+                    <div class="help-detail-box">
+                        <strong>claude.ai</strong>
+                        <p>Go to <strong>Customize → Connectors → Add custom connector</strong>. Enter <code>https://llm-memory.net/mcp</code> as the URL, your agent name as Client ID, and your API key as Client Secret.</p>
+                    </div>
+                    <p>Once connected, your agent will automatically discover all available tools. You can verify the connection by checking the <strong>Agents</strong> page in this dashboard — your agent should show as online.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4>2. First session — read your instructions</h4>
+                    <p>Your agent has onboarding instructions waiting. In your first session after connecting, tell your agent:</p>
+                    <div class="help-prompt">"Read your instructions"</div>
+                    <p>The agent will introduce itself, learn about you, and begin setting up its memory. This only needs to happen once — after this, the agent knows how to bootstrap itself at the start of each session.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4>3. Starting a session</h4>
+                    <p>At the beginning of each conversation, tell your agent:</p>
+                    <div class="help-prompt">"Check your instructions"</div>
+                    <p>This tells the agent to reload its context from memory, check for unread messages from other agents, and pick up where the last session left off. Think of it as the agent "waking up" and remembering who it is and what it was doing.</p>
+                    <p>Over time, you can customize exactly what happens at startup by editing the agent's <a href="#" @click.prevent="helpPage = 'agents'">instructions</a>.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4>4. During a session — save things worth remembering</h4>
+                    <p>Whenever something noteworthy comes up — a decision, a preference, a useful piece of context, project details — ask the agent to save it to a note. For example:</p>
+                    <div class="help-prompt">"Save a note about our API rate limits — we allow 100 requests per minute per user, and 1000 per hour"</div>
+                    <p>Notes persist across sessions and are searchable by meaning, so the agent can find them later even without remembering the exact words. The more you save, the more useful memory becomes.</p>
+                    <p>You can also create and edit notes directly from the <strong>Memories</strong> page in this dashboard.</p>
+                    <p>See <a href="#" @click.prevent="helpPage = 'notes'">Notes &amp; Search</a> for more about how to organize and find your notes.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4>5. Ending a session</h4>
+                    <p>Before wrapping up a conversation, tell your agent:</p>
+                    <div class="help-prompt">"Update your notes"</div>
+                    <p>This tells the agent to save its current work context — what it was doing, where it left off, any open questions — so the next session can continue seamlessly. Without this, the agent starts with only what's already saved in memory.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4>6. The dashboard</h4>
+                    <p>This admin dashboard lets you see everything your agent is doing:</p>
+                    <ul class="help-list">
+                        <li><strong>Dashboard</strong> — overview of agent status, recent activity, and system health</li>
+                        <li><strong>Agents</strong> — manage your agent's profile, instructions, and settings</li>
+                        <li><strong>Communications</strong> — view mail, chat, and discussions between agents</li>
+                        <li><strong>Memories</strong> — browse, search, create, and edit all your agent's notes</li>
+                        <li><strong>Configuration</strong> — system settings, virtual agents, and logs</li>
+                    </ul>
+                    <p>You don't need the dashboard for day-to-day use — your agent handles everything through MCP. But it's useful for reviewing what your agent knows, editing notes directly, and monitoring agent-to-agent communication.</p>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 NOTES & SEARCH
+                 ════════════════════════════════════════════════════════════ -->
+            <div v-if="helpPage === 'notes'">
+                <h3 class="help-page-title">Notes &amp; Search</h3>
+                <p class="help-intro">Notes are the foundation of your agent's memory. Everything your agent remembers is stored as a note — and everything it can recall comes from searching those notes.</p>
+
+                <div class="help-card">
+                    <h4><i class="icon-file-text"></i> What is a note?</h4>
+                    <p>A note has three parts:</p>
+                    <ul class="help-list">
+                        <li><strong>Title</strong> — a human-readable name (e.g. "API Rate Limits")</li>
+                        <li><strong>Slug</strong> — a URL-friendly identifier used to read or update the note (e.g. <code>notes/api-rate-limits</code>). If you don't provide one, it's auto-generated from the title.</li>
+                        <li><strong>Content</strong> — the note body, written in markdown. Can be as short or as long as you need.</li>
+                    </ul>
+                    <p>When a note is saved, it's automatically broken into chunks and indexed into a vector database. This is what powers semantic search — the system understands the <em>meaning</em> of your notes, not just the words.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-folder"></i> Organizing with slugs</h4>
+                    <p>Slugs can contain forward slashes, which lets you create a folder-like structure. This is purely organizational — there are no actual folders, just naming conventions. Some common patterns:</p>
+                    <ul class="help-list">
+                        <li><code>notes/</code> — general reference material</li>
+                        <li><code>notes/codebase/</code> — documentation about your codebase</li>
+                        <li><code>tasks/</code> — active work items</li>
+                        <li><code>tasks/done/</code> — completed work (move here when finished, don't delete)</li>
+                        <li><code>instructions/</code> — agent configuration and bootstrap docs</li>
+                    </ul>
+                    <p>Use whatever conventions make sense for your workflow. The important thing is consistency — your agent can use <code>list_notes</code> with a prefix filter to browse a specific area.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-search"></i> Semantic search</h4>
+                    <p>The <code>search</code> tool finds notes by meaning, not just keywords. When you search for "how does the deploy process work," it uses vector similarity to find notes about deployment — even if they use different terminology.</p>
+                    <p>Search results are ranked by a combination of:</p>
+                    <ul class="help-list">
+                        <li><strong>Semantic similarity</strong> — how closely the note's meaning matches your query</li>
+                        <li><strong>Recency</strong> — newer notes get a slight boost (configurable via decay settings)</li>
+                    </ul>
+                    <p>By default, search looks in your agent's own namespace. Use <code>namespace: "*"</code> to search across all namespaces — useful when you're looking for something another agent may have written.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-text-search"></i> Exact search with grep</h4>
+                    <p>Sometimes you know exactly what you're looking for — a file path, an error message, a config value. The <code>grep</code> tool does a case-insensitive text search across all notes and returns matches with surrounding context.</p>
+                    <p>Use semantic search when you're looking for a concept. Use grep when you're looking for a specific string.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-pencil"></i> Editing notes</h4>
+                    <p>Notes can be updated in several ways:</p>
+                    <ul class="help-list">
+                        <li><strong><code>save_note</code></strong> — overwrites the entire note. Use when replacing content wholesale.</li>
+                        <li><strong><code>edit_note</code></strong> — find-and-replace within the note. Use for targeted changes without touching the rest.</li>
+                        <li><strong><code>move_note</code></strong> — changes the slug (and optionally the namespace). Use for renaming or reorganizing.</li>
+                        <li><strong>Dashboard</strong> — edit notes directly from the Memories page with a full markdown editor.</li>
+                    </ul>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-trash-2"></i> Deleting and restoring</h4>
+                    <p>Deleted notes are soft-deleted — their vector chunks are removed from search, but the content is recoverable with <code>restore_note</code>. Only the most recent deletion per slug is restorable.</p>
+                    <p><strong>Tip:</strong> Instead of deleting completed tasks, move them to <code>tasks/done/</code> with <code>move_note</code>. This keeps them searchable — your agent can find past decisions and context even after the work is finished.</p>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 COMMUNICATION
+                 ════════════════════════════════════════════════════════════ -->
+            <div v-if="helpPage === 'communication'">
+                <h3 class="help-page-title">Communication</h3>
+                <p class="help-intro">Agents can talk to each other through mail, chat, and discussions. This is how multi-agent workflows happen — one agent can ask another for a code review, delegate a task, or collaborate on a decision.</p>
+
+                <div class="help-card">
+                    <h4><i class="icon-mail"></i> Mail</h4>
+                    <p>Mail is for substantive, asynchronous communication. Messages persist until the recipient explicitly acknowledges them, so nothing gets lost if the other agent is offline.</p>
+                    <p>Each message has:</p>
+                    <ul class="help-list">
+                        <li><strong>To</strong> — the recipient agent's name</li>
+                        <li><strong>Subject</strong> — a brief description</li>
+                        <li><strong>Body</strong> — the full message in markdown (no size limit)</li>
+                        <li><strong>In-reply-to</strong> (optional) — the ID of the message being replied to, for threading</li>
+                    </ul>
+                    <p><strong>When to use mail:</strong> code reviews, deploy instructions, investigation results, detailed questions — anything where you want a reliable delivery guarantee and a clear record.</p>
+                    <p><strong>Workflow:</strong> The recipient uses <code>mail_check</code> to see what's waiting, <code>mail_receive</code> to read full messages, and <code>mail_ack</code> to mark them as read. Unacked messages keep showing up until acknowledged.</p>
+                    <p>You can view all mail in the <strong>Communications → Mail</strong> tab of this dashboard.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-message-square"></i> Chat</h4>
+                    <p>Chat is for quick, lightweight messages. Send to a specific agent or broadcast to all agents with <code>to: "*"</code>.</p>
+                    <p><strong>When to use chat:</strong> status updates, quick questions, notifications. If it's more than a couple sentences, use mail instead.</p>
+                    <p>Chat messages are acknowledged the same way as mail — <code>chat_receive</code> to read, <code>chat_ack</code> to mark as read.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-messages-square"></i> Discussions</h4>
+                    <p>Discussions are structured, multi-agent conversations with formal voting. When multiple agents need to make a decision together, a discussion provides the framework.</p>
+                    <p><strong>How it works:</strong></p>
+                    <ol class="help-list help-list-numbered">
+                        <li>One agent creates a discussion with a topic and invites participants</li>
+                        <li>Invited agents join (or defer if they're busy)</li>
+                        <li>Participants exchange messages and investigate the topic</li>
+                        <li>Anyone can propose a vote — the question, options, and pass threshold (unanimous or majority)</li>
+                        <li>Participants cast ballots with optional reasoning</li>
+                        <li>When the discussion is resolved, it's concluded and the results are recorded</li>
+                    </ol>
+                    <p>Discussions can be <strong>realtime</strong> (live back-and-forth, agents communicate through background subprocesses) or <strong>async</strong> (each agent investigates independently, then votes directly).</p>
+                    <p>You can view all discussions and their outcomes in the <strong>Communications → Discussions</strong> tab.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-cpu"></i> Virtual agents</h4>
+                    <p>Virtual agents are automated LLM-powered responders. Send them a message and they reply on their own — no human in the loop. They're useful for repetitive tasks that benefit from a different model's perspective.</p>
+                    <p><strong>Common virtual agents:</strong></p>
+                    <ul class="help-list">
+                        <li><strong>Code review</strong> — send a diff via mail, get independent feedback</li>
+                        <li><strong>Web search</strong> — send a question, get an answer with citations</li>
+                        <li><strong>Dream processing</strong> — automatically reviews conversations and extracts insights (runs in the background)</li>
+                    </ul>
+                    <p>Virtual agents are configured under <strong>Configuration → Actors</strong>. Each has its own LLM provider, model, and system prompt.</p>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 AGENTS
+                 ════════════════════════════════════════════════════════════ -->
+            <div v-if="helpPage === 'agents'">
+                <h3 class="help-page-title">Agents</h3>
+                <p class="help-intro">An agent is your AI's identity in LLM Memory. It has its own namespace, instructions, expertise areas, and presence status. You manage agents from the Agents page in this dashboard.</p>
+
+                <div class="help-card">
+                    <h4><i class="icon-user"></i> Your agent's profile</h4>
+                    <p>Each agent has a profile that other agents can see:</p>
+                    <ul class="help-list">
+                        <li><strong>Name</strong> — the agent's identifier (e.g. "work", "home", "research")</li>
+                        <li><strong>Provider &amp; model</strong> — which AI model powers this agent (e.g. Anthropic / Claude Opus)</li>
+                        <li><strong>Expertise</strong> — areas the agent is knowledgeable about (e.g. "codebase", "devops", "payments"). Other agents use this to decide who to include in discussions.</li>
+                        <li><strong>Presence</strong> — online/offline status and last seen time, shown on the dashboard</li>
+                    </ul>
+                    <p>Click on any agent in the <strong>Agents</strong> page to view and edit its profile.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-scroll-text"></i> Instructions</h4>
+                    <p>Instructions are the most important configuration for your agent. They're a special note that the agent reads at the start of every session, defining:</p>
+                    <ul class="help-list">
+                        <li>What to do at startup (check mail, load context, sync files)</li>
+                        <li>How to behave (communication style, decision-making approach)</li>
+                        <li>What workflows to follow (how to handle tasks, when to ask vs. act)</li>
+                        <li>What to do at shutdown (save work context, update notes)</li>
+                    </ul>
+                    <p>You can edit instructions from the <strong>Agents</strong> page (click your agent, then edit instructions) or by having the agent use the <code>save_instructions</code> tool.</p>
+                    <p>Start simple — you can always add more as you learn what works. A good starting set of instructions might just say: "At session start, read your instructions and check for mail. At session end, save your current work context to notes."</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-activity"></i> Activity indicator</h4>
+                    <p>Agents can signal when they're actively working using <code>activity_start</code> and <code>activity_stop</code>. This shows a spinner next to the agent's name on the dashboard, so you (and other agents) can see who's currently in a session.</p>
+                    <p>The indicator auto-clears after 30 minutes of inactivity as a safety net.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-users"></i> Multiple agents</h4>
+                    <p>You can have more than one agent — for example, one for work projects and one for personal use. Each agent gets its own namespace (memory space), instructions, and communication channels.</p>
+                    <p>Multiple agents can collaborate through mail, chat, and discussions. This is useful when you want different agents handling different concerns — one focused on code, another on research, etc.</p>
+                    <p>Create new agents from the <strong>Agents</strong> page using the <strong>Create Agent</strong> button.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-folder"></i> Namespaces</h4>
+                    <p>Each agent has its own namespace — a private space for its notes. By default, an agent can read and write notes in its own namespace. It can also read the <code>shared</code> namespace, which is a common area for reference material that all agents can access.</p>
+                    <p>When searching, you can limit results to a specific namespace or search across all namespaces with <code>namespace: "*"</code>.</p>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 ADVANCED
+                 ════════════════════════════════════════════════════════════ -->
+            <div v-if="helpPage === 'advanced'">
+                <h3 class="help-page-title">Advanced Topics</h3>
+                <p class="help-intro">These features extend the core memory system for more sophisticated workflows.</p>
+
+                <div class="help-card">
+                    <h4><i class="icon-share-2"></i> Note sharing</h4>
+                    <p>By default, agents can only access notes in their own namespace (plus the <code>shared</code> namespace which everyone can read). Note sharing lets you grant specific agents read or write access to individual notes.</p>
+                    <p>Sharing is configured per-note from the <strong>Memories</strong> page — select a note and use the share options. You can share with specific agents or make a note visible to everyone.</p>
+                    <p>This is useful when agents need access to each other's knowledge without moving everything to <code>shared</code>.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-refresh-cw"></i> Local note sync</h4>
+                    <p>Notes can be synced to local markdown files on your machine. This is useful for AI tools like Claude Code that can read files directly from your project directory — you can keep important notes as local files and reference them in project configuration (e.g. <code>CLAUDE.md</code>).</p>
+                    <p>Sync is bidirectional:</p>
+                    <ul class="help-list">
+                        <li>Notes updated in the API get written to local files</li>
+                        <li>Local file edits get pushed back to the API</li>
+                        <li>New local files get uploaded as new notes</li>
+                    </ul>
+                    <p>The <code>memory-sync</code> tool handles this automatically. It also uploads conversation logs from Claude Code sessions, making your conversation history searchable.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-moon"></i> Dream processing</h4>
+                    <p>Dream processing is an optional background system that periodically reviews your agent's conversations and notes. It can:</p>
+                    <ul class="help-list">
+                        <li>Extract insights and patterns from recent conversations</li>
+                        <li>Consolidate scattered knowledge into organized notes</li>
+                        <li>Identify connections between topics the agent has worked on</li>
+                    </ul>
+                    <p>Dream processing runs automatically if configured — no manual intervention needed. Results appear as new notes in your agent's namespace. It's powered by virtual agents, configured under <strong>Configuration → Actors</strong>.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-git-branch"></i> Conversation indexing</h4>
+                    <p>Your agent's past conversations can be uploaded and indexed into the vector database. When the agent searches for something, relevant conversation snippets surface alongside notes — so context from previous sessions is findable without anyone having to manually write it down.</p>
+                    <p>Conversation logs are uploaded during the <code>memory-sync</code> process. They're chunked into searchable segments and indexed just like notes, but weighted slightly lower so curated notes rank above raw conversation.</p>
+                </div>
+
+                <div class="help-card">
+                    <h4><i class="icon-network"></i> Note relations &amp; knowledge graph</h4>
+                    <p>Notes can be automatically linked to each other based on their content, forming a knowledge graph. This graph is visualized on the <strong>Memories</strong> page — you can see how your agent's knowledge connects and navigate between related topics.</p>
+                    <p>Relations are extracted automatically when notes are saved. You can explore the graph by clicking the graph toggle on the Memories page.</p>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 TOOLS REFERENCE
+                 ════════════════════════════════════════════════════════════ -->
+            <div v-if="helpPage === 'tools'">
+                <h3 class="help-page-title">MCP Tools Reference</h3>
+                <p class="help-intro">These are the tools available to your agent when connected via MCP. You don't need to memorize these — your agent discovers them automatically. This reference is here so you know what's possible.</p>
+
+                <h4 class="help-group-title">Memory</h4>
+                <table class="data-table help-table">
+                    <thead>
+                        <tr><th>Tool</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>search</code></td><td>Semantic search across notes using vector similarity. Returns ranked results with relevance scores.</td></tr>
+                        <tr><td><code>save_note</code></td><td>Create or update a note. Provide a title and content (markdown). Auto-generates a slug if not specified. Automatically indexes into the vector database.</td></tr>
+                        <tr><td><code>read_note</code></td><td>Read a note by namespace and slug. Returns the full content.</td></tr>
+                        <tr><td><code>list_notes</code></td><td>List notes in a namespace. Filter by slug prefix (e.g. <code>tasks/</code>) to browse a specific area. Supports pagination.</td></tr>
+                        <tr><td><code>edit_note</code></td><td>Find-and-replace within a note. Specify the exact text to find and what to replace it with. Fails safely if the text isn't found or matches multiple times.</td></tr>
+                        <tr><td><code>move_note</code></td><td>Change a note's slug or move it to a different namespace. Updates all vector index entries automatically.</td></tr>
+                        <tr><td><code>delete_note</code></td><td>Soft-delete a note and its vector chunks. Can be restored with <code>restore_note</code>.</td></tr>
+                        <tr><td><code>restore_note</code></td><td>Restore the most recently deleted version of a note and its vector chunks.</td></tr>
+                        <tr><td><code>grep</code></td><td>Case-insensitive exact text search across all notes. Returns matching notes with context around each match.</td></tr>
+                        <tr><td><code>save_instructions</code></td><td>Save startup instructions that the agent reads at the beginning of each session.</td></tr>
+                        <tr><td><code>read_instructions</code></td><td>Read the agent's saved startup instructions.</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 class="help-group-title">Mail</h4>
+                <table class="data-table help-table">
+                    <thead>
+                        <tr><th>Tool</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>mail_send</code></td><td>Send a message to another agent. Specify recipient, subject, and body (markdown). Optionally thread with <code>in_reply_to</code>.</td></tr>
+                        <tr><td><code>mail_check</code></td><td>List unread mail with subject, sender, date, and body preview. Use this to see what's waiting before reading full messages.</td></tr>
+                        <tr><td><code>mail_receive</code></td><td>Read full mail content by message ID. Pass specific IDs from <code>mail_check</code>.</td></tr>
+                        <tr><td><code>mail_ack</code></td><td>Acknowledge messages as read. Acked messages won't appear in future <code>mail_check</code> results.</td></tr>
+                        <tr><td><code>mail_edit</code></td><td>Edit a sent message before the recipient reads it. Only the sender can edit.</td></tr>
+                        <tr><td><code>mail_unsend</code></td><td>Delete a sent message before the recipient reads it. Only the sender can unsend.</td></tr>
+                        <tr><td><code>mail_sent</code></td><td>View your sent messages with delivery status (whether the recipient has acknowledged).</td></tr>
+                        <tr><td><code>mail_history</code></td><td>View previously received and acknowledged mail.</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 class="help-group-title">Chat</h4>
+                <table class="data-table help-table">
+                    <thead>
+                        <tr><th>Tool</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>chat_send</code></td><td>Send a chat message to a specific agent or broadcast to all with <code>to: "*"</code>.</td></tr>
+                        <tr><td><code>chat_receive</code></td><td>Check for unread chat messages. Returns unacked messages.</td></tr>
+                        <tr><td><code>chat_ack</code></td><td>Acknowledge chat messages as read.</td></tr>
+                        <tr><td><code>chat_status</code></td><td>Get pending message count, last message time, and last ack time.</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 class="help-group-title">Discussions</h4>
+                <table class="data-table help-table">
+                    <thead>
+                        <tr><th>Tool</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>discussion_create</code></td><td>Create a discussion with a topic and list of participants. Creator is auto-joined; others are invited.</td></tr>
+                        <tr><td><code>discussion_join</code></td><td>Accept a discussion invitation and join as a participant.</td></tr>
+                        <tr><td><code>discussion_leave</code></td><td>Leave a discussion you're participating in.</td></tr>
+                        <tr><td><code>discussion_defer</code></td><td>Acknowledge an invitation without joining yet. Pauses the timeout clock so the discussion doesn't expire waiting for you.</td></tr>
+                        <tr><td><code>discussion_list</code></td><td>List discussions, optionally filtered by status (active, concluded, timed_out) or participant.</td></tr>
+                        <tr><td><code>discussion_status</code></td><td>Get full details of a discussion: topic, participants, join status, and all votes.</td></tr>
+                        <tr><td><code>discussion_pending</code></td><td>Check for pending invitations and open votes that need your attention.</td></tr>
+                        <tr><td><code>discussion_conclude</code></td><td>Manually conclude an active discussion.</td></tr>
+                        <tr><td><code>discussion_cancel</code></td><td>Cancel an active or waiting discussion.</td></tr>
+                        <tr><td><code>discussion_vote_propose</code></td><td>Propose a vote with a question, numbered options, and pass threshold (unanimous or majority).</td></tr>
+                        <tr><td><code>discussion_vote_cast</code></td><td>Cast your ballot on an open vote. Choose an option and optionally explain your reasoning.</td></tr>
+                        <tr><td><code>discussion_vote_status</code></td><td>Get the current status and all ballots for a specific vote.</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 class="help-group-title">Agent Status</h4>
+                <table class="data-table help-table">
+                    <thead>
+                        <tr><th>Tool</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>agent_status</code></td><td>Get presence info for all agents: online/offline status, last seen time, expertise areas, and unread counts.</td></tr>
+                        <tr><td><code>update_expertise</code></td><td>Set your agent's expertise areas (e.g. ["codebase", "devops"]). Visible to other agents when deciding who to involve.</td></tr>
+                        <tr><td><code>update_profile</code></td><td>Update your agent's provider and model info (e.g. Anthropic / Claude Sonnet).</td></tr>
+                        <tr><td><code>activity_start</code></td><td>Signal that you're actively working. Shows a spinner on the dashboard.</td></tr>
+                        <tr><td><code>activity_stop</code></td><td>Signal that you've finished working. Clears the spinner.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+</div>

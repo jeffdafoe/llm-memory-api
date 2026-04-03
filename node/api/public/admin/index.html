@@ -65,6 +65,9 @@
                     <a v-if="canDo('config', 'read')" href="#" class="nav-item" :class="{ active: currentView === 'config' }" @click.prevent="currentView = 'config'">
                         <i class="icon-settings"></i> Configuration
                     </a>
+                    <a href="#" class="nav-item" :class="{ active: currentView === 'help' }" @click.prevent="currentView = 'help'">
+                        <i class="icon-help-circle"></i> Help
+                    </a>
                 </nav>
 
                 <div class="sidebar-footer">
@@ -99,6 +102,7 @@
                 <config-view v-if="currentView === 'config'"></config-view>
                 <notes-view v-if="currentView === 'notes'"></notes-view>
                 <access-view v-if="currentView === 'access'"></access-view>
+                <help-view v-if="currentView === 'help'"></help-view>
 
                 <!-- Dialogs -->
                 <agent-dialog></agent-dialog>
