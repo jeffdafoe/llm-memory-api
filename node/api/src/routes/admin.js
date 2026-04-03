@@ -1687,7 +1687,32 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
              ['none', 'companion', 'technical'].includes(dream_mode) ? dream_mode : 'none']
         );
 
+        // Grant all MCP permissions (full tool access) — non-virtual agents only
+        if (!isVirtual) {
+            await client.query(
+                `INSERT INTO agent_permissions (actor_id, permission_id)
+                 SELECT $1, id FROM permissions`,
+                [actorId]
+            );
+        }
+
+        // Grant the creator visibility to the new agent (so they can see it in the UI).
+        // Skip if the creator already has wildcard visibility (sees everything).
+        const creatorVis = await client.query(
+            'SELECT target_actor_id FROM actor_visibility_configuration WHERE actor_id = $1 AND target_actor_id IS NULL',
+            [req.actorId]
+        );
+        if (creatorVis.rows.length === 0) {
+            await client.query(
+                'INSERT INTO actor_visibility_configuration (actor_id, target_actor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [req.actorId, actorId]
+            );
+        }
+
         await client.query('COMMIT');
+        // Clear visibility cache so the new grant takes effect immediately
+        const { clearCache: clearVisCache } = require('../services/actor-visibility');
+        clearVisCache(req.actorId);
     } catch (txErr) {
         await client.query('ROLLBACK');
         throw txErr;
