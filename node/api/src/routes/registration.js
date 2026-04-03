@@ -155,7 +155,9 @@ router.post('/api/register', async (req, res) => {
              ($1, 'dashboard', 'read'),
              ($1, 'agents', 'read'),
              ($1, 'agents', 'write'),
-             ($1, 'comms', 'read')`,
+             ($1, 'comms', 'read'),
+             ($1, 'notes', 'read'),
+             ($1, 'notes', 'write')`,
             [actorId]
         );
 
