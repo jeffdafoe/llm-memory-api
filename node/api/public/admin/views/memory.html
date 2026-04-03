@@ -58,6 +58,31 @@
         </div>
     </div>
 
+    <!-- Note preview dialog (opens over graph) -->
+    <dialog ref="graphNoteDialog" @click="closeGraphNoteDialog($event)">
+        <article style="width: 90vw; max-width: 900px; max-height: 85vh;">
+            <header>
+                <div>
+                    <h3 v-if="graphNoteData">{{ graphNoteData.title }}</h3>
+                    <div v-if="graphNoteData" class="notes-meta" style="margin-top: 4px;">
+                        <span class="badge badge-accent" style="font-size:10px; padding:1px 6px; margin-right:6px;">{{ graphNoteData.namespace }}</span>
+                        <span class="mono">{{ graphNoteData.slug }}</span>
+                    </div>
+                </div>
+                <button aria-label="Close" @click="closeGraphNoteDialog()"></button>
+            </header>
+            <div class="dialog-body" style="overflow-y: auto; flex: 1; min-height: 0;">
+                <div v-if="graphNoteLoading" class="muted">Loading...</div>
+                <div v-else-if="graphNoteData" class="notes-markdown" v-html="graphNoteRendered"></div>
+            </div>
+            <div class="dialog-actions" v-if="graphNoteData">
+                <button class="btn btn-secondary btn-compact" @click="goToNoteFromGraph()">
+                    <i class="icon-edit-2"></i> Open in Editor
+                </button>
+            </div>
+        </article>
+    </dialog>
+
     <div v-show="!graphMode" class="notes-layout" :class="{ 'notes-fullscreen': notesFullscreen, 'notes-sidebar-collapsed': notesSidebarCollapsed }">
     <div class="notes-sidebar">
         <div class="notes-sidebar-header">
