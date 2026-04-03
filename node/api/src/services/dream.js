@@ -5,7 +5,7 @@
 
 const pool = require('../db');
 const config = require('./config');
-const { log } = require('./logger');
+const { log, logError } = require('./logger');
 const { saveNote, readNote } = require('./documents');
 const { invokeAgent } = require('./virtual-agent');
 
@@ -118,7 +118,7 @@ async function findDreamAgent(expertiseTag) {
         `SELECT ac.id, ac.name, ac.created_by, agc.provider, agc.model, agc.api_key
          FROM actors ac
          JOIN agent_configuration agc ON agc.actor_id = ac.id
-         WHERE $1 = ANY(ac.expertise)`,
+         WHERE ac.expertise::jsonb ? $1`,
         [expertiseTag]
     );
 
@@ -373,6 +373,7 @@ function startDreamScheduler() {
             logDream('cron-complete', { result });
         } catch (err) {
             logDream('cron-error', { error: err.message });
+            logError('dream', 'cron-error', { message: err.message, detail: err.stack });
         }
     });
 
