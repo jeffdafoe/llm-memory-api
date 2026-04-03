@@ -49,7 +49,7 @@ func main() {
 
     // Check for updates before doing anything else
     if !*noUpdate {
-        selfupdate.Check()
+        selfupdate.Check("memory-sync")
     }
 
     // Support deprecated --local-dir as alias for --project-dir

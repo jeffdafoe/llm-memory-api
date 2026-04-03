@@ -46,9 +46,12 @@ type asset struct {
 }
 
 // Check looks for a newer release on GitHub and applies it if found.
+// The binaryName parameter identifies which binary to update (e.g.,
+// "memory-sync" or "discuss") — it must match the GoReleaser archive
+// name prefix and the binary filename inside the archive.
 // Errors are non-fatal — printed to stderr but never returned. The
 // caller should always proceed with normal operation regardless.
-func Check() {
+func Check(binaryName string) {
     if Version == "dev" {
         return
     }
@@ -58,7 +61,7 @@ func Check() {
     // once the old process has exited).
     cleanOld()
 
-    latest, err := fetchLatestRelease()
+    latest, err := fetchLatestRelease(binaryName)
     if err != nil {
         fmt.Fprintf(os.Stderr, "  Update check failed: %s\n", err)
         return
@@ -70,7 +73,7 @@ func Check() {
     }
 
     // Find the right asset for this platform/arch
-    assetName := buildAssetName(latestVersion)
+    assetName := buildAssetName(binaryName, latestVersion)
     var downloadURL string
     for _, a := range latest.Assets {
         if a.Name == assetName {
@@ -83,9 +86,9 @@ func Check() {
         return
     }
 
-    fmt.Fprintf(os.Stderr, "  Updating memory-sync from v%s to v%s...\n", Version, latestVersion)
+    fmt.Fprintf(os.Stderr, "  Updating %s from v%s to v%s...\n", binaryName, Version, latestVersion)
 
-    if err := downloadAndReplace(downloadURL, assetName); err != nil {
+    if err := downloadAndReplace(binaryName, downloadURL, assetName); err != nil {
         fmt.Fprintf(os.Stderr, "  Update failed: %s\n", err)
         return
     }
@@ -94,7 +97,7 @@ func Check() {
 }
 
 // fetchLatestRelease calls the GitHub Releases API.
-func fetchLatestRelease() (*releaseResponse, error) {
+func fetchLatestRelease(binaryName string) (*releaseResponse, error) {
     url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
 
     client := &http.Client{Timeout: 10 * time.Second}
@@ -103,7 +106,7 @@ func fetchLatestRelease() (*releaseResponse, error) {
         return nil, err
     }
     req.Header.Set("Accept", "application/vnd.github+json")
-    req.Header.Set("User-Agent", "memory-sync/"+Version)
+    req.Header.Set("User-Agent", binaryName+"/"+Version)
 
     resp, err := client.Do(req)
     if err != nil {
@@ -124,17 +127,17 @@ func fetchLatestRelease() (*releaseResponse, error) {
 
 // buildAssetName returns the expected archive filename for the current
 // platform, matching the GoReleaser name_template.
-func buildAssetName(version string) string {
+func buildAssetName(binaryName, version string) string {
     ext := "tar.gz"
     if runtime.GOOS == "windows" {
         ext = "zip"
     }
-    return fmt.Sprintf("memory-sync_%s_%s_%s.%s", version, runtime.GOOS, runtime.GOARCH, ext)
+    return fmt.Sprintf("%s_%s_%s_%s.%s", binaryName, version, runtime.GOOS, runtime.GOARCH, ext)
 }
 
 // downloadAndReplace downloads the release archive, extracts the binary,
 // and replaces the currently running executable.
-func downloadAndReplace(url, assetName string) error {
+func downloadAndReplace(binaryName, url, assetName string) error {
     client := &http.Client{Timeout: 60 * time.Second}
     resp, err := client.Get(url)
     if err != nil {
@@ -149,20 +152,20 @@ func downloadAndReplace(url, assetName string) error {
     // Extract binary bytes from the archive
     var binaryData []byte
     if strings.HasSuffix(assetName, ".zip") {
-        binaryData, err = extractFromZip(resp.Body)
+        binaryData, err = extractFromZip(binaryName, resp.Body)
     } else {
-        binaryData, err = extractFromTarGz(resp.Body)
+        binaryData, err = extractFromTarGz(binaryName, resp.Body)
     }
     if err != nil {
         return fmt.Errorf("extract: %w", err)
     }
 
     // Replace the running binary
-    return replaceBinary(binaryData)
+    return replaceBinary(binaryName, binaryData)
 }
 
-// extractFromTarGz extracts the memory-sync binary from a .tar.gz archive.
-func extractFromTarGz(r io.Reader) ([]byte, error) {
+// extractFromTarGz extracts the named binary from a .tar.gz archive.
+func extractFromTarGz(binaryName string, r io.Reader) ([]byte, error) {
     gz, err := gzip.NewReader(r)
     if err != nil {
         return nil, err
@@ -179,17 +182,17 @@ func extractFromTarGz(r io.Reader) ([]byte, error) {
             return nil, err
         }
         name := filepath.Base(header.Name)
-        if name == "memory-sync" || name == "memory-sync.exe" {
+        if name == binaryName || name == binaryName+".exe" {
             return io.ReadAll(tr)
         }
     }
-    return nil, fmt.Errorf("memory-sync binary not found in archive")
+    return nil, fmt.Errorf("%s binary not found in archive", binaryName)
 }
 
-// extractFromZip extracts the memory-sync binary from a .zip archive.
+// extractFromZip extracts the named binary from a .zip archive.
 // Since zip needs random access, we buffer the entire response to a temp file.
-func extractFromZip(r io.Reader) ([]byte, error) {
-    tmp, err := os.CreateTemp("", "memory-sync-update-*.zip")
+func extractFromZip(binaryName string, r io.Reader) ([]byte, error) {
+    tmp, err := os.CreateTemp("", binaryName+"-update-*.zip")
     if err != nil {
         return nil, err
     }
@@ -208,7 +211,7 @@ func extractFromZip(r io.Reader) ([]byte, error) {
 
     for _, f := range zr.File {
         name := filepath.Base(f.Name)
-        if name == "memory-sync" || name == "memory-sync.exe" {
+        if name == binaryName || name == binaryName+".exe" {
             rc, err := f.Open()
             if err != nil {
                 return nil, err
@@ -217,13 +220,13 @@ func extractFromZip(r io.Reader) ([]byte, error) {
             return io.ReadAll(rc)
         }
     }
-    return nil, fmt.Errorf("memory-sync binary not found in archive")
+    return nil, fmt.Errorf("%s binary not found in archive", binaryName)
 }
 
 // replaceBinary swaps the currently running executable with new binary data.
 // On Windows: rename current → .old, write new, clean up .old next run.
 // On Unix: write to temp file in same dir, rename over current (atomic).
-func replaceBinary(newBinary []byte) error {
+func replaceBinary(binaryName string, newBinary []byte) error {
     execPath, err := os.Executable()
     if err != nil {
         return fmt.Errorf("find executable path: %w", err)
@@ -250,7 +253,7 @@ func replaceBinary(newBinary []byte) error {
         // .old will be cleaned up on next run by cleanOld()
     } else {
         // Unix: write to temp file, then atomic rename
-        tmp, err := os.CreateTemp(dir, "memory-sync-new-*")
+        tmp, err := os.CreateTemp(dir, binaryName+"-new-*")
         if err != nil {
             return fmt.Errorf("create temp file: %w", err)
         }

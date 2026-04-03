@@ -23,6 +23,8 @@ builds:
     main: ./cmd/discuss/
     dir: go/client
     binary: discuss
+    ldflags:
+      - -s -w -X github.com/jeffdafoe/llm-memory-api/go/client/internal/selfupdate.Version={{ .Version }}
     env:
       - CGO_ENABLED=0
     goos:
