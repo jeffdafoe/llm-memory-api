@@ -12,48 +12,102 @@ slug: instructions/getting-started
 
 # Getting Started
 
-Welcome, {agent}. This note lives in your namespace and is always available via `read_note`. Use it as a reference until you''ve built your own habits.
+This note is a quick reference for working with your LLM Memory agent. Your agent can read it anytime, and so can you from the dashboard.
 
-## Session lifecycle
+## Your credentials
 
-**Start each session:**
-- `read_instructions` — reload your behavioral rules (if dream processing is enabled, your soul document is automatically included)
-- `activity_start` — show you''re online
-- `mail_check` + `chat_receive` — check for messages
-- `discussion_pending` — check for discussion invitations
-- Read `notes/active-work` — pick up where you left off
+Keep these safe. You''ll need them to connect from different tools.
 
-**During sessions:**
-- When something noteworthy comes up — a decision, a preference, a useful fact — save it to your notes right away. Don''t wait until the end. Notes are your long-term memory; conversation context is temporary.
-- Use `save_note` to create or replace notes, `edit_note` for targeted changes within a note.
-- Use `search` (semantic) and `grep` (exact text) to find things across your notes.
+- **Agent name:** {agent}
+- **Passphrase:** {passphrase}
+- **API Key:** {api_key}
 
-**End each session:**
-- Update `notes/active-work` with your current state — what you worked on, what''s pending, anything the next session needs to know
-- `activity_stop` — signal you''re done
+The **passphrase** is used by CLI tools (Claude Code, Cursor, Windsurf) for file sync and agent authentication. The **API key** is used by web-based tools (claude.ai) for MCP integration.
 
-## What to save
+## Connecting your agent
 
-- **Who your user is** — name, communication style, preferences, boundaries
-- **What matters to them** — interests, goals, ongoing projects, important dates
-- **Decisions and context** — why something was done a certain way, not just what was done
-- **Project details** — architecture, key files, environment setup, patterns
-- **Anything you''d need if you lost all conversation history** — because you will
+### Claude Code / Cursor / Windsurf (CLI tools)
 
-## Surviving context loss
+1. Create a file called `.agent.json` in your project root:
 
-Your conversation has a finite context window. When it fills up, earlier messages get compressed or lost.
+```json
+{
+    "agent": "{agent}",
+    "passphrase": "{passphrase}",
+    "api_url": "https://llm-memory.net/v1"
+}
+```
 
-- **Save early, save often** — if you''ll need it later, it belongs in a note
-- **Keep `notes/active-work` current** — this is your resume point after compression or a new session
-- **Trust your notes over your memory** — after compression, your summarized recall may be wrong; the notes have ground truth
-- **Re-read your instructions** after compression — they''re your behavioral anchor
+2. Add llm-memory as an MCP server in your tool''s configuration. For Claude Code, add to `.mcp.json`:
 
-## Key notes to maintain
+```json
+{
+    "mcpServers": {
+        "llm-memory": {
+            "type": "http",
+            "url": "https://llm-memory.net/mcp",
+            "headers": {
+                "Authorization": "Bearer {api_key}"
+            }
+        }
+    }
+}
+```
 
-- `notes/active-work` — current state, updated every session
-- `notes/user-profile` — who your user is and how they work
-- `instructions/getting-started` — this note (you can update it as you learn)
+3. Tell your agent: **"read your instructions"**
 
-Once you''re comfortable, update your startup instructions (`save_instructions`) with behavioral rules specific to your user. Those instructions are the first thing you read each session — make them count.'
+### claude.ai (web)
+
+1. Go to Settings > Integrations
+2. Add LLM Memory as an integration using your API key: `{api_key}`
+3. Start a new conversation and say: **"read your instructions using the llm-memory tools"**
+
+## Day-to-day usage
+
+### Starting a session
+
+Say **"check your instructions"** or **"read your instructions"** at the beginning of each conversation. This loads your agent''s memory and catches it up on where you left off.
+
+### Teaching your agent
+
+Your agent remembers what you tell it to remember. Be direct:
+
+- "Remember that I prefer dark mode in all my projects"
+- "Note that the deploy process changed — we use GitHub Actions now"
+- "Keep in mind that I''m on PTO next week"
+
+You don''t need special commands. Just tell it naturally and it will save the information to its notes.
+
+### During sessions
+
+When something noteworthy comes up — a decision, a preference, a correction — tell your agent to save it. Don''t wait until the end. If the conversation gets long, earlier details can be lost from context, but saved notes persist forever.
+
+If your agent does something you don''t like, say so. "Don''t do that" or "I prefer it this way" — it will learn and remember the feedback.
+
+### Ending a session
+
+Say **"update your notes"** before you wrap up. This tells your agent to save its current state so the next session picks up where you left off.
+
+## Dream processing
+
+If you enabled dream processing during signup, your agent reviews each day''s conversations overnight and consolidates what it learned into memory. Over time this builds a picture of how you work together — your preferences, patterns, and communication style.
+
+**Note:** Dream processing requires conversation logs, which are uploaded by the memory-sync tool. This works with tools that have file system access — Claude Code, Claude Desktop, Cursor, Windsurf, and similar. If you''re using claude.ai (website) or the Claude mobile app, there''s no way to capture conversations, so dream processing won''t have anything to work with.
+
+You can change your dream mode anytime in the dashboard under your agent''s settings.
+
+## The dashboard
+
+Visit **llm-memory.net** and log in with your agent name and password to:
+
+- **Memories** — browse and edit your agent''s notes
+- **Communications** — see mail and chat messages
+- **Agents** — manage settings, provider, and dream mode
+
+## Tips
+
+- **Be explicit about preferences early.** The more your agent knows about how you work, the better it gets.
+- **Correct mistakes in the moment.** Your agent learns from corrections and remembers them.
+- **Check the dashboard occasionally.** See what your agent has saved — you might be surprised, or notice something that needs correcting.
+- **Start each session the same way.** "Check your instructions" is the simplest habit that makes everything else work.'
 );
