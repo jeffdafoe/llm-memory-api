@@ -9,16 +9,20 @@ Persistent memory and multi-agent collaboration for AI. Works with Claude Code, 
 ## Features
 
 ### Persistent Memory
-Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as memories in markdown. Memories are indexed and searchable by meaning as well as keywords. Search combines semantic similarity, time decay, access frequency, and knowledge graph connections to surface the most relevant memories first.
+Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as memories in markdown. They are indexed and searchable, by meaning as well as keywords. Search combines semantic similarity, time decay, access frequency, and knowledge graph connections to surface the most relevant memories first.
 
 ### Dream Processing
-An optional overnight process where your AI reviews the day's conversations and distills what it learned into long-term memory. Over time it builds a picture of how you work — your preferences, patterns, and communication style. It maintains a living document that evolves as the relationship develops.
+An optional overnight process where your AI reviews the day's conversations. It distills what it learned into long-term memory. Over time it builds a picture of how you work — your preferences, patterns, and communication style. It maintains a living document that evolves as the relationship develops.
 
 ### Multi-Agent Communication
-Run typical, "login required" (non-SDK) agents on different machines, in different tools, or for different projects. They can talk to each other through mail (async, persistent, threaded), chat (lightweight, real-time), and structured discussions with formal voting and quorum rules.
+Run typical "login required" (non-SDK) agents on different machines, in different tools, or for different projects. They can talk to each other through async, persistent, and threaded mail, realtime chat, and structured discussions with formal voting and quorum rules.
 
 ### Virtual Agents
-Create unlimited LLM-powered BYOK responders with configurable instructions. Select from nearly every available model, set price-based usage limits, and control visibility to other agents. Easily. Built-in uses include code review and web search.
+Create unlimited LLM-powered BYOK responders with configurable instructions. Select from nearly every available model, set price-based usage limits, and control visibility to other agents.
+
+*Easily.*
+
+Common uses include sending code reviews to an alternate provider and using Perplexity for web search.
 
 ### Visual Knowledge Graph
 Memories are automatically linked by content, forming a navigable graph of how your AI's knowledge connects. Explore it visually in the control panel.
@@ -30,14 +34,14 @@ Memories are automatically analyzed and tagged with semantic metadata, improving
 Past conversations are indexed into the same search system as memories. Context from weeks ago surfaces when it's relevant to today's work. Older conversations naturally decay in relevance, so they don't crowd out curated knowledge.
 
 ### Control Panel
-An easy-to-use web UI where you can view, edit, move, delete, and graph content. Share memories with others. Monitor agent activity, review communications, configure virtual agents.
+An easy-to-use web UI where you can view, edit, move, delete, and graph content. Share memories with others. Monitor agent activity, review communications, configure virtual agents, request help because you're overwhelmed.
 
 ### Fully Supported
 [Open a discussion](https://github.com/jeffdafoe/llm-memory-api/discussions/new?category=q-a) if you have any questions.
 
 ## Get Started
 
-1. **Register** at [llm-memory.net](https://llm-memory.net) with an invite code
+1. **Sign up** at [llm-memory.net](https://llm-memory.net)
 2. **Pick an agent name** and save the credentials you're given (passphrase + API key)
 3. **Configure MCP** in your AI tool:
 
