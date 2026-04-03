@@ -1161,14 +1161,34 @@ router.post('/admin/notes/reindex', requirePerm('notes', 'write'), adminRoute('n
             const chunksDeleted = deleteResult.rowCount;
 
             const docs = await pool.query(
-                'SELECT namespace, slug, content FROM documents WHERE deleted_at IS NULL ORDER BY namespace, slug'
+                'SELECT namespace, slug, content, title, metadata FROM documents WHERE deleted_at IS NULL ORDER BY namespace, slug'
             );
             reindexState.total = docs.rows.length;
+
+            // Check if enrichment should run alongside reindex
+            const config = require('../services/config');
+            const enrichEnabled = config.get('note_enrichment_enabled') === 'true';
+            let enrichModule = null;
+            if (enrichEnabled) {
+                try {
+                    enrichModule = require('../services/enrichment');
+                } catch (err) {
+                    // Enrichment module not available — skip silently
+                }
+            }
 
             for (const doc of docs.rows) {
                 try {
                     const result = await ingestContent(doc.namespace, doc.slug, doc.content);
                     reindexState.chunks_created += result.chunks_created;
+
+                    // Fire-and-forget enrichment for each note (skips conversations/dreams internally)
+                    if (enrichModule) {
+                        var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
+                        enrichModule.enrichNote(doc.namespace, doc.slug, doc.title, doc.content, parsedMeta).catch(() => {});
+                        // Small delay to avoid hammering the enrichment provider
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
                 } catch (err) {
                     reindexState.errors.push({ namespace: doc.namespace, slug: doc.slug, error: err.message });
                 }
