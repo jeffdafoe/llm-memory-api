@@ -375,10 +375,10 @@ function buildProviderConf(agent) {
         conf.cache_prompts = agent.cache_prompts || false;
     }
     if (conf.max_tokens === undefined && agent.max_tokens != null) {
-        conf.max_tokens = agent.max_tokens;
+        conf.max_tokens = Number(agent.max_tokens);
     }
     if (conf.temperature === undefined && agent.temperature != null) {
-        conf.temperature = agent.temperature;
+        conf.temperature = Number(agent.temperature);
     }
     return conf;
 }
