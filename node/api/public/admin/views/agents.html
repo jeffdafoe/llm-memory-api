@@ -8,7 +8,7 @@
         <table class="fixed-table">
                 <colgroup>
                     <col style="width: 30px;">
-                    <col style="width: 10em;">
+                    <col style="width: 16em;">
                     <col style="width: 10em;">
                     <col>
                     <col style="width: 9em;">
@@ -32,7 +32,7 @@
                             <span v-if="agent.active_since" class="live-pulse-dot" style="width:6px; height:6px;" title="Active"></span>
                             <span v-else :class="'status-dot status-dot-' + agent.status" :title="agent.status"></span>
                         </td>
-                        <td class="nowrap" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">
+                        <td class="nowrap truncate" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">
                             {{ agent.agent }}
                             <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
                             <i v-if="agent.dream_mode === 'companion'" class="icon-heart virtual-icon" style="color: #7c3aed;" title="Dream: companion"></i>

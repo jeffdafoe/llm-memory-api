@@ -3,7 +3,7 @@
         <h2>Configuration</h2>
     </div>
     <div class="sub-tabs" style="padding: 0 24px;">
-        <a v-if="canDo('actors', 'read')" href="#" :class="{ active: configSubTab === 'actors' }" @click.prevent="configSubTab = 'actors'">Actors</a>
+        <a v-if="canDo('agents', 'read')" href="#" :class="{ active: configSubTab === 'actors' }" @click.prevent="configSubTab = 'actors'">Actors</a>
         <a v-if="canDo('config', 'read')" href="#" :class="{ active: configSubTab === 'system' }" @click.prevent="configSubTab = 'system'">System</a>
         <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'apilog' }" @click.prevent="configSubTab = 'apilog'">API Log</a>
         <a v-if="canDo('logs', 'read')" href="#" :class="{ active: configSubTab === 'errorlog' }" @click.prevent="configSubTab = 'errorlog'">Error Log</a>
@@ -15,7 +15,7 @@
     <!-- Actors sub-tab -->
     <div v-if="configSubTab === 'actors'">
         <div style="margin-bottom: 0.75rem;">
-            <button v-if="canDo('actors', 'write')" class="inline-button" @click="startCreateActor"><i class="icon-plus"></i> Add Actor</button>
+            <button v-if="canDo('agents', 'write')" class="inline-button" @click="startCreateActor"><i class="icon-plus"></i> Add Actor</button>
         </div>
         <div class="table-wrap">
             <table class="fixed-table">
@@ -257,6 +257,7 @@
                 <label>Kind</label>
                 <select v-model="templateEditKind">
                     <option value="welcome">welcome</option>
+                    <option value="welcome-note">welcome-note</option>
                 </select>
             </div>
             <div class="template-compose-row">

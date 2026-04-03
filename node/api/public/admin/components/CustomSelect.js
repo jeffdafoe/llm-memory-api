@@ -4,6 +4,10 @@
 //
 // Options format: array of { value, label } objects, or simple strings.
 // Supports keyboard navigation (arrows, Enter, Escape, type-to-filter).
+//
+// allowCustom prop: when true, the user can type an arbitrary value that isn't
+// in the options list. A "Use ..." option appears at the top of the dropdown.
+// Useful for providers like OpenRouter where the model list is open-ended.
 
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 
@@ -16,11 +20,17 @@ const template = `
         <i class="icon-chevron-down custom-select__chevron"></i>
     </button>
     <div v-if="open" class="custom-select__dropdown" ref="dropdown">
-        <div v-if="filterable" class="custom-select__search">
+        <div v-if="filterable || allowCustom" class="custom-select__search">
             <input ref="searchInput" type="text" v-model="search" @keydown="onSearchKeydown"
-                placeholder="Filter..." class="custom-select__search-input">
+                :placeholder="allowCustom ? 'Filter or type model ID...' : 'Filter...'" class="custom-select__search-input">
         </div>
         <div class="custom-select__options" ref="optionsList">
+            <div v-if="allowCustom && search && !exactMatch" class="custom-select__option custom-select__option--custom"
+                :class="{ 'custom-select__option--focused': focusedIndex === -2 }"
+                @click="select(search)"
+                @mouseenter="focusedIndex = -2">
+                Use "{{ search }}"
+            </div>
             <div v-for="(opt, idx) in filteredOptions" :key="opt.value"
                 class="custom-select__option"
                 :class="{
@@ -33,7 +43,7 @@ const template = `
                 {{ opt.label }}
                 <i v-if="opt.value === modelValue" class="icon-check custom-select__check"></i>
             </div>
-            <div v-if="filteredOptions.length === 0" class="custom-select__empty">
+            <div v-if="filteredOptions.length === 0 && !(allowCustom && search)" class="custom-select__empty">
                 No matches
             </div>
         </div>
@@ -50,7 +60,9 @@ export default {
         placeholder: { type: String, default: 'Select...' },
         disabled: { type: Boolean, default: false },
         // Show search/filter input when there are this many or more options
-        filterThreshold: { type: Number, default: 8 }
+        filterThreshold: { type: Number, default: 8 },
+        // Allow typing arbitrary values not in the options list
+        allowCustom: { type: Boolean, default: false }
     },
     emits: ['update:modelValue'],
     setup(props, { emit }) {
@@ -83,19 +95,33 @@ export default {
             if (!search.value) return normalizedOptions.value;
             const q = search.value.toLowerCase();
             return normalizedOptions.value.filter(opt =>
-                opt.label.toLowerCase().includes(q)
+                opt.label.toLowerCase().includes(q) || opt.value.toLowerCase().includes(q)
             );
         });
 
-        // Whether a value is currently selected
+        // Whether the search text exactly matches an existing option value
+        const exactMatch = computed(() => {
+            if (!search.value) return false;
+            const q = search.value.toLowerCase();
+            return normalizedOptions.value.some(opt => opt.value.toLowerCase() === q);
+        });
+
+        // Whether a value is currently selected (in options list OR custom)
         const hasSelection = computed(() => {
-            return normalizedOptions.value.some(opt => opt.value === props.modelValue);
+            if (!props.modelValue) return false;
+            if (normalizedOptions.value.some(opt => opt.value === props.modelValue)) return true;
+            // For allowCustom, any non-empty value counts as selected
+            if (props.allowCustom) return true;
+            return false;
         });
 
         // Display text for the trigger button
         const displayLabel = computed(() => {
             const found = normalizedOptions.value.find(opt => opt.value === props.modelValue);
-            return found ? found.label : props.placeholder;
+            if (found) return found.label;
+            // For custom values, show the raw value
+            if (props.allowCustom && props.modelValue) return props.modelValue;
+            return props.placeholder;
         });
 
         function toggle() {
@@ -114,7 +140,7 @@ export default {
             const selectedIdx = filteredOptions.value.findIndex(opt => opt.value === props.modelValue);
             focusedIndex.value = selectedIdx >= 0 ? selectedIdx : 0;
             nextTick(() => {
-                if (filterable.value && searchInput.value) {
+                if ((filterable.value || props.allowCustom) && searchInput.value) {
                     searchInput.value.focus();
                 }
                 scrollToFocused();
@@ -199,8 +225,14 @@ export default {
                 moveFocus(-1);
             } else if (e.key === 'Enter') {
                 e.preventDefault();
-                if (focusedIndex.value >= 0 && focusedIndex.value < filteredOptions.value.length) {
+                // If the custom "Use ..." option is focused, select the raw search text
+                if (props.allowCustom && focusedIndex.value === -2 && search.value) {
+                    select(search.value);
+                } else if (focusedIndex.value >= 0 && focusedIndex.value < filteredOptions.value.length) {
                     select(filteredOptions.value[focusedIndex.value].value);
+                } else if (props.allowCustom && search.value && !exactMatch.value) {
+                    // No focused item but custom is allowed — use the search text
+                    select(search.value);
                 }
             } else if (e.key === 'Escape') {
                 close();
@@ -229,7 +261,7 @@ export default {
 
         return {
             open, search, focusedIndex, focusedEl, root, dropdown, searchInput, optionsList,
-            normalizedOptions, filterable, filteredOptions, hasSelection, displayLabel,
+            normalizedOptions, filterable, filteredOptions, exactMatch, hasSelection, displayLabel,
             toggle, close, select, onTriggerKeydown, onSearchKeydown
         };
     }

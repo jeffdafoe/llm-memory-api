@@ -2,7 +2,7 @@
 import 'lucide-static/font/lucide.css';
 import './style.css';
 
-import { createApp, ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
+import { createApp, ref, computed, watch, nextTick, onMounted, onUnmounted, provide } from 'vue';
 import { useCore } from './core.js';
 import { createEventsModule } from './events.js';
 import { useAgents } from './agents.js';
@@ -10,6 +10,9 @@ import { useDiscussions } from './discussions.js';
 import { useChat } from './chat.js';
 import { useMail } from './mail.js';
 import { useNotes } from './notes.js';
+import { useGraph } from './graph.js';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { useApiLog } from './apilog.js';
 import { useErrorLog } from './errorlog.js';
 import { useConfig } from './config.js';
@@ -140,6 +143,7 @@ createApp({
         const chatModule = useChat({ ...deps, dashboard: dashboardModule.dashboard });
         const mailModule = useMail({ ...deps, dashboard: dashboardModule.dashboard });
         const notesModule = useNotes(deps);
+        const graphModule = useGraph(deps);
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
@@ -354,6 +358,42 @@ createApp({
             });
         }
 
+        // Graph note preview dialog — opens note content over the graph
+        const graphNoteDialog = ref(null);
+        const graphNoteData = ref(null);
+        const graphNoteRendered = ref('');
+        const graphNoteLoading = ref(false);
+
+        async function openNoteFromGraph(node) {
+            graphNoteLoading.value = true;
+            graphNoteData.value = { namespace: node.namespace, slug: node.slug, title: node.slug };
+            graphNoteRendered.value = '';
+            graphNoteDialog.value.showModal();
+            try {
+                var data = await core.api('/admin/notes/read', { namespace: node.namespace, slug: node.slug });
+                graphNoteData.value = { ...data.note, namespace: node.namespace };
+                graphNoteRendered.value = DOMPurify.sanitize(marked.parse(data.note.content || ''));
+            } catch (err) {
+                graphNoteRendered.value = '<p class="muted">Failed to load note: ' + DOMPurify.sanitize(err.message) + '</p>';
+            } finally {
+                graphNoteLoading.value = false;
+            }
+        }
+
+        function closeGraphNoteDialog(event) {
+            // Close on backdrop click (click on dialog element itself, not article)
+            if (event && event.target !== graphNoteDialog.value) return;
+            graphNoteDialog.value.close();
+        }
+
+        function goToNoteFromGraph() {
+            var note = graphNoteData.value;
+            graphNoteDialog.value.close();
+            graphModule.graphMode.value = false;
+            graphModule.destroyGraph();
+            nextTick(function() { notesModule.openNote(note.namespace, note.slug); });
+        }
+
         // Flatten everything into the template namespace
         const appState = {
             currentView,
@@ -377,6 +417,25 @@ createApp({
             ...mailModule,
             // Notes
             ...notesModule,
+            // Graph
+            ...graphModule,
+            // Graph bridge functions (need access to both graph + notes modules)
+            toggleGraphMode() {
+                graphModule.graphMode.value = !graphModule.graphMode.value;
+                if (graphModule.graphMode.value) {
+                    graphModule.loadGraphData().then(() => {
+                        nextTick(() => graphModule.renderGraph('graph-container'));
+                    });
+                } else {
+                    graphModule.destroyGraph();
+                }
+            },
+            onGraphFilterChange() {
+                graphModule.renderGraph('graph-container');
+            },
+            // Graph note preview dialog
+            graphNoteDialog, graphNoteData, graphNoteRendered, graphNoteLoading,
+            openNoteFromGraph, closeGraphNoteDialog, goToNoteFromGraph,
             // API Log
             ...apiLogModule,
             // Error Log

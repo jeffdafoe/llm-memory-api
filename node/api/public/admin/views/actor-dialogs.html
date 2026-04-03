@@ -24,7 +24,7 @@
                 </div>
             </div>
             <div style="display:flex; gap:4px;">
-                <button v-if="actorDialogMode === 'edit' && canDo('actors', 'write')" class="btn btn-ghost btn-compact btn-danger" @click="deleteActor" :disabled="actorDeleting" title="Delete Actor"><i class="icon-trash-2"></i></button>
+                <button v-if="actorDialogMode === 'edit' && canDo('agents', 'write') && selectedActorConfig.name !== user.username" class="btn btn-ghost btn-compact btn-danger" @click="deleteActor" :disabled="actorDeleting" title="Delete Actor"><i class="icon-trash-2"></i></button>
                 <button aria-label="Close" rel="prev" @click="closeActorConfig()"></button>
             </div>
         </header>
@@ -70,6 +70,7 @@
                         <label>Model
                             <custom-select v-model="editAgentModel"
                                 :options="[{ value: '', label: 'None' }].concat(modelsForProvider(editAgentProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                                :allow-custom="editAgentProvider === 'openrouter'"
                                 placeholder="None" />
                         </label>
                     </div>
@@ -88,6 +89,10 @@
                     <template v-if="newActorVirtual || createSource === 'agents'">
                         <label>API Key
                             <input type="password" v-model="editAgentApiKey" placeholder="Provider API key (encrypted at rest)">
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" v-model="editAgentLearningEnabled"> Learning enabled
                         </label>
 
                         <!-- Model-specific configuration -->
@@ -362,6 +367,19 @@
                     <label>Template
                         <custom-select v-model="newActorTemplateId"
                             :options="[{ value: null, label: 'None' }].concat(welcomeTemplates.filter(t => t.kind === 'welcome').map(t => ({ value: t.id, label: t.name })))"
+                            placeholder="None" />
+                    </label>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div>
+                            <span class="agent-card-title"><i class="icon-file-text"></i>Getting Started Note</span>
+                            <div class="agent-card-description">Saved to the agent's namespace as a note</div>
+                        </div>
+                    </div>
+                    <label>Template
+                        <custom-select v-model="newActorNoteTemplateId"
+                            :options="[{ value: null, label: 'None' }].concat(welcomeTemplates.filter(t => t.kind === 'welcome-note').map(t => ({ value: t.id, label: t.name })))"
                             placeholder="None" />
                     </label>
                 </div>

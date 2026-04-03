@@ -7,6 +7,62 @@ const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 const config = require('./config');
+const { deleteRelationsForNote, updateRelationsForMove, autoExtractRelations } = require('./relations');
+
+// Update namespace_usage counters. Fire-and-forget — usage tracking
+// should never block or fail a document operation.
+function updateUsage(namespace, countDelta, bytesDelta) {
+    pool.query(`
+        INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (namespace) DO UPDATE SET
+            note_count = GREATEST(0, namespace_usage.note_count + $2),
+            total_bytes = GREATEST(0, namespace_usage.total_bytes + $3),
+            updated_at = NOW()
+    `, [namespace, countDelta, bytesDelta]).catch(() => {});
+}
+
+// Check if adding `additionalBytes` to this namespace would exceed the storage quota.
+// Returns null if within quota, or an error message string if over.
+async function checkQuota(namespace, additionalBytes) {
+    // Get current usage
+    const usageResult = await pool.query(
+        'SELECT total_bytes FROM namespace_usage WHERE namespace = $1',
+        [namespace]
+    );
+    const currentBytes = usageResult.rows.length > 0 ? parseInt(usageResult.rows[0].total_bytes) : 0;
+
+    // Resolve quota: per-agent override > global default
+    const agentResult = await pool.query(
+        `SELECT agc.storage_quota
+         FROM agent_configuration agc
+         JOIN actors ac ON ac.id = agc.actor_id
+         WHERE ac.name = $1`,
+        [namespace]
+    );
+
+    let quota = null;
+    if (agentResult.rows.length > 0 && agentResult.rows[0].storage_quota != null) {
+        quota = parseInt(agentResult.rows[0].storage_quota);
+    } else {
+        try {
+            quota = parseInt(config.get('default_storage_quota'));
+        } catch (e) {
+            // Config key doesn't exist — no quota enforcement
+            return null;
+        }
+    }
+
+    if (!quota || quota <= 0) return null; // No quota or unlimited
+
+    const projected = currentBytes + additionalBytes;
+    if (projected > quota) {
+        const usedMB = (currentBytes / (1024 * 1024)).toFixed(1);
+        const quotaMB = (quota / (1024 * 1024)).toFixed(1);
+        return 'Storage quota exceeded (' + usedMB + ' MB / ' + quotaMB + ' MB limit)';
+    }
+    return null;
+}
 
 // Validate a slug to prevent malformed entries that break the tree UI.
 // Throws 400 if invalid. Prefixes (for move-prefix) end with '/' and are validated
@@ -54,6 +110,7 @@ function slugToKind(slug) {
     if (slug.startsWith('instructions/')) return 'instruction';
     if (slug.startsWith('notes/codebase/')) return 'reference';
     if (slug.startsWith('conversations/')) return 'conversation';
+    if (slug.startsWith('context/')) return 'context';
     if (slug.startsWith('dreams/')) return 'dream';
     if (slug.startsWith('tasks/done/')) return 'task';
     if (slug.startsWith('tasks/')) return 'task';
@@ -105,9 +162,20 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     // Check if an active note already exists at this slug
     // Case-insensitive lookup — slugs are preserved as-is, only matching is lowered
     const existing = await pool.query(
-        'SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
+        'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [namespace, resolvedSlug]
     );
+
+    // Check storage quota before writing
+    const additionalBytes = existing.rows.length > 0
+        ? content.length - (existing.rows[0].content_length || 0) // update: delta only
+        : content.length; // insert: full size
+    if (additionalBytes > 0) {
+        const quotaError = await checkQuota(namespace, additionalBytes);
+        if (quotaError) {
+            throw Object.assign(new Error(quotaError), { statusCode: 413 });
+        }
+    }
 
     // Resolve createdBy name to actor_id (only needed for inserts)
     let createdByActorId = null;
@@ -178,6 +246,17 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
 
     const doc = result.rows[0];
 
+    // Update namespace usage counters
+    const newBytes = content.length;
+    if (existing.rows.length > 0) {
+        // Update — bytes delta only
+        const oldBytes = existing.rows[0].content_length || 0;
+        updateUsage(namespace, 0, newBytes - oldBytes);
+    } else {
+        // Insert — +1 note, +bytes
+        updateUsage(namespace, 1, newBytes);
+    }
+
     // Resolve created_by_actor_id to name for API response
     if (doc.created_by_actor_id) {
         const { resolveById } = require('./actors');
@@ -194,8 +273,20 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         }).catch(() => {});
     });
 
+    // Auto-extract slug references and create relation graph edges (fire-and-forget)
+    autoExtractRelations(namespace, resolvedSlug, content).catch(() => {});
+
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug: resolvedSlug, operation: 'saved' });
+
+    // LLM-powered enrichment — generates keywords, tags, and suggested relations (fire-and-forget)
+    const { enrichNote } = require('./enrichment');
+    var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
+    enrichNote(namespace, resolvedSlug, title, content, parsedMeta).catch(err => {
+        handleError(null, 'documents', 'NOTE_ENRICHMENT_FAILED', {
+            namespace, slug: resolvedSlug, error: err.message
+        }).catch(() => {});
+    });
 
     return doc;
 }
@@ -277,31 +368,46 @@ async function deleteNote(namespace, slug) {
         UPDATE documents
         SET deleted_at = NOW()
         WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL
-        RETURNING id
+        RETURNING id, LENGTH(content) AS content_length
     `, [namespace, slug]);
 
     if (result.rows.length === 0) {
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
 
+    updateUsage(namespace, -1, -(result.rows[0].content_length || 0));
+    deleteRelationsForNote(namespace, slug).catch(() => {});
     broadcast('note_updated', { namespace, slug, operation: 'deleted' });
 
     return { deleted: true, slug };
 }
 
 async function restoreNote(namespace, slug) {
+    // Check the note exists and get its size before restoring
+    const check = await pool.query(
+        'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NOT NULL',
+        [namespace, slug]
+    );
+    if (check.rows.length === 0) {
+        throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
+    }
+
+    // Check storage quota before restoring
+    const restoreBytes = check.rows[0].content_length || 0;
+    const quotaError = await checkQuota(namespace, restoreBytes);
+    if (quotaError) {
+        throw Object.assign(new Error(quotaError), { statusCode: 413 });
+    }
+
     // Clear the deleted_at flag to restore the note and its vector chunks
     const result = await pool.query(`
         UPDATE documents d
         SET deleted_at = NULL
-        WHERE d.namespace = $1 AND LOWER(d.slug) = LOWER($2) AND d.deleted_at IS NOT NULL
+        WHERE d.id = $1
         RETURNING d.id, d.namespace, d.slug, d.title
-    `, [namespace, slug]);
+    `, [check.rows[0].id]);
 
-    if (result.rows.length === 0) {
-        throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
-    }
-
+    updateUsage(namespace, 1, restoreBytes);
     broadcast('note_updated', { namespace, slug, operation: 'restored' });
 
     return result.rows[0];
@@ -356,6 +462,15 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
         );
     }
 
+    // Check storage quota if edit increases size
+    const editDelta = updatedContent.length - content.length;
+    if (editDelta > 0) {
+        const quotaError = await checkQuota(namespace, editDelta);
+        if (quotaError) {
+            throw Object.assign(new Error(quotaError), { statusCode: 413 });
+        }
+    }
+
     // Save the updated content
     const result = await pool.query(`
         UPDATE documents d
@@ -363,6 +478,9 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
         WHERE d.namespace = $2 AND LOWER(d.slug) = LOWER($3)
         RETURNING d.id, d.namespace, d.slug, d.title, d.created_by_actor_id, d.created_at, d.updated_at
     `, [updatedContent, namespace, slug]);
+
+    // Update usage — bytes delta only (note count unchanged)
+    updateUsage(namespace, 0, updatedContent.length - content.length);
 
     // Resolve created_by_actor_id to name
     if (result.rows[0] && result.rows[0].created_by_actor_id) {
@@ -379,6 +497,9 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
             namespace, slug, error: err.message
         }).catch(() => {});
     });
+
+    // Re-extract slug references after edit (fire-and-forget)
+    autoExtractRelations(namespace, slug, updatedContent).catch(() => {});
 
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug, operation: 'edited' });
@@ -482,7 +603,7 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
 
     // Verify source exists and isn't deleted
     const source = await pool.query(
-        'SELECT id, title FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
+        'SELECT id, title, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
         [namespace, slug]
     );
     if (source.rows.length === 0) {
@@ -516,7 +637,17 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         [newSlug, targetNamespace, namespace, slug]
     );
 
+    // Update relation graph edges to follow the move
+    updateRelationsForMove(namespace, slug, targetNamespace, newSlug).catch(() => {});
+
     const doc = result.rows[0];
+
+    // Update usage if namespace changed — move bytes from old to new
+    if (targetNamespace !== namespace) {
+        const bytes = source.rows[0].content_length || 0;
+        updateUsage(namespace, -1, -bytes);
+        updateUsage(targetNamespace, 1, bytes);
+    }
 
     // Resolve created_by_actor_id to name for API response
     if (doc.created_by_actor_id) {

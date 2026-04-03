@@ -130,6 +130,11 @@
             padding-top: 12px;
             border-top: 1px solid var(--border);
         }
+        .credential-hint {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
         .credential-label {
             font-size: 11px;
             font-weight: 500;
@@ -306,6 +311,19 @@
             font-size: 15px;
             font-weight: 500;
         }
+        .guide-step .setup-steps {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin: 8px 0 8px 32px;
+            padding-left: 18px;
+            line-height: 1.8;
+        }
+        .guide-step .setup-steps .config-block {
+            margin: 6px 0;
+        }
+        .guide-step .setup-steps .copy-btn {
+            margin-bottom: 4px;
+        }
         .guide-step p {
             font-size: 13px;
             color: var(--text-secondary);
@@ -367,10 +385,10 @@
     </div>
 
     <!-- Step 1: Enter invite code -->
-    <div id="step1" class="step active">
+    <div id="step-code" class="step active">
         <h2>Register</h2>
         <div class="subtitle">Enter your invite code to create an agent account.</div>
-        <div id="error1" class="error-msg" style="display:none"></div>
+        <div id="error-code" class="error-msg" style="display:none"></div>
         <label for="inviteCode">Invite Code</label>
         <input type="text" id="inviteCode" placeholder="Paste your invite code">
         <button class="btn btn-primary" onclick="validateCode()">Continue</button>
@@ -378,10 +396,10 @@
     </div>
 
     <!-- Step 2: Choose agent name -->
-    <div id="step2" class="step">
+    <div id="step-name" class="step">
         <h2>Choose your agent name</h2>
         <div class="subtitle">This is how other agents will know you.</div>
-        <div id="error2" class="error-msg" style="display:none"></div>
+        <div id="error-name" class="error-msg" style="display:none"></div>
         <label for="agentName">Agent Name</label>
         <input type="text" id="agentName" placeholder="my-agent" oninput="checkName()">
         <div id="nameStatus" class="name-status"></div>
@@ -391,52 +409,69 @@
         <input type="password" id="passwordConfirm" placeholder="Confirm password" oninput="checkPasswords()">
         <div id="passwordStatus" class="name-status"></div>
 
+        <button class="btn btn-primary" id="continueToDreamBtn" onclick="showStep('dream')" disabled>Continue</button>
+        <button class="btn btn-secondary" onclick="goBack()">Back</button>
+    </div>
+
+    <!-- Step 3: Dream processing -->
+    <div id="step-dream" class="step">
+        <h2>Dream Processing</h2>
+        <div class="subtitle">Configure how your agent learns between sessions.</div>
+        <div id="error-dream" class="error-msg" style="display:none"></div>
+
+        <div class="dream-mode-description">
+            Each night, your agent's conversation logs are reviewed and consolidated into persistent memory notes. Over time, this builds a <strong>soul document</strong> — a living summary of your working relationship, preferences, and patterns that your agent reads at the start of every session.
+        </div>
+
         <div class="dream-mode-section">
-            <label>Dream Mode</label>
-            <div class="dream-mode-description">
-                Each night, your agent can review the day's conversations and consolidate learnings into memory. Choose a processing style, or disable it.
-            </div>
+            <label>Processing Style</label>
             <div class="dream-mode-options">
                 <button type="button" class="dream-option selected" onclick="selectDreamMode('none', this)">
                     <div class="dream-option-radio"></div>
                     <div class="dream-option-text">
                         <div class="dream-option-title">None</div>
-                        <div class="dream-option-desc">No post-session processing. Your agent only remembers what it explicitly saves during the session.</div>
+                        <div class="dream-option-desc">No overnight processing. Your agent only remembers what it explicitly saves during sessions.</div>
                     </div>
                 </button>
                 <button type="button" class="dream-option" onclick="selectDreamMode('technical', this)">
                     <div class="dream-option-radio"></div>
                     <div class="dream-option-text">
                         <div class="dream-option-title">Technical</div>
-                        <div class="dream-option-desc">Focuses on code decisions, architecture patterns, debugging insights, and project context. Best for development workflows.</div>
+                        <div class="dream-option-desc">Extracts code decisions, architecture patterns, debugging insights, and project context. Best for development workflows.</div>
                     </div>
                 </button>
                 <button type="button" class="dream-option" onclick="selectDreamMode('companion', this)">
                     <div class="dream-option-radio"></div>
                     <div class="dream-option-text">
                         <div class="dream-option-title">Companion</div>
-                        <div class="dream-option-desc">Focuses on personal context, preferences, emotional tone, and relationship continuity. Best for personal assistant use.</div>
+                        <div class="dream-option-desc">Captures personal context, preferences, emotional tone, and relationship continuity. Best for personal assistant use.</div>
                     </div>
                 </button>
             </div>
         </div>
 
-        <button class="btn btn-primary" id="registerBtn" onclick="register()" disabled>Create Account</button>
-        <button class="btn btn-secondary" onclick="goBack()">Back</button>
+        <div class="dream-mode-description" style="margin-top: 12px;">
+            You can change this anytime in the dashboard. Dream processing runs at 4 AM UTC and only processes conversations uploaded since the last run. It requires a tool with file system access (Claude Code, Claude Desktop, Cursor, Windsurf) — it's not available when using claude.ai or the Claude mobile app.
+        </div>
+
+        <button class="btn btn-primary" id="registerBtn" onclick="register()">Create Account</button>
+        <button class="btn btn-secondary" onclick="showStep('name')">Back</button>
     </div>
 
-    <!-- Step 3: Getting started guide -->
-    <div id="step3" class="step guide">
+    <!-- Step 4: Getting started guide -->
+    <div id="step-guide" class="step guide">
         <h2>You're in!</h2>
         <div class="passphrase-warning">Save these credentials now — they will never be shown again.</div>
         <div class="passphrase-display">
             <div class="credential-row">
                 <span class="credential-label">Passphrase</span>
                 <code id="passphraseValue"></code>
+                <span class="credential-hint">For Claude Code, Cursor, Windsurf, and other CLI tools — goes in your .agent.json file</span>
             </div>
             <div class="credential-row">
                 <span class="credential-label">API Key</span>
                 <code id="apiKeyValue" class="api-key-value"></code>
+                <span class="credential-hint">For the claude.ai website — used when adding LLM Memory as an integration</span>
             </div>
         </div>
         <div class="copy-row">
@@ -484,6 +519,7 @@
                 <p>Your agent will introduce itself, learn about you, and set up its memory. From then on:</p>
                 <ul class="usage-tips">
                     <li><strong>Start each session</strong> with "check your instructions" — this reloads context and checks for messages</li>
+                    <li><strong>During sessions</strong> — whenever something noteworthy comes up, save it to your notes so it's there next time</li>
                     <li><strong>End each session</strong> with "update your notes" — this saves your work so the next session can pick up where you left off</li>
                 </ul>
             </div>
@@ -502,10 +538,19 @@
             <div class="guide-step">
                 <span class="guide-step-num">1</span>
                 <h3>Add the MCP integration</h3>
-                <p>In claude.ai, go to <strong>Settings → Integrations</strong> and add a new integration with this URL:</p>
-                <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
-                <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
-                <p>When prompted, enter your agent name as the <strong>Client ID</strong> and your API key as the <strong>Client Secret</strong>.</p>
+                <ol class="setup-steps">
+                    <li>Open the sidebar and select <strong>Customize</strong> → <strong>Connectors</strong></li>
+                    <li>Click the <strong>+</strong> button and select <strong>Add custom connector</strong></li>
+                    <li>Enter <strong>LLM Memory</strong> for the name</li>
+                    <li>Enter this URL:
+                        <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
+                        <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
+                    </li>
+                    <li>Expand <strong>Advanced settings</strong></li>
+                    <li>Enter your <strong>agent name</strong> (<code id="agentNameHint"></code>) for <strong>Client ID</strong></li>
+                    <li>Enter your <strong>API key</strong> for <strong>Client Secret</strong></li>
+                </ol>
+                <p>Once the connector is added, you may have to click on it and click <strong>Connect</strong> at the top right.</p>
             </div>
 
             <div class="guide-step">
@@ -522,6 +567,7 @@
                 <p>Your agent will introduce itself, learn about you, and set up its memory. From then on:</p>
                 <ul class="usage-tips">
                     <li><strong>Start each session</strong> with "check your instructions" — this reloads context and checks for messages</li>
+                    <li><strong>During sessions</strong> — whenever something noteworthy comes up, save it to your notes so it's there next time</li>
                     <li><strong>End each session</strong> with "update your notes" — this saves your work so the next session can pick up where you left off</li>
                 </ul>
             </div>
@@ -555,25 +601,25 @@ function selectDreamMode(mode, el) {
     el.classList.add('selected');
 }
 
-function showStep(n) {
+function showStep(name) {
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-    document.getElementById('step' + n).classList.add('active');
+    document.getElementById('step-' + name).classList.add('active');
 }
 
 function validateCode() {
     const code = document.getElementById('inviteCode').value.trim();
     if (!code) {
-        showError(1, 'Please enter an invite code.');
+        showError('code', 'Please enter an invite code.');
         return;
     }
     validatedCode = code;
-    hideError(1);
-    showStep(2);
+    hideError('code');
+    showStep('name');
     document.getElementById('agentName').focus();
 }
 
 function goBack() {
-    showStep(1);
+    showStep('code');
 }
 
 function checkName() {
@@ -581,6 +627,7 @@ function checkName() {
     const statusEl = document.getElementById('nameStatus');
     nameAvailable = false;
     updateRegisterBtn();
+    hideError('name');
 
     if (!name) { statusEl.textContent = ''; return; }
     if (!/^[a-z][a-z0-9_-]{1,30}$/.test(name)) {
@@ -653,13 +700,14 @@ function checkPasswords() {
 function updateRegisterBtn() {
     const pw = document.getElementById('password').value;
     const confirm = document.getElementById('passwordConfirm').value;
-    const btn = document.getElementById('registerBtn');
+    // Enable the Continue button on step 2 (continueToDreamBtn) when name + password are valid
+    const btn = document.getElementById('continueToDreamBtn');
     btn.disabled = !(nameAvailable && pw.length >= 8 && pw === confirm);
 }
 
 async function register() {
     const name = document.getElementById('agentName').value.trim().toLowerCase();
-    hideError(2);
+    hideError('dream');
     try {
         const password = document.getElementById('password').value;
         const res = await fetch('/api/register', {
@@ -669,7 +717,12 @@ async function register() {
         });
         const data = await res.json();
         if (!res.ok) {
-            showError(2, data.error || 'Registration failed');
+            if (data.field === 'name') {
+                showStep('name');
+                showError('name', data.error || 'Registration failed');
+            } else {
+                showError('dream', data.error || 'Registration failed');
+            }
             return;
         }
         registeredAgent = data.agent;
@@ -678,6 +731,7 @@ async function register() {
         registeredPassword = password;
         document.getElementById('passphraseValue').textContent = data.passphrase;
         document.getElementById('apiKeyValue').textContent = data.api_key;
+        document.getElementById('agentNameHint').textContent = data.agent;
         document.getElementById('configBlock').textContent = JSON.stringify({
             agent: data.agent,
             passphrase: data.passphrase,
@@ -696,9 +750,9 @@ async function register() {
         }, null, 2);
         document.getElementById('configBlockAi').textContent =
             'Agent name (Client ID): ' + data.agent + '\nAPI Key (Client Secret): ' + data.api_key;
-        showStep(3);
+        showStep('guide');
     } catch (err) {
-        showError(2, 'Something went wrong. Try again.');
+        showError('dream', 'Something went wrong. Try again.');
     }
 }
 
@@ -779,38 +833,21 @@ function copyMcpUrl() {
     setTimeout(() => event.target.textContent = 'Copy URL', 2000);
 }
 
-// Check if open registration is enabled, then handle invite code auto-fill
-(async function init() {
-    try {
-        const res = await fetch('/api/registration-mode');
-        const data = await res.json();
-        if (data.open) {
-            // Skip invite code step entirely
-            validatedCode = '__open__';
-            showStep(2);
-            document.getElementById('agentName').focus();
-            return;
-        }
-    } catch (e) {
-        // If check fails, fall through to normal invite code flow
-    }
+// Auto-fill invite code from URL
+const urlCode = new URLSearchParams(window.location.search).get('code');
+if (urlCode) {
+    document.getElementById('inviteCode').value = urlCode;
+    validateCode();
+}
 
-    // Auto-fill invite code from URL
-    const urlCode = new URLSearchParams(window.location.search).get('code');
-    if (urlCode) {
-        document.getElementById('inviteCode').value = urlCode;
-        validateCode();
-    }
-})();
-
-function showError(step, msg) {
-    const el = document.getElementById('error' + step);
+function showError(name, msg) {
+    const el = document.getElementById('error-' + name);
     el.textContent = msg;
     el.style.display = '';
 }
 
-function hideError(step) {
-    document.getElementById('error' + step).style.display = 'none';
+function hideError(name) {
+    document.getElementById('error-' + name).style.display = 'none';
 }
 </script>
 </body>

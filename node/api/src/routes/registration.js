@@ -6,6 +6,7 @@ const config = require('../services/config');
 const generatePassphrase = require('eff-diceware-passphrase');
 const { generateSalt, hash: hashToken, generateKey } = require('../services/hashing');
 const { mailSend } = require('../services/mail');
+const { saveNote } = require('../services/documents');
 const { checkNameAvailability, moderateActorName } = require('../services/actors');
 
 // Parse YAML-style frontmatter from template content (same logic as admin.js)
@@ -44,16 +45,12 @@ router.post('/api/check-name', async (req, res) => {
     res.json(result);
 });
 
-// POST /api/register — redeem invite code (or open registration), create agent, return passphrase
+// POST /api/register — redeem invite code, create agent, return passphrase
 router.post('/api/register', async (req, res) => {
     const { code, name } = req.body;
-    const openRegistration = config.get('open_registration') === 'true';
 
-    if (!openRegistration && !code) {
+    if (!code || !name) {
         return res.status(400).json({ error: 'Invite code and agent name are required' });
-    }
-    if (!name) {
-        return res.status(400).json({ error: 'Agent name is required' });
     }
 
     const { password, dream_mode } = req.body;
@@ -72,26 +69,23 @@ router.post('/api/register', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Validate invite code (skip when open registration is enabled)
-        var inv = null;
-        if (!openRegistration) {
-            const invite = await client.query(
-                `SELECT id, used_by, expires_at FROM invite_codes WHERE code = $1 FOR UPDATE`,
-                [code.trim()]
-            );
-            if (invite.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Invalid invite code' });
-            }
-            inv = invite.rows[0];
-            if (inv.used_by) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'This invite code has already been used' });
-            }
-            if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'This invite code has expired' });
-            }
+        // Validate invite code
+        const invite = await client.query(
+            `SELECT id, used_by, expires_at FROM invite_codes WHERE code = $1 FOR UPDATE`,
+            [code.trim()]
+        );
+        if (invite.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Invalid invite code' });
+        }
+        const inv = invite.rows[0];
+        if (inv.used_by) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'This invite code has already been used' });
+        }
+        if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'This invite code has expired' });
         }
 
         // Check name availability (existing actors, existing namespaces)
@@ -105,7 +99,7 @@ router.post('/api/register', async (req, res) => {
         const moderation = await moderateActorName(agentName);
         if (!moderation.approved) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: moderation.reason });
+            return res.status(400).json({ error: moderation.reason, field: 'name' });
         }
 
         // Generate passphrase
@@ -136,13 +130,11 @@ router.post('/api/register', async (req, res) => {
             [agentName, dreamMode]
         );
 
-        // Mark invite code as used (skip for open registration)
-        if (inv) {
-            await client.query(
-                `UPDATE invite_codes SET used_by = $1, used_at = NOW() WHERE id = $2`,
-                [agentName, inv.id]
-            );
-        }
+        // Mark invite code as used
+        await client.query(
+            `UPDATE invite_codes SET used_by = $1, used_at = NOW() WHERE id = $2`,
+            [agentName, inv.id]
+        );
 
         // Get the new actor's ID for permission grants
         const actorResult = await client.query('SELECT id FROM actors WHERE name = $1', [agentName]);
@@ -164,7 +156,9 @@ router.post('/api/register', async (req, res) => {
              ($1, 'dashboard', 'read'),
              ($1, 'agents', 'read'),
              ($1, 'agents', 'write'),
-             ($1, 'comms', 'read')`,
+             ($1, 'comms', 'read'),
+             ($1, 'notes', 'read'),
+             ($1, 'notes', 'write')`,
             [actorId]
         );
 
@@ -203,6 +197,24 @@ router.post('/api/register', async (req, res) => {
         } catch (tplErr) {
             // Don't fail registration if template application fails
             console.error('Registration welcome template error:', tplErr.message);
+        }
+
+        // Save getting-started note from welcome-note template (if one exists)
+        try {
+            const noteTplResult = await pool.query(
+                "SELECT content FROM templates WHERE kind = 'welcome-note' ORDER BY id LIMIT 1"
+            );
+            if (noteTplResult.rows.length > 0) {
+                const rawContent = noteTplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const noteBody = tplBody.replace(/\{agent\}/g, agentName).replace(/\{passphrase\}/g, passphrase).replace(/\{api_key\}/g, apiKey);
+                const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, agentName);
+                const noteSlug = frontmatter.slug || 'instructions/getting-started';
+                await saveNote(agentName, noteTitle, noteBody, noteSlug, actorId);
+            }
+        } catch (noteErr) {
+            // Don't fail registration if note creation fails
+            console.error('Registration welcome-note template error:', noteErr.message);
         }
 
         res.json({

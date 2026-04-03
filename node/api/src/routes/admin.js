@@ -13,7 +13,7 @@ const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { resolveEffectiveLimits } = require('../services/virtual-agent');
-const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName } = require('../services/actors');
+const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName, clearCache: clearActorCache } = require('../services/actors');
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
@@ -284,7 +284,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
            AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
     const chatParams = [];
     if (hasFilter) {
-        chatSql += ' AND cm.from_actor_id = ANY($1) AND cm.to_actor_id = ANY($1)';
+        chatSql += ' AND (cm.from_actor_id = ANY($1) OR cm.to_actor_id = ANY($1))';
         chatParams.push(idsArray);
     }
     chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cm.sent_at DESC LIMIT 15`;
@@ -297,7 +297,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
          WHERE m.deleted_at IS NULL`;
     const mailParams = [];
     if (hasFilter) {
-        mailSql += ' AND m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+        mailSql += ' AND (m.from_actor_id = ANY($1) OR m.to_actor_id = ANY($1))';
         mailParams.push(idsArray);
     }
     mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
@@ -373,7 +373,7 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     const visibleIds = await getVisibleActorIds(req.actorId);
     // Subqueries for visibility and VA access summaries shown in the agent list
     let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
-                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, ac.configuration,
+                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, s.storage_quota, ac.configuration,
                 COALESCE(vis.summary, 'self only') AS visibility_summary,
                 va.summary AS va_access_summary
          FROM agent_status s
@@ -407,6 +407,13 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     sql += ` ORDER BY CASE s.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END, s.last_seen DESC NULLS LAST`;
     const result = await pool.query(sql, params);
 
+    // If any agent uses OpenRouter, pre-fetch the catalog so formatPricing
+    // can show real pricing instead of a placeholder.
+    if (result.rows.some(r => r.provider === 'openrouter')) {
+        const { fetchCatalog } = require('../services/providers/openrouter');
+        await fetchCatalog();
+    }
+
     // Compute pricing_info for each agent via provider formatPricing
     for (const row of result.rows) {
         if (row.provider && row.model) {
@@ -423,7 +430,11 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
         delete row.configuration;
     }
 
-    res.json({ agents: result.rows });
+    // Include global default storage quota so the frontend can display it
+    const config = require('../services/config');
+    const defaultStorageQuota = parseInt(config.get('default_storage_quota')) || 52428800;
+
+    res.json({ agents: result.rows, default_storage_quota: defaultStorageQuota });
 }));
 
 // POST /admin/agents/instructions/read — read an agent's startup instructions
@@ -664,7 +675,7 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
     }
     if (hasFilter) {
         params.push(Array.from(visibleIds));
-        conditions.push('cm.from_actor_id = ANY($' + params.length + ') AND cm.to_actor_id = ANY($' + params.length + ')');
+        conditions.push('(cm.from_actor_id = ANY($' + params.length + ') OR cm.to_actor_id = ANY($' + params.length + '))');
     }
     sql += ' WHERE ' + conditions.join(' AND ');
     sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
@@ -687,7 +698,7 @@ router.post('/admin/mail', requirePerm('comms', 'read'), adminRoute('mail-list',
     const params = [];
     if (hasFilter) {
         params.push(Array.from(visibleIds));
-        sql += ' WHERE m.from_actor_id = ANY($1) AND m.to_actor_id = ANY($1)';
+        sql += ' WHERE (m.from_actor_id = ANY($1) OR m.to_actor_id = ANY($1))';
     }
     sql += ` ORDER BY m.sent_at DESC LIMIT $${params.length + 1}`;
     params.push(limit);
@@ -704,14 +715,14 @@ router.post('/admin/mail/delete', requirePerm('comms', 'delete'), adminRoute('ma
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+    // Scope delete to messages visible to this admin (sender or recipient must be visible)
     const visibleIds = await getVisibleActorIds(req.actorId);
     let sql = 'UPDATE mail SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
     const params = [id];
     if (visibleIds !== null) {
         const idsArray = Array.from(visibleIds);
         params.push(idsArray);
-        sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+        sql += ' AND (from_actor_id = ANY($2) OR to_actor_id = ANY($2))';
     }
     sql += ' RETURNING id';
     const result = await pool.query(sql, params);
@@ -732,14 +743,14 @@ router.post('/admin/chat/delete', requirePerm('comms', 'delete'), adminRoute('ch
             error: { code: 'BAD_REQUEST', message: 'Required field: id' }
         });
     }
-    // Scope delete to messages visible to this admin (both sender and recipient must be visible)
+    // Scope delete to messages visible to this admin (sender or recipient must be visible)
     const visibleIds = await getVisibleActorIds(req.actorId);
     let sql = 'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
     const params = [id];
     if (visibleIds !== null) {
         const idsArray = Array.from(visibleIds);
         params.push(idsArray);
-        sql += ' AND from_actor_id = ANY($2) AND to_actor_id = ANY($2)';
+        sql += ' AND (from_actor_id = ANY($2) OR to_actor_id = ANY($2))';
     }
     sql += ' RETURNING id';
     const result = await pool.query(sql, params);
@@ -785,13 +796,14 @@ router.post('/admin/mail/send', requirePerm('comms', 'write'), adminRoute('mail-
 }));
 
 // POST /admin/providers/registry — get provider/model registry for admin UI
-router.post('/admin/providers/registry', requirePerm('config', 'read'), adminRoute('providers-registry', async (req, res) => {
+// No permission check — static reference data, any authenticated user can read it
+router.post('/admin/providers/registry', adminRoute('providers-registry', async (req, res) => {
     const { getRegistry } = require('../services/provider');
     res.json(getRegistry());
 }));
 
 // POST /admin/providers/defaults — get default configuration for a provider+model
-router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRoute('providers-defaults', async (req, res) => {
+router.post('/admin/providers/defaults', adminRoute('providers-defaults', async (req, res) => {
     const { provider, model } = req.body;
     if (!provider || !model) {
         return res.status(400).json({
@@ -801,6 +813,23 @@ router.post('/admin/providers/defaults', requirePerm('config', 'read'), adminRou
     const { getDefaultConfiguration } = require('../services/provider');
     const defaults = getDefaultConfiguration(provider, model);
     res.json({ defaults });
+}));
+
+// POST /admin/providers/openrouter/models — lazily fetch full OpenRouter model catalog
+router.post('/admin/providers/openrouter/models', adminRoute('openrouter-models', async (req, res) => {
+    const { fetchCatalog } = require('../services/providers/openrouter');
+    const catalog = await fetchCatalog();
+    // Convert Map to array of { id, name, pricing } for the UI
+    const models = [];
+    for (const [id, entry] of catalog) {
+        models.push({
+            id,
+            name: entry.name,
+            pricing: { input: entry.input, output: entry.output, cache_read: entry.cache_read },
+            context_length: entry.context_length
+        });
+    }
+    res.json({ models });
 }));
 
 // Config keys whose values must never be sent to the client
@@ -1096,7 +1125,12 @@ router.post('/admin/notes/search', requirePerm('notes', 'read'), adminRoute('not
 // POST /admin/notes/namespaces — get list of namespaces with note counts
 router.post('/admin/notes/namespaces', requirePerm('notes', 'read'), adminRoute('notes-namespaces', async (req, res) => {
     const result = await pool.query(
-        'SELECT namespace, COUNT(*) AS count FROM documents WHERE deleted_at IS NULL GROUP BY namespace ORDER BY namespace'
+        `SELECT d.namespace, COUNT(*) AS count, COALESCE(nu.total_bytes, 0) AS total_bytes
+         FROM documents d
+         LEFT JOIN namespace_usage nu ON nu.namespace = d.namespace
+         WHERE d.deleted_at IS NULL
+         GROUP BY d.namespace, nu.total_bytes
+         ORDER BY d.namespace`
     );
     let namespaces = result.rows;
     // Filter to readable namespaces
@@ -1128,14 +1162,38 @@ router.post('/admin/notes/reindex', requirePerm('notes', 'write'), adminRoute('n
             const chunksDeleted = deleteResult.rowCount;
 
             const docs = await pool.query(
-                'SELECT namespace, slug, content FROM documents WHERE deleted_at IS NULL ORDER BY namespace, slug'
+                'SELECT namespace, slug, content, title, metadata FROM documents WHERE deleted_at IS NULL ORDER BY namespace, slug'
             );
             reindexState.total = docs.rows.length;
+
+            // Check if enrichment should run alongside reindex
+            const config = require('../services/config');
+            const enrichEnabled = config.get('note_enrichment_enabled') === 'true';
+            let enrichModule = null;
+            if (enrichEnabled) {
+                try {
+                    enrichModule = require('../services/enrichment');
+                } catch (err) {
+                    // Enrichment module not available — skip silently
+                }
+            }
+            const { autoExtractRelations } = require('../services/relations');
 
             for (const doc of docs.rows) {
                 try {
                     const result = await ingestContent(doc.namespace, doc.slug, doc.content);
                     reindexState.chunks_created += result.chunks_created;
+
+                    // Auto-extract slug references as relations
+                    autoExtractRelations(doc.namespace, doc.slug, doc.content).catch(() => {});
+
+                    // Fire-and-forget enrichment for each note (skips conversations/dreams internally)
+                    if (enrichModule) {
+                        var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
+                        enrichModule.enrichNote(doc.namespace, doc.slug, doc.title, doc.content, parsedMeta).catch(() => {});
+                        // Small delay to avoid hammering the enrichment provider
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
                 } catch (err) {
                     reindexState.errors.push({ namespace: doc.namespace, slug: doc.slug, error: err.message });
                 }
@@ -1185,6 +1243,135 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
     }
     res.json({ ok: true });
 });
+
+// POST /admin/notes/usage — namespace storage usage (note count + total bytes).
+// Optionally filter by namespace. Joins actors table to show agent name.
+router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('notes-usage', async (req, res) => {
+    const { namespace } = req.body;
+    let sql, params;
+    if (namespace) {
+        sql = `
+            SELECT nu.namespace, nu.note_count, nu.total_bytes, nu.updated_at,
+                   ac.name AS agent
+            FROM namespace_usage nu
+            LEFT JOIN actors ac ON ac.name = nu.namespace
+            WHERE nu.namespace = $1
+            ORDER BY nu.namespace`;
+        params = [namespace];
+    } else {
+        sql = `
+            SELECT nu.namespace, nu.note_count, nu.total_bytes, nu.updated_at,
+                   ac.name AS agent
+            FROM namespace_usage nu
+            LEFT JOIN actors ac ON ac.name = nu.namespace
+            ORDER BY nu.total_bytes DESC`;
+        params = [];
+    }
+    const result = await pool.query(sql, params);
+    res.json({ usage: result.rows });
+}));
+
+// POST /admin/notes/relations — get relations for a note.
+// Params: namespace, slug, direction (outgoing/incoming/both), type (optional).
+// Filters to namespaces the user can read.
+router.post('/admin/notes/relations', requirePerm('notes', 'read'), adminRoute('notes-relations', async (req, res) => {
+    const { namespace, slug, direction, type } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
+    }
+    const { getRelations } = require('../services/relations');
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    let relations = await getRelations(namespace, slug, direction || 'both', type);
+    if (readable !== null) {
+        relations = relations.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
+    }
+    res.json({ relations });
+}));
+
+// POST /admin/notes/graph — graph traversal from a note.
+// Params: namespace, slug, depth (1-5, default 2).
+// Filters nodes/edges to readable namespaces.
+router.post('/admin/notes/graph', requirePerm('notes', 'read'), adminRoute('notes-graph', async (req, res) => {
+    const { namespace, slug, depth } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
+    }
+    const { getGraph } = require('../services/relations');
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    const graph = await getGraph(namespace, slug, depth || 2);
+    if (readable !== null) {
+        graph.edges = graph.edges.filter(e => {
+            const sNs = e.source.split('/')[0];
+            const tNs = e.target.split('/')[0];
+            return readable.includes(sNs) && readable.includes(tNs);
+        });
+        const reachable = new Set();
+        for (const e of graph.edges) {
+            reachable.add(e.source);
+            reachable.add(e.target);
+        }
+        // Always keep root node
+        const rootKey = namespace + '/' + slug;
+        reachable.add(rootKey);
+        graph.nodes = graph.nodes.filter(n => reachable.has(n.namespace + '/' + n.slug));
+    }
+    res.json(graph);
+}));
+
+// POST /admin/notes/graph-all — all relations, optionally filtered by namespace.
+// For the graph overview mode. Filters to readable namespaces.
+router.post('/admin/notes/graph-all', requirePerm('notes', 'read'), adminRoute('notes-graph-all', async (req, res) => {
+    const { namespace } = req.body;
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+
+    let sql, params;
+    if (namespace) {
+        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
+                      relation_type, auto_extracted, created_at
+               FROM note_relations
+               WHERE source_namespace = $1 OR target_namespace = $1
+               ORDER BY created_at DESC`;
+        params = [namespace];
+    } else {
+        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
+                      relation_type, auto_extracted, created_at
+               FROM note_relations
+               ORDER BY created_at DESC`;
+        params = [];
+    }
+    const result = await pool.query(sql, params);
+
+    // Filter to readable namespaces
+    let rows = result.rows;
+    if (readable !== null) {
+        rows = rows.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
+    }
+
+    // Build nodes + edges
+    const nodeSet = new Set();
+    const nodes = [];
+    const edges = [];
+    for (const row of rows) {
+        const sourceKey = row.source_namespace + '/' + row.source_slug;
+        const targetKey = row.target_namespace + '/' + row.target_slug;
+        if (!nodeSet.has(sourceKey)) {
+            nodeSet.add(sourceKey);
+            nodes.push({ namespace: row.source_namespace, slug: row.source_slug });
+        }
+        if (!nodeSet.has(targetKey)) {
+            nodeSet.add(targetKey);
+            nodes.push({ namespace: row.target_namespace, slug: row.target_slug });
+        }
+        edges.push({
+            id: row.id,
+            source: sourceKey,
+            target: targetKey,
+            type: row.relation_type,
+            auto_extracted: row.auto_extracted
+        });
+    }
+    res.json({ nodes, edges });
+}));
 
 // ---- Note Synchronization CRUD ----
 
@@ -1250,7 +1437,7 @@ router.post('/admin/notes/sync/delete', requirePerm('notes', 'write'), adminRout
 
 // ---- Templates CRUD ----
 
-const TEMPLATE_KINDS = new Set(['welcome']);
+const TEMPLATE_KINDS = new Set(['welcome', 'welcome-note']);
 
 // Parse YAML-style frontmatter from template content.
 // Returns { frontmatter: { key: value, ... }, body: "remaining content" }
@@ -1402,8 +1589,8 @@ function parseCostBudget(value, fieldName) {
 // ---- Actor Creation ----
 
 // POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
-router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('actors-create', async (req, res) => {
-    const { name, provider, model, welcome_template_id, virtual: isVirtual, personality,
+router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('actors-create', async (req, res) => {
+    const { name, provider, model, welcome_template_id, welcome_note_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
             ui_access, password, dream_mode } = req.body;
@@ -1500,7 +1687,32 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
              ['none', 'companion', 'technical'].includes(dream_mode) ? dream_mode : 'none']
         );
 
+        // Grant all MCP permissions (full tool access) — non-virtual agents only
+        if (!isVirtual) {
+            await client.query(
+                `INSERT INTO agent_permissions (actor_id, permission_id)
+                 SELECT $1, id FROM permissions`,
+                [actorId]
+            );
+        }
+
+        // Grant the creator visibility to the new agent (so they can see it in the UI).
+        // Skip if the creator already has wildcard visibility (sees everything).
+        const creatorVis = await client.query(
+            'SELECT target_actor_id FROM actor_visibility_configuration WHERE actor_id = $1 AND target_actor_id IS NULL',
+            [req.actorId]
+        );
+        if (creatorVis.rows.length === 0) {
+            await client.query(
+                'INSERT INTO actor_visibility_configuration (actor_id, target_actor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [req.actorId, actorId]
+            );
+        }
+
         await client.query('COMMIT');
+        // Clear visibility cache so the new grant takes effect immediately
+        const { clearCache: clearVisCache } = require('../services/actor-visibility');
+        clearVisCache(req.actorId);
     } catch (txErr) {
         await client.query('ROLLBACK');
         throw txErr;
@@ -1540,7 +1752,33 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
         }
     }
 
-    logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, user_id: req.authenticatedUser.id });
+    // Apply welcome-note template if selected (non-virtual only)
+    // Saves a getting-started note in the new agent's namespace
+    let welcomeNoteSaved = false;
+    if (welcome_note_template_id && !isVirtual) {
+        try {
+            const noteTplResult = await pool.query(
+                'SELECT content FROM templates WHERE id = $1 AND kind = $2',
+                [welcome_note_template_id, 'welcome-note']
+            );
+            if (noteTplResult.rows.length > 0) {
+                const rawContent = noteTplResult.rows[0].content;
+                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+                const noteBody = tplBody.replace(/\{agent\}/g, actorName);
+                const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, actorName);
+                const noteSlug = frontmatter.slug || 'instructions/getting-started';
+                await saveNote(actorName, noteTitle, noteBody, noteSlug, actorId);
+                welcomeNoteSaved = true;
+            }
+        } catch (noteErr) {
+            console.error('Post-commit welcome-note template error:', noteErr.message);
+            if (!postCommitError) {
+                postCommitError = 'Actor created but welcome note failed: ' + noteErr.message;
+            }
+        }
+    }
+
+    logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, welcome_note: welcomeNoteSaved, user_id: req.authenticatedUser.id });
 
     const response = {
         name: actorName,
@@ -1549,6 +1787,7 @@ router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('
         ui_access: !!ui_access,
         status: 'active',
         welcome_mail_sent: welcomeMailSent,
+        welcome_note_saved: welcomeNoteSaved,
         message: isVirtual ? 'Virtual agent created.' : 'Actor created. Save the passphrase — it will not be shown again.'
     };
     if (postCommitError) {
@@ -1570,7 +1809,8 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
     const result = await pool.query(
         `SELECT ac.name AS agent, agc.provider, agc.model, agc.virtual, agc.personality, agc.configuration, ac.expertise,
                 agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
-                agc.cost_budget_daily, agc.cost_budget_monthly, agc.api_key IS NOT NULL AS has_api_key,
+                agc.cost_budget_daily, agc.cost_budget_monthly, agc.storage_quota,
+                agc.api_key IS NOT NULL AS has_api_key,
                 agc.dream_mode
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
@@ -1610,6 +1850,10 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
 
     // Add pricing info string for display, accounting for agent's service tier
     if (row.provider && row.model) {
+        if (row.provider === 'openrouter') {
+            const { fetchCatalog } = require('../services/providers/openrouter');
+            await fetchCatalog();
+        }
         let agentConfig = {};
         if (row.configuration) {
             if (typeof row.configuration === 'object') {
@@ -1628,7 +1872,7 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
 router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('agents-update', async (req, res) => {
     const agent = sanitize.agentName(req.body.agent);
     const { personality, api_key, configuration, provider, model,
-            cost_budget_daily, cost_budget_monthly,
+            cost_budget_daily, cost_budget_monthly, storage_quota,
             cache_prompts, learning_enabled, max_tokens, temperature, dream_mode } = req.body;
 
     if (!agent) {
@@ -1701,6 +1945,10 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         params.push(temperature === null || temperature === '' ? null : parseFloat(temperature));
         updates.push(`temperature = $${idx++}`);
     }
+    if (storage_quota !== undefined) {
+        params.push(storage_quota === null || storage_quota === '' ? null : parseInt(storage_quota));
+        updates.push(`storage_quota = $${idx++}`);
+    }
     if (dream_mode !== undefined) {
         if (!['none', 'companion', 'technical'].includes(dream_mode)) {
             return res.status(400).json({
@@ -1761,7 +2009,7 @@ function parseActorId(raw, res) {
 }
 
 // POST /admin/actors/list — list all actors (for the Actors config tab)
-router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('actors-list', async (req, res) => {
+router.post('/admin/actors/list', requirePerm('agents', 'read'), adminRoute('actors-list', async (req, res) => {
     const result = await pool.query(
         `SELECT a.id, a.name, a.created_at, a.visible_to_others, a.created_by,
                 (ac.actor_id IS NOT NULL) AS is_agent,
@@ -1776,6 +2024,12 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('act
          LEFT JOIN actors creator ON creator.id = a.created_by
          ORDER BY a.name`
     );
+
+    // Pre-fetch OpenRouter catalog if any actor uses it
+    if (result.rows.some(r => r.provider === 'openrouter')) {
+        const { fetchCatalog } = require('../services/providers/openrouter');
+        await fetchCatalog();
+    }
 
     // Compute pricing_info for agents that have provider+model
     for (const row of result.rows) {
@@ -1797,7 +2051,7 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('act
 }));
 
 // POST /admin/actors/permissions/read — get namespace permissions for one actor
-router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), adminRoute('actors-permissions-read', async (req, res) => {
+router.post('/admin/actors/permissions/read', requirePerm('agents', 'read'), adminRoute('actors-permissions-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     // Verify actor exists
@@ -1814,7 +2068,7 @@ router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), adm
 
 // POST /admin/actors/permissions/save — full replace of namespace permissions for one actor
 // Body: { actor_id, permissions: [{ namespace, can_read, can_write, can_delete }] }
-router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), adminRoute('actors-permissions-save', async (req, res) => {
+router.post('/admin/actors/permissions/save', requirePerm('agents', 'write'), adminRoute('actors-permissions-save', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { permissions } = req.body;
@@ -1878,7 +2132,7 @@ router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), ad
 }));
 
 // POST /admin/actors/visibility/read — get visibility grants for one actor
-router.post('/admin/actors/visibility/read', requirePerm('actors', 'read'), adminRoute('actors-visibility-read', async (req, res) => {
+router.post('/admin/actors/visibility/read', requirePerm('agents', 'read'), adminRoute('actors-visibility-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     // Verify actor exists
@@ -1905,7 +2159,7 @@ router.post('/admin/actors/visibility/read', requirePerm('actors', 'read'), admi
 
 // POST /admin/actors/visibility/save — full replace of visibility grants for one actor
 // Body: { actor_id, wildcard: bool, grants: [actor_id, ...] }
-router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), adminRoute('actors-visibility-save', async (req, res) => {
+router.post('/admin/actors/visibility/save', requirePerm('agents', 'write'), adminRoute('actors-visibility-save', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { wildcard, grants } = req.body;
@@ -1966,7 +2220,7 @@ router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), adm
 
 // POST /admin/actors/password — set or clear an actor's UI password
 // Pass { actor_id, password: "string" } to set/change, or { actor_id, password: null } to clear
-router.post('/admin/actors/password', requirePerm('actors', 'write'), adminRoute('actors-password', async (req, res) => {
+router.post('/admin/actors/password', requirePerm('agents', 'write'), adminRoute('actors-password', async (req, res) => {
     const { actor_id, password } = req.body;
     const actorId = parseActorId(actor_id, res);
     if (!actorId) return;
@@ -2002,7 +2256,7 @@ router.post('/admin/actors/password', requirePerm('actors', 'write'), adminRoute
 }));
 
 // POST /admin/actors/namespaces — get distinct namespaces from documents (for dropdown)
-router.post('/admin/actors/namespaces', requirePerm('actors', 'read'), adminRoute('actors-namespaces', async (req, res) => {
+router.post('/admin/actors/namespaces', requirePerm('agents', 'read'), adminRoute('actors-namespaces', async (req, res) => {
     const result = await pool.query(
         "SELECT DISTINCT namespace FROM documents WHERE namespace != '/' ORDER BY namespace"
     );
@@ -2028,7 +2282,7 @@ function isValidAdminPerm(resource, action) {
 }
 
 // POST /admin/actors/admin-permissions/read — get admin permissions for an actor
-router.post('/admin/actors/admin-permissions/read', requirePerm('actors', 'read'), adminRoute('actors-admin-permissions-read', async (req, res) => {
+router.post('/admin/actors/admin-permissions/read', requirePerm('agents', 'read'), adminRoute('actors-admin-permissions-read', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     if (!Number.isInteger(actorId) || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
@@ -2041,7 +2295,7 @@ router.post('/admin/actors/admin-permissions/read', requirePerm('actors', 'read'
 }));
 
 // POST /admin/actors/admin-permissions/save — replace all admin permissions for an actor
-router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write'), adminRoute('actors-admin-permissions-save', async (req, res) => {
+router.post('/admin/actors/admin-permissions/save', requirePerm('agents', 'write'), adminRoute('actors-admin-permissions-save', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     const { permissions } = req.body;
     if (!Number.isInteger(actorId) || actorId <= 0 || !Array.isArray(permissions)) {
@@ -2091,7 +2345,7 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
 }));
 
 // POST /admin/actors/delete — permanently delete an actor and all associated data
-router.post('/admin/actors/delete', requirePerm('actors', 'write'), adminRoute('actors-delete', async (req, res) => { // codeql[js/missing-rate-limiting] — rate limited by nginx
+router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('actors-delete', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     if (!Number.isInteger(actorId) || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
@@ -2188,9 +2442,11 @@ router.post('/admin/actors/delete', requirePerm('actors', 'write'), adminRoute('
 
         await client.query('COMMIT');
 
-        // Clear permission caches
+        // Clear caches so deleted actors don't linger
+        clearActorCache();
         for (const id of allActorIds) {
             clearAdminPermissionsCache(id);
+            clearVisibilityCache(id);
         }
 
         logAdmin('actor_delete', {
@@ -2489,7 +2745,7 @@ router.post('/admin/actors/searchable', requirePerm('notes', 'read'), adminRoute
 }));
 
 // POST /admin/virtual-agent-access/list — list access rules for virtual agents
-router.post('/admin/virtual-agent-access/list', requirePerm('actors', 'read'), adminRoute('va-access-list', async (req, res) => {
+router.post('/admin/virtual-agent-access/list', requirePerm('agents', 'read'), adminRoute('va-access-list', async (req, res) => {
     const result = await pool.query(`
         SELECT vaa.id, vaa.virtual_agent_id, va.name AS virtual_agent_name,
                vaa.grantee_actor_id, ga.name AS grantee_name, vaa.created_at
@@ -2502,7 +2758,7 @@ router.post('/admin/virtual-agent-access/list', requirePerm('actors', 'read'), a
 }));
 
 // POST /admin/virtual-agent-access/grant — grant access to a virtual agent
-router.post('/admin/virtual-agent-access/grant', requirePerm('actors', 'write'), adminRoute('va-access-grant', async (req, res) => {
+router.post('/admin/virtual-agent-access/grant', requirePerm('agents', 'write'), adminRoute('va-access-grant', async (req, res) => {
     const { virtual_agent_id, grantee_actor_id } = req.body;
     if (!virtual_agent_id) return res.status(400).json({ error: 'virtual_agent_id required' });
 
@@ -2519,26 +2775,13 @@ router.post('/admin/virtual-agent-access/grant', requirePerm('actors', 'write'),
 }));
 
 // POST /admin/virtual-agent-access/revoke — revoke access
-router.post('/admin/virtual-agent-access/revoke', requirePerm('actors', 'write'), adminRoute('va-access-revoke', async (req, res) => {
+router.post('/admin/virtual-agent-access/revoke', requirePerm('agents', 'write'), adminRoute('va-access-revoke', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
 
     await pool.query('DELETE FROM virtual_agent_access WHERE id = $1', [id]);
     logAdmin('va_access_revoke', { access_id: id, user_id: req.authenticatedUser.id });
     res.json({ revoked: true });
-}));
-
-// ---- Dream Processing ----
-
-// POST /admin/dream/run — trigger nightly dream consolidation job
-// Designed to be called by cron. Requires admin auth with agents:write permission.
-router.post('/admin/dream/run', requirePerm('agents', 'write'), adminRoute('dream-run', async (req, res) => {
-    const { runDream } = require('../services/dream');
-
-    logAdmin('dream_run', { user_id: req.authenticatedUser.id });
-
-    const result = await runDream();
-    res.json(result);
 }));
 
 module.exports = router;

@@ -4,7 +4,8 @@
         <header>
             <div></div>
             <div style="display:flex; gap:4px;">
-                <button v-if="canDo('actors', 'read')" class="btn btn-ghost btn-compact" @click="openActorConfig(selectedAgent.agent)" title="Permissions"><i class="icon-shield"></i></button>
+                <button v-if="canDo('agents', 'write') && selectedAgent.agent !== user.username" class="btn btn-ghost btn-compact btn-danger" @click="deleteAgent" :disabled="agentDeleting" title="Delete Agent"><i class="icon-trash-2"></i></button>
+                <button v-if="canDo('agents', 'read')" class="btn btn-ghost btn-compact" @click="openActorConfig(selectedAgent.agent)" title="Permissions"><i class="icon-shield"></i></button>
                 <button v-if="!agentPassphraseConfirming && !agentNewPassphrase && canDo('agents', 'write')" class="btn btn-ghost btn-compact" @click="agentPassphraseConfirming = true" title="Reset Passphrase"><i class="icon-key"></i></button>
                 <button aria-label="Close" rel="prev" @click="selectedAgent = null"></button>
             </div>
@@ -53,20 +54,21 @@
                     <label>Model
                         <custom-select v-model="agentProfileModel"
                             :options="[{ value: '', label: 'None' }].concat(modelsForProvider(agentProfileProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                            :allow-custom="agentProfileProvider === 'openrouter'"
                             placeholder="None" />
                     </label>
                 </div>
                 <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
                     &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
                 </small>
-                <label>Personality
-                    <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
-                </label>
                 <label>Dream Mode
                     <custom-select v-model="agentProfileDreamMode"
                         :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
                         placeholder="None" />
                     <small class="ts">Post-session log analysis: companion (emotional/personal) or technical (work/code-focused)</small>
+                </label>
+                <label>Personality
+                    <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
                 </label>
                 <label v-if="selectedAgent.virtual">API Key
                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
@@ -171,6 +173,7 @@
                 </div>
                 <div v-if="!agentSettingsEditing" style="font-size: 13px; line-height: 1.8;">
                     <span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span>
+                    <br><span>Storage quota: <strong>{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</strong></span>
                     <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
                         <br><span>{{ cap.label }}: <strong>{{ formatConfigValue(key, parseAgentConfig(selectedAgent)[key], cap) }}</strong></span>
                     </template>
@@ -182,6 +185,9 @@
                 <div v-if="agentSettingsEditing">
                     <label class="checkbox-label">
                         <input type="checkbox" v-model="agentSettingsLearningEnabled"> Learning enabled
+                    </label>
+                    <label>Storage quota (MB)
+                        <input type="number" v-model="agentSettingsStorageQuota" placeholder="blank = default" min="1">
                     </label>
                     <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
                         <div v-if="capabilityVisible(cap, agentSettingsConfig)" style="margin-bottom: 8px;" :style="capabilityDisabled(cap, agentSettingsConfig) ? { opacity: 0.45 } : {}">
