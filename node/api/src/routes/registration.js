@@ -207,7 +207,7 @@ router.post('/api/register', async (req, res) => {
             if (noteTplResult.rows.length > 0) {
                 const rawContent = noteTplResult.rows[0].content;
                 const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
-                const noteBody = tplBody.replace(/\{agent\}/g, agentName);
+                const noteBody = tplBody.replace(/\{agent\}/g, agentName).replace(/\{passphrase\}/g, passphrase).replace(/\{api_key\}/g, apiKey);
                 const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, agentName);
                 const noteSlug = frontmatter.slug || 'instructions/getting-started';
                 await saveNote(agentName, noteTitle, noteBody, noteSlug, actorId);
