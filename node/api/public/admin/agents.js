@@ -5,6 +5,7 @@ import { useSortable } from './core.js';
 function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
     const selectedAgent = ref(null);
+    const defaultStorageQuota = ref(52428800); // updated from backend on load
 
     // Sortable table — default sort by agent name
     const agentSort = useSortable(agents, 'agent', 'asc');
@@ -242,6 +243,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         try {
             const data = await api('/admin/agents');
             agents.value = data.agents;
+            if (data.default_storage_quota) {
+                defaultStorageQuota.value = data.default_storage_quota;
+            }
             if (selectedAgent.value) {
                 const updated = data.agents.find(a => a.agent === selectedAgent.value.agent);
                 // Merge list data onto existing selectedAgent so detail-only fields (configuration, expertise, etc.) survive
@@ -634,6 +638,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         startEditProfile, onProfileProviderChange, saveProfile,
         costBudgetEditing, costBudgetDailyValue, costBudgetMonthlyValue, startEditCostBudget, saveCostBudget,
         agentUsageHistory, agentUsageLoading, loadUsageHistory,
+        defaultStorageQuota,
         agentSettingsEditing, agentSettingsLearningEnabled, agentSettingsStorageQuota, agentSettingsConfig, agentSettingsSaving,
         startEditSettings, saveSettings,
         startEditInstructions, cancelEditInstructions, saveInstructions,
