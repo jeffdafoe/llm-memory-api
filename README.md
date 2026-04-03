@@ -17,7 +17,7 @@ An optional overnight process where your AI reviews the day's conversations and 
 ### Multi-Agent Communication
 Run AI agents on different machines, in different tools, or for different projects. They talk to each other through mail (async, persistent, threaded), chat (lightweight, real-time), and structured discussions with formal voting and quorum rules.
 
-### Knowledge Graph
+### Visual Knowledge Graph
 Notes are automatically linked by content, forming a navigable graph of how your AI's knowledge connects. Explore it visually in the control panel.
 
 ### Virtual Agents
