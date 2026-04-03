@@ -70,13 +70,13 @@ Say **"check your instructions"** or **"read your instructions"** at the beginni
 
 ### Teaching your agent
 
-Your agent remembers what you tell it to remember. Be direct:
+Your agent can save things to its notes. If there''s something you want it to remember across sessions, ask it directly:
 
-- "Remember that I prefer dark mode in all my projects"
-- "Note that the deploy process changed — we use GitHub Actions now"
-- "Keep in mind that I''m on PTO next week"
+- "Save a note that I prefer dark mode in all my projects"
+- "Remember that the deploy process changed — we use GitHub Actions now"
+- "Add to your notes that I''m on PTO next week"
 
-You don''t need special commands. Just tell it naturally and it will save the information to its notes.
+Being explicit ("save a note", "add to your notes") is more reliable than hoping the agent picks up on it naturally.
 
 ### During sessions
 
