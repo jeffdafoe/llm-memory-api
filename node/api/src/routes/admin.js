@@ -1589,7 +1589,7 @@ function parseCostBudget(value, fieldName) {
 // ---- Actor Creation ----
 
 // POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
-router.post('/admin/actors/create', requirePerm('actors', 'write'), adminRoute('actors-create', async (req, res) => {
+router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('actors-create', async (req, res) => {
     const { name, provider, model, welcome_template_id, welcome_note_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
@@ -1984,7 +1984,7 @@ function parseActorId(raw, res) {
 }
 
 // POST /admin/actors/list — list all actors (for the Actors config tab)
-router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('actors-list', async (req, res) => {
+router.post('/admin/actors/list', requirePerm('agents', 'read'), adminRoute('actors-list', async (req, res) => {
     const result = await pool.query(
         `SELECT a.id, a.name, a.created_at, a.visible_to_others, a.created_by,
                 (ac.actor_id IS NOT NULL) AS is_agent,
@@ -2026,7 +2026,7 @@ router.post('/admin/actors/list', requirePerm('actors', 'read'), adminRoute('act
 }));
 
 // POST /admin/actors/permissions/read — get namespace permissions for one actor
-router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), adminRoute('actors-permissions-read', async (req, res) => {
+router.post('/admin/actors/permissions/read', requirePerm('agents', 'read'), adminRoute('actors-permissions-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     // Verify actor exists
@@ -2043,7 +2043,7 @@ router.post('/admin/actors/permissions/read', requirePerm('actors', 'read'), adm
 
 // POST /admin/actors/permissions/save — full replace of namespace permissions for one actor
 // Body: { actor_id, permissions: [{ namespace, can_read, can_write, can_delete }] }
-router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), adminRoute('actors-permissions-save', async (req, res) => {
+router.post('/admin/actors/permissions/save', requirePerm('agents', 'write'), adminRoute('actors-permissions-save', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { permissions } = req.body;
@@ -2107,7 +2107,7 @@ router.post('/admin/actors/permissions/save', requirePerm('actors', 'write'), ad
 }));
 
 // POST /admin/actors/visibility/read — get visibility grants for one actor
-router.post('/admin/actors/visibility/read', requirePerm('actors', 'read'), adminRoute('actors-visibility-read', async (req, res) => {
+router.post('/admin/actors/visibility/read', requirePerm('agents', 'read'), adminRoute('actors-visibility-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     // Verify actor exists
@@ -2134,7 +2134,7 @@ router.post('/admin/actors/visibility/read', requirePerm('actors', 'read'), admi
 
 // POST /admin/actors/visibility/save — full replace of visibility grants for one actor
 // Body: { actor_id, wildcard: bool, grants: [actor_id, ...] }
-router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), adminRoute('actors-visibility-save', async (req, res) => {
+router.post('/admin/actors/visibility/save', requirePerm('agents', 'write'), adminRoute('actors-visibility-save', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { wildcard, grants } = req.body;
@@ -2195,7 +2195,7 @@ router.post('/admin/actors/visibility/save', requirePerm('actors', 'write'), adm
 
 // POST /admin/actors/password — set or clear an actor's UI password
 // Pass { actor_id, password: "string" } to set/change, or { actor_id, password: null } to clear
-router.post('/admin/actors/password', requirePerm('actors', 'write'), adminRoute('actors-password', async (req, res) => {
+router.post('/admin/actors/password', requirePerm('agents', 'write'), adminRoute('actors-password', async (req, res) => {
     const { actor_id, password } = req.body;
     const actorId = parseActorId(actor_id, res);
     if (!actorId) return;
@@ -2231,7 +2231,7 @@ router.post('/admin/actors/password', requirePerm('actors', 'write'), adminRoute
 }));
 
 // POST /admin/actors/namespaces — get distinct namespaces from documents (for dropdown)
-router.post('/admin/actors/namespaces', requirePerm('actors', 'read'), adminRoute('actors-namespaces', async (req, res) => {
+router.post('/admin/actors/namespaces', requirePerm('agents', 'read'), adminRoute('actors-namespaces', async (req, res) => {
     const result = await pool.query(
         "SELECT DISTINCT namespace FROM documents WHERE namespace != '/' ORDER BY namespace"
     );
@@ -2257,7 +2257,7 @@ function isValidAdminPerm(resource, action) {
 }
 
 // POST /admin/actors/admin-permissions/read — get admin permissions for an actor
-router.post('/admin/actors/admin-permissions/read', requirePerm('actors', 'read'), adminRoute('actors-admin-permissions-read', async (req, res) => {
+router.post('/admin/actors/admin-permissions/read', requirePerm('agents', 'read'), adminRoute('actors-admin-permissions-read', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     if (!Number.isInteger(actorId) || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
@@ -2270,7 +2270,7 @@ router.post('/admin/actors/admin-permissions/read', requirePerm('actors', 'read'
 }));
 
 // POST /admin/actors/admin-permissions/save — replace all admin permissions for an actor
-router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write'), adminRoute('actors-admin-permissions-save', async (req, res) => {
+router.post('/admin/actors/admin-permissions/save', requirePerm('agents', 'write'), adminRoute('actors-admin-permissions-save', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     const { permissions } = req.body;
     if (!Number.isInteger(actorId) || actorId <= 0 || !Array.isArray(permissions)) {
@@ -2320,7 +2320,7 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('actors', 'write
 }));
 
 // POST /admin/actors/delete — permanently delete an actor and all associated data
-router.post('/admin/actors/delete', requirePerm('actors', 'write'), adminRoute('actors-delete', async (req, res) => {
+router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('actors-delete', async (req, res) => {
     const actorId = parseInt(req.body.actor_id);
     if (!Number.isInteger(actorId) || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
@@ -2718,7 +2718,7 @@ router.post('/admin/actors/searchable', requirePerm('notes', 'read'), adminRoute
 }));
 
 // POST /admin/virtual-agent-access/list — list access rules for virtual agents
-router.post('/admin/virtual-agent-access/list', requirePerm('actors', 'read'), adminRoute('va-access-list', async (req, res) => {
+router.post('/admin/virtual-agent-access/list', requirePerm('agents', 'read'), adminRoute('va-access-list', async (req, res) => {
     const result = await pool.query(`
         SELECT vaa.id, vaa.virtual_agent_id, va.name AS virtual_agent_name,
                vaa.grantee_actor_id, ga.name AS grantee_name, vaa.created_at
@@ -2731,7 +2731,7 @@ router.post('/admin/virtual-agent-access/list', requirePerm('actors', 'read'), a
 }));
 
 // POST /admin/virtual-agent-access/grant — grant access to a virtual agent
-router.post('/admin/virtual-agent-access/grant', requirePerm('actors', 'write'), adminRoute('va-access-grant', async (req, res) => {
+router.post('/admin/virtual-agent-access/grant', requirePerm('agents', 'write'), adminRoute('va-access-grant', async (req, res) => {
     const { virtual_agent_id, grantee_actor_id } = req.body;
     if (!virtual_agent_id) return res.status(400).json({ error: 'virtual_agent_id required' });
 
@@ -2748,7 +2748,7 @@ router.post('/admin/virtual-agent-access/grant', requirePerm('actors', 'write'),
 }));
 
 // POST /admin/virtual-agent-access/revoke — revoke access
-router.post('/admin/virtual-agent-access/revoke', requirePerm('actors', 'write'), adminRoute('va-access-revoke', async (req, res) => {
+router.post('/admin/virtual-agent-access/revoke', requirePerm('agents', 'write'), adminRoute('va-access-revoke', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
 
