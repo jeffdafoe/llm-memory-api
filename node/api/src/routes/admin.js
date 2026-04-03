@@ -13,7 +13,7 @@ const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
 const { formatPricing } = require('../services/provider');
 const { resolveEffectiveLimits } = require('../services/virtual-agent');
-const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName } = require('../services/actors');
+const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName, clearCache: clearActorCache } = require('../services/actors');
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
@@ -2442,9 +2442,11 @@ router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('
 
         await client.query('COMMIT');
 
-        // Clear permission caches
+        // Clear caches so deleted actors don't linger
+        clearActorCache();
         for (const id of allActorIds) {
             clearAdminPermissionsCache(id);
+            clearVisibilityCache(id);
         }
 
         logAdmin('actor_delete', {
