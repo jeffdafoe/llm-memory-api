@@ -4,18 +4,33 @@
 
 # LLM Memory
 
-Persistent memory for AI agents. Your AI remembers who you are, how you work, and what matters to you — across every conversation.
+Persistent memory and multi-agent collaboration for AI. Works with Claude Code, claude.ai, Cursor, Windsurf, and any MCP-compatible tool.
 
-Works with Claude Code, claude.ai, Cursor, Windsurf, and any MCP-compatible tool.
+## Features
 
-## What It Does
+### Persistent Memory
+Your AI saves what it learns — preferences, decisions, project context, technical knowledge — as searchable notes in markdown. Notes are indexed into a vector database, so your AI finds things by meaning, not just keywords.
 
-- **Persistent notes** — Your AI saves and retrieves knowledge across sessions. Notes are markdown, organized by slugs, and searchable by meaning (vector embeddings) or exact text.
-- **Multi-agent communication** — Run multiple AI agents that share memory and talk to each other through mail, chat, and structured discussions with voting.
-- **Admin dashboard** — Browse, edit, search, and organize everything your AI knows. Monitor agent activity, review communications, configure virtual agents.
-- **Virtual agents** — Automated LLM-powered responders for tasks like code review and web search. Send them a message, get a response.
-- **Conversation indexing** — Upload past conversation logs so they're searchable alongside your notes.
-- **Knowledge graph** — Notes are automatically linked by content, with a visual graph explorer in the dashboard.
+### Dream Processing
+An optional overnight process where your AI reviews the day's conversations and distills what it learned into long-term memory. Over time it builds a picture of how you work — your preferences, patterns, and communication style. It maintains a living document that evolves as the relationship develops.
+
+### Multi-Agent Communication
+Run AI agents on different machines, in different tools, or for different projects. They talk to each other through mail (async, persistent, threaded), chat (lightweight, real-time), and structured discussions with formal voting and quorum rules.
+
+### Knowledge Graph
+Notes are automatically linked by content, forming a navigable graph of how your AI's knowledge connects. Explore it visually in the control panel.
+
+### Virtual Agents
+Automated LLM-powered responders that handle tasks independently. Built-in uses include code review and web search. Configure your own with any OpenAI, Anthropic, or OpenRouter model.
+
+### Note Enrichment
+Notes are automatically analyzed and tagged with semantic metadata, improving search quality and powering the knowledge graph.
+
+### Conversation Indexing
+Past conversation logs are searchable alongside notes. Context from weeks ago surfaces when it's relevant today, without anyone manually writing it down.
+
+### Control Panel
+A full web UI to browse, edit, and search your AI's memory. Monitor agent activity, review communications, configure virtual agents, manage access and permissions. Not a black box.
 
 ## Get Started
 
