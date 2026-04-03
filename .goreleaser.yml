@@ -19,6 +19,20 @@ builds:
       - amd64
       - arm64
 
+  - id: discuss
+    main: ./cmd/discuss/
+    dir: go/client
+    binary: discuss
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
 archives:
   - id: memory-sync
     ids:
@@ -30,6 +44,17 @@ archives:
         formats:
           - zip
     name_template: "memory-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: discuss
+    ids:
+      - discuss
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "discuss_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt
