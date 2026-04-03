@@ -30,15 +30,17 @@ import ActorDialogs from './views/ActorDialogs.js';
 import AgentDialog from './views/AgentDialog.js';
 import MiscDialogs from './views/MiscDialogs.js';
 import AccessView from './views/AccessView.js';
+import HelpView from './views/HelpView.js';
 import CustomSelect from './components/CustomSelect.js';
 
 createApp({
-    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView },
+    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView, HelpView },
     setup() {
         const currentView = ref('dashboard');
 
         const configSubTab = ref('actors');
         const commSubTab = ref('mail');
+        const helpPage = ref('getting-started');
 
         // Shares overview (config tab)
         const allSharesList = ref([]);
@@ -73,9 +75,10 @@ createApp({
         }
 
         // ─── Hash-based tab persistence ───
-        const validViews = new Set(['dashboard', 'agents', 'comms', 'notes', 'config', 'access']);
+        const validViews = new Set(['dashboard', 'agents', 'comms', 'notes', 'config', 'access', 'help']);
         const validConfigSubs = new Set(['actors', 'system', 'apilog', 'errorlog', 'templates', 'shares']);
         const validCommSubs = new Set(['mail', 'chat', 'discussions']);
+        const validHelpPages = new Set(['getting-started', 'notes', 'communication', 'agents', 'advanced', 'tools']);
         let suppressHashUpdate = false;
 
         // Deep link for notes — stash namespace/slug from hash, open after notes load
@@ -92,6 +95,7 @@ createApp({
             currentView.value = view;
             if (view === 'config' && rest && validConfigSubs.has(rest)) configSubTab.value = rest;
             if (view === 'comms' && rest && validCommSubs.has(rest)) commSubTab.value = rest;
+            if (view === 'help' && rest && validHelpPages.has(rest)) helpPage.value = rest;
             // notes/namespace/slug — stash for opening after load
             if (view === 'notes' && rest) {
                 const nsSlash = rest.indexOf('/');
@@ -110,6 +114,7 @@ createApp({
             let hash = currentView.value;
             if (currentView.value === 'config') hash += '/' + configSubTab.value;
             if (currentView.value === 'comms') hash += '/' + commSubTab.value;
+            if (currentView.value === 'help') hash += '/' + helpPage.value;
             if (currentView.value === 'notes' && notesModule.selectedNote.value) {
                 hash += '/' + notesModule.selectedNote.value.namespace + '/' + notesModule.selectedNote.value.slug;
             }
@@ -125,6 +130,7 @@ createApp({
             notes: 'Notes',
             config: 'Configuration',
             access: 'Access',
+            help: 'Help',
         };
         const viewTitle = computed(() => viewTitles[currentView.value] || currentView.value);
 
@@ -289,6 +295,9 @@ createApp({
                 actorsConfigModule.loadActorsConfig();
             }
         });
+        watch(helpPage, () => {
+            writeHash();
+        });
 
         // Lifecycle — store handler refs for proper cleanup
         function handleKeydown(e) {
@@ -402,6 +411,7 @@ createApp({
             viewTitle,
             configSubTab,
             commSubTab,
+            helpPage,
             allSharesList, loadAllShares, revokeShareFromConfig,
             theme,
             toggleTheme,
