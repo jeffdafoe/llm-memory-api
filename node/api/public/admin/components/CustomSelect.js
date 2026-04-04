@@ -239,19 +239,30 @@ export default {
             }
         }
 
-        // Close on outside click
+        // Close on outside click — use both mousedown and focusout for reliability.
+        // mousedown catches clicks on non-focusable elements (empty space, other divs).
+        // focusout catches when focus moves to another input/button.
         function onClickOutside(e) {
-            if (root.value && !root.value.contains(e.target)) {
+            if (open.value && root.value && !root.value.contains(e.target)) {
+                close();
+            }
+        }
+
+        function onFocusOut(e) {
+            // relatedTarget is the element receiving focus — if it's outside our component, close
+            if (open.value && root.value && e.relatedTarget && !root.value.contains(e.relatedTarget)) {
                 close();
             }
         }
 
         onMounted(() => {
-            document.addEventListener('mousedown', onClickOutside);
+            document.addEventListener('mousedown', onClickOutside, true);
+            document.addEventListener('focusin', onClickOutside, true);
         });
 
         onUnmounted(() => {
-            document.removeEventListener('mousedown', onClickOutside);
+            document.removeEventListener('mousedown', onClickOutside, true);
+            document.removeEventListener('focusin', onClickOutside, true);
         });
 
         // Reset focused index when filter changes
