@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Antenna stick -->
+  <line x1="128" y1="58" x2="128" y2="28" stroke="#5B9BD5" stroke-width="12" stroke-linecap="round"/>
+  <!-- Antenna ball -->
+  <circle cx="128" cy="20" r="12" fill="#7CB9E8"/>
+  <!-- Head -->
+  <rect x="32" y="58" width="192" height="160" rx="32" ry="32" fill="#4A90C4"/>
+  <!-- Head highlight (lighter top edge) -->
+  <rect x="32" y="58" width="192" height="12" rx="6" ry="6" fill="#5BA3D9" opacity="0.6"/>
+  <!-- Left eye -->
+  <circle cx="92" cy="138" r="28" fill="#1A2744"/>
+  <circle cx="92" cy="132" r="14" fill="#FFFFFF"/>
+  <!-- Right eye -->
+  <circle cx="164" cy="138" r="28" fill="#1A2744"/>
+  <circle cx="164" cy="132" r="14" fill="#FFFFFF"/>
+</svg>

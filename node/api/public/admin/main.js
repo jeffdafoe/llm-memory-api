@@ -297,6 +297,10 @@ createApp({
         });
         watch(helpPage, () => {
             writeHash();
+            nextTick(() => {
+                const el = document.querySelector('.help-content');
+                if (el) el.scrollTop = 0;
+            });
         });
 
         // Lifecycle — store handler refs for proper cleanup
