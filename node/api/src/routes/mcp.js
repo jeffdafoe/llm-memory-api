@@ -1005,7 +1005,7 @@ const TOOL_HANDLERS = {
             if (a.last_seen) {
                 parts.push(`last seen ${a.last_seen}`);
             }
-            const expertise = JSON.parse(a.expertise || '[]');
+            const expertise = a.expertise || [];
             if (expertise.length > 0) {
                 parts.push(`expertise: ${expertise.join(', ')}`);
             }
