@@ -91,44 +91,6 @@
     mode: "0600"
   notify: Restart memory-api
 
-- name: Install Python 3 and pip
-  apt:
-    name:
-      - python3
-      - python3-pip
-      - python3-venv
-    state: present
-
-- name: Deploy clustering scripts
-  synchronize:
-    src: "{{ repo_root }}/scripts/clustering/"
-    dest: "{{ project_root }}/scripts/clustering/"
-    rsync_opts:
-      - "--exclude=.venv"
-  delegate_to: "{{ inventory_hostname }}"
-  when: repo_root != project_root
-
-- name: Set clustering directory ownership
-  file:
-    path: "{{ project_root }}/scripts/clustering"
-    owner: "{{ app_user }}"
-    recurse: yes
-  when: repo_root != project_root
-
-- name: Create Python virtual environment for clustering
-  command: python3 -m venv {{ project_root }}/scripts/clustering/.venv
-  args:
-    creates: "{{ project_root }}/scripts/clustering/.venv/bin/python"
-  become_user: "{{ app_user }}"
-
-- name: Install Python clustering dependencies
-  pip:
-    name:
-      - scikit-learn
-      - numpy
-    virtualenv: "{{ project_root }}/scripts/clustering/.venv"
-  become_user: "{{ app_user }}"
-
 - name: Install npm dependencies
   npm:
     path: "{{ project_root }}"

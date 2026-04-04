@@ -7,7 +7,7 @@ const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 const config = require('./config');
-const { updateSlugReferences, deleteSlugReferences, updateSlugReferencesForMove } = require('./slug-references');
+const { deleteRelationsForNote, updateRelationsForMove, autoExtractRelations } = require('./relations');
 
 // Update namespace_usage counters. Fire-and-forget — usage tracking
 // should never block or fail a document operation.
@@ -273,11 +273,20 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         }).catch(() => {});
     });
 
+    // Auto-extract slug references and create relation graph edges (fire-and-forget)
+    autoExtractRelations(namespace, resolvedSlug, content).catch(() => {});
+
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug: resolvedSlug, operation: 'saved' });
 
-    // Extract slug references for graph edges (fire-and-forget)
-    updateSlugReferences(namespace, resolvedSlug, content).catch(() => {});
+    // LLM-powered enrichment — generates keywords, tags, and suggested relations (fire-and-forget)
+    const { enrichNote } = require('./enrichment');
+    var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
+    enrichNote(namespace, resolvedSlug, title, content, parsedMeta).catch(err => {
+        handleError(null, 'documents', 'NOTE_ENRICHMENT_FAILED', {
+            namespace, slug: resolvedSlug, error: err.message
+        }).catch(() => {});
+    });
 
     return doc;
 }
@@ -367,7 +376,7 @@ async function deleteNote(namespace, slug) {
     }
 
     updateUsage(namespace, -1, -(result.rows[0].content_length || 0));
-    deleteSlugReferences(namespace, slug).catch(() => {});
+    deleteRelationsForNote(namespace, slug).catch(() => {});
     broadcast('note_updated', { namespace, slug, operation: 'deleted' });
 
     return { deleted: true, slug };
@@ -489,11 +498,11 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
         }).catch(() => {});
     });
 
+    // Re-extract slug references after edit (fire-and-forget)
+    autoExtractRelations(namespace, slug, updatedContent).catch(() => {});
+
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug, operation: 'edited' });
-
-    // Re-extract slug references after edit (fire-and-forget)
-    updateSlugReferences(namespace, slug, updatedContent).catch(() => {});
 
     return {
         ...result.rows[0],
@@ -628,8 +637,8 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         [newSlug, targetNamespace, namespace, slug]
     );
 
-    // Update slug references to follow the move
-    updateSlugReferencesForMove(namespace, slug, targetNamespace, newSlug).catch(() => {});
+    // Update relation graph edges to follow the move
+    updateRelationsForMove(namespace, slug, targetNamespace, newSlug).catch(() => {});
 
     const doc = result.rows[0];
 
