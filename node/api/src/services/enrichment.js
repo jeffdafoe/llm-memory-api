@@ -168,12 +168,35 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
 
     logEnrich('start', { namespace, slug, kind });
 
-    // Fetch top-5 similar notes for relation context
+    // Configurable neighbor count for relation context
+    var neighborCount = 5;
+    try {
+        var configuredCount = parseInt(config.get('enrichment_neighbor_count'), 10);
+        if (configuredCount > 0) neighborCount = configuredCount;
+    } catch (e) {
+        // Config key doesn't exist yet — use default
+    }
+
+    // Fetch similar notes for relation context, respecting visibility.
+    // Resolve the namespace owner's actor to get their readable namespaces.
     var similarNotes = [];
     try {
         var { searchMemory } = require('./memory');
+        var { resolveByName } = require('./actors');
+        var { getReadableNamespaces } = require('./namespace-permissions');
+
         var searchQuery = title + ' ' + content.substring(0, 500);
-        var searchResults = await searchMemory(searchQuery, '*', 5);
+
+        // Resolve the namespace owner to get visibility-correct results
+        var actor = await resolveByName(namespace);
+        var readableNamespaces = null;
+        var actorId = null;
+        if (actor) {
+            actorId = actor.id;
+            readableNamespaces = await getReadableNamespaces(actor.id, namespace, 'agent');
+        }
+
+        var searchResults = await searchMemory(searchQuery, '*', neighborCount, readableNamespaces, actorId);
         // Filter out the current note itself
         similarNotes = (searchResults.results || []).filter(function(r) {
             return !(r.namespace === namespace && r.source_file.toLowerCase() === slug.toLowerCase());
