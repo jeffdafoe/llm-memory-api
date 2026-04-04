@@ -108,6 +108,13 @@
   delegate_to: "{{ inventory_hostname }}"
   when: repo_root != project_root
 
+- name: Set clustering directory ownership
+  file:
+    path: "{{ project_root }}/scripts/clustering"
+    owner: "{{ app_user }}"
+    recurse: yes
+  when: repo_root != project_root
+
 - name: Create Python virtual environment for clustering
   command: python3 -m venv {{ project_root }}/scripts/clustering/.venv
   args:
