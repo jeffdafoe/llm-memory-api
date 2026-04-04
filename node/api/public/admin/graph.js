@@ -1,29 +1,43 @@
-// Graph composable — D3 force-directed visualization of note clusters + slug references.
-// Notes are colored by HDBSCAN cluster membership, connected by slug reference edges.
+// Graph composable — D3 force-directed visualization of note relations.
+// Renders in the notes view when graph mode is toggled on.
 
-import { ref } from 'vue';
-import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY } from 'd3-force';
+import { ref, nextTick, watch } from 'vue';
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force';
 import { select } from 'd3-selection';
-import { zoom } from 'd3-zoom';
+import { zoom, zoomIdentity } from 'd3-zoom';
 import { drag } from 'd3-drag';
 
-// Cluster color palette
-const CLUSTER_COLORS = [
-    '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6',
-    '#06b6d4', '#ec4899', '#f97316', '#14b8a6', '#6366f1',
-    '#84cc16', '#f43f5e',
+// Namespace color palette — distinct colors for visual separation
+const NS_COLORS = [
+    '#3b82f6', // blue
+    '#22c55e', // green
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#8b5cf6', // purple
+    '#06b6d4', // cyan
+    '#ec4899', // pink
+    '#f97316', // orange
+    '#14b8a6', // teal
+    '#6366f1', // indigo
 ];
 
-const NOISE_COLOR = '#3f3f46';
-const EDGE_COLOR = '#52525b'; // zinc-600
+// Line styles per relation type
+const RELATION_STYLES = {
+    'depends-on':  { dash: null,    color: '#ef4444' },  // solid red
+    'references':  { dash: '6,3',   color: '#71717a' },  // dashed gray
+    'supersedes':  { dash: '2,4',   color: '#f59e0b' },  // dotted amber
+    'led-to':      { dash: null,    color: '#22c55e' },  // solid green
+    'related':     { dash: '4,4',   color: '#3b82f6' },  // dashed blue
+    'subtask-of':  { dash: null,    color: '#8b5cf6' },  // solid purple
+};
 
 export function useGraph({ api, showToast }) {
     const graphMode = ref(false);
-    const graphData = ref(null);       // { clusters, references }
+    const graphData = ref(null);
     const graphLoading = ref(false);
     const graphNamespaceFilter = ref('');
-    const graphClusterFilter = ref('');
-    const graphHideNoise = ref(false);
+    const graphTypeFilter = ref('');
+    const graphShowAuto = ref(true);
     const graphSelectedNode = ref(null);
     let onNodeClick = null;
 
@@ -31,23 +45,24 @@ export function useGraph({ api, showToast }) {
     let svgElement = null;
     let currentZoom = null;
 
-    function clusterColor(clusterId) {
-        if (clusterId === -1) return NOISE_COLOR;
-        return CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+    // Color mapping for namespaces
+    const nsColorMap = {};
+    let nsColorIdx = 0;
+    function nsColor(ns) {
+        if (!nsColorMap[ns]) {
+            nsColorMap[ns] = NS_COLORS[nsColorIdx % NS_COLORS.length];
+            nsColorIdx++;
+        }
+        return nsColorMap[ns];
     }
 
-    // Load both clusters and slug references
-    async function loadGraphData() {
+    // Load graph data from API
+    async function loadGraphData(namespace) {
         graphLoading.value = true;
         try {
-            const [clusterData, refData] = await Promise.all([
-                api('/admin/notes/clusters', {}),
-                api('/admin/notes/references', {})
-            ]);
-            graphData.value = {
-                clusters: clusterData.clusters || [],
-                references: refData.references || []
-            };
+            const body = namespace ? { namespace } : {};
+            const data = await api('/admin/notes/graph-all', body);
+            graphData.value = data;
         } catch (err) {
             showToast('Failed to load graph: ' + err.message, 'error');
         } finally {
@@ -55,65 +70,52 @@ export function useGraph({ api, showToast }) {
         }
     }
 
-    // Build filtered nodes and edges
+    // Get filtered data based on current filter settings
     function getFilteredData() {
         if (!graphData.value) return { nodes: [], edges: [] };
+        let { nodes, edges } = graphData.value;
 
-        var clusters = graphData.value.clusters;
-
-        if (graphHideNoise.value) {
-            clusters = clusters.filter(c => c.cluster_id !== -1);
+        // Filter by namespace
+        if (graphNamespaceFilter.value) {
+            const ns = graphNamespaceFilter.value;
+            edges = edges.filter(e => {
+                const sNs = e.source.split ? e.source.split('/')[0] : (e.source.namespace || '');
+                const tNs = e.target.split ? e.target.split('/')[0] : (e.target.namespace || '');
+                return sNs === ns || tNs === ns;
+            });
         }
 
-        if (graphClusterFilter.value !== '') {
-            var cid = parseInt(graphClusterFilter.value, 10);
-            clusters = clusters.filter(c => c.cluster_id === cid);
+        // Filter by relation type
+        if (graphTypeFilter.value) {
+            edges = edges.filter(e => e.type === graphTypeFilter.value);
         }
 
-        // Build node list and lookup
-        var nodeMap = {};
-        var nodes = [];
-        for (var cluster of clusters) {
-            for (var note of cluster.notes) {
-                if (graphNamespaceFilter.value && note.namespace !== graphNamespaceFilter.value) {
-                    continue;
-                }
-                var id = note.namespace + '/' + note.slug;
-                if (!nodeMap[id]) {
-                    var node = {
-                        id: id,
-                        namespace: note.namespace,
-                        slug: note.slug,
-                        cluster_id: cluster.cluster_id,
-                        cluster_label: cluster.label
-                    };
-                    nodeMap[id] = node;
-                    nodes.push(node);
-                }
-            }
+        // Filter auto-extracted
+        if (!graphShowAuto.value) {
+            edges = edges.filter(e => !e.auto_extracted);
         }
 
-        // Filter references to only include edges where both endpoints are visible
-        var edges = [];
-        for (var ref of graphData.value.references) {
-            var sourceKey = ref.source_namespace + '/' + ref.source_slug;
-            var targetKey = ref.target_namespace + '/' + ref.target_slug;
-            if (nodeMap[sourceKey] && nodeMap[targetKey]) {
-                edges.push({ source: sourceKey, target: targetKey });
-            }
+        // Rebuild node set from remaining edges
+        const nodeKeys = new Set();
+        for (const e of edges) {
+            const sKey = e.source.split ? e.source : (e.source.namespace + '/' + e.source.slug);
+            const tKey = e.target.split ? e.target : (e.target.namespace + '/' + e.target.slug);
+            nodeKeys.add(sKey);
+            nodeKeys.add(tKey);
         }
+        nodes = nodes.filter(n => nodeKeys.has(n.namespace + '/' + n.slug));
 
         return { nodes, edges };
     }
 
+    // Initialize or update the D3 visualization
     function renderGraph(containerId) {
-        var container = document.getElementById(containerId);
+        const container = document.getElementById(containerId);
         if (!container) return;
 
-        var data = getFilteredData();
-        var nodes = data.nodes;
-        var edges = data.edges;
+        const { nodes, edges } = getFilteredData();
 
+        // Clean up previous
         if (simulation) {
             simulation.stop();
             simulation = null;
@@ -128,55 +130,42 @@ export function useGraph({ api, showToast }) {
                 .style('height', '100%')
                 .style('color', 'var(--text-muted)')
                 .style('font-size', '14px')
-                .text(graphData.value ? 'No notes match the current filters.' : 'Loading...');
+                .text(graphData.value ? 'No relations match the current filters.' : 'Loading...');
             return;
         }
 
-        var width = container.clientWidth;
-        var height = container.clientHeight;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
 
-        // Compute cluster centers arranged in a circle
-        var clusterIds = [...new Set(nodes.map(n => n.cluster_id))].sort((a, b) => a - b);
-        var clusterCenters = {};
-        var radius = Math.min(width, height) * 0.3;
-        var nonNoiseCount = clusterIds.filter(id => id !== -1).length;
-        var angleIdx = 0;
-        clusterIds.forEach(function(cid) {
-            if (cid === -1) {
-                clusterCenters[cid] = { x: width / 2, y: height / 2 };
-            } else {
-                var angle = (2 * Math.PI * angleIdx) / Math.max(nonNoiseCount, 1);
-                clusterCenters[cid] = {
-                    x: width / 2 + radius * Math.cos(angle),
-                    y: height / 2 + radius * Math.sin(angle)
-                };
-                angleIdx++;
-            }
+        // Build node objects with id = namespace/slug
+        const nodeMap = {};
+        const nodeObjects = nodes.map(n => {
+            const id = n.namespace + '/' + n.slug;
+            const obj = { id, namespace: n.namespace, slug: n.slug, root: n.root || false };
+            nodeMap[id] = obj;
+            return obj;
         });
 
         // Count connections per node for sizing
-        var connectionCount = {};
-        for (var e of edges) {
-            connectionCount[e.source] = (connectionCount[e.source] || 0) + 1;
-            connectionCount[e.target] = (connectionCount[e.target] || 0) + 1;
+        const connectionCount = {};
+        for (const e of edges) {
+            const sKey = typeof e.source === 'string' ? e.source : e.source.id;
+            const tKey = typeof e.target === 'string' ? e.target : e.target.id;
+            connectionCount[sKey] = (connectionCount[sKey] || 0) + 1;
+            connectionCount[tKey] = (connectionCount[tKey] || 0) + 1;
         }
 
-        // Build node objects with initial positions near cluster centers
-        var nodeObjects = nodes.map(function(n) {
-            return {
-                ...n,
-                x: clusterCenters[n.cluster_id].x + (Math.random() - 0.5) * 60,
-                y: clusterCenters[n.cluster_id].y + (Math.random() - 0.5) * 60
-            };
-        });
-
         // Build link objects
-        var linkObjects = edges.map(function(e) {
-            return { source: e.source, target: e.target };
-        });
+        const linkObjects = edges.map(e => ({
+            source: typeof e.source === 'string' ? e.source : e.source.id,
+            target: typeof e.target === 'string' ? e.target : e.target.id,
+            type: e.type,
+            auto_extracted: e.auto_extracted,
+            id: e.id
+        }));
 
         // Create SVG
-        var svg = select(container)
+        const svg = select(container)
             .append('svg')
             .attr('width', width)
             .attr('height', height)
@@ -184,71 +173,63 @@ export function useGraph({ api, showToast }) {
 
         svgElement = svg;
 
+        // Arrow markers for each relation type
+        const defs = svg.append('defs');
+        for (const [type, style] of Object.entries(RELATION_STYLES)) {
+            defs.append('marker')
+                .attr('id', 'arrow-' + type)
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', style.color);
+        }
+
         // Zoom container
-        var g = svg.append('g');
+        const g = svg.append('g');
+
         currentZoom = zoom()
             .scaleExtent([0.1, 8])
-            .on('zoom', function(event) {
+            .on('zoom', (event) => {
                 g.attr('transform', event.transform);
             });
         svg.call(currentZoom);
 
-        // Arrow markers for edges
-        var defs = svg.append('defs');
-        defs.append('marker')
-            .attr('id', 'arrow-ref')
-            .attr('viewBox', '0 -5 10 10')
-            .attr('refX', 20)
-            .attr('refY', 0)
-            .attr('markerWidth', 5)
-            .attr('markerHeight', 5)
-            .attr('orient', 'auto')
-            .append('path')
-            .attr('d', 'M0,-4L10,0L0,4')
-            .attr('fill', EDGE_COLOR);
-
-        // Draw cluster labels
-        var labelData = clusterIds.filter(function(id) { return id !== -1; }).map(function(id) {
-            var cluster = graphData.value.clusters.find(function(c) { return c.cluster_id === id; });
-            return {
-                id: id,
-                label: cluster ? cluster.label : 'cluster ' + id,
-                x: clusterCenters[id].x,
-                y: clusterCenters[id].y
-            };
-        });
-
-        g.append('g')
-            .selectAll('text')
-            .data(labelData)
-            .join('text')
-            .text(function(d) { return d.label; })
-            .attr('x', function(d) { return d.x; })
-            .attr('y', function(d) { return d.y - 60; })
-            .attr('text-anchor', 'middle')
-            .attr('font-size', 11)
-            .attr('font-weight', 500)
-            .attr('fill', function(d) { return clusterColor(d.id); })
-            .style('opacity', 0.6)
-            .style('pointer-events', 'none');
-
-        // Draw edges (behind nodes)
-        var link = g.append('g')
+        // Draw links
+        const link = g.append('g')
             .selectAll('line')
             .data(linkObjects)
             .join('line')
-            .attr('stroke', EDGE_COLOR)
-            .attr('stroke-width', 1)
-            .attr('stroke-opacity', 0.4)
-            .attr('marker-end', 'url(#arrow-ref)');
+            .attr('stroke', d => (RELATION_STYLES[d.type] || RELATION_STYLES['related']).color)
+            .attr('stroke-width', d => d.auto_extracted ? 1 : 1.5)
+            .attr('stroke-dasharray', d => (RELATION_STYLES[d.type] || RELATION_STYLES['related']).dash)
+            .attr('stroke-opacity', d => d.auto_extracted ? 0.4 : 0.7)
+            .attr('marker-end', d => 'url(#arrow-' + d.type + ')');
+
+        // Link labels
+        const linkLabel = g.append('g')
+            .selectAll('text')
+            .data(linkObjects)
+            .join('text')
+            .text(d => d.type)
+            .attr('font-size', 9)
+            .attr('fill', 'var(--text-muted)')
+            .attr('text-anchor', 'middle')
+            .attr('dy', -4)
+            .style('pointer-events', 'none')
+            .style('opacity', 0.6);
 
         // Draw nodes
-        var node = g.append('g')
+        const node = g.append('g')
             .selectAll('g')
             .data(nodeObjects)
             .join('g')
             .style('cursor', 'pointer')
-            .on('click', function(event, d) {
+            .on('click', (event, d) => {
                 event.stopPropagation();
                 if (onNodeClick) {
                     onNodeClick(d);
@@ -259,58 +240,46 @@ export function useGraph({ api, showToast }) {
 
         // Node circles — sized by connection count
         node.append('circle')
-            .attr('r', function(d) {
-                var conns = connectionCount[d.id] || 0;
-                if (d.cluster_id === -1 && conns === 0) return 4;
-                return Math.min(16, 5 + conns * 1.5);
-            })
-            .attr('fill', function(d) { return clusterColor(d.cluster_id); })
+            .attr('r', d => Math.min(20, 5 + (connectionCount[d.id] || 0) * 2))
+            .attr('fill', d => nsColor(d.namespace))
             .attr('stroke', 'var(--bg-surface)')
             .attr('stroke-width', 1.5)
-            .attr('opacity', function(d) { return d.cluster_id === -1 ? 0.5 : 0.85; });
+            .attr('opacity', 0.85);
 
-        // Node labels
+        // Node labels — show just the last part of the slug
         node.append('text')
-            .text(function(d) {
-                var parts = d.slug.split('/');
+            .text(d => {
+                const parts = d.slug.split('/');
                 return parts[parts.length - 1];
             })
             .attr('font-size', 10)
             .attr('fill', 'var(--text-primary)')
-            .attr('dx', function(d) {
-                var conns = connectionCount[d.id] || 0;
-                var r = (d.cluster_id === -1 && conns === 0) ? 4 : Math.min(16, 5 + conns * 1.5);
-                return r + 4;
-            })
+            .attr('dx', d => Math.min(20, 5 + (connectionCount[d.id] || 0) * 2) + 4)
             .attr('dy', 3)
             .style('pointer-events', 'none');
 
         // Namespace badge
         node.append('text')
-            .text(function(d) { return d.namespace; })
+            .text(d => d.namespace)
             .attr('font-size', 8)
-            .attr('fill', function(d) { return clusterColor(d.cluster_id); })
-            .attr('dx', function(d) {
-                var conns = connectionCount[d.id] || 0;
-                var r = (d.cluster_id === -1 && conns === 0) ? 4 : Math.min(16, 5 + conns * 1.5);
-                return r + 4;
-            })
+            .attr('fill', d => nsColor(d.namespace))
+            .attr('dx', d => Math.min(20, 5 + (connectionCount[d.id] || 0) * 2) + 4)
             .attr('dy', 14)
             .style('pointer-events', 'none')
             .style('opacity', 0.7);
 
         // Drag behavior
-        var dragBehavior = drag()
-            .on('start', function(event, d) {
+        const dragBehavior = drag()
+            .on('start', (event, d) => {
                 if (!event.active) simulation.alphaTarget(0.3).restart();
                 d.fx = d.x;
                 d.fy = d.y;
             })
-            .on('drag', function(event, d) {
+            .on('drag', (event, d) => {
                 d.fx = event.x;
                 d.fy = event.y;
             })
-            .on('end', function(event, d) {
+            .on('end', (event, d) => {
                 if (!event.active) simulation.alphaTarget(0);
                 d.fx = null;
                 d.fy = null;
@@ -319,30 +288,32 @@ export function useGraph({ api, showToast }) {
         node.call(dragBehavior);
 
         // Click background to deselect
-        svg.on('click', function() {
+        svg.on('click', () => {
             graphSelectedNode.value = null;
         });
 
-        // Force simulation — links pull connected nodes together,
-        // cluster forces group by topic
+        // Force simulation
         simulation = forceSimulation(nodeObjects)
-            .force('link', forceLink(linkObjects).id(function(d) { return d.id; }).distance(100).strength(0.3))
-            .force('charge', forceManyBody().strength(-60))
-            .force('center', forceCenter(width / 2, height / 2).strength(0.05))
-            .force('collide', forceCollide(18))
-            .force('x', forceX(function(d) { return clusterCenters[d.cluster_id].x; }).strength(function(d) { return d.cluster_id === -1 ? 0.02 : 0.1; }))
-            .force('y', forceY(function(d) { return clusterCenters[d.cluster_id].y; }).strength(function(d) { return d.cluster_id === -1 ? 0.02 : 0.1; }))
-            .on('tick', function() {
+            .force('link', forceLink(linkObjects).id(d => d.id).distance(120))
+            .force('charge', forceManyBody().strength(-300))
+            .force('center', forceCenter(width / 2, height / 2))
+            .force('collide', forceCollide(30))
+            .on('tick', () => {
                 link
-                    .attr('x1', function(d) { return d.source.x; })
-                    .attr('y1', function(d) { return d.source.y; })
-                    .attr('x2', function(d) { return d.target.x; })
-                    .attr('y2', function(d) { return d.target.y; });
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
 
-                node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
+                linkLabel
+                    .attr('x', d => (d.source.x + d.target.x) / 2)
+                    .attr('y', d => (d.source.y + d.target.y) / 2);
+
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
             });
     }
 
+    // Clean up simulation when leaving graph mode
     function destroyGraph() {
         if (simulation) {
             simulation.stop();
@@ -357,13 +328,13 @@ export function useGraph({ api, showToast }) {
         graphData,
         graphLoading,
         graphNamespaceFilter,
-        graphClusterFilter,
-        graphHideNoise,
+        graphTypeFilter,
+        graphShowAuto,
         graphSelectedNode,
         loadGraphData,
         renderGraph,
         destroyGraph,
-        clusterColor,
+        nsColor,
         setOnNodeClick(fn) { onNodeClick = fn; },
     };
 }

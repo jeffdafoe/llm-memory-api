@@ -41,8 +41,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const expandedNamespaces = ref({});
     const expandedFolders = ref({});
     const selectedNote = ref(null);
-    const noteClusterSiblings = ref([]);
-    const noteClusterLabel = ref('');
+    const noteRelations = ref([]);
 
     // ---- Sync mappings ----
     const allSyncMappings = ref([]);         // all mappings for sync indicator icons
@@ -425,29 +424,10 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
 
             selectedNote.value = note;
 
-            // Load cluster siblings (fire-and-forget — don't block the note from rendering)
-            api('/admin/notes/clusters', {})
-                .then(data => {
-                    // Find which cluster this note belongs to
-                    noteClusterSiblings.value = [];
-                    noteClusterLabel.value = '';
-                    if (data.clusters) {
-                        for (var cluster of data.clusters) {
-                            if (cluster.cluster_id === -1) continue;
-                            var match = cluster.notes.find(n =>
-                                n.namespace === namespace && n.slug.toLowerCase() === slug.toLowerCase()
-                            );
-                            if (match) {
-                                noteClusterLabel.value = cluster.label || '';
-                                noteClusterSiblings.value = cluster.notes.filter(n =>
-                                    !(n.namespace === namespace && n.slug.toLowerCase() === slug.toLowerCase())
-                                );
-                                break;
-                            }
-                        }
-                    }
-                })
-                .catch(() => { noteClusterSiblings.value = []; noteClusterLabel.value = ''; });
+            // Load related notes (fire-and-forget — don't block the note from rendering)
+            api('/admin/notes/relations', { namespace, slug, direction: 'both' })
+                .then(data => { noteRelations.value = data.relations || []; })
+                .catch(() => { noteRelations.value = []; });
         } catch (err) {
             console.error('Failed to open note:', err);
         }
@@ -1080,7 +1060,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, noteClusterSiblings, noteClusterLabel, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
+        selectedNote, noteRelations, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
         notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,
