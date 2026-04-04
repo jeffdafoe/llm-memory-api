@@ -164,28 +164,16 @@ async function writeClusters(actorId, runId, results) {
         // Delete old results for this agent
         await client.query('DELETE FROM note_clusters WHERE actor_id = $1', [actorId]);
 
-        // Batch insert new results (500 rows per INSERT)
+        // Insert one row per note
         if (results.clusters && results.clusters.length > 0) {
-            const batchSize = 500;
-            for (let i = 0; i < results.clusters.length; i += batchSize) {
-                const batch = results.clusters.slice(i, i + batchSize);
-                const values = [];
-                const params = [];
-                let idx = 1;
-
-                for (const cluster of batch) {
-                    const label = results.labels
-                        ? (results.labels[String(cluster.cluster_id)] || null)
-                        : null;
-                    values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5})`);
-                    params.push(actorId, cluster.namespace, cluster.slug, cluster.cluster_id, label, runId);
-                    idx += 6;
-                }
-
+            for (const cluster of results.clusters) {
+                const label = results.labels
+                    ? (results.labels[String(cluster.cluster_id)] || null)
+                    : null;
                 await client.query(
                     `INSERT INTO note_clusters (actor_id, namespace, slug, cluster_id, cluster_label, run_id)
-                     VALUES ${values.join(', ')}`,
-                    params
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [actorId, cluster.namespace, cluster.slug, cluster.cluster_id, label, runId]
                 );
             }
         }
