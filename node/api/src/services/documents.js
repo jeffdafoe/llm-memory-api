@@ -7,7 +7,7 @@ const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 const config = require('./config');
-// Relations system removed — replaced by HDBSCAN clustering (MEM-102)
+const { updateSlugReferences, deleteSlugReferences, updateSlugReferencesForMove } = require('./slug-references');
 
 // Update namespace_usage counters. Fire-and-forget — usage tracking
 // should never block or fail a document operation.
@@ -276,6 +276,9 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug: resolvedSlug, operation: 'saved' });
 
+    // Extract slug references for graph edges (fire-and-forget)
+    updateSlugReferences(namespace, resolvedSlug, content).catch(() => {});
+
     return doc;
 }
 
@@ -364,6 +367,7 @@ async function deleteNote(namespace, slug) {
     }
 
     updateUsage(namespace, -1, -(result.rows[0].content_length || 0));
+    deleteSlugReferences(namespace, slug).catch(() => {});
     broadcast('note_updated', { namespace, slug, operation: 'deleted' });
 
     return { deleted: true, slug };
@@ -487,6 +491,9 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
 
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug, operation: 'edited' });
+
+    // Re-extract slug references after edit (fire-and-forget)
+    updateSlugReferences(namespace, slug, updatedContent).catch(() => {});
 
     return {
         ...result.rows[0],
@@ -620,6 +627,9 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         'UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND LOWER(source_file) = LOWER($4)',
         [newSlug, targetNamespace, namespace, slug]
     );
+
+    // Update slug references to follow the move
+    updateSlugReferencesForMove(namespace, slug, targetNamespace, newSlug).catch(() => {});
 
     const doc = result.rows[0];
 

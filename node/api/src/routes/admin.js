@@ -1166,10 +1166,15 @@ router.post('/admin/notes/reindex', requirePerm('notes', 'write'), adminRoute('n
             );
             reindexState.total = docs.rows.length;
 
+            const { updateSlugReferences } = require('../services/slug-references');
+
             for (const doc of docs.rows) {
                 try {
                     const result = await ingestContent(doc.namespace, doc.slug, doc.content);
                     reindexState.chunks_created += result.chunks_created;
+
+                    // Re-extract slug references
+                    updateSlugReferences(doc.namespace, doc.slug, doc.content).catch(() => {});
                 } catch (err) {
                     reindexState.errors.push({ namespace: doc.namespace, slug: doc.slug, error: err.message });
                 }
@@ -1318,6 +1323,24 @@ router.post('/admin/notes/clusters', requirePerm('notes', 'read'), adminRoute('n
         created_at: createdAt,
         total_notes: rows.length
     });
+}));
+
+// POST /admin/notes/references — get all slug references, filtered by readable namespaces.
+// Used by the graph visualization to draw edges between notes.
+router.post('/admin/notes/references', requirePerm('notes', 'read'), adminRoute('notes-references', async (req, res) => {
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+
+    let result;
+    if (readable === null) {
+        result = await pool.query('SELECT source_namespace, source_slug, target_namespace, target_slug FROM slug_references ORDER BY source_namespace, source_slug');
+    } else {
+        result = await pool.query(
+            'SELECT source_namespace, source_slug, target_namespace, target_slug FROM slug_references WHERE source_namespace = ANY($1) AND target_namespace = ANY($1) ORDER BY source_namespace, source_slug',
+            [readable]
+        );
+    }
+
+    res.json({ references: result.rows });
 }));
 
 // ---- Note Synchronization CRUD ----
