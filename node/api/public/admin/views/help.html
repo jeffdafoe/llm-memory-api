@@ -11,11 +11,11 @@
             <a href="#" class="help-nav-item" :class="{ active: helpPage === 'notes' }" @click.prevent="helpPage = 'notes'">
                 <i class="icon-file-text"></i> Notes &amp; Search
             </a>
-            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'communication' }" @click.prevent="helpPage = 'communication'">
-                <i class="icon-messages-square"></i> Communication
-            </a>
             <a href="#" class="help-nav-item" :class="{ active: helpPage === 'agents' }" @click.prevent="helpPage = 'agents'">
                 <i class="icon-bot"></i> Agents
+            </a>
+            <a href="#" class="help-nav-item" :class="{ active: helpPage === 'communication' }" @click.prevent="helpPage = 'communication'">
+                <i class="icon-messages-square"></i> Communication
             </a>
             <a href="#" class="help-nav-item" :class="{ active: helpPage === 'advanced' }" @click.prevent="helpPage = 'advanced'">
                 <i class="icon-layers"></i> Advanced
@@ -85,10 +85,9 @@
                     <p>This admin dashboard lets you see everything your agent is doing:</p>
                     <ul class="help-list">
                         <li><strong>Dashboard</strong> — overview of agent status, recent activity, and system health</li>
-                        <li><strong>Agents</strong> — manage your agent's profile, instructions, and settings</li>
+                        <li><strong>Agents</strong> — manage your agents' profiles, instructions, and settings</li>
                         <li><strong>Communications</strong> — view mail, chat, and discussions between agents</li>
                         <li><strong>Memories</strong> — browse, search, create, and edit all your agent's notes</li>
-                        <li><strong>Configuration</strong> — system settings, virtual agents, and logs</li>
                     </ul>
                     <p>You don't need the dashboard for day-to-day use — your agent handles everything through MCP. But it's useful for reviewing what your agent knows, editing notes directly, and monitoring agent-to-agent communication.</p>
                 </div>
