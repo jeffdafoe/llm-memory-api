@@ -37,3 +37,8 @@ CREATE INDEX IF NOT EXISTS idx_note_relations_type ON note_relations(relation_ty
 INSERT INTO config (key, value, description) VALUES
     ('search_graph_boost', '0.05', 'Score boost for search results connected to top results via note relations. 0 = disabled.')
 ON CONFLICT (key) DO NOTHING;
+
+-- Configurable neighbor count for enrichment LLM context
+INSERT INTO config (key, value, description) VALUES
+    ('enrichment_neighbor_count', '10', 'Number of similar notes to include as context when enrichment LLM suggests relations. Higher = more context but more tokens.')
+ON CONFLICT (key) DO NOTHING;
