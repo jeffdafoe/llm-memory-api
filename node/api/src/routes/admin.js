@@ -1251,26 +1251,38 @@ router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('note
 // Returns clusters grouped by cluster_id with labels and member notes.
 router.post('/admin/notes/clusters', requirePerm('notes', 'read'), adminRoute('notes-clusters', async (req, res) => {
     const visibleIds = await getVisibleActorIds(req.actorId);
-    // Pick the first non-virtual agent's clusters (most representative)
-    // or allow filtering by agent_id in the request
     const targetActorId = req.body.actor_id || null;
-    let actorIds;
+
+    let result;
     if (targetActorId) {
         // Verify the requested agent is visible to this user
-        if (!visibleIds.includes(targetActorId) && targetActorId !== req.actorId) {
+        if (visibleIds !== null && !visibleIds.has(targetActorId) && targetActorId !== req.actorId) {
             return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not authorized to view this agent' } });
         }
-        actorIds = [targetActorId];
+        result = await pool.query(`
+            SELECT nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
+            FROM note_clusters nc
+            WHERE nc.actor_id = $1
+            ORDER BY nc.cluster_id, nc.namespace, nc.slug
+        `, [targetActorId]);
+    } else if (visibleIds === null) {
+        // Wildcard — show all clusters
+        result = await pool.query(`
+            SELECT DISTINCT ON (nc.namespace, nc.slug)
+                nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
+            FROM note_clusters nc
+            ORDER BY nc.namespace, nc.slug, nc.created_at DESC
+        `);
     } else {
-        actorIds = visibleIds;
+        // Show clusters for all visible agents (deduplicated — same note may appear for multiple agents)
+        result = await pool.query(`
+            SELECT DISTINCT ON (nc.namespace, nc.slug)
+                nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
+            FROM note_clusters nc
+            WHERE nc.actor_id = ANY($1)
+            ORDER BY nc.namespace, nc.slug, nc.created_at DESC
+        `, [[...visibleIds]]);
     }
-
-    const result = await pool.query(`
-        SELECT nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
-        FROM note_clusters nc
-        WHERE nc.actor_id = ANY($1)
-        ORDER BY nc.cluster_id, nc.namespace, nc.slug
-    `, [actorIds]);
 
     // Filter to readable namespaces
     const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
