@@ -76,7 +76,7 @@ async function getVisibleEmbeddings(actorId, actorName) {
                 AND LOWER(d.slug) = LOWER(mc.source_file)
                 AND d.deleted_at IS NULL
             WHERE mc.embedding IS NOT NULL
-              AND d.kind NOT IN ('conversation', 'dream', 'context')
+              AND d.kind NOT IN ('conversation', 'context')
             ORDER BY mc.namespace, mc.source_file, mc.ingested_at
         `;
         params = [];
@@ -92,7 +92,7 @@ async function getVisibleEmbeddings(actorId, actorName) {
                 AND LOWER(d.slug) = LOWER(mc.source_file)
                 AND d.deleted_at IS NULL
             WHERE mc.embedding IS NOT NULL
-              AND d.kind NOT IN ('conversation', 'dream', 'context')
+              AND d.kind NOT IN ('conversation', 'context')
               AND (
                   mc.namespace = ANY($1)
                   OR EXISTS (
