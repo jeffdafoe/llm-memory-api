@@ -281,9 +281,55 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const result = await pool.query(sql, params);
     let rows = result.rows;
 
-    // Note: graph boost (search_graph_boost) removed — note_relations system
-    // replaced by HDBSCAN clustering (MEM-102). Cluster-based search boost
-    // can be added as a follow-up using the note_clusters table.
+    // Graph boost: results connected to top results via note relations get a score bump.
+    // Post-processing step — queries the relation graph for the top N results and boosts
+    // any other results that share a relation edge with them.
+    const graphBoost = parseNonNegativeFinite(config.get('search_graph_boost'), 0);
+    if (graphBoost > 0 && rows.length > 1) {
+        try {
+            // Take the top 5 results as "anchor" nodes
+            const topN = Math.min(5, rows.length);
+            const anchors = rows.slice(0, topN);
+            const anchorKeys = new Set(anchors.map(r => (r.namespace || namespace) + '/' + r.source_file));
+
+            // Query relations for all anchor notes in one batch
+            const anchorPairs = anchors.map(r => [r.namespace || namespace, r.source_file]);
+            const relResult = await pool.query(`
+                SELECT source_namespace, source_slug, target_namespace, target_slug
+                FROM note_relations
+                WHERE ${anchorPairs.map((_, i) =>
+                    `(source_namespace = $${i * 2 + 1} AND LOWER(source_slug) = LOWER($${i * 2 + 2}))
+                     OR (target_namespace = $${i * 2 + 1} AND LOWER(target_slug) = LOWER($${i * 2 + 2}))`
+                ).join(' OR ')}
+            `, anchorPairs.flat());
+
+            // Build set of notes connected to anchors
+            const connectedKeys = new Set();
+            for (const rel of relResult.rows) {
+                const sKey = rel.source_namespace + '/' + rel.source_slug;
+                const tKey = rel.target_namespace + '/' + rel.target_slug;
+                // If one side is an anchor, the other side gets boosted
+                if (anchorKeys.has(sKey)) connectedKeys.add(tKey.toLowerCase());
+                if (anchorKeys.has(tKey)) connectedKeys.add(sKey.toLowerCase());
+            }
+            // Don't boost the anchors themselves
+            for (const k of anchorKeys) connectedKeys.delete(k.toLowerCase());
+
+            // Apply boost to connected results
+            if (connectedKeys.size > 0) {
+                for (const row of rows) {
+                    const key = ((row.namespace || namespace) + '/' + row.source_file).toLowerCase();
+                    if (connectedKeys.has(key)) {
+                        row.similarity = parseFloat(row.similarity) + graphBoost;
+                    }
+                }
+                // Re-sort by boosted similarity
+                rows.sort((a, b) => parseFloat(b.similarity) - parseFloat(a.similarity));
+            }
+        } catch (e) {
+            // Graph boost failure shouldn't break search
+        }
+    }
 
     return { results: rows };
 }

@@ -16,14 +16,14 @@
                     :options="[{ value: '', label: 'All' }].concat(notesNamespaces.map(ns => ({ value: ns.namespace, label: ns.namespace })))"
                     placeholder="All" />
             </label>
-            <label v-if="graphData && graphData.clusters" style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                Cluster
-                <custom-select v-model="graphClusterFilter" @update:model-value="onGraphFilterChange" style="min-width: 180px;"
-                    :options="[{ value: '', label: 'All' }].concat(graphData.clusters.filter(c => c.cluster_id !== -1).map(c => ({ value: String(c.cluster_id), label: c.label || ('Cluster ' + c.cluster_id) })))"
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                Type
+                <custom-select v-model="graphTypeFilter" @update:model-value="onGraphFilterChange" style="min-width: 120px;"
+                    :options="[{ value: '', label: 'All' }, { value: 'depends-on', label: 'depends-on' }, { value: 'references', label: 'references' }, { value: 'supersedes', label: 'supersedes' }, { value: 'led-to', label: 'led-to' }, { value: 'related', label: 'related' }, { value: 'subtask-of', label: 'subtask-of' }]"
                     placeholder="All" />
             </label>
             <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                <input type="checkbox" v-model="graphHideNoise" @change="onGraphFilterChange" style="width: auto;"> Hide unclustered
+                <input type="checkbox" v-model="graphShowAuto" @change="onGraphFilterChange" style="width: auto;"> Auto-extracted
             </label>
             <button class="btn btn-ghost btn-compact" @click="onGraphFilterChange" title="Refresh"><i class="icon-refresh-cw"></i></button>
             <span v-if="graphLoading" class="ts" style="margin-left: 4px;">Loading...</span>
@@ -175,16 +175,28 @@
             </div>
             <div v-else class="notes-body notes-markdown" v-html="renderedNoteContent">
             </div>
-            <!-- See also: notes in the same cluster -->
-            <div v-if="noteClusterSiblings.length > 0 && !notesEditing" style="border-top: 1px solid var(--border); padding: 10px 16px; font-size: 12px;">
-                <strong style="color: var(--text-muted);">Related notes</strong>
-                <span v-if="noteClusterLabel" class="ts" style="margin-left: 6px;">({{ noteClusterLabel }})</span>
+            <!-- See also: related notes from the graph -->
+            <div v-if="noteRelations.length > 0 && !notesEditing" style="border-top: 1px solid var(--border); padding: 10px 16px; font-size: 12px;">
+                <strong style="color: var(--text-muted);">See also</strong>
                 <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
-                    <span v-for="s in noteClusterSiblings" :key="s.namespace + '/' + s.slug"
-                          class="access-badge" style="cursor: pointer; font-size: 11px;"
-                          @click="openNote(s.namespace, s.slug)">
-                        {{ s.namespace }}/{{ s.slug }}
-                    </span>
+                    <template v-for="r in noteRelations" :key="r.id">
+                        <span v-if="r.source_namespace === selectedNote.namespace && r.source_slug.toLowerCase() === selectedNote.slug.toLowerCase()"
+                              class="access-badge" style="cursor: pointer; font-size: 11px;"
+                              @click="openNote(r.target_namespace, r.target_slug)"
+                              :title="r.relation_type + (r.auto_extracted ? ' (auto)' : '')">
+                            <i class="icon-arrow-right" style="font-size: 9px;"></i>
+                            {{ r.target_namespace }}/{{ r.target_slug }}
+                            <span class="ts">{{ r.relation_type }}</span>
+                        </span>
+                        <span v-else
+                              class="access-badge" style="cursor: pointer; font-size: 11px;"
+                              @click="openNote(r.source_namespace, r.source_slug)"
+                              :title="r.relation_type + (r.auto_extracted ? ' (auto)' : '')">
+                            <i class="icon-arrow-left" style="font-size: 9px;"></i>
+                            {{ r.source_namespace }}/{{ r.source_slug }}
+                            <span class="ts">{{ r.relation_type }}</span>
+                        </span>
+                    </template>
                 </div>
             </div>
         </div>

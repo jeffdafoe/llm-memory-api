@@ -1166,15 +1166,34 @@ router.post('/admin/notes/reindex', requirePerm('notes', 'write'), adminRoute('n
             );
             reindexState.total = docs.rows.length;
 
-            const { updateSlugReferences } = require('../services/slug-references');
+            // Check if enrichment should run alongside reindex
+            const config = require('../services/config');
+            const enrichEnabled = config.get('note_enrichment_enabled') === 'true';
+            let enrichModule = null;
+            if (enrichEnabled) {
+                try {
+                    enrichModule = require('../services/enrichment');
+                } catch (err) {
+                    // Enrichment module not available — skip silently
+                }
+            }
+            const { autoExtractRelations } = require('../services/relations');
 
             for (const doc of docs.rows) {
                 try {
                     const result = await ingestContent(doc.namespace, doc.slug, doc.content);
                     reindexState.chunks_created += result.chunks_created;
 
-                    // Re-extract slug references
-                    updateSlugReferences(doc.namespace, doc.slug, doc.content).catch(() => {});
+                    // Auto-extract slug references as relations
+                    autoExtractRelations(doc.namespace, doc.slug, doc.content).catch(() => {});
+
+                    // Fire-and-forget enrichment for each note (skips conversations/dreams internally)
+                    if (enrichModule) {
+                        var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
+                        enrichModule.enrichNote(doc.namespace, doc.slug, doc.title, doc.content, parsedMeta).catch(() => {});
+                        // Small delay to avoid hammering the enrichment provider
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
                 } catch (err) {
                     reindexState.errors.push({ namespace: doc.namespace, slug: doc.slug, error: err.message });
                 }
@@ -1252,95 +1271,106 @@ router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('note
     res.json({ usage: result.rows });
 }));
 
-// POST /admin/notes/clusters — get cluster assignments across all agents visible to the user.
-// Returns clusters grouped by cluster_id with labels and member notes.
-router.post('/admin/notes/clusters', requirePerm('notes', 'read'), adminRoute('notes-clusters', async (req, res) => {
-    const visibleIds = await getVisibleActorIds(req.actorId);
-    const targetActorId = req.body.actor_id || null;
-
-    let result;
-    if (targetActorId) {
-        // Verify the requested agent is visible to this user
-        if (visibleIds !== null && !visibleIds.has(targetActorId) && targetActorId !== req.actorId) {
-            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not authorized to view this agent' } });
-        }
-        result = await pool.query(`
-            SELECT nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
-            FROM note_clusters nc
-            WHERE nc.actor_id = $1
-            ORDER BY nc.cluster_id, nc.namespace, nc.slug
-        `, [targetActorId]);
-    } else if (visibleIds === null) {
-        // Wildcard — show all clusters
-        result = await pool.query(`
-            SELECT DISTINCT ON (nc.namespace, nc.slug)
-                nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
-            FROM note_clusters nc
-            ORDER BY nc.namespace, nc.slug, nc.created_at DESC
-        `);
-    } else {
-        // Show clusters for all visible agents (deduplicated — same note may appear for multiple agents)
-        result = await pool.query(`
-            SELECT DISTINCT ON (nc.namespace, nc.slug)
-                nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
-            FROM note_clusters nc
-            WHERE nc.actor_id = ANY($1)
-            ORDER BY nc.namespace, nc.slug, nc.created_at DESC
-        `, [[...visibleIds]]);
+// POST /admin/notes/relations — get relations for a note.
+// Params: namespace, slug, direction (outgoing/incoming/both), type (optional).
+// Filters to namespaces the user can read.
+router.post('/admin/notes/relations', requirePerm('notes', 'read'), adminRoute('notes-relations', async (req, res) => {
+    const { namespace, slug, direction, type } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
     }
-
-    // Filter to readable namespaces
+    const { getRelations } = require('../services/relations');
     const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
-    let rows = result.rows;
+    let relations = await getRelations(namespace, slug, direction || 'both', type);
     if (readable !== null) {
-        rows = rows.filter(r => readable.includes(r.namespace));
+        relations = relations.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
     }
-
-    // Group by cluster_id
-    const clustersMap = {};
-    for (const row of rows) {
-        const cid = row.cluster_id;
-        if (!clustersMap[cid]) {
-            clustersMap[cid] = {
-                cluster_id: cid,
-                label: row.cluster_label,
-                notes: []
-            };
-        }
-        clustersMap[cid].notes.push({
-            namespace: row.namespace,
-            slug: row.slug
-        });
-    }
-
-    const clusters = Object.values(clustersMap).sort((a, b) => a.cluster_id - b.cluster_id);
-    const runId = rows.length > 0 ? rows[0].run_id : null;
-    const createdAt = rows.length > 0 ? rows[0].created_at : null;
-
-    res.json({
-        clusters,
-        run_id: runId,
-        created_at: createdAt,
-        total_notes: rows.length
-    });
+    res.json({ relations });
 }));
 
-// POST /admin/notes/references — get all slug references, filtered by readable namespaces.
-// Used by the graph visualization to draw edges between notes.
-router.post('/admin/notes/references', requirePerm('notes', 'read'), adminRoute('notes-references', async (req, res) => {
+// POST /admin/notes/graph — graph traversal from a note.
+// Params: namespace, slug, depth (1-5, default 2).
+// Filters nodes/edges to readable namespaces.
+router.post('/admin/notes/graph', requirePerm('notes', 'read'), adminRoute('notes-graph', async (req, res) => {
+    const { namespace, slug, depth } = req.body;
+    if (!namespace || !slug) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
+    }
+    const { getGraph } = require('../services/relations');
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    const graph = await getGraph(namespace, slug, depth || 2);
+    if (readable !== null) {
+        graph.edges = graph.edges.filter(e => {
+            const sNs = e.source.split('/')[0];
+            const tNs = e.target.split('/')[0];
+            return readable.includes(sNs) && readable.includes(tNs);
+        });
+        const reachable = new Set();
+        for (const e of graph.edges) {
+            reachable.add(e.source);
+            reachable.add(e.target);
+        }
+        // Always keep root node
+        const rootKey = namespace + '/' + slug;
+        reachable.add(rootKey);
+        graph.nodes = graph.nodes.filter(n => reachable.has(n.namespace + '/' + n.slug));
+    }
+    res.json(graph);
+}));
+
+// POST /admin/notes/graph-all — all relations, optionally filtered by namespace.
+// For the graph overview mode. Filters to readable namespaces.
+router.post('/admin/notes/graph-all', requirePerm('notes', 'read'), adminRoute('notes-graph-all', async (req, res) => {
+    const { namespace } = req.body;
     const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
 
-    let result;
-    if (readable === null) {
-        result = await pool.query('SELECT source_namespace, source_slug, target_namespace, target_slug FROM slug_references ORDER BY source_namespace, source_slug');
+    let sql, params;
+    if (namespace) {
+        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
+                      relation_type, auto_extracted, created_at
+               FROM note_relations
+               WHERE source_namespace = $1 OR target_namespace = $1
+               ORDER BY created_at DESC`;
+        params = [namespace];
     } else {
-        result = await pool.query(
-            'SELECT source_namespace, source_slug, target_namespace, target_slug FROM slug_references WHERE source_namespace = ANY($1) AND target_namespace = ANY($1) ORDER BY source_namespace, source_slug',
-            [readable]
-        );
+        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
+                      relation_type, auto_extracted, created_at
+               FROM note_relations
+               ORDER BY created_at DESC`;
+        params = [];
+    }
+    const result = await pool.query(sql, params);
+
+    // Filter to readable namespaces
+    let rows = result.rows;
+    if (readable !== null) {
+        rows = rows.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
     }
 
-    res.json({ references: result.rows });
+    // Build nodes + edges
+    const nodeSet = new Set();
+    const nodes = [];
+    const edges = [];
+    for (const row of rows) {
+        const sourceKey = row.source_namespace + '/' + row.source_slug;
+        const targetKey = row.target_namespace + '/' + row.target_slug;
+        if (!nodeSet.has(sourceKey)) {
+            nodeSet.add(sourceKey);
+            nodes.push({ namespace: row.source_namespace, slug: row.source_slug });
+        }
+        if (!nodeSet.has(targetKey)) {
+            nodeSet.add(targetKey);
+            nodes.push({ namespace: row.target_namespace, slug: row.target_slug });
+        }
+        edges.push({
+            id: row.id,
+            source: sourceKey,
+            target: targetKey,
+            type: row.relation_type,
+            auto_extracted: row.auto_extracted
+        });
+    }
+    res.json({ nodes, edges });
 }));
 
 // ---- Note Synchronization CRUD ----
