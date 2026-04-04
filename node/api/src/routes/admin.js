@@ -1247,19 +1247,41 @@ router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('note
     res.json({ usage: result.rows });
 }));
 
-// POST /admin/notes/clusters — get cluster assignments for the logged-in user's agents.
+// POST /admin/notes/clusters — get cluster assignments across all agents visible to the user.
 // Returns clusters grouped by cluster_id with labels and member notes.
 router.post('/admin/notes/clusters', requirePerm('notes', 'read'), adminRoute('notes-clusters', async (req, res) => {
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    // Pick the first non-virtual agent's clusters (most representative)
+    // or allow filtering by agent_id in the request
+    const targetActorId = req.body.actor_id || null;
+    let actorIds;
+    if (targetActorId) {
+        // Verify the requested agent is visible to this user
+        if (!visibleIds.includes(targetActorId) && targetActorId !== req.actorId) {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not authorized to view this agent' } });
+        }
+        actorIds = [targetActorId];
+    } else {
+        actorIds = visibleIds;
+    }
+
     const result = await pool.query(`
         SELECT nc.namespace, nc.slug, nc.cluster_id, nc.cluster_label, nc.run_id, nc.created_at
         FROM note_clusters nc
-        WHERE nc.actor_id = $1
+        WHERE nc.actor_id = ANY($1)
         ORDER BY nc.cluster_id, nc.namespace, nc.slug
-    `, [req.actorId]);
+    `, [actorIds]);
+
+    // Filter to readable namespaces
+    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+    let rows = result.rows;
+    if (readable !== null) {
+        rows = rows.filter(r => readable.includes(r.namespace));
+    }
 
     // Group by cluster_id
     const clustersMap = {};
-    for (const row of result.rows) {
+    for (const row of rows) {
         const cid = row.cluster_id;
         if (!clustersMap[cid]) {
             clustersMap[cid] = {
@@ -1275,14 +1297,14 @@ router.post('/admin/notes/clusters', requirePerm('notes', 'read'), adminRoute('n
     }
 
     const clusters = Object.values(clustersMap).sort((a, b) => a.cluster_id - b.cluster_id);
-    const runId = result.rows.length > 0 ? result.rows[0].run_id : null;
-    const createdAt = result.rows.length > 0 ? result.rows[0].created_at : null;
+    const runId = rows.length > 0 ? rows[0].run_id : null;
+    const createdAt = rows.length > 0 ? rows[0].created_at : null;
 
     res.json({
         clusters,
         run_id: runId,
         created_at: createdAt,
-        total_notes: result.rows.length
+        total_notes: rows.length
     });
 }));
 
