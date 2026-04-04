@@ -1324,8 +1324,11 @@ router.post('/admin/notes/graph-all', requirePerm('notes', 'read'), adminRoute('
     const { namespace } = req.body;
     const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
 
-    // Exclude conversations and context notes from the graph
-    const excludeKinds = ['conversation', 'context'];
+    // Exclude noisy note kinds from the graph:
+    // - conversation: raw session dumps
+    // - context: system-managed docs (e.g. context/soul)
+    // - instruction: bootstrap, instructions, GUIDELINES — infrastructure that everything references
+    const excludeKinds = ['conversation', 'context', 'instruction'];
 
     let sql, params;
     if (namespace) {
