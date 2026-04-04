@@ -297,17 +297,30 @@ async function invokeAgent(agentName, options) {
     // Use agent's startup_instructions unless caller provides a system prompt override
     const systemPrompt = options.systemPrompt !== undefined ? options.systemPrompt : (agent.startup_instructions || '');
 
+    // Mark the virtual agent as active while processing
+    const actor = await requireByName(agentName);
+    await pool.query(
+        'UPDATE actors SET active_since = NOW(), last_seen = NOW() WHERE id = $1',
+        [actor.id]
+    );
+
     const callFn = async () => {
         return await providerFn(systemPrompt, options.userMessage);
     };
 
     let result;
-    if (options.skipRetry !== false) {
-        // Default: no retry, caller handles errors
-        result = await callFn();
-    } else {
-        // Use retry with backoff
-        result = await retryWithBackoff(agentName, callFn);
+    try {
+        if (options.skipRetry !== false) {
+            result = await callFn();
+        } else {
+            result = await retryWithBackoff(agentName, callFn);
+        }
+    } finally {
+        // Clear active status when done (keep last_seen updated)
+        await pool.query(
+            'UPDATE actors SET active_since = NULL, last_seen = NOW() WHERE id = $1',
+            [actor.id]
+        ).catch(() => {});
     }
 
     const { text, usage } = result;
@@ -319,7 +332,6 @@ async function invokeAgent(agentName, options) {
 
     // Record usage
     const cost = calculateCost(agent.provider, agent.model, usage);
-    const actor = await requireByName(agentName);
     await pool.query(
         `INSERT INTO virtual_agent_usage (actor_id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
