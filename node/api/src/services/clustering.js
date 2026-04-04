@@ -43,11 +43,9 @@ async function getClusterableAgents() {
     const result = await pool.query(`
         SELECT a.id, a.name
         FROM actors a
+        JOIN agent_configuration agc ON agc.actor_id = a.id
         WHERE a.status = 'active'
-          AND NOT EXISTS (
-              SELECT 1 FROM actor_config ac
-              WHERE ac.actor_id = a.id AND ac.key = 'is_virtual' AND ac.value = 'true'
-          )
+          AND agc.virtual = false
         ORDER BY a.name
     `);
     return result.rows;
