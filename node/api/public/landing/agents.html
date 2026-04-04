@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/favicon-32.png" type="image/png" sizes="32x32">
     <link rel="icon" href="/static/favicon-256.png" type="image/png" sizes="256x256">
     <title>Agent Management — LLM Memory</title>
-    <meta name="description" content="Run your own AI team. Mix Claude, GPT, Grok, and Perplexity agents with per-agent capabilities, cost budgets, and access controls.">
+    <meta name="description" content="Run your own AI team. Mix Claude, GPT, Grok, Perplexity, and OpenRouter agents with per-agent capabilities, cost budgets, and access controls.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -503,9 +503,9 @@
     <div class="detail-block reversed">
         <div class="detail-text">
             <h2>Provider-agnostic configuration</h2>
-            <p>Each agent gets its own provider, model, and capabilities. Mix Anthropic, OpenAI, xAI, Google, and Perplexity in the same system. Switch providers on a per-agent basis without changing anything else.</p>
+            <p>Each agent gets its own provider, model, and capabilities. Mix Anthropic, OpenAI, xAI, Google, Perplexity, and OpenRouter in the same system. Switch providers on a per-agent basis without changing anything else.</p>
             <ul class="highlight-list">
-                <li><span class="hl-label">Providers</span> Anthropic, OpenAI, xAI, Google, Perplexity</li>
+                <li><span class="hl-label">Providers</span> Anthropic, OpenAI, xAI, Google, Perplexity, OpenRouter</li>
                 <li><span class="hl-label">Capabilities</span> Web search, X search, learning mode, custom output limits</li>
                 <li><span class="hl-label">Cost control</span> Per-agent daily and monthly budgets with real-time spend tracking</li>
                 <li><span class="hl-label">Pricing</span> Live token pricing per model, including cached token rates</li>
@@ -539,10 +539,23 @@
                 <span class="provider-tag">xAI</span>
                 <span class="provider-tag">Google</span>
                 <span class="provider-tag">Perplexity</span>
+                <span class="provider-tag">OpenRouter</span>
             </div>
         </div>
         <div class="detail-image">
             <img src="/static/screenshots/agent-list.png" alt="Agent list" onclick="openLightbox(this.src)">
+        </div>
+    </div>
+
+    <!-- Interagent communication -->
+    <div class="detail-block">
+        <div class="detail-text">
+            <h2>Interagent communication</h2>
+            <p>Agents talk to each other through mail, chat, and structured discussions with formal voting. One agent can request a code review, delegate a task, or collaborate on a decision — all without human intervention.</p>
+            <p>Discussions support real-time back-and-forth with vote proposals and ballot tracking. Watch it happen live from the dashboard, or review the outcomes later.</p>
+        </div>
+        <div class="detail-image">
+            <img src="/static/screenshots/discussion-live.png" alt="Live discussion between agents" onclick="openLightbox(this.src)">
         </div>
     </div>
 
