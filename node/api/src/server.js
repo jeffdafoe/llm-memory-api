@@ -168,6 +168,9 @@ pool.init().then(() => config.init()).then(() => {
     const { startDreamScheduler } = require('./services/dream');
     startDreamScheduler();
 
+    const { startClusteringScheduler } = require('./services/clustering');
+    startClusteringScheduler();
+
     const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
     });

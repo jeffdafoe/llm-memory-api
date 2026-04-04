@@ -7,7 +7,7 @@ const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 const config = require('./config');
-const { deleteRelationsForNote, updateRelationsForMove, autoExtractRelations } = require('./relations');
+// Relations system removed — replaced by HDBSCAN clustering (MEM-102)
 
 // Update namespace_usage counters. Fire-and-forget — usage tracking
 // should never block or fail a document operation.
@@ -273,20 +273,8 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         }).catch(() => {});
     });
 
-    // Auto-extract slug references and create relation graph edges (fire-and-forget)
-    autoExtractRelations(namespace, resolvedSlug, content).catch(() => {});
-
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug: resolvedSlug, operation: 'saved' });
-
-    // LLM-powered enrichment — generates keywords, tags, and suggested relations (fire-and-forget)
-    const { enrichNote } = require('./enrichment');
-    var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
-    enrichNote(namespace, resolvedSlug, title, content, parsedMeta).catch(err => {
-        handleError(null, 'documents', 'NOTE_ENRICHMENT_FAILED', {
-            namespace, slug: resolvedSlug, error: err.message
-        }).catch(() => {});
-    });
 
     return doc;
 }
@@ -376,7 +364,6 @@ async function deleteNote(namespace, slug) {
     }
 
     updateUsage(namespace, -1, -(result.rows[0].content_length || 0));
-    deleteRelationsForNote(namespace, slug).catch(() => {});
     broadcast('note_updated', { namespace, slug, operation: 'deleted' });
 
     return { deleted: true, slug };
@@ -497,9 +484,6 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
             namespace, slug, error: err.message
         }).catch(() => {});
     });
-
-    // Re-extract slug references after edit (fire-and-forget)
-    autoExtractRelations(namespace, slug, updatedContent).catch(() => {});
 
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug, operation: 'edited' });
@@ -636,9 +620,6 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         'UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND LOWER(source_file) = LOWER($4)',
         [newSlug, targetNamespace, namespace, slug]
     );
-
-    // Update relation graph edges to follow the move
-    updateRelationsForMove(namespace, slug, targetNamespace, newSlug).catch(() => {});
 
     const doc = result.rows[0];
 

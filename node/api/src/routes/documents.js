@@ -156,4 +156,46 @@ router.post('/documents/grep', apiRoute('documents', 'grep', async (req, res) =>
     res.json({ results });
 }));
 
+// Get cluster assignments for the calling agent.
+// Returns clusters grouped by cluster_id with labels and member notes.
+router.post('/documents/clusters', apiRoute('documents', 'clusters', async (req, res) => {
+    const actor = getActor(req);
+
+    const pool = require('../db');
+    const result = await pool.query(`
+        SELECT namespace, slug, cluster_id, cluster_label, run_id, created_at
+        FROM note_clusters
+        WHERE actor_id = $1
+        ORDER BY cluster_id, namespace, slug
+    `, [actor.actorId]);
+
+    // Group by cluster_id for easier consumption
+    const clustersMap = {};
+    for (const row of result.rows) {
+        const cid = row.cluster_id;
+        if (!clustersMap[cid]) {
+            clustersMap[cid] = {
+                cluster_id: cid,
+                label: row.cluster_label,
+                notes: []
+            };
+        }
+        clustersMap[cid].notes.push({
+            namespace: row.namespace,
+            slug: row.slug
+        });
+    }
+
+    const clusters = Object.values(clustersMap).sort((a, b) => a.cluster_id - b.cluster_id);
+    const runId = result.rows.length > 0 ? result.rows[0].run_id : null;
+    const createdAt = result.rows.length > 0 ? result.rows[0].created_at : null;
+
+    res.json({
+        clusters,
+        run_id: runId,
+        created_at: createdAt,
+        total_notes: result.rows.length
+    });
+}));
+
 module.exports = router;
