@@ -17,6 +17,7 @@ const documentRoutes = require('./routes/documents');
 const systemRoutes = require('./routes/system');
 const adminRoutes = require('./routes/admin');
 const registrationRoutes = require('./routes/registration');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const port = process.env.PORT || 3100;
@@ -51,6 +52,9 @@ app.use('/v1', memoryRoutes);
 app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
 app.use('/v1', adminRoutes);
+
+// Auth verification (public, no auth — the token being verified IS the credential)
+app.use('/v1', authRoutes);
 
 // Registration endpoints (public, no auth)
 app.use(registrationRoutes);
