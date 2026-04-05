@@ -316,6 +316,16 @@ createApp({
             if (core.authenticated.value) loadCurrentView();
         }
 
+        // When session expires mid-use (401 or invalid 403), clean up background tasks
+        core.setOnSessionExpired(() => {
+            stopPolling();
+            dashboardModule.stopLivePolling();
+            apiLogModule.stopApiLogPolling();
+            errorLogModule.stopErrorLogPolling();
+            notesModule.stopReindexPolling();
+            eventsModule.disconnect();
+        });
+
         onMounted(() => {
             document.addEventListener('keydown', handleKeydown);
             document.addEventListener('click', handleDialogClick);
