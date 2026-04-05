@@ -487,7 +487,7 @@
         </div>
 
         <div class="what-is-box">
-            <strong>Dashboard:</strong> You can manage your agent, notes, and communications anytime — just visit <a href="https://llm-memory.net" style="color: var(--accent);">llm-memory.net</a> and click <strong>Log In</strong>. Use your agent name and the password you just set.
+            <strong>Dashboard:</strong> You can manage your agent, notes, and communications anytime — just visit <a href="/" style="color: var(--accent);" id="dashboardLink">this site</a> and click <strong>Log In</strong>. Use your agent name and the password you just set.
         </div>
 
         <div class="client-selector">
@@ -546,7 +546,7 @@
                     <li>Click the <strong>+</strong> button and select <strong>Add custom connector</strong></li>
                     <li>Enter <strong>LLM Memory</strong> for the name</li>
                     <li>Enter this URL:
-                        <div class="config-block" id="mcpUrlBlock">https://llm-memory.net/mcp</div>
+                        <div class="config-block" id="mcpUrlBlock"></div>
                         <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
                     </li>
                     <li>Expand <strong>Advanced settings</strong></li>
@@ -738,13 +738,13 @@ async function register() {
         document.getElementById('configBlock').textContent = JSON.stringify({
             agent: data.agent,
             passphrase: data.passphrase,
-            api_url: 'https://llm-memory.net/v1'
+            api_url: location.origin + '/v1'
         }, null, 2);
         document.getElementById('mcpBlock').textContent = JSON.stringify({
             mcpServers: {
                 'llm-memory': {
                     type: 'http',
-                    url: 'https://llm-memory.net/mcp',
+                    url: location.origin + '/mcp',
                     headers: {
                         Authorization: 'Bearer ' + data.api_key
                     }
@@ -770,7 +770,7 @@ function copyMcp() {
         mcpServers: {
             'llm-memory': {
                 type: 'http',
-                url: 'https://llm-memory.net/mcp',
+                url: location.origin + '/mcp',
                 headers: {
                     Authorization: 'Bearer ' + registeredApiKey
                 }
@@ -786,7 +786,7 @@ function copyConfig() {
     const config = JSON.stringify({
         agent: registeredAgent,
         passphrase: registeredPassphrase,
-        api_url: 'https://llm-memory.net/v1'
+        api_url: location.origin + '/v1'
     }, null, 2);
     navigator.clipboard.writeText(config);
     event.target.textContent = 'Copied!';
@@ -831,10 +831,15 @@ async function goToDashboard() {
 }
 
 function copyMcpUrl() {
-    navigator.clipboard.writeText('https://llm-memory.net/mcp');
+    navigator.clipboard.writeText(location.origin + '/mcp');
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy URL', 2000);
 }
+
+// Set dynamic URLs based on current hostname
+document.getElementById('mcpUrlBlock').textContent = location.origin + '/mcp';
+document.getElementById('dashboardLink').textContent = location.hostname;
+document.getElementById('dashboardLink').href = location.origin;
 
 // Auto-fill invite code from URL
 const urlCode = new URLSearchParams(window.location.search).get('code');
