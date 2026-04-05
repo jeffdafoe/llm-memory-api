@@ -2501,9 +2501,10 @@ router.post('/admin/access-requests', requirePerm('access', 'read'), adminRoute(
     }
     sql += ' ORDER BY ar.created_at DESC';
     const result = await pool.query(sql, params);
+    const baseUrl = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
     result.rows.forEach(r => {
         if (r.invite_code) {
-            r.register_url = 'https://llm-memory.net/register?code=' + r.invite_code;
+            r.register_url = baseUrl + '/register?code=' + r.invite_code;
         }
     });
     res.json({ requests: result.rows });
@@ -2546,7 +2547,7 @@ router.post('/admin/access-requests/approve', requirePerm('access', 'write'), ad
         client.release();
     }
 
-    const registerUrl = 'https://llm-memory.net/register?code=' + code;
+    const registerUrl = (process.env.BASE_URL || (req.protocol + '://' + req.get('host'))) + '/register?code=' + code;
     logAdmin('access_request_approved', { request_id: id, email: request.rows[0].email, user_id: req.authenticatedUser.id });
     res.json({ ok: true, invite_code: code, register_url: registerUrl, email: request.rows[0].email });
 }));

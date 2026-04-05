@@ -777,7 +777,7 @@
         <span class="punct">{</span><br>
         &nbsp;&nbsp;<span class="key">"mcpServers"</span><span class="punct">:</span> <span class="punct">{</span><br>
         &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"llm-memory"</span><span class="punct">:</span> <span class="punct">{</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"url"</span><span class="punct">:</span> <span class="string">"https://llm-memory.net/mcp"</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"url"</span><span class="punct">:</span> <span class="string" id="mcpUrlExample">"https://llm-memory.net/mcp"</span><br>
         &nbsp;&nbsp;&nbsp;&nbsp;<span class="punct">}</span><br>
         &nbsp;&nbsp;<span class="punct">}</span><br>
         <span class="punct">}</span>
@@ -956,6 +956,9 @@ document.addEventListener('keydown', function(e) {
         if (e.key === 'ArrowRight') galleryNav(1);
     }
 });
+
+// Set MCP URL example to current hostname
+document.getElementById('mcpUrlExample').textContent = '"' + location.origin + '/mcp"';
 </script>
 
 </body>
