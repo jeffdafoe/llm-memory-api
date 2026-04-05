@@ -16,6 +16,10 @@ function useCore() {
     const loginError = ref('');
     const loggingIn = ref(false);
 
+    // Callback fired when session expires mid-use (401 or invalid 403).
+    // Main app registers this to disconnect WebSocket, stop polling, etc.
+    let onSessionExpired = null;
+
     // Confirm dialog
     const confirmPrompt = ref(null);
 
@@ -60,6 +64,15 @@ function useCore() {
         toastTimer = setTimeout(() => { toast.value = null; }, duration || 5000);
     }
 
+    // Clear session state and notify listeners (e.g. WebSocket disconnect, stop polling)
+    function clearSession() {
+        authenticated.value = false;
+        sessionToken.value = null;
+        permissions.value = {};
+        localStorage.removeItem('admin_session');
+        if (onSessionExpired) onSessionExpired();
+    }
+
     // API helper
     async function api(endpoint, body = {}) {
         const headers = { 'Content-Type': 'application/json' };
@@ -72,15 +85,18 @@ function useCore() {
             body: JSON.stringify(body)
         });
         if (response.status === 401) {
-            authenticated.value = false;
-            sessionToken.value = null;
-            permissions.value = {};
-            localStorage.removeItem('admin_session');
+            clearSession();
             throw new Error('Session expired');
         }
         if (response.status === 403) {
             const data = await response.json();
-            throw new Error(data.error?.message || 'Insufficient permissions');
+            const msg = data.error?.message || 'Insufficient permissions';
+            // Expired/invalid session token — treat as logout
+            if (msg === 'Invalid or expired session token') {
+                clearSession();
+                throw new Error('Session expired');
+            }
+            throw new Error(msg);
         }
         const data = await response.json();
         if (!response.ok) {
@@ -386,7 +402,7 @@ function useCore() {
         authenticated, sessionToken, user, permissions, canDo,
         loginForm, loginError, loggingIn,
         showProfile, showChangePassword, closeProfile, changePasswordForm, changePasswordError, changePasswordSaving, changePassword, visibleToOthers, loadVisibility, toggleVisibleToOthers,
-        login, logout, restoreSession,
+        login, logout, restoreSession, setOnSessionExpired: (fn) => { onSessionExpired = fn; },
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatDuration, formatTime,
