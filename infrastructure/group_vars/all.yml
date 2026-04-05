@@ -15,10 +15,8 @@ git_repository: "https://github.com/jeffdafoe/llm-memory-api.git"
 
 # Public-facing domains serve a landing page at /
 # Internal domains redirect / → /admin/
-public_domains:
-  - llm-memory.net
-
-# SSL — certbot_email and server_names are prompted during install
-# and stored in local-secrets.yml (gitignored)
+# public_domains is prompted during install and stored in local-secrets.yml (gitignored)
+#
+# SSL — certbot_email and server_names are also prompted during install
 # server_names is comma-separated (e.g. "memory.example.com,memory2.example.com")
 # First domain is primary, all domains get their own SSL cert and nginx server block
