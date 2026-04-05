@@ -42,6 +42,9 @@ app.use(oauthRoutes);
 // MCP Streamable HTTP endpoint (HMAC auth via mcp-auth middleware)
 app.use(mcpRoutes);
 
+// Auth verification (public, no auth — the token being verified IS the credential)
+app.use('/v1', authRoutes);
+
 app.use('/v1', auth);
 app.use('/v1', opportunisticHeartbeat);
 app.use('/v1', agentRoutes);
@@ -52,9 +55,6 @@ app.use('/v1', memoryRoutes);
 app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
 app.use('/v1', adminRoutes);
-
-// Auth verification (public, no auth — the token being verified IS the credential)
-app.use('/v1', authRoutes);
 
 // Registration endpoints (public, no auth)
 app.use(registrationRoutes);

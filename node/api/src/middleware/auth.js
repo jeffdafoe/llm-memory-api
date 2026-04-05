@@ -18,7 +18,6 @@ function heartbeat(actorId) {
 const UNAUTHENTICATED_ROUTES = [
     '/agent/login',
     '/admin/login',
-    '/auth/verify',
 ];
 
 async function auth(req, res, next) {
