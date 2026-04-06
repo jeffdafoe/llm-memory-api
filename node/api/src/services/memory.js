@@ -116,10 +116,21 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const embeddings = await embed(cleanedQuery);
     const queryVector = pgvector.toSql(embeddings[0]);
 
+    // Candidate pool: fetch more results than requested from pgvector, then
+    // apply all boosts (BM25, filename, graph, decay, access) and trim down.
+    // This improves recall — results that rank low on pure vector similarity
+    // can bubble up after boosts are applied.
+    const poolMultiplier = parseNonNegativeFinite(config.get('search_pool_multiplier'), 3);
+    const poolSize = Math.max(maxResults, Math.round(maxResults * poolMultiplier));
+
     // Build ILIKE pattern from query words to boost chunks whose source_file
     // matches the search terms. This catches cases where the filename is the
     // most relevant signal but the chunk content uses different terminology.
     const queryWords = cleanedQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+    // Load boost magnitudes from config (tunable without redeploy)
+    const filenameBoostValue = parseNonNegativeFinite(config.get('search_filename_boost'), 0.15);
+    const bm25BoostScale = parseNonNegativeFinite(config.get('search_bm25_boost'), 0.1);
 
     // Load decay/boost config (validated to finite non-negative numbers)
     const halfLives = {
@@ -146,10 +157,10 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     let paramIdx;
 
     if (!namespace || namespace === '*') {
-        params = [queryVector, maxResults];
+        params = [queryVector, poolSize];
         paramIdx = 3;
     } else {
-        params = [queryVector, namespace, maxResults];
+        params = [queryVector, namespace, poolSize];
         paramIdx = 4;
     }
 
@@ -160,8 +171,12 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         paramIdx++;
     }
     const filenameClauses = queryWords.map((_, i) => `mc.source_file ILIKE $${filenameStartIdx + i}`);
+    // Filename boost magnitude is config-driven (search_filename_boost, default 0.15)
+    const fnBoostIdx = paramIdx;
+    params.push(filenameBoostValue);
+    paramIdx++;
     const filenameBoostExpr = filenameClauses.length > 0
-        ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
+        ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN $${fnBoostIdx} ELSE 0 END`
         : '0';
 
     // BM25 full-text search boost (gated by vector similarity threshold).
@@ -174,10 +189,13 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         // plainto_tsquery is safe with arbitrary input — no special syntax needed
         params.push(cleanedQuery);
         paramIdx++;
-        // ts_rank returns 0-1ish; scale by 0.1 so it's a gentle boost, not dominant.
+        // ts_rank returns 0-1ish; scale by config value so it's a tunable boost.
         // Gate: only apply when vector similarity > 0.3 (cosine distance < 0.7)
+        const bm25ScaleIdx = paramIdx;
+        params.push(bm25BoostScale);
+        paramIdx++;
         bm25BoostExpr = `CASE WHEN (1 - (mc.embedding <=> $1)) > 0.3 AND mc.tsv IS NOT NULL
-            THEN 0.1 * ts_rank(mc.tsv, plainto_tsquery('english', $${tsqIdx}))
+            THEN $${bm25ScaleIdx} * ts_rank(mc.tsv, plainto_tsquery('english', $${tsqIdx}))
             ELSE 0 END`;
     }
 
@@ -329,6 +347,13 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         } catch (e) {
             // Graph boost failure shouldn't break search
         }
+    }
+
+    // Trim the candidate pool down to the requested result count.
+    // All boosts (BM25, filename, graph, decay, access, kind weight) have been
+    // applied, so the final ordering reflects the full scoring pipeline.
+    if (rows.length > maxResults) {
+        rows = rows.slice(0, maxResults);
     }
 
     return { results: rows };
