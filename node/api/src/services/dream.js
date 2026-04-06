@@ -277,6 +277,26 @@ async function runDream() {
 
             logDream('saved', { agent: agent.name, slug, titleLength: title.length, contentLength: content.length });
 
+            // Create graph relations from source conversations to the dream note.
+            // Each conversation that fed this dream gets a "led-to" edge.
+            try {
+                const { createRelation } = require('./relations');
+                for (const convLog of logs.rows) {
+                    await createRelation(
+                        agent.name, convLog.slug,
+                        agent.name, slug,
+                        'led-to',
+                        dreamAgentName,
+                        { source: 'dream-processing' },
+                        true // auto_extracted
+                    );
+                }
+                logDream('relations-created', { agent: agent.name, dreamSlug: slug, sourceCount: logs.rows.length });
+            } catch (relErr) {
+                // Relation creation failure shouldn't block the rest of the dream process
+                logDream('relations-error', { agent: agent.name, error: relErr.message });
+            }
+
             // Soul synthesis: update context/soul with tonight's snapshot
             const soulAgentName = agent.dream_mode === 'companion' ? companionSoulAgentName : technicalSoulAgentName;
             if (soulAgentName) {
