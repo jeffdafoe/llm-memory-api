@@ -58,7 +58,7 @@
                 <div v-if="selectedDiscussion.discussion.status === 'active' || selectedDiscussion.discussion.status === 'waiting'" style="margin-top: 12px;">
                     <div style="display: flex; gap: 8px;">
                         <input type="text" v-model="discussionMessage" placeholder="Type a message..." style="flex: 1; margin: 0;"
-                            @keydown.enter="if (!discussionSending && discussionMessage) sendDiscussionMessage()">
+                            @keydown.enter="!discussionSending && discussionMessage && sendDiscussionMessage()">
                         <button class="btn btn-primary btn-compact" @click="sendDiscussionMessage" :disabled="discussionSending || !discussionMessage">{{ discussionSending ? '...' : 'Send' }}</button>
                     </div>
                 </div>
