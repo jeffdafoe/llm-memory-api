@@ -120,7 +120,7 @@ async function findDreamAgent(expertiseTag) {
         `SELECT ac.id, ac.name, ac.created_by, agc.provider, agc.model, agc.api_key
          FROM actors ac
          JOIN agent_configuration agc ON agc.actor_id = ac.id
-         WHERE ac.expertise @> jsonb_build_array($1)`,
+         WHERE ac.expertise @> jsonb_build_array($1::text)`,
         [expertiseTag]
     );
 
