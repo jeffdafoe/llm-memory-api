@@ -11,6 +11,8 @@ const { getErrorLogEntries } = require('../services/logger');
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
 const { mailSend } = require('../services/mail');
+const { chatSend } = require('../services/chat');
+const { discussionCreate, discussionConclude } = require('../services/discussion');
 const { formatPricing } = require('../services/provider');
 const { resolveEffectiveLimits } = require('../services/virtual-agent');
 const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName, clearCache: clearActorCache } = require('../services/actors');
@@ -655,6 +657,66 @@ router.post('/admin/discussions/detail', requirePerm('comms', 'read'), adminRout
         participants: participants.rows,
         votes: votes.rows
     });
+}));
+
+// POST /admin/discussions/create — create a discussion from the admin UI
+// The authenticated admin user is the creator and is auto-joined.
+// Virtual agents are also auto-joined by the discussion service.
+router.post('/admin/discussions/create', requirePerm('comms', 'write'), adminRoute('discussions-create', async (req, res) => {
+    const topic = sanitize.content(req.body.topic || '').trim();
+    const participants = Array.from(new Set((req.body.participants || []).filter(Boolean)));
+    const mode = req.body.mode === 'async' ? 'async' : 'realtime';
+    const context = req.body.context ? sanitize.content(req.body.context) : null;
+
+    if (!topic || !Array.isArray(participants) || participants.length === 0) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: topic, participants (array of agent names)' }
+        });
+    }
+
+    const createdBy = req.authenticatedUser.username;
+
+    // Ensure creator is in participants list
+    const allParticipants = participants.includes(createdBy)
+        ? participants
+        : [createdBy, ...participants];
+
+    const result = await discussionCreate(topic, createdBy, allParticipants, [], null, mode, context);
+    logAdmin('discussion_create', { topic, participants: allParticipants, mode, discussion_id: result.discussion_id, user_id: req.authenticatedUser.id });
+    res.json(result);
+}));
+
+// POST /admin/discussions/send — send a message into a discussion as the admin user
+router.post('/admin/discussions/send', requirePerm('comms', 'write'), adminRoute('discussions-send', async (req, res) => {
+    const discussion_id = req.body.discussion_id;
+    const message = sanitize.content(req.body.message || '').trim();
+
+    if (!discussion_id || !message) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: discussion_id, message' }
+        });
+    }
+
+    const fromAgent = req.authenticatedUser.username;
+    const result = await chatSend(fromAgent, null, discussion_id, message, null);
+    logAdmin('discussion_send', { discussion_id, from: fromAgent, user_id: req.authenticatedUser.id });
+    res.json(result);
+}));
+
+// POST /admin/discussions/conclude — conclude a discussion from the admin UI
+router.post('/admin/discussions/conclude', requirePerm('comms', 'write'), adminRoute('discussions-conclude', async (req, res) => {
+    const { discussion_id } = req.body;
+
+    if (!discussion_id) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: discussion_id' }
+        });
+    }
+
+    const agent = req.authenticatedUser.username;
+    const result = await discussionConclude(discussion_id, agent);
+    logAdmin('discussion_conclude', { discussion_id, agent, user_id: req.authenticatedUser.id });
+    res.json(result);
 }));
 
 // POST /admin/chat — list recent chat messages
