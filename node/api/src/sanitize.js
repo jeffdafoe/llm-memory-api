@@ -44,4 +44,17 @@ function content(value) {
     return value.replace(DANGEROUS_CHARS, '');
 }
 
-module.exports = { agentName, identifier, content };
+// Parse a value as a positive integer, rejecting junk like "3abc" that
+// parseInt would accept. Returns the integer if valid, or null if not.
+// Optional min/max bounds (inclusive).
+function positiveInt(value, min, max) {
+    if (value === undefined || value === null) return null;
+    var str = String(value).trim();
+    if (!/^\d+$/.test(str)) return null;
+    var n = Number(str);
+    if (min !== undefined && n < min) return null;
+    if (max !== undefined && n > max) return null;
+    return n;
+}
+
+module.exports = { agentName, identifier, content, positiveInt };

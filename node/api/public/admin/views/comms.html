@@ -104,7 +104,7 @@
 
     <!-- Discussions sub-tab -->
     <div v-if="commSubTab === 'discussions'">
-        <div class="filters">
+        <div class="filters" style="display: flex; align-items: center; gap: 12px;">
             <select v-model="discussionFilter" @change="loadDiscussions">
                 <option value="">All</option>
                 <option value="active">Active</option>
@@ -112,6 +112,35 @@
                 <option value="timed_out">Timed Out</option>
                 <option value="cancelled">Cancelled</option>
             </select>
+            <button v-if="!discussionCreating && canDo('comms', 'write')" class="inline-button" @click="startCreateDiscussion"><i class="icon-plus"></i> New Discussion</button>
+        </div>
+        <div v-if="discussionCreating" class="mail-compose" style="margin-bottom: 16px;">
+            <div class="mail-compose-row">
+                <label>Topic</label>
+                <input type="text" v-model="discussionTopic" placeholder="Discussion topic">
+            </div>
+            <div class="mail-compose-row">
+                <label>Participants</label>
+                <select multiple v-model="discussionParticipants" style="min-height: 120px;">
+                    <option v-for="a in agents.filter(a => a.virtual)" :key="a.agent" :value="a.agent">{{ a.agent }}</option>
+                </select>
+                <small class="ts">Hold Ctrl/Cmd to select multiple agents</small>
+            </div>
+            <div class="mail-compose-row">
+                <label>Mode</label>
+                <select v-model="discussionMode">
+                    <option value="realtime">Realtime</option>
+                    <option value="async">Async</option>
+                </select>
+            </div>
+            <div class="mail-compose-row">
+                <label>Context <span class="ts">(optional)</span></label>
+                <textarea v-model="discussionContext" rows="3" placeholder="Background context for participants"></textarea>
+            </div>
+            <div class="mail-compose-actions">
+                <button class="inline-button" @click="createDiscussion" :disabled="discussionCreateSaving || !discussionTopic || discussionParticipants.length === 0">{{ discussionCreateSaving ? 'Creating...' : 'Create' }}</button>
+                <button class="inline-button secondary" @click="cancelCreateDiscussion">Cancel</button>
+            </div>
         </div>
         <div class="table-wrap">
             <table class="fixed-table">

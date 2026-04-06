@@ -3,6 +3,7 @@
 
 const pool = require('../db');
 const { log } = require('./logger');
+const { broadcast } = require('./events');
 const systemHandler = require('./system-handler');
 const { resolveByName, resolveMultipleByName, requireByName, canAccessVirtualAgent } = require('./actors');
 
@@ -97,6 +98,19 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
             [fromActor.id, toActor.id, msgText, ch]
         );
         results.push({ id: result.rows[0].id, agent: recipient, sent_at: result.rows[0].sent_at });
+    }
+
+    // Broadcast to admin WebSocket clients for live updates (once per logical message)
+    if (results.length > 0) {
+        broadcast('chat_message', {
+            id: results[0].id,
+            from_agent: fromAgent,
+            to_agents: results.map(function(r) { return r.agent; }),
+            message: message,
+            channel: ch,
+            discussion_id: discussionId || null,
+            sent_at: results[0].sent_at
+        });
     }
 
     logChat('send', { from_agent: fromAgent, to_agents: recipients, message_ids: results.map(r => r.id), channel: ch, discussion_id: discussionId || null });

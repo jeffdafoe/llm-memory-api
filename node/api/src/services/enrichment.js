@@ -63,18 +63,24 @@ function buildUserMessage(namespace, slug, title, content, similarNotes) {
         + truncatedContent
         + contextSection
         + '\n\nAnalyze this note and return a JSON object with:\n'
+        + '- `cognitive_type`: one of "semantic" (facts, definitions, knowledge), '
+        + '"episodic" (events, things that happened), '
+        + '"procedural" (decisions, conventions, how-tos, institutional knowledge), '
+        + 'or "reflective" (synthesized insights, lessons learned, analysis)\n'
         + '- `keywords`: array of 3-8 key concepts (single words or short phrases)\n'
         + '- `tags`: array of 2-5 categorization labels\n'
-        + '- `relations`: array of 0-3 suggested connections to the related notes listed above. '
+        + '- `relations`: array of suggested connections to the related notes listed above (aim for 3-8). '
         + 'Each relation should have `target_namespace`, `target_slug`, and `relation_type` '
         + '(one of: depends-on, references, supersedes, led-to, related, subtask-of). '
-        + 'Only suggest relations that are meaningful — not every similar note is related.\n\n'
+        + 'Be generous with connections — if two notes share a topic, project, or concept, link them.\n\n'
         + 'Return ONLY valid JSON, no markdown fences, no explanation.';
 }
 
 // Parse and validate the enrichment response from the LLM.
 // Returns { keywords, tags, relations } or null on failure.
-function parseResponse(text) {
+// maxRelations caps how many relations to keep (default 10).
+function parseResponse(text, maxRelations) {
+    var relationCap = maxRelations || 10;
     if (!text) return null;
 
     // Strip markdown code fences if present
@@ -91,6 +97,16 @@ function parseResponse(text) {
     }
 
     if (!parsed || typeof parsed !== 'object') return null;
+
+    // Validate cognitive type (trim to handle LLM whitespace in JSON values)
+    var VALID_COGNITIVE_TYPES = ['semantic', 'episodic', 'procedural', 'reflective'];
+    var cognitiveType = null;
+    if (typeof parsed.cognitive_type === 'string') {
+        var normalized = parsed.cognitive_type.trim().toLowerCase();
+        if (VALID_COGNITIVE_TYPES.includes(normalized)) {
+            cognitiveType = normalized;
+        }
+    }
 
     // Validate and cap keywords
     var keywords = [];
@@ -130,11 +146,11 @@ function parseResponse(text) {
                     relation_type: rel.relation_type
                 });
             }
-            if (relations.length >= 5) break;
+            if (relations.length >= relationCap) break;
         }
     }
 
-    return { keywords, tags, relations };
+    return { keywords, tags, relations, cognitiveType };
 }
 
 // Main enrichment function. Called fire-and-forget from saveNote.
@@ -169,7 +185,7 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
     logEnrich('start', { namespace, slug, kind });
 
     // Configurable neighbor count for relation context
-    var neighborCount = 5;
+    var neighborCount = 25;
     try {
         var configuredCount = parseInt(config.get('enrichment_neighbor_count'), 10);
         if (configuredCount > 0) neighborCount = configuredCount;
@@ -222,8 +238,16 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
         return;
     }
 
-    // Parse and validate the response
-    var enrichment = parseResponse(response.text);
+    // Parse and validate the response — relation cap is configurable
+    var maxRelations = 10;
+    try {
+        var configuredMax = parseInt(config.get('enrichment_max_relations'), 10);
+        if (configuredMax > 0) maxRelations = configuredMax;
+    } catch (e) {
+        // Config key doesn't exist yet — use default
+    }
+
+    var enrichment = parseResponse(response.text, maxRelations);
     if (!enrichment) {
         logEnrich('parse-failed', { namespace, slug, responsePreview: (response.text || '').substring(0, 200) });
         return;
@@ -231,6 +255,7 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
 
     logEnrich('parsed', {
         namespace, slug,
+        cognitiveType: enrichment.cognitiveType,
         keywords: enrichment.keywords.length,
         tags: enrichment.tags.length,
         relations: enrichment.relations.length
@@ -249,6 +274,11 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
     var allTags = Array.from(new Set(existingTags.concat(enrichment.tags)));
     if (allTags.length > 20) allTags = allTags.slice(0, 20);
     merged.tags = allTags;
+
+    // Store cognitive type (overwrites on re-enrichment)
+    if (enrichment.cognitiveType) {
+        merged.cognitive_type = enrichment.cognitiveType;
+    }
 
     merged._enriched_at = new Date().toISOString();
 
@@ -304,4 +334,125 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
     });
 }
 
-module.exports = { enrichNote };
+// Generate "related" edges between notes that share keywords or tags.
+// Runs as a batch job — scans all enriched notes and creates relations
+// for pairs that share a configurable minimum number of keywords/tags.
+// Does not use LLM calls — pure SQL/JS.
+//
+// Uses an inverted index (term → note keys) to avoid O(n²) full pair scan.
+// Only pairs that actually share terms are compared.
+async function generateKeywordRelations(minShared) {
+    var threshold = Number.isInteger(minShared) ? minShared : 3;
+    if (threshold < 1) threshold = 1;
+    var { createRelation } = require('./relations');
+
+    logEnrich('keyword-relations-start', { threshold });
+
+    // Fetch all notes that have keywords or tags in metadata
+    var result = await pool.query(`
+        SELECT namespace, slug, metadata
+        FROM documents
+        WHERE deleted_at IS NULL
+          AND metadata IS NOT NULL
+          AND (metadata->>'keywords' IS NOT NULL OR metadata->>'tags' IS NOT NULL)
+          AND kind NOT IN ('conversation', 'context', 'instruction')
+    `);
+
+    // Build a map of noteKey -> Set of terms, and an inverted index of term -> noteKeys
+    var noteTerms = {};       // noteKey -> Set<term>
+    var noteInfo = {};        // noteKey -> { namespace, slug }
+    var invertedIndex = {};   // term -> Set<noteKey>
+
+    for (var row of result.rows) {
+        var meta = row.metadata;
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch (e) { continue; }
+        }
+        var terms = new Set();
+        if (Array.isArray(meta.keywords)) {
+            for (var kw of meta.keywords) {
+                if (typeof kw !== 'string') continue;
+                var term = kw.toLowerCase().trim();
+                if (term) terms.add(term);
+            }
+        }
+        if (Array.isArray(meta.tags)) {
+            for (var tag of meta.tags) {
+                if (typeof tag !== 'string') continue;
+                var term = tag.toLowerCase().trim();
+                if (term) terms.add(term);
+            }
+        }
+        if (terms.size > 0) {
+            var noteKey = row.namespace + '/' + row.slug;
+            noteTerms[noteKey] = terms;
+            noteInfo[noteKey] = { namespace: row.namespace, slug: row.slug };
+            for (var t of terms) {
+                if (!invertedIndex[t]) invertedIndex[t] = new Set();
+                invertedIndex[t].add(noteKey);
+            }
+        }
+    }
+
+    var noteCount = Object.keys(noteTerms).length;
+    logEnrich('keyword-relations-indexed', { noteCount, termCount: Object.keys(invertedIndex).length });
+
+    // Use the inverted index to find candidate pairs that share at least one term,
+    // then count shared terms only for those pairs.
+    var pairCounts = {};  // "keyA|keyB" -> shared count (sorted keys to avoid duplicates)
+
+    for (var t of Object.keys(invertedIndex)) {
+        var noteKeys = Array.from(invertedIndex[t]);
+        for (var i = 0; i < noteKeys.length; i++) {
+            for (var j = i + 1; j < noteKeys.length; j++) {
+                var a = noteKeys[i];
+                var b = noteKeys[j];
+                // Sort keys so each pair has a canonical form
+                var pairKey = a < b ? a + '|' + b : b + '|' + a;
+                if (!pairCounts[pairKey]) pairCounts[pairKey] = 0;
+                pairCounts[pairKey]++;
+            }
+        }
+    }
+
+    // Create relations for pairs that meet the threshold
+    var created = 0;
+    var skipped = 0;
+    var errors = 0;
+    var pairs = Object.entries(pairCounts);
+
+    for (var p = 0; p < pairs.length; p++) {
+        var pairKey = pairs[p][0];
+        var shared = pairs[p][1];
+        if (shared < threshold) continue;
+
+        var parts = pairKey.split('|');
+        var infoA = noteInfo[parts[0]];
+        var infoB = noteInfo[parts[1]];
+
+        try {
+            await createRelation(
+                infoA.namespace, infoA.slug,
+                infoB.namespace, infoB.slug,
+                'related',
+                null,
+                { source: 'keyword-overlap', shared_count: shared },
+                true
+            );
+            created++;
+        } catch (e) {
+            // createRelation upserts on duplicates (no-op), so errors here are real
+            logEnrich('keyword-relation-error', {
+                source: infoA.namespace + '/' + infoA.slug,
+                target: infoB.namespace + '/' + infoB.slug,
+                error: e.message
+            });
+            errors++;
+        }
+    }
+
+    logEnrich('keyword-relations-complete', { created, skipped: pairs.length - created - errors, errors, noteCount });
+    return { created, errors, noteCount };
+}
+
+module.exports = { enrichNote, generateKeywordRelations };
