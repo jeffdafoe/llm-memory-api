@@ -732,6 +732,13 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                         msg += ' (' + data.result.errors.length + ' errors)';
                     }
                     showToast(msg, (data.result.errors && data.result.errors.length > 0) ? 'error' : 'success', 8000);
+                    // Auto-generate keyword relations after successful reindex
+                    try {
+                        var krResult = await api('/admin/notes/keyword-relations', { min_shared: 3 });
+                        showToast('Keyword relations: ' + (krResult.created || 0) + ' created', 'success', 5000);
+                    } catch (krErr) {
+                        console.error('Keyword relations failed:', krErr);
+                    }
                 } else if (data.result && data.result.error) {
                     showToast('Reindex failed: ' + data.result.error, 'error');
                 }
