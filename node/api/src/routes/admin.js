@@ -2356,7 +2356,7 @@ router.post('/admin/actors/namespaces', requirePerm('agents', 'read'), adminRout
 // Admin permission allowlist — server-side authority for valid resource/action pairs
 const ADMIN_PERM_ALLOWLIST = {
     dashboard: ['read'],
-    agents: ['read', 'write'],
+    agents: ['read', 'write', 'create_system_equivalent'],
     comms: ['read', 'write', 'delete'],
     notes: ['read', 'write', 'delete'],
     config: ['read', 'write'],
