@@ -1324,20 +1324,32 @@ router.post('/admin/notes/graph-all', requirePerm('notes', 'read'), adminRoute('
     const { namespace } = req.body;
     const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
 
+    // Exclude noisy note kinds from the graph:
+    // - conversation: raw session dumps
+    // - context: system-managed docs (e.g. context/soul)
+    // - instruction: bootstrap, instructions, GUIDELINES — infrastructure that everything references
+    const excludeKinds = ['conversation', 'context', 'instruction'];
+
     let sql, params;
     if (namespace) {
-        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
-                      relation_type, auto_extracted, created_at
-               FROM note_relations
-               WHERE source_namespace = $1 OR target_namespace = $1
-               ORDER BY created_at DESC`;
-        params = [namespace];
+        sql = `SELECT nr.id, nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug,
+                      nr.relation_type, nr.auto_extracted, nr.created_at
+               FROM note_relations nr
+               JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
+               JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
+               WHERE (nr.source_namespace = $1 OR nr.target_namespace = $1)
+                 AND sd.kind != ALL($2) AND td.kind != ALL($2)
+               ORDER BY nr.created_at DESC`;
+        params = [namespace, excludeKinds];
     } else {
-        sql = `SELECT id, source_namespace, source_slug, target_namespace, target_slug,
-                      relation_type, auto_extracted, created_at
-               FROM note_relations
-               ORDER BY created_at DESC`;
-        params = [];
+        sql = `SELECT nr.id, nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug,
+                      nr.relation_type, nr.auto_extracted, nr.created_at
+               FROM note_relations nr
+               JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
+               JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
+               WHERE sd.kind != ALL($1) AND td.kind != ALL($1)
+               ORDER BY nr.created_at DESC`;
+        params = [excludeKinds];
     }
     const result = await pool.query(sql, params);
 
@@ -2489,9 +2501,10 @@ router.post('/admin/access-requests', requirePerm('access', 'read'), adminRoute(
     }
     sql += ' ORDER BY ar.created_at DESC';
     const result = await pool.query(sql, params);
+    const baseUrl = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
     result.rows.forEach(r => {
         if (r.invite_code) {
-            r.register_url = 'https://llm-memory.net/register?code=' + r.invite_code;
+            r.register_url = baseUrl + '/register?code=' + r.invite_code;
         }
     });
     res.json({ requests: result.rows });
@@ -2534,7 +2547,7 @@ router.post('/admin/access-requests/approve', requirePerm('access', 'write'), ad
         client.release();
     }
 
-    const registerUrl = 'https://llm-memory.net/register?code=' + code;
+    const registerUrl = (process.env.BASE_URL || (req.protocol + '://' + req.get('host'))) + '/register?code=' + code;
     logAdmin('access_request_approved', { request_id: id, email: request.rows[0].email, user_id: req.authenticatedUser.id });
     res.json({ ok: true, invite_code: code, register_url: registerUrl, email: request.rows[0].email });
 }));

@@ -239,19 +239,33 @@ export default {
             }
         }
 
-        // Close on outside click
+        // Close on outside click or when focus leaves the component.
+        // mousedown catches clicks on non-focusable elements (empty space, other divs).
         function onClickOutside(e) {
-            if (root.value && !root.value.contains(e.target)) {
+            if (open.value && root.value && !root.value.contains(e.target)) {
+                close();
+            }
+        }
+
+        // focusin catches when focus moves to another input/button.
+        // Must also check that the focus target isn't an ancestor of the
+        // component (e.g. a <dialog>). When clicking a non-focusable option
+        // div, the browser moves focus to the nearest focusable ancestor,
+        // which is outside root but NOT an outside click.
+        function onFocusIn(e) {
+            if (open.value && root.value && !root.value.contains(e.target) && !e.target.contains(root.value)) {
                 close();
             }
         }
 
         onMounted(() => {
-            document.addEventListener('mousedown', onClickOutside);
+            document.addEventListener('mousedown', onClickOutside, true);
+            document.addEventListener('focusin', onFocusIn, true);
         });
 
         onUnmounted(() => {
-            document.removeEventListener('mousedown', onClickOutside);
+            document.removeEventListener('mousedown', onClickOutside, true);
+            document.removeEventListener('focusin', onFocusIn, true);
         });
 
         // Reset focused index when filter changes

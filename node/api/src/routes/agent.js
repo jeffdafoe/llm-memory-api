@@ -308,7 +308,7 @@ router.post('/agent/status', apiRoute('agent', 'status', async (req, res) => {
         agent: row.agent,
         status: row.status,
         last_seen: row.last_seen,
-        expertise: JSON.parse(row.expertise || '[]'),
+        expertise: row.expertise || [],
         provider: row.provider || null,
         model: row.model || null,
         active_since: row.active_since || null,

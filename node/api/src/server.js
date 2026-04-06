@@ -17,6 +17,7 @@ const documentRoutes = require('./routes/documents');
 const systemRoutes = require('./routes/system');
 const adminRoutes = require('./routes/admin');
 const registrationRoutes = require('./routes/registration');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const port = process.env.PORT || 3100;
@@ -40,6 +41,9 @@ app.use(oauthRoutes);
 
 // MCP Streamable HTTP endpoint (HMAC auth via mcp-auth middleware)
 app.use(mcpRoutes);
+
+// Auth verification (public, no auth — the token being verified IS the credential)
+app.use('/v1', authRoutes);
 
 app.use('/v1', auth);
 app.use('/v1', opportunisticHeartbeat);

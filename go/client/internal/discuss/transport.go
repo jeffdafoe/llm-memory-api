@@ -296,6 +296,11 @@ func (t *Transport) sendMessage(channel, message string) {
 		"channel":       channel,
 	}, nil)
 	if err != nil {
+		// Discussion already concluded — other side left, no recipients
+		if strings.Contains(err.Error(), "NO_RECIPIENTS") {
+			t.logger.Log("Send skipped — discussion already concluded (no recipients)")
+			return
+		}
 		t.logger.Log("ERROR sending: %s", err)
 		return
 	}

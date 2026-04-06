@@ -297,6 +297,10 @@ createApp({
         });
         watch(helpPage, () => {
             writeHash();
+            nextTick(() => {
+                const el = document.querySelector('.help-content');
+                if (el) el.scrollTop = 0;
+            });
         });
 
         // Lifecycle — store handler refs for proper cleanup
@@ -311,6 +315,16 @@ createApp({
             readHash();
             if (core.authenticated.value) loadCurrentView();
         }
+
+        // When session expires mid-use (401 or invalid 403), clean up background tasks
+        core.setOnSessionExpired(() => {
+            stopPolling();
+            dashboardModule.stopLivePolling();
+            apiLogModule.stopApiLogPolling();
+            errorLogModule.stopErrorLogPolling();
+            notesModule.stopReindexPolling();
+            eventsModule.disconnect();
+        });
 
         onMounted(() => {
             document.addEventListener('keydown', handleKeydown);
