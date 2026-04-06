@@ -116,12 +116,24 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const embeddings = await embed(cleanedQuery);
     const queryVector = pgvector.toSql(embeddings[0]);
 
+    // Candidate pool: fetch more results than requested from pgvector, then
+    // apply all boosts (BM25, filename, graph, decay, access) and trim down.
+    // This improves recall — results that rank low on pure vector similarity
+    // can bubble up after boosts are applied.
+    const poolMultiplier = Math.min(parseNonNegativeFinite(config.get('search_pool_multiplier'), 3), 10);
+    const poolSize = Math.min(Math.max(maxResults, Math.round(maxResults * poolMultiplier)), 500);
+
     // Build ILIKE pattern from query words to boost chunks whose source_file
     // matches the search terms. This catches cases where the filename is the
     // most relevant signal but the chunk content uses different terminology.
     const queryWords = cleanedQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
+    // Load boost magnitudes from config (tunable without redeploy)
+    const filenameBoostValue = parseNonNegativeFinite(config.get('search_filename_boost'), 0.15);
+    const bm25BoostScale = parseNonNegativeFinite(config.get('search_bm25_boost'), 0.1);
+
     // Load decay/boost config (validated to finite non-negative numbers)
+    // Kind-based half-lives (fallback when no cognitive type is set)
     const halfLives = {
         task: parseNonNegativeFinite(config.get('search_decay_halflife_task')),
         learning: parseNonNegativeFinite(config.get('search_decay_halflife_learning')),
@@ -130,6 +142,13 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         instruction: parseNonNegativeFinite(config.get('search_decay_halflife_instruction')),
         conversation: parseNonNegativeFinite(config.get('search_decay_halflife_conversation')),
         dream: parseNonNegativeFinite(config.get('search_decay_halflife_dream')),
+    };
+    // Cognitive type half-lives (override kind-based when metadata.cognitive_type is set)
+    const cognitiveHalfLives = {
+        semantic: parseNonNegativeFinite(config.get('search_decay_halflife_semantic')),
+        episodic: parseNonNegativeFinite(config.get('search_decay_halflife_episodic'), 90),
+        procedural: parseNonNegativeFinite(config.get('search_decay_halflife_procedural')),
+        reflective: parseNonNegativeFinite(config.get('search_decay_halflife_reflective'), 180),
     };
     const accessBoostMax = parseNonNegativeFinite(config.get('search_access_boost_max'));
     const accessBoostWindowDays = parseNonNegativeFinite(config.get('search_access_boost_window_days'));
@@ -146,10 +165,10 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     let paramIdx;
 
     if (!namespace || namespace === '*') {
-        params = [queryVector, maxResults];
+        params = [queryVector, poolSize];
         paramIdx = 3;
     } else {
-        params = [queryVector, namespace, maxResults];
+        params = [queryVector, namespace, poolSize];
         paramIdx = 4;
     }
 
@@ -160,8 +179,12 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         paramIdx++;
     }
     const filenameClauses = queryWords.map((_, i) => `mc.source_file ILIKE $${filenameStartIdx + i}`);
+    // Filename boost magnitude is config-driven (search_filename_boost, default 0.15)
+    const fnBoostIdx = paramIdx;
+    params.push(filenameBoostValue);
+    paramIdx++;
     const filenameBoostExpr = filenameClauses.length > 0
-        ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN 0.15 ELSE 0 END`
+        ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN $${fnBoostIdx} ELSE 0 END`
         : '0';
 
     // BM25 full-text search boost (gated by vector similarity threshold).
@@ -174,10 +197,13 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         // plainto_tsquery is safe with arbitrary input — no special syntax needed
         params.push(cleanedQuery);
         paramIdx++;
-        // ts_rank returns 0-1ish; scale by 0.1 so it's a gentle boost, not dominant.
+        // ts_rank returns 0-1ish; scale by config value so it's a tunable boost.
         // Gate: only apply when vector similarity > 0.3 (cosine distance < 0.7)
+        const bm25ScaleIdx = paramIdx;
+        params.push(bm25BoostScale);
+        paramIdx++;
         bm25BoostExpr = `CASE WHEN (1 - (mc.embedding <=> $1)) > 0.3 AND mc.tsv IS NOT NULL
-            THEN 0.1 * ts_rank(mc.tsv, plainto_tsquery('english', $${tsqIdx}))
+            THEN $${bm25ScaleIdx} * ts_rank(mc.tsv, plainto_tsquery('english', $${tsqIdx}))
             ELSE 0 END`;
     }
 
@@ -206,17 +232,32 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         }
     }
 
-    // Time-decay CASE expression per kind (half-life values as bound params).
+    // Time-decay: two-tier system. Cognitive type takes priority when available
+    // (stored in metadata->>'cognitive_type' by enrichment), falls back to kind-based.
     // decay = 0.5 ^ (age_days / half_life). If half_life is 0, no decay (1.0).
-    // Kind names are hardcoded strings, not user input.
-    const decayCases = Object.entries(halfLives).map(([kind, hl]) => {
+
+    // Cognitive type decay cases (checked first via metadata)
+    // Use LOWER(TRIM(...)) to handle any legacy data with inconsistent casing/whitespace
+    const cogDecayCases = Object.entries(cognitiveHalfLives).map(([ctype, hl]) => {
+        if (!hl) return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN 1.0`;
+        const hlIdx = paramIdx;
+        params.push(hl);
+        paramIdx++;
+        return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
+    });
+
+    // Kind-based decay cases (fallback for notes without cognitive type)
+    const kindDecayCases = Object.entries(halfLives).map(([kind, hl]) => {
         if (!hl) return `WHEN d.kind = '${kind}' THEN 1.0`;
         const hlIdx = paramIdx;
         params.push(hl);
         paramIdx++;
         return `WHEN d.kind = '${kind}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
     });
-    const decayExpression = `CASE ${decayCases.join(' ')} ELSE 1.0 END`;
+
+    // Cognitive type cases go first — if metadata has a cognitive_type, use that decay.
+    // Otherwise fall through to kind-based decay.
+    const decayExpression = `CASE ${cogDecayCases.join(' ')} ${kindDecayCases.join(' ')} ELSE 1.0 END`;
 
     // Kind-level weight multipliers
     const convWeightIdx = paramIdx;
@@ -281,54 +322,133 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const result = await pool.query(sql, params);
     let rows = result.rows;
 
-    // Graph boost: results connected to top results via note relations get a score bump.
-    // Post-processing step — queries the relation graph for the top N results and boosts
-    // any other results that share a relation edge with them.
+    // Spreading activation: activation propagates from top search results through
+    // the graph, decaying with each hop. Notes reachable from multiple hits
+    // accumulate activation from all paths.
+    //
+    // Algorithm:
+    // 1. Top 5 results become activation sources (initial activation = similarity * graphBoost)
+    // 2. Recursive CTE fetches N-hop neighborhood edges from the graph
+    // 3. Build an adjacency list from those edges
+    // 4. BFS from each anchor, propagating activation layer by layer with decay per hop
+    // 5. Accumulated activation added to similarity scores, results re-sorted
+    //
+    // Config: search_graph_boost (base strength), search_graph_decay (per-hop 0-1),
+    // search_graph_hops (max depth 1-4)
     const graphBoost = parseNonNegativeFinite(config.get('search_graph_boost'), 0);
     if (graphBoost > 0 && rows.length > 1) {
         try {
-            // Take the top 5 results as "anchor" nodes
+            const graphDecay = Math.min(Math.max(parseNonNegativeFinite(config.get('search_graph_decay'), 0.5), 0), 1);
+            const graphHops = Math.min(Math.max(1, parseInt(config.get('search_graph_hops')) || 2), 4);
+
+            // Take the top results as activation sources
             const topN = Math.min(5, rows.length);
             const anchors = rows.slice(0, topN);
-            const anchorKeys = new Set(anchors.map(r => (r.namespace || namespace) + '/' + r.source_file));
-
-            // Query relations for all anchor notes in one batch
             const anchorPairs = anchors.map(r => [r.namespace || namespace, r.source_file]);
-            const relResult = await pool.query(`
-                SELECT source_namespace, source_slug, target_namespace, target_slug
-                FROM note_relations
-                WHERE ${anchorPairs.map((_, i) =>
-                    `(source_namespace = $${i * 2 + 1} AND LOWER(source_slug) = LOWER($${i * 2 + 2}))
-                     OR (target_namespace = $${i * 2 + 1} AND LOWER(target_slug) = LOWER($${i * 2 + 2}))`
-                ).join(' OR ')}
-            `, anchorPairs.flat());
-
-            // Build set of notes connected to anchors
-            const connectedKeys = new Set();
-            for (const rel of relResult.rows) {
-                const sKey = rel.source_namespace + '/' + rel.source_slug;
-                const tKey = rel.target_namespace + '/' + rel.target_slug;
-                // If one side is an anchor, the other side gets boosted
-                if (anchorKeys.has(sKey)) connectedKeys.add(tKey.toLowerCase());
-                if (anchorKeys.has(tKey)) connectedKeys.add(sKey.toLowerCase());
+            const anchorScores = {};
+            for (const a of anchors) {
+                const key = ((a.namespace || namespace) + '/' + a.source_file).toLowerCase();
+                anchorScores[key] = parseFloat(a.similarity);
             }
-            // Don't boost the anchors themselves
-            for (const k of anchorKeys) connectedKeys.delete(k.toLowerCase());
 
-            // Apply boost to connected results
-            if (connectedKeys.size > 0) {
+            // Query N-hop neighborhood of all anchors using recursive CTE.
+            // UNION (not UNION ALL) prevents infinite cycles — each unique
+            // (source, target, depth) row only appears once.
+            const whereClauses = anchorPairs.map((_, i) =>
+                `(nr.source_namespace = $${i * 2 + 1} AND LOWER(nr.source_slug) = LOWER($${i * 2 + 2}))
+                 OR (nr.target_namespace = $${i * 2 + 1} AND LOWER(nr.target_slug) = LOWER($${i * 2 + 2}))`
+            ).join(' OR ');
+
+            const relResult = await pool.query(`
+                WITH RECURSIVE spread AS (
+                    SELECT nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug, 1 AS depth
+                    FROM note_relations nr
+                    WHERE ${whereClauses}
+
+                    UNION
+
+                    SELECT nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug, s.depth + 1
+                    FROM note_relations nr
+                    JOIN spread s ON (
+                        (nr.source_namespace = s.target_namespace AND LOWER(nr.source_slug) = LOWER(s.target_slug))
+                        OR (nr.target_namespace = s.source_namespace AND LOWER(nr.target_slug) = LOWER(s.source_slug))
+                    )
+                    WHERE s.depth < $${anchorPairs.length * 2 + 1}
+                )
+                SELECT DISTINCT source_namespace, source_slug, target_namespace, target_slug
+                FROM spread
+            `, [...anchorPairs.flat(), graphHops]);
+
+            // Build undirected adjacency list from edges
+            const adjacency = {};  // nodeKey -> Set<neighborKey>
+            for (const rel of relResult.rows) {
+                const sKey = (rel.source_namespace + '/' + rel.source_slug).toLowerCase();
+                const tKey = (rel.target_namespace + '/' + rel.target_slug).toLowerCase();
+                if (!adjacency[sKey]) adjacency[sKey] = new Set();
+                if (!adjacency[tKey]) adjacency[tKey] = new Set();
+                adjacency[sKey].add(tKey);
+                adjacency[tKey].add(sKey);
+            }
+
+            // BFS from each anchor, propagating activation layer by layer.
+            // Each anchor seeds its neighbors with (graphBoost * anchorSimilarity * decay).
+            // Activation accumulates — a node reachable from multiple anchors gets
+            // activation from each path.
+            const activation = {};  // nodeKey -> accumulated activation
+
+            for (const anchorKey of Object.keys(anchorScores)) {
+                const initialActivation = graphBoost * anchorScores[anchorKey];
+
+                // BFS with depth tracking — visited per anchor to avoid cycles
+                const visited = new Set([anchorKey]);
+                var frontier = [anchorKey];
+
+                for (var hop = 1; hop <= graphHops; hop++) {
+                    if (frontier.length === 0) break;
+                    var nextFrontier = [];
+                    var hopActivation = initialActivation * Math.pow(graphDecay, hop);
+                    if (hopActivation < 0.001) break;  // stop when activation is negligible
+
+                    for (var fi = 0; fi < frontier.length; fi++) {
+                        var neighbors = adjacency[frontier[fi]];
+                        if (!neighbors) continue;
+                        for (var neighbor of neighbors) {
+                            if (visited.has(neighbor)) continue;
+                            visited.add(neighbor);
+                            activation[neighbor] = (activation[neighbor] || 0) + hopActivation;
+                            nextFrontier.push(neighbor);
+                        }
+                    }
+                    frontier = nextFrontier;
+                }
+            }
+
+            // Remove anchors from activation (they're already scored)
+            for (const key of Object.keys(anchorScores)) {
+                delete activation[key];
+            }
+
+            // Apply accumulated activation to result scores
+            if (Object.keys(activation).length > 0) {
                 for (const row of rows) {
                     const key = ((row.namespace || namespace) + '/' + row.source_file).toLowerCase();
-                    if (connectedKeys.has(key)) {
-                        row.similarity = parseFloat(row.similarity) + graphBoost;
+                    if (activation[key]) {
+                        row.similarity = parseFloat(row.similarity) + activation[key];
                     }
                 }
-                // Re-sort by boosted similarity
+                // Re-sort by activated similarity
                 rows.sort((a, b) => parseFloat(b.similarity) - parseFloat(a.similarity));
             }
         } catch (e) {
-            // Graph boost failure shouldn't break search
+            log('search', 'spreading-activation-error', { error: e.message, rowCount: rows.length });
         }
+    }
+
+    // Trim the candidate pool down to the requested result count.
+    // All boosts (BM25, filename, graph, decay, access, kind weight) have been
+    // applied, so the final ordering reflects the full scoring pipeline.
+    if (rows.length > maxResults) {
+        rows = rows.slice(0, maxResults);
     }
 
     return { results: rows };
