@@ -1309,9 +1309,14 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
 // POST /admin/notes/keyword-relations — generate "related" edges between notes
 // that share keywords/tags. Pure SQL/JS, no LLM cost.
 router.post('/admin/notes/keyword-relations', requirePerm('notes', 'write'), adminRoute('notes-keyword-relations', async (req, res) => {
-    const { min_shared } = req.body;
+    var minShared = parseInt(req.body.min_shared, 10);
+    if (req.body.min_shared !== undefined && (!Number.isInteger(minShared) || minShared < 1 || minShared > 20)) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'min_shared must be an integer between 1 and 20' }
+        });
+    }
     const { generateKeywordRelations } = require('../services/enrichment');
-    const result = await generateKeywordRelations(min_shared);
+    const result = await generateKeywordRelations(Number.isInteger(minShared) ? minShared : undefined);
     res.json(result);
 }));
 

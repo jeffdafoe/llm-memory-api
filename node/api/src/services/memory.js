@@ -120,8 +120,8 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     // apply all boosts (BM25, filename, graph, decay, access) and trim down.
     // This improves recall — results that rank low on pure vector similarity
     // can bubble up after boosts are applied.
-    const poolMultiplier = parseNonNegativeFinite(config.get('search_pool_multiplier'), 3);
-    const poolSize = Math.max(maxResults, Math.round(maxResults * poolMultiplier));
+    const poolMultiplier = Math.min(parseNonNegativeFinite(config.get('search_pool_multiplier'), 3), 10);
+    const poolSize = Math.min(Math.max(maxResults, Math.round(maxResults * poolMultiplier)), 500);
 
     // Build ILIKE pattern from query words to boost chunks whose source_file
     // matches the search terms. This catches cases where the filename is the
@@ -237,12 +237,13 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     // decay = 0.5 ^ (age_days / half_life). If half_life is 0, no decay (1.0).
 
     // Cognitive type decay cases (checked first via metadata)
+    // Use LOWER(TRIM(...)) to handle any legacy data with inconsistent casing/whitespace
     const cogDecayCases = Object.entries(cognitiveHalfLives).map(([ctype, hl]) => {
-        if (!hl) return `WHEN d.metadata->>'cognitive_type' = '${ctype}' THEN 1.0`;
+        if (!hl) return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN 1.0`;
         const hlIdx = paramIdx;
         params.push(hl);
         paramIdx++;
-        return `WHEN d.metadata->>'cognitive_type' = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
+        return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
     });
 
     // Kind-based decay cases (fallback for notes without cognitive type)
@@ -324,13 +325,20 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     // Spreading activation: activation propagates from top search results through
     // the graph, decaying with each hop. Notes reachable from multiple hits
     // accumulate activation from all paths.
-    // Config: search_graph_boost controls the base activation strength,
-    // search_graph_decay controls per-hop decay (default 0.5),
-    // search_graph_hops controls max traversal depth (default 2).
+    //
+    // Algorithm:
+    // 1. Top 5 results become activation sources (initial activation = similarity * graphBoost)
+    // 2. Recursive CTE fetches N-hop neighborhood edges from the graph
+    // 3. Build an adjacency list from those edges
+    // 4. BFS from each anchor, propagating activation layer by layer with decay per hop
+    // 5. Accumulated activation added to similarity scores, results re-sorted
+    //
+    // Config: search_graph_boost (base strength), search_graph_decay (per-hop 0-1),
+    // search_graph_hops (max depth 1-4)
     const graphBoost = parseNonNegativeFinite(config.get('search_graph_boost'), 0);
     if (graphBoost > 0 && rows.length > 1) {
         try {
-            const graphDecay = parseNonNegativeFinite(config.get('search_graph_decay'), 0.5);
+            const graphDecay = Math.min(Math.max(parseNonNegativeFinite(config.get('search_graph_decay'), 0.5), 0), 1);
             const graphHops = Math.min(Math.max(1, parseInt(config.get('search_graph_hops')) || 2), 4);
 
             // Take the top results as activation sources
@@ -343,7 +351,9 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
                 anchorScores[key] = parseFloat(a.similarity);
             }
 
-            // Query N-hop neighborhood of all anchors using recursive CTE
+            // Query N-hop neighborhood of all anchors using recursive CTE.
+            // UNION (not UNION ALL) prevents infinite cycles — each unique
+            // (source, target, depth) row only appears once.
             const whereClauses = anchorPairs.map((_, i) =>
                 `(nr.source_namespace = $${i * 2 + 1} AND LOWER(nr.source_slug) = LOWER($${i * 2 + 2}))
                  OR (nr.target_namespace = $${i * 2 + 1} AND LOWER(nr.target_slug) = LOWER($${i * 2 + 2}))`
@@ -365,31 +375,51 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
                     )
                     WHERE s.depth < $${anchorPairs.length * 2 + 1}
                 )
-                SELECT DISTINCT source_namespace, source_slug, target_namespace, target_slug, depth
+                SELECT DISTINCT source_namespace, source_slug, target_namespace, target_slug
                 FROM spread
             `, [...anchorPairs.flat(), graphHops]);
 
-            // Build activation map: for each edge, propagate activation from anchors
-            // through the graph with decay per hop
-            const activation = {}; // key -> accumulated activation score
-
-            // First pass: build adjacency list with depth info from the CTE results
-            // Then propagate activation from each anchor through its neighborhood
+            // Build undirected adjacency list from edges
+            const adjacency = {};  // nodeKey -> Set<neighborKey>
             for (const rel of relResult.rows) {
                 const sKey = (rel.source_namespace + '/' + rel.source_slug).toLowerCase();
                 const tKey = (rel.target_namespace + '/' + rel.target_slug).toLowerCase();
-                const depth = rel.depth;
-                const decayFactor = Math.pow(graphDecay, depth);
+                if (!adjacency[sKey]) adjacency[sKey] = new Set();
+                if (!adjacency[tKey]) adjacency[tKey] = new Set();
+                adjacency[sKey].add(tKey);
+                adjacency[tKey].add(sKey);
+            }
 
-                // If source is an anchor, activate target
-                if (anchorScores[sKey] !== undefined) {
-                    const act = graphBoost * anchorScores[sKey] * decayFactor;
-                    activation[tKey] = (activation[tKey] || 0) + act;
-                }
-                // If target is an anchor, activate source
-                if (anchorScores[tKey] !== undefined) {
-                    const act = graphBoost * anchorScores[tKey] * decayFactor;
-                    activation[sKey] = (activation[sKey] || 0) + act;
+            // BFS from each anchor, propagating activation layer by layer.
+            // Each anchor seeds its neighbors with (graphBoost * anchorSimilarity * decay).
+            // Activation accumulates — a node reachable from multiple anchors gets
+            // activation from each path.
+            const activation = {};  // nodeKey -> accumulated activation
+
+            for (const anchorKey of Object.keys(anchorScores)) {
+                const initialActivation = graphBoost * anchorScores[anchorKey];
+
+                // BFS with depth tracking — visited per anchor to avoid cycles
+                const visited = new Set([anchorKey]);
+                var frontier = [anchorKey];
+
+                for (var hop = 1; hop <= graphHops; hop++) {
+                    if (frontier.length === 0) break;
+                    var nextFrontier = [];
+                    var hopActivation = initialActivation * Math.pow(graphDecay, hop);
+                    if (hopActivation < 0.001) break;  // stop when activation is negligible
+
+                    for (var fi = 0; fi < frontier.length; fi++) {
+                        var neighbors = adjacency[frontier[fi]];
+                        if (!neighbors) continue;
+                        for (var neighbor of neighbors) {
+                            if (visited.has(neighbor)) continue;
+                            visited.add(neighbor);
+                            activation[neighbor] = (activation[neighbor] || 0) + hopActivation;
+                            nextFrontier.push(neighbor);
+                        }
+                    }
+                    frontier = nextFrontier;
                 }
             }
 
@@ -410,7 +440,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
                 rows.sort((a, b) => parseFloat(b.similarity) - parseFloat(a.similarity));
             }
         } catch (e) {
-            // Spreading activation failure shouldn't break search
+            log('search', 'spreading-activation-error', { error: e.message, rowCount: rows.length });
         }
     }
 

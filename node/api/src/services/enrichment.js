@@ -98,11 +98,14 @@ function parseResponse(text, maxRelations) {
 
     if (!parsed || typeof parsed !== 'object') return null;
 
-    // Validate cognitive type
+    // Validate cognitive type (trim to handle LLM whitespace in JSON values)
     var VALID_COGNITIVE_TYPES = ['semantic', 'episodic', 'procedural', 'reflective'];
     var cognitiveType = null;
-    if (typeof parsed.cognitive_type === 'string' && VALID_COGNITIVE_TYPES.includes(parsed.cognitive_type.toLowerCase())) {
-        cognitiveType = parsed.cognitive_type.toLowerCase();
+    if (typeof parsed.cognitive_type === 'string') {
+        var normalized = parsed.cognitive_type.trim().toLowerCase();
+        if (VALID_COGNITIVE_TYPES.includes(normalized)) {
+            cognitiveType = normalized;
+        }
     }
 
     // Validate and cap keywords
@@ -335,8 +338,12 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
 // Runs as a batch job — scans all enriched notes and creates relations
 // for pairs that share a configurable minimum number of keywords/tags.
 // Does not use LLM calls — pure SQL/JS.
+//
+// Uses an inverted index (term → note keys) to avoid O(n²) full pair scan.
+// Only pairs that actually share terms are compared.
 async function generateKeywordRelations(minShared) {
-    var threshold = minShared || 3;
+    var threshold = Number.isInteger(minShared) ? minShared : 3;
+    if (threshold < 1) threshold = 1;
     var { createRelation } = require('./relations');
 
     logEnrich('keyword-relations-start', { threshold });
@@ -351,8 +358,11 @@ async function generateKeywordRelations(minShared) {
           AND kind NOT IN ('conversation', 'context', 'instruction')
     `);
 
-    // Build a map of note -> Set of terms (keywords + tags combined)
-    var notes = [];
+    // Build a map of noteKey -> Set of terms, and an inverted index of term -> noteKeys
+    var noteTerms = {};       // noteKey -> Set<term>
+    var noteInfo = {};        // noteKey -> { namespace, slug }
+    var invertedIndex = {};   // term -> Set<noteKey>
+
     for (var row of result.rows) {
         var meta = row.metadata;
         if (typeof meta === 'string') {
@@ -361,56 +371,88 @@ async function generateKeywordRelations(minShared) {
         var terms = new Set();
         if (Array.isArray(meta.keywords)) {
             for (var kw of meta.keywords) {
-                terms.add(kw.toLowerCase().trim());
+                if (typeof kw !== 'string') continue;
+                var term = kw.toLowerCase().trim();
+                if (term) terms.add(term);
             }
         }
         if (Array.isArray(meta.tags)) {
             for (var tag of meta.tags) {
-                terms.add(tag.toLowerCase().trim());
+                if (typeof tag !== 'string') continue;
+                var term = tag.toLowerCase().trim();
+                if (term) terms.add(term);
             }
         }
         if (terms.size > 0) {
-            notes.push({ namespace: row.namespace, slug: row.slug, terms: terms });
+            var noteKey = row.namespace + '/' + row.slug;
+            noteTerms[noteKey] = terms;
+            noteInfo[noteKey] = { namespace: row.namespace, slug: row.slug };
+            for (var t of terms) {
+                if (!invertedIndex[t]) invertedIndex[t] = new Set();
+                invertedIndex[t].add(noteKey);
+            }
         }
     }
 
-    logEnrich('keyword-relations-indexed', { noteCount: notes.length });
+    var noteCount = Object.keys(noteTerms).length;
+    logEnrich('keyword-relations-indexed', { noteCount, termCount: Object.keys(invertedIndex).length });
 
-    // Compare all pairs — O(n^2) but n is small (hundreds, not millions)
+    // Use the inverted index to find candidate pairs that share at least one term,
+    // then count shared terms only for those pairs.
+    var pairCounts = {};  // "keyA|keyB" -> shared count (sorted keys to avoid duplicates)
+
+    for (var t of Object.keys(invertedIndex)) {
+        var noteKeys = Array.from(invertedIndex[t]);
+        for (var i = 0; i < noteKeys.length; i++) {
+            for (var j = i + 1; j < noteKeys.length; j++) {
+                var a = noteKeys[i];
+                var b = noteKeys[j];
+                // Sort keys so each pair has a canonical form
+                var pairKey = a < b ? a + '|' + b : b + '|' + a;
+                if (!pairCounts[pairKey]) pairCounts[pairKey] = 0;
+                pairCounts[pairKey]++;
+            }
+        }
+    }
+
+    // Create relations for pairs that meet the threshold
     var created = 0;
     var skipped = 0;
-    for (var i = 0; i < notes.length; i++) {
-        for (var j = i + 1; j < notes.length; j++) {
-            var a = notes[i];
-            var b = notes[j];
+    var errors = 0;
+    var pairs = Object.entries(pairCounts);
 
-            // Count shared terms
-            var shared = 0;
-            for (var term of a.terms) {
-                if (b.terms.has(term)) shared++;
-            }
+    for (var p = 0; p < pairs.length; p++) {
+        var pairKey = pairs[p][0];
+        var shared = pairs[p][1];
+        if (shared < threshold) continue;
 
-            if (shared >= threshold) {
-                try {
-                    await createRelation(
-                        a.namespace, a.slug,
-                        b.namespace, b.slug,
-                        'related',
-                        null, // no specific creator
-                        { source: 'keyword-overlap', shared_count: shared },
-                        true // auto_extracted
-                    );
-                    created++;
-                } catch (e) {
-                    // Skip duplicates, self-references, etc.
-                    skipped++;
-                }
-            }
+        var parts = pairKey.split('|');
+        var infoA = noteInfo[parts[0]];
+        var infoB = noteInfo[parts[1]];
+
+        try {
+            await createRelation(
+                infoA.namespace, infoA.slug,
+                infoB.namespace, infoB.slug,
+                'related',
+                null,
+                { source: 'keyword-overlap', shared_count: shared },
+                true
+            );
+            created++;
+        } catch (e) {
+            // createRelation upserts on duplicates (no-op), so errors here are real
+            logEnrich('keyword-relation-error', {
+                source: infoA.namespace + '/' + infoA.slug,
+                target: infoB.namespace + '/' + infoB.slug,
+                error: e.message
+            });
+            errors++;
         }
     }
 
-    logEnrich('keyword-relations-complete', { created, skipped, totalPairs: notes.length * (notes.length - 1) / 2 });
-    return { created, skipped, noteCount: notes.length };
+    logEnrich('keyword-relations-complete', { created, skipped: pairs.length - created - errors, errors, noteCount });
+    return { created, errors, noteCount };
 }
 
 module.exports = { enrichNote, generateKeywordRelations };
