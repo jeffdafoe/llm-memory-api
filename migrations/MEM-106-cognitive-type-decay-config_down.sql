@@ -4,5 +4,7 @@ DELETE FROM config WHERE key IN (
     'search_decay_halflife_semantic',
     'search_decay_halflife_episodic',
     'search_decay_halflife_procedural',
-    'search_decay_halflife_reflective'
+    'search_decay_halflife_reflective',
+    'search_graph_decay',
+    'search_graph_hops'
 );

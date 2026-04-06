@@ -321,53 +321,96 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const result = await pool.query(sql, params);
     let rows = result.rows;
 
-    // Graph boost: results connected to top results via note relations get a score bump.
-    // Post-processing step — queries the relation graph for the top N results and boosts
-    // any other results that share a relation edge with them.
+    // Spreading activation: activation propagates from top search results through
+    // the graph, decaying with each hop. Notes reachable from multiple hits
+    // accumulate activation from all paths.
+    // Config: search_graph_boost controls the base activation strength,
+    // search_graph_decay controls per-hop decay (default 0.5),
+    // search_graph_hops controls max traversal depth (default 2).
     const graphBoost = parseNonNegativeFinite(config.get('search_graph_boost'), 0);
     if (graphBoost > 0 && rows.length > 1) {
         try {
-            // Take the top 5 results as "anchor" nodes
+            const graphDecay = parseNonNegativeFinite(config.get('search_graph_decay'), 0.5);
+            const graphHops = Math.min(Math.max(1, parseInt(config.get('search_graph_hops')) || 2), 4);
+
+            // Take the top results as activation sources
             const topN = Math.min(5, rows.length);
             const anchors = rows.slice(0, topN);
-            const anchorKeys = new Set(anchors.map(r => (r.namespace || namespace) + '/' + r.source_file));
-
-            // Query relations for all anchor notes in one batch
             const anchorPairs = anchors.map(r => [r.namespace || namespace, r.source_file]);
-            const relResult = await pool.query(`
-                SELECT source_namespace, source_slug, target_namespace, target_slug
-                FROM note_relations
-                WHERE ${anchorPairs.map((_, i) =>
-                    `(source_namespace = $${i * 2 + 1} AND LOWER(source_slug) = LOWER($${i * 2 + 2}))
-                     OR (target_namespace = $${i * 2 + 1} AND LOWER(target_slug) = LOWER($${i * 2 + 2}))`
-                ).join(' OR ')}
-            `, anchorPairs.flat());
-
-            // Build set of notes connected to anchors
-            const connectedKeys = new Set();
-            for (const rel of relResult.rows) {
-                const sKey = rel.source_namespace + '/' + rel.source_slug;
-                const tKey = rel.target_namespace + '/' + rel.target_slug;
-                // If one side is an anchor, the other side gets boosted
-                if (anchorKeys.has(sKey)) connectedKeys.add(tKey.toLowerCase());
-                if (anchorKeys.has(tKey)) connectedKeys.add(sKey.toLowerCase());
+            const anchorScores = {};
+            for (const a of anchors) {
+                const key = ((a.namespace || namespace) + '/' + a.source_file).toLowerCase();
+                anchorScores[key] = parseFloat(a.similarity);
             }
-            // Don't boost the anchors themselves
-            for (const k of anchorKeys) connectedKeys.delete(k.toLowerCase());
 
-            // Apply boost to connected results
-            if (connectedKeys.size > 0) {
+            // Query N-hop neighborhood of all anchors using recursive CTE
+            const whereClauses = anchorPairs.map((_, i) =>
+                `(nr.source_namespace = $${i * 2 + 1} AND LOWER(nr.source_slug) = LOWER($${i * 2 + 2}))
+                 OR (nr.target_namespace = $${i * 2 + 1} AND LOWER(nr.target_slug) = LOWER($${i * 2 + 2}))`
+            ).join(' OR ');
+
+            const relResult = await pool.query(`
+                WITH RECURSIVE spread AS (
+                    SELECT nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug, 1 AS depth
+                    FROM note_relations nr
+                    WHERE ${whereClauses}
+
+                    UNION
+
+                    SELECT nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug, s.depth + 1
+                    FROM note_relations nr
+                    JOIN spread s ON (
+                        (nr.source_namespace = s.target_namespace AND LOWER(nr.source_slug) = LOWER(s.target_slug))
+                        OR (nr.target_namespace = s.source_namespace AND LOWER(nr.target_slug) = LOWER(s.source_slug))
+                    )
+                    WHERE s.depth < $${anchorPairs.length * 2 + 1}
+                )
+                SELECT DISTINCT source_namespace, source_slug, target_namespace, target_slug, depth
+                FROM spread
+            `, [...anchorPairs.flat(), graphHops]);
+
+            // Build activation map: for each edge, propagate activation from anchors
+            // through the graph with decay per hop
+            const activation = {}; // key -> accumulated activation score
+
+            // First pass: build adjacency list with depth info from the CTE results
+            // Then propagate activation from each anchor through its neighborhood
+            for (const rel of relResult.rows) {
+                const sKey = (rel.source_namespace + '/' + rel.source_slug).toLowerCase();
+                const tKey = (rel.target_namespace + '/' + rel.target_slug).toLowerCase();
+                const depth = rel.depth;
+                const decayFactor = Math.pow(graphDecay, depth);
+
+                // If source is an anchor, activate target
+                if (anchorScores[sKey] !== undefined) {
+                    const act = graphBoost * anchorScores[sKey] * decayFactor;
+                    activation[tKey] = (activation[tKey] || 0) + act;
+                }
+                // If target is an anchor, activate source
+                if (anchorScores[tKey] !== undefined) {
+                    const act = graphBoost * anchorScores[tKey] * decayFactor;
+                    activation[sKey] = (activation[sKey] || 0) + act;
+                }
+            }
+
+            // Remove anchors from activation (they're already scored)
+            for (const key of Object.keys(anchorScores)) {
+                delete activation[key];
+            }
+
+            // Apply accumulated activation to result scores
+            if (Object.keys(activation).length > 0) {
                 for (const row of rows) {
                     const key = ((row.namespace || namespace) + '/' + row.source_file).toLowerCase();
-                    if (connectedKeys.has(key)) {
-                        row.similarity = parseFloat(row.similarity) + graphBoost;
+                    if (activation[key]) {
+                        row.similarity = parseFloat(row.similarity) + activation[key];
                     }
                 }
-                // Re-sort by boosted similarity
+                // Re-sort by activated similarity
                 rows.sort((a, b) => parseFloat(b.similarity) - parseFloat(a.similarity));
             }
         } catch (e) {
-            // Graph boost failure shouldn't break search
+            // Spreading activation failure shouldn't break search
         }
     }
 
