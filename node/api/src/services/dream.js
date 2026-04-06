@@ -110,15 +110,17 @@ function prefilterLog(content) {
     return result.join('\n');
 }
 
-// Find a dream agent by expertise tag. Verifies it exists, is system-owned,
-// and has provider/model/api_key configured. Returns the agent name or null.
+// Find a dream agent by expertise tag. Verifies it exists, is owned by system
+// or by a user with 'agents/create_system_equivalent' permission, and has
+// provider/model/api_key configured. Returns the agent name or null.
 async function findDreamAgent(expertiseTag) {
-    // Find an agent with this expertise tag, owned by system
+    const { isTrustedCreator } = require('./admin-permissions');
+
     const result = await pool.query(
         `SELECT ac.id, ac.name, ac.created_by, agc.provider, agc.model, agc.api_key
          FROM actors ac
          JOIN agent_configuration agc ON agc.actor_id = ac.id
-         WHERE ac.expertise ? $1`,
+         WHERE ac.expertise @> jsonb_build_array($1)`,
         [expertiseTag]
     );
 
@@ -127,17 +129,17 @@ async function findDreamAgent(expertiseTag) {
         return null;
     }
 
-    // Verify system ownership
-    const systemActor = await pool.query("SELECT id FROM actors WHERE name = 'system'");
-    if (systemActor.rows.length === 0) {
-        logDream('error', { message: 'System actor not found' });
-        return null;
+    // Verify ownership — must be created by system or a trusted creator
+    let agent = null;
+    for (const row of result.rows) {
+        if (await isTrustedCreator(row.created_by)) {
+            agent = row;
+            break;
+        }
     }
 
-    // Find the first system-owned match
-    const agent = result.rows.find(r => r.created_by === systemActor.rows[0].id);
     if (!agent) {
-        logDream('error', { message: 'Agent with expertise "' + expertiseTag + '" is not owned by system' });
+        logDream('error', { message: 'Agent with expertise "' + expertiseTag + '" not owned by system or trusted creator' });
         return null;
     }
 
@@ -174,7 +176,7 @@ async function runDream() {
 
     if (!companionAgentName && !technicalAgentName) {
         logDream('abort', { reason: 'Neither dream agent found or valid' });
-        return { error: 'No valid dream agents found. Both dream-companion and dream-technical must exist and be owned by system.' };
+        return { error: 'No valid dream agents found. Both dream-companion and dream-technical must exist and be created by a trusted creator.' };
     }
 
     // Find agents with dream mode enabled
