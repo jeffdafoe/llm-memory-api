@@ -45,17 +45,21 @@ async function hasPermission(actorId, resource, action) {
     }
 
     const requiredRank = ACTION_RANK[action];
-    if (!requiredRank) return false;
 
     // Check grants on the specific resource
     for (const p of permissions) {
         if (p.resource !== resource && p.resource !== '*') continue;
-        const grantedRank = ACTION_RANK[p.action];
-        if (grantedRank && grantedRank >= requiredRank) {
-            return true;
-        }
         // Resource-level wildcard action
         if (p.action === '*') return true;
+        // Hierarchical actions (read < write < delete)
+        if (requiredRank) {
+            const grantedRank = ACTION_RANK[p.action];
+            if (grantedRank && grantedRank >= requiredRank) {
+                return true;
+            }
+        }
+        // Non-hierarchical actions — exact match only
+        if (p.action === action) return true;
     }
 
     return false;
@@ -97,6 +101,20 @@ async function getPermissionMap(actorId) {
     return map;
 }
 
+// Check if an actor is a trusted creator — either the system actor itself,
+// or a user with the 'agents/create_system_equivalent' permission.
+// Use this anywhere "owned by system" is used as a trust signal.
+let systemActorId = null;
+async function isTrustedCreator(actorId) {
+    // Resolve system actor id once and cache it
+    if (systemActorId === null) {
+        const result = await pool.query("SELECT id FROM actors WHERE name = 'system'");
+        systemActorId = result.rows.length > 0 ? result.rows[0].id : -1;
+    }
+    if (actorId === systemActorId) return true;
+    return hasPermission(actorId, 'agents', 'create_system_equivalent');
+}
+
 // Clear cache for a specific actor (call after permission changes)
 function clearCache(actorId) {
     if (actorId) {
@@ -106,4 +124,4 @@ function clearCache(actorId) {
     }
 }
 
-module.exports = { hasPermission, requirePerm, getPermissions, getPermissionMap, clearCache };
+module.exports = { hasPermission, requirePerm, getPermissions, getPermissionMap, isTrustedCreator, clearCache };
