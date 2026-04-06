@@ -1244,6 +1244,15 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
     res.json({ ok: true });
 });
 
+// POST /admin/notes/keyword-relations — generate "related" edges between notes
+// that share keywords/tags. Pure SQL/JS, no LLM cost.
+router.post('/admin/notes/keyword-relations', requirePerm('notes', 'write'), adminRoute('notes-keyword-relations', async (req, res) => {
+    const { min_shared } = req.body;
+    const { generateKeywordRelations } = require('../services/enrichment');
+    const result = await generateKeywordRelations(min_shared);
+    res.json(result);
+}));
+
 // POST /admin/notes/usage — namespace storage usage (note count + total bytes).
 // Optionally filter by namespace. Joins actors table to show agent name.
 router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('notes-usage', async (req, res) => {
@@ -1335,19 +1344,21 @@ router.post('/admin/notes/graph-all', requirePerm('notes', 'read'), adminRoute('
         sql = `SELECT nr.id, nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug,
                       nr.relation_type, nr.auto_extracted, nr.created_at
                FROM note_relations nr
-               JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
-               JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
+               LEFT JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
+               LEFT JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
                WHERE (nr.source_namespace = $1 OR nr.target_namespace = $1)
-                 AND sd.kind != ALL($2) AND td.kind != ALL($2)
+                 AND (sd.kind IS NULL OR sd.kind != ALL($2))
+                 AND (td.kind IS NULL OR td.kind != ALL($2))
                ORDER BY nr.created_at DESC`;
         params = [namespace, excludeKinds];
     } else {
         sql = `SELECT nr.id, nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug,
                       nr.relation_type, nr.auto_extracted, nr.created_at
                FROM note_relations nr
-               JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
-               JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
-               WHERE sd.kind != ALL($1) AND td.kind != ALL($1)
+               LEFT JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
+               LEFT JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
+               WHERE (sd.kind IS NULL OR sd.kind != ALL($1))
+                 AND (td.kind IS NULL OR td.kind != ALL($1))
                ORDER BY nr.created_at DESC`;
         params = [excludeKinds];
     }

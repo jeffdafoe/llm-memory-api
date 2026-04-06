@@ -65,16 +65,18 @@ function buildUserMessage(namespace, slug, title, content, similarNotes) {
         + '\n\nAnalyze this note and return a JSON object with:\n'
         + '- `keywords`: array of 3-8 key concepts (single words or short phrases)\n'
         + '- `tags`: array of 2-5 categorization labels\n'
-        + '- `relations`: array of 0-3 suggested connections to the related notes listed above. '
+        + '- `relations`: array of suggested connections to the related notes listed above (aim for 3-8). '
         + 'Each relation should have `target_namespace`, `target_slug`, and `relation_type` '
         + '(one of: depends-on, references, supersedes, led-to, related, subtask-of). '
-        + 'Only suggest relations that are meaningful — not every similar note is related.\n\n'
+        + 'Be generous with connections — if two notes share a topic, project, or concept, link them.\n\n'
         + 'Return ONLY valid JSON, no markdown fences, no explanation.';
 }
 
 // Parse and validate the enrichment response from the LLM.
 // Returns { keywords, tags, relations } or null on failure.
-function parseResponse(text) {
+// maxRelations caps how many relations to keep (default 10).
+function parseResponse(text, maxRelations) {
+    var relationCap = maxRelations || 10;
     if (!text) return null;
 
     // Strip markdown code fences if present
@@ -130,7 +132,7 @@ function parseResponse(text) {
                     relation_type: rel.relation_type
                 });
             }
-            if (relations.length >= 5) break;
+            if (relations.length >= relationCap) break;
         }
     }
 
@@ -169,7 +171,7 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
     logEnrich('start', { namespace, slug, kind });
 
     // Configurable neighbor count for relation context
-    var neighborCount = 5;
+    var neighborCount = 25;
     try {
         var configuredCount = parseInt(config.get('enrichment_neighbor_count'), 10);
         if (configuredCount > 0) neighborCount = configuredCount;
@@ -222,8 +224,16 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
         return;
     }
 
-    // Parse and validate the response
-    var enrichment = parseResponse(response.text);
+    // Parse and validate the response — relation cap is configurable
+    var maxRelations = 10;
+    try {
+        var configuredMax = parseInt(config.get('enrichment_max_relations'), 10);
+        if (configuredMax > 0) maxRelations = configuredMax;
+    } catch (e) {
+        // Config key doesn't exist yet — use default
+    }
+
+    var enrichment = parseResponse(response.text, maxRelations);
     if (!enrichment) {
         logEnrich('parse-failed', { namespace, slug, responsePreview: (response.text || '').substring(0, 200) });
         return;
@@ -304,4 +314,86 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
     });
 }
 
-module.exports = { enrichNote };
+// Generate "related" edges between notes that share keywords or tags.
+// Runs as a batch job — scans all enriched notes and creates relations
+// for pairs that share a configurable minimum number of keywords/tags.
+// Does not use LLM calls — pure SQL/JS.
+async function generateKeywordRelations(minShared) {
+    var threshold = minShared || 3;
+    var { createRelation } = require('./relations');
+
+    logEnrich('keyword-relations-start', { threshold });
+
+    // Fetch all notes that have keywords or tags in metadata
+    var result = await pool.query(`
+        SELECT namespace, slug, metadata
+        FROM documents
+        WHERE deleted_at IS NULL
+          AND metadata IS NOT NULL
+          AND (metadata->>'keywords' IS NOT NULL OR metadata->>'tags' IS NOT NULL)
+          AND kind NOT IN ('conversation', 'context', 'instruction')
+    `);
+
+    // Build a map of note -> Set of terms (keywords + tags combined)
+    var notes = [];
+    for (var row of result.rows) {
+        var meta = row.metadata;
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch (e) { continue; }
+        }
+        var terms = new Set();
+        if (Array.isArray(meta.keywords)) {
+            for (var kw of meta.keywords) {
+                terms.add(kw.toLowerCase().trim());
+            }
+        }
+        if (Array.isArray(meta.tags)) {
+            for (var tag of meta.tags) {
+                terms.add(tag.toLowerCase().trim());
+            }
+        }
+        if (terms.size > 0) {
+            notes.push({ namespace: row.namespace, slug: row.slug, terms: terms });
+        }
+    }
+
+    logEnrich('keyword-relations-indexed', { noteCount: notes.length });
+
+    // Compare all pairs — O(n^2) but n is small (hundreds, not millions)
+    var created = 0;
+    var skipped = 0;
+    for (var i = 0; i < notes.length; i++) {
+        for (var j = i + 1; j < notes.length; j++) {
+            var a = notes[i];
+            var b = notes[j];
+
+            // Count shared terms
+            var shared = 0;
+            for (var term of a.terms) {
+                if (b.terms.has(term)) shared++;
+            }
+
+            if (shared >= threshold) {
+                try {
+                    await createRelation(
+                        a.namespace, a.slug,
+                        b.namespace, b.slug,
+                        'related',
+                        null, // no specific creator
+                        { source: 'keyword-overlap', shared_count: shared },
+                        true // auto_extracted
+                    );
+                    created++;
+                } catch (e) {
+                    // Skip duplicates, self-references, etc.
+                    skipped++;
+                }
+            }
+        }
+    }
+
+    logEnrich('keyword-relations-complete', { created, skipped, totalPairs: notes.length * (notes.length - 1) / 2 });
+    return { created, skipped, noteCount: notes.length };
+}
+
+module.exports = { enrichNote, generateKeywordRelations };
