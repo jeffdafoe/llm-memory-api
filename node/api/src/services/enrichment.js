@@ -63,6 +63,10 @@ function buildUserMessage(namespace, slug, title, content, similarNotes) {
         + truncatedContent
         + contextSection
         + '\n\nAnalyze this note and return a JSON object with:\n'
+        + '- `cognitive_type`: one of "semantic" (facts, definitions, knowledge), '
+        + '"episodic" (events, things that happened), '
+        + '"procedural" (decisions, conventions, how-tos, institutional knowledge), '
+        + 'or "reflective" (synthesized insights, lessons learned, analysis)\n'
         + '- `keywords`: array of 3-8 key concepts (single words or short phrases)\n'
         + '- `tags`: array of 2-5 categorization labels\n'
         + '- `relations`: array of suggested connections to the related notes listed above (aim for 3-8). '
@@ -93,6 +97,13 @@ function parseResponse(text, maxRelations) {
     }
 
     if (!parsed || typeof parsed !== 'object') return null;
+
+    // Validate cognitive type
+    var VALID_COGNITIVE_TYPES = ['semantic', 'episodic', 'procedural', 'reflective'];
+    var cognitiveType = null;
+    if (typeof parsed.cognitive_type === 'string' && VALID_COGNITIVE_TYPES.includes(parsed.cognitive_type.toLowerCase())) {
+        cognitiveType = parsed.cognitive_type.toLowerCase();
+    }
 
     // Validate and cap keywords
     var keywords = [];
@@ -136,7 +147,7 @@ function parseResponse(text, maxRelations) {
         }
     }
 
-    return { keywords, tags, relations };
+    return { keywords, tags, relations, cognitiveType };
 }
 
 // Main enrichment function. Called fire-and-forget from saveNote.
@@ -241,6 +252,7 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
 
     logEnrich('parsed', {
         namespace, slug,
+        cognitiveType: enrichment.cognitiveType,
         keywords: enrichment.keywords.length,
         tags: enrichment.tags.length,
         relations: enrichment.relations.length
@@ -259,6 +271,11 @@ async function enrichNote(namespace, slug, title, content, existingMetadata) {
     var allTags = Array.from(new Set(existingTags.concat(enrichment.tags)));
     if (allTags.length > 20) allTags = allTags.slice(0, 20);
     merged.tags = allTags;
+
+    // Store cognitive type (overwrites on re-enrichment)
+    if (enrichment.cognitiveType) {
+        merged.cognitive_type = enrichment.cognitiveType;
+    }
 
     merged._enriched_at = new Date().toISOString();
 

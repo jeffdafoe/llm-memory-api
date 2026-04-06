@@ -133,6 +133,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const bm25BoostScale = parseNonNegativeFinite(config.get('search_bm25_boost'), 0.1);
 
     // Load decay/boost config (validated to finite non-negative numbers)
+    // Kind-based half-lives (fallback when no cognitive type is set)
     const halfLives = {
         task: parseNonNegativeFinite(config.get('search_decay_halflife_task')),
         learning: parseNonNegativeFinite(config.get('search_decay_halflife_learning')),
@@ -141,6 +142,13 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         instruction: parseNonNegativeFinite(config.get('search_decay_halflife_instruction')),
         conversation: parseNonNegativeFinite(config.get('search_decay_halflife_conversation')),
         dream: parseNonNegativeFinite(config.get('search_decay_halflife_dream')),
+    };
+    // Cognitive type half-lives (override kind-based when metadata.cognitive_type is set)
+    const cognitiveHalfLives = {
+        semantic: parseNonNegativeFinite(config.get('search_decay_halflife_semantic')),
+        episodic: parseNonNegativeFinite(config.get('search_decay_halflife_episodic'), 90),
+        procedural: parseNonNegativeFinite(config.get('search_decay_halflife_procedural')),
+        reflective: parseNonNegativeFinite(config.get('search_decay_halflife_reflective'), 180),
     };
     const accessBoostMax = parseNonNegativeFinite(config.get('search_access_boost_max'));
     const accessBoostWindowDays = parseNonNegativeFinite(config.get('search_access_boost_window_days'));
@@ -224,17 +232,31 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         }
     }
 
-    // Time-decay CASE expression per kind (half-life values as bound params).
+    // Time-decay: two-tier system. Cognitive type takes priority when available
+    // (stored in metadata->>'cognitive_type' by enrichment), falls back to kind-based.
     // decay = 0.5 ^ (age_days / half_life). If half_life is 0, no decay (1.0).
-    // Kind names are hardcoded strings, not user input.
-    const decayCases = Object.entries(halfLives).map(([kind, hl]) => {
+
+    // Cognitive type decay cases (checked first via metadata)
+    const cogDecayCases = Object.entries(cognitiveHalfLives).map(([ctype, hl]) => {
+        if (!hl) return `WHEN d.metadata->>'cognitive_type' = '${ctype}' THEN 1.0`;
+        const hlIdx = paramIdx;
+        params.push(hl);
+        paramIdx++;
+        return `WHEN d.metadata->>'cognitive_type' = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
+    });
+
+    // Kind-based decay cases (fallback for notes without cognitive type)
+    const kindDecayCases = Object.entries(halfLives).map(([kind, hl]) => {
         if (!hl) return `WHEN d.kind = '${kind}' THEN 1.0`;
         const hlIdx = paramIdx;
         params.push(hl);
         paramIdx++;
         return `WHEN d.kind = '${kind}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
     });
-    const decayExpression = `CASE ${decayCases.join(' ')} ELSE 1.0 END`;
+
+    // Cognitive type cases go first — if metadata has a cognitive_type, use that decay.
+    // Otherwise fall through to kind-based decay.
+    const decayExpression = `CASE ${cogDecayCases.join(' ')} ${kindDecayCases.join(' ')} ELSE 1.0 END`;
 
     // Kind-level weight multipliers
     const convWeightIdx = paramIdx;
