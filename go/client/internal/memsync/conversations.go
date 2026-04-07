@@ -30,7 +30,13 @@ func ConversationSync(client *api.Client, projectDir string, agentName string, u
         return fmt.Errorf("read project dir: %w", err)
     }
 
-    var candidateIDs []string
+    // Session info sent to server for diff comparison
+    type sessionInfo struct {
+        ID       string `json:"id"`
+        FileSize int64  `json:"file_size"`
+    }
+
+    var candidates []sessionInfo
     // Map lowercase ID to actual filename for case-insensitive matching later
     fileMap := make(map[string]string)
 
@@ -59,22 +65,22 @@ func ConversationSync(client *api.Client, projectDir string, agentName string, u
         }
 
         lowerID := strings.ToLower(sessionID)
-        candidateIDs = append(candidateIDs, lowerID)
+        candidates = append(candidates, sessionInfo{ID: lowerID, FileSize: info.Size()})
         fileMap[lowerID] = entry.Name()
     }
 
-    if len(candidateIDs) == 0 {
+    if len(candidates) == 0 {
         fmt.Println("Conversations: no new sessions")
         return nil
     }
 
-    // Ask server which sessions are missing
+    // Ask server which sessions are missing or stale (file grew since last upload)
     var diffResult struct {
         Conversations *conversationConfig `json:"conversations"`
     }
     err = client.Post("/agent/memory/sync", map[string]interface{}{
         "conversations": map[string]interface{}{
-            "session_ids": candidateIDs,
+            "sessions": candidates,
         },
     }, &diffResult)
     if err != nil {
@@ -86,17 +92,29 @@ func ConversationSync(client *api.Client, projectDir string, agentName string, u
         return nil
     }
     missing := diffResult.Conversations.Missing
-    if len(missing) == 0 {
+    stale := diffResult.Conversations.Stale
+    if len(missing) == 0 && len(stale) == 0 {
         fmt.Println("Conversations: all up to date")
         return nil
     }
 
-    // Preprocess and upload missing sessions one at a time
+    // Merge missing + stale into a single upload list
+    toUpload := make([]string, 0, len(missing)+len(stale))
+    toUpload = append(toUpload, missing...)
+    toUpload = append(toUpload, stale...)
+
+    // Preprocess and upload sessions one at a time
     uploaded := 0
+    updated := 0
     convErrors := 0
     serverErrors := 0
 
-    for _, sessionID := range missing {
+    staleSet := make(map[string]bool, len(stale))
+    for _, id := range stale {
+        staleSet[strings.ToLower(id)] = true
+    }
+
+    for _, sessionID := range toUpload {
         // Find the local file
         filename, ok := fileMap[strings.ToLower(sessionID)]
         if !ok {
@@ -125,6 +143,13 @@ func ConversationSync(client *api.Client, projectDir string, agentName string, u
             dateStr = messages[0].Timestamp.Format("2006-01-02")
         }
 
+        // Get current file size for metadata
+        fileInfo, _ := os.Stat(filePath)
+        var fileSize int64
+        if fileInfo != nil {
+            fileSize = fileInfo.Size()
+        }
+
         // Upload
         upload := conversationUpload{
             SessionID: sessionID,
@@ -137,6 +162,7 @@ func ConversationSync(client *api.Client, projectDir string, agentName string, u
                 Agent:        agentName,
                 User:         userName,
                 MessageCount: len(messages),
+                FileSize:     fileSize,
                 Source:       "claude-code-jsonl",
             },
         }
@@ -165,12 +191,21 @@ func ConversationSync(client *api.Client, projectDir string, agentName string, u
             if uploadResult.Conversations != nil {
                 count = uploadResult.Conversations.Uploaded
             }
-            uploaded += count
-            fmt.Printf("  CONV conversations/%s-%s\n", dateStr, sessionID)
+            isStale := staleSet[strings.ToLower(sessionID)]
+            if isStale {
+                updated += count
+                fmt.Printf("  CONV UPDATE conversations/%s-%s\n", dateStr, sessionID)
+            } else {
+                uploaded += count
+                fmt.Printf("  CONV conversations/%s-%s\n", dateStr, sessionID)
+            }
         }
     }
 
     summary := fmt.Sprintf("Conversations: %d uploaded", uploaded)
+    if updated > 0 {
+        summary += fmt.Sprintf(", %d updated", updated)
+    }
     if convErrors > 0 {
         summary += fmt.Sprintf(", %d errors", convErrors)
     }
@@ -396,6 +431,7 @@ type conversationMetadata struct {
     Agent        string `json:"agent"`
     User         string `json:"user"`
     MessageCount int    `json:"message_count"`
+    FileSize     int64  `json:"file_size"`
     Source       string `json:"source"`
 }
 

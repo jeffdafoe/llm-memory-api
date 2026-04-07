@@ -748,36 +748,85 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
             const retentionDays = parseInt(config.get('conversation_retention_days')) || 30;
             conversationsResponse.retention_days = retentionDays;
 
-            // If client sent session_ids, compare against existing conversation notes
+            // Compare client sessions against existing conversation notes.
+            // Supports two formats:
+            //   - Legacy: session_ids = ["id1", "id2"] (no stale detection)
+            //   - New:    sessions = [{id: "id1", file_size: 12345}, ...] (with stale detection)
+            const sessions = req.body.conversations.sessions;
             const sessionIds = req.body.conversations.session_ids;
-            if (Array.isArray(sessionIds) && sessionIds.length > 0) {
+            const hasNewFormat = Array.isArray(sessions) && sessions.length > 0;
+            const hasLegacyFormat = Array.isArray(sessionIds) && sessionIds.length > 0;
+
+            if (hasNewFormat || hasLegacyFormat) {
                 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
                 const maxIds = 1000;
-                if (sessionIds.length > maxIds) {
+
+                // Normalize file_size to a bounded non-negative integer
+                function normalizeFileSize(value) {
+                    const n = Number(value);
+                    return Number.isInteger(n) && n >= 0 ? n : 0;
+                }
+
+                // Normalize both formats into {id, file_size} pairs
+                const rawItems = hasNewFormat
+                    ? sessions
+                        .filter(s => s && typeof s === 'object')
+                        .map(s => ({ id: s.id, file_size: normalizeFileSize(s.file_size) }))
+                    : sessionIds.map(id => ({ id, file_size: 0 }));
+
+                if (rawItems.length > maxIds) {
                     conversationsResponse.error = 'Too many session IDs (max ' + maxIds + ')';
                 } else {
                     const seen = new Set();
-                    const validIds = [];
-                    for (const id of sessionIds) {
-                        if (typeof id !== 'string' || !uuidRegex.test(id)) continue;
-                        const lower = id.toLowerCase();
+                    const validItems = [];
+                    for (const item of rawItems) {
+                        if (typeof item.id !== 'string' || !uuidRegex.test(item.id)) continue;
+                        const lower = item.id.toLowerCase();
                         if (seen.has(lower)) continue;
                         seen.add(lower);
-                        validIds.push(lower);
+                        validItems.push({ id: lower, file_size: normalizeFileSize(item.file_size) });
                     }
 
-                    // Query by metadata->session_id — no slug parsing, no row cap
+                    const validIds = validItems.map(item => item.id);
+
+                    // Query existing sessions with their stored file_size from metadata.
+                    // Uses MAX to handle any duplicate rows per session, and regex guard
+                    // on the cast to avoid blowing up on non-numeric stored values.
                     const existingResult = await pool.query(`
-                        SELECT metadata->>'session_id' AS session_id
+                        SELECT metadata->>'session_id' AS session_id,
+                               MAX(
+                                   CASE
+                                       WHEN metadata->>'file_size' ~ '^[0-9]+$'
+                                       THEN (metadata->>'file_size')::bigint
+                                       ELSE 0
+                                   END
+                               ) AS file_size
                         FROM documents
                         WHERE namespace = $1 AND kind = 'conversation' AND deleted_at IS NULL
                           AND metadata->>'session_id' = ANY($2)
+                        GROUP BY metadata->>'session_id'
                     `, [agent, validIds]);
-                    const existingSessionIds = new Set(
-                        existingResult.rows.map(r => r.session_id.toLowerCase())
-                    );
 
-                    conversationsResponse.missing = validIds.filter(id => !existingSessionIds.has(id));
+                    const existingMap = new Map();
+                    for (const row of existingResult.rows) {
+                        existingMap.set(row.session_id.toLowerCase(), parseInt(row.file_size) || 0);
+                    }
+
+                    const missing = [];
+                    const stale = [];
+                    for (const item of validItems) {
+                        if (!existingMap.has(item.id)) {
+                            missing.push(item.id);
+                        } else if (hasNewFormat && item.file_size > existingMap.get(item.id)) {
+                            // File grew since last upload — session was extended
+                            stale.push(item.id);
+                        }
+                    }
+
+                    conversationsResponse.missing = missing;
+                    if (stale.length > 0) {
+                        conversationsResponse.stale = stale;
+                    }
                 }
             }
 
