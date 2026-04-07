@@ -1,5 +1,5 @@
 // discussions.js — Discussions list, detail, chat transcript, create, send, conclude
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 
 function useDiscussions({ api, showToast, onEvent }) {
     const discussions = ref([]);
@@ -46,8 +46,19 @@ function useDiscussions({ api, showToast, onEvent }) {
             const chatData = await api('/admin/chat', { channel: 'discussion-' + id, limit: 500 });
             if (requestId !== currentDiscussionRequest) return;
             discussionChat.value = chatData.messages.reverse();
+            // Scroll dialog to bottom so chat input is visible
+            await nextTick();
+            scrollDiscussionToBottom();
         } catch (err) {
             console.error('Failed to load discussion:', err);
+        }
+    }
+
+    // Scroll the discussion dialog body to the bottom so the chat input is visible
+    function scrollDiscussionToBottom() {
+        const dialog = document.querySelector('.discussion-detail-dialog .dialog-body');
+        if (dialog) {
+            dialog.scrollTop = dialog.scrollHeight;
         }
     }
 
@@ -55,6 +66,8 @@ function useDiscussions({ api, showToast, onEvent }) {
         try {
             const data = await api('/admin/chat', { channel: 'discussion-' + id, limit: 500 });
             discussionChat.value = data.messages.reverse();
+            await nextTick();
+            scrollDiscussionToBottom();
         } catch (err) {
             console.error('Failed to load discussion chat:', err);
         }
@@ -143,6 +156,7 @@ function useDiscussions({ api, showToast, onEvent }) {
             sent_at: data.sent_at,
             acked_at: null
         });
+        nextTick().then(scrollDiscussionToBottom);
     }
 
     // Register WebSocket handler for live transcript updates
