@@ -317,10 +317,9 @@
                 </div>
 
                 <label>Agent
-                    <select v-model="syncDialog.actorId">
-                        <option :value="null" disabled>Select agent...</option>
-                        <option v-for="a in syncAgents" :key="a.id" :value="a.id">{{ a.name }}</option>
-                    </select>
+                    <custom-select v-model="syncDialog.actorId"
+                        :options="syncAgents.map(a => ({ value: a.id, label: a.name }))"
+                        placeholder="Select agent..." />
                 </label>
                 <label>Local path
                     <input type="text" v-model="syncDialog.localPath" placeholder="C:/path/to/local/directory" spellcheck="false">
