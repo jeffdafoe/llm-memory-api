@@ -1,9 +1,13 @@
 // CustomSelect — styled dropdown replacement for native <select>.
 // Usage:
 //   <custom-select v-model="value" :options="options" placeholder="Choose..." />
+//   <custom-select v-model="values" :options="options" multiple placeholder="Choose agents..." />
 //
 // Options format: array of { value, label } objects, or simple strings.
 // Supports keyboard navigation (arrows, Enter, Escape, type-to-filter).
+//
+// multiple prop: when true, modelValue is an array and clicking toggles selection.
+// The dropdown stays open until clicked outside or Escape is pressed.
 //
 // allowCustom prop: when true, the user can type an arbitrary value that isn't
 // in the options list. A "Use ..." option appears at the top of the dropdown.
@@ -34,14 +38,15 @@ const template = `
             <div v-for="(opt, idx) in filteredOptions" :key="opt.value"
                 class="custom-select__option"
                 :class="{
-                    'custom-select__option--selected': opt.value === modelValue,
+                    'custom-select__option--selected': isSelected(opt.value),
                     'custom-select__option--focused': idx === focusedIndex
                 }"
                 @click="select(opt.value)"
                 @mouseenter="focusedIndex = idx"
                 :ref="el => { if (idx === focusedIndex) focusedEl = el; }">
+                <i v-if="multiple" :class="isSelected(opt.value) ? 'icon-check-square' : 'icon-square'" class="custom-select__multi-icon"></i>
                 {{ opt.label }}
-                <i v-if="opt.value === modelValue" class="icon-check custom-select__check"></i>
+                <i v-if="!multiple && isSelected(opt.value)" class="icon-check custom-select__check"></i>
             </div>
             <div v-if="filteredOptions.length === 0 && !(allowCustom && search)" class="custom-select__empty">
                 No matches
@@ -62,7 +67,9 @@ export default {
         // Show search/filter input when there are this many or more options
         filterThreshold: { type: Number, default: 8 },
         // Allow typing arbitrary values not in the options list
-        allowCustom: { type: Boolean, default: false }
+        allowCustom: { type: Boolean, default: false },
+        // Multiple selection mode — modelValue is an array
+        multiple: { type: Boolean, default: false }
     },
     emits: ['update:modelValue'],
     setup(props, { emit }) {
@@ -106,8 +113,19 @@ export default {
             return normalizedOptions.value.some(opt => opt.value.toLowerCase() === q);
         });
 
+        // Check if a value is currently selected
+        function isSelected(value) {
+            if (props.multiple) {
+                return Array.isArray(props.modelValue) && props.modelValue.includes(value);
+            }
+            return value === props.modelValue;
+        }
+
         // Whether a value is currently selected (in options list OR custom)
         const hasSelection = computed(() => {
+            if (props.multiple) {
+                return Array.isArray(props.modelValue) && props.modelValue.length > 0;
+            }
             if (!props.modelValue) return false;
             if (normalizedOptions.value.some(opt => opt.value === props.modelValue)) return true;
             // For allowCustom, any non-empty value counts as selected
@@ -117,6 +135,19 @@ export default {
 
         // Display text for the trigger button
         const displayLabel = computed(() => {
+            if (props.multiple) {
+                if (!Array.isArray(props.modelValue) || props.modelValue.length === 0) {
+                    return props.placeholder;
+                }
+                // Show names for up to 3 selections, then "N selected"
+                if (props.modelValue.length <= 3) {
+                    return props.modelValue.map(v => {
+                        const found = normalizedOptions.value.find(opt => opt.value === v);
+                        return found ? found.label : v;
+                    }).join(', ');
+                }
+                return props.modelValue.length + ' selected';
+            }
             const found = normalizedOptions.value.find(opt => opt.value === props.modelValue);
             if (found) return found.label;
             // For custom values, show the raw value
@@ -137,7 +168,12 @@ export default {
             open.value = true;
             search.value = '';
             // Set focus to the currently selected item
-            const selectedIdx = filteredOptions.value.findIndex(opt => opt.value === props.modelValue);
+            var selectedIdx;
+            if (props.multiple) {
+                selectedIdx = -1;
+            } else {
+                selectedIdx = filteredOptions.value.findIndex(opt => opt.value === props.modelValue);
+            }
             focusedIndex.value = selectedIdx >= 0 ? selectedIdx : 0;
             nextTick(() => {
                 if ((filterable.value || props.allowCustom) && searchInput.value) {
@@ -155,8 +191,21 @@ export default {
         }
 
         function select(value) {
-            emit('update:modelValue', value);
-            close();
+            if (props.multiple) {
+                // Toggle the value in the array
+                var current = Array.isArray(props.modelValue) ? [...props.modelValue] : [];
+                var idx = current.indexOf(value);
+                if (idx >= 0) {
+                    current.splice(idx, 1);
+                } else {
+                    current.push(value);
+                }
+                emit('update:modelValue', current);
+                // Don't close — let the user select more
+            } else {
+                emit('update:modelValue', value);
+                close();
+            }
         }
 
         // Position dropdown above or below based on available space
@@ -275,7 +324,7 @@ export default {
 
         return {
             open, search, focusedIndex, focusedEl, root, dropdown, searchInput, optionsList,
-            normalizedOptions, filterable, filteredOptions, exactMatch, hasSelection, displayLabel,
+            normalizedOptions, filterable, filteredOptions, exactMatch, isSelected, hasSelection, displayLabel,
             toggle, close, select, onTriggerKeydown, onSearchKeydown
         };
     }
