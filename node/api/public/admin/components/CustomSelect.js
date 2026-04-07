@@ -46,6 +46,7 @@ const template = `
                 :ref="el => { if (idx === focusedIndex) focusedEl = el; }">
                 <i v-if="multiple" :class="isSelected(opt.value) ? 'icon-check-square' : 'icon-square'" class="custom-select__multi-icon"></i>
                 {{ opt.label }}
+                <span v-if="opt.sublabel" class="custom-select__sublabel">{{ opt.sublabel }}</span>
                 <i v-if="!multiple && isSelected(opt.value)" class="icon-check custom-select__check"></i>
             </div>
             <div v-if="filteredOptions.length === 0 && !(allowCustom && search)" class="custom-select__empty">
@@ -82,13 +83,13 @@ export default {
         const searchInput = ref(null);
         const optionsList = ref(null);
 
-        // Normalize options to { value, label } format
+        // Normalize options to { value, label, sublabel } format
         const normalizedOptions = computed(() => {
             return props.options.map(opt => {
                 if (typeof opt === 'string') {
-                    return { value: opt, label: opt };
+                    return { value: opt, label: opt, sublabel: '' };
                 }
-                return { value: opt.value, label: opt.label || String(opt.value) };
+                return { value: opt.value, label: opt.label || String(opt.value), sublabel: opt.sublabel || '' };
             });
         });
 
