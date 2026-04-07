@@ -1627,6 +1627,12 @@ dialog article header button[aria-label="Close"]::after {
     color: var(--accent);
 }
 
+.custom-select__sublabel {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+
 .custom-select__check {
     font-size: 14px;
     color: var(--accent-text);

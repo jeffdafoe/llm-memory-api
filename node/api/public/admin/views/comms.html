@@ -122,7 +122,7 @@
             <div class="mail-compose-row">
                 <label>Participants</label>
                 <custom-select v-model="discussionParticipants" multiple
-                    :options="agents.filter(a => a.virtual).map(a => ({ value: a.agent, label: a.agent }))"
+                    :options="agents.filter(a => a.virtual).sort((a, b) => a.agent.localeCompare(b.agent)).map(a => ({ value: a.agent, label: a.agent, sublabel: [a.provider, a.model].filter(Boolean).join(' / ') || '' }))"
                     placeholder="Select agents..." />
             </div>
             <div class="mail-compose-row">
