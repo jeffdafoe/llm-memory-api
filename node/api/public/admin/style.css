@@ -2168,7 +2168,7 @@ tr.unread {
 
 /* ── Discussion detail ── */
 .discussion-detail-dialog {
-    max-width: 700px;
+    max-width: 1000px;
 }
 
 .discussion-topic {
