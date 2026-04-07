@@ -153,6 +153,7 @@ type memorySyncResponse struct {
 type conversationConfig struct {
     RetentionDays int      `json:"retention_days,omitempty"`
     Missing       []string `json:"missing,omitempty"`
+    Stale         []string `json:"stale,omitempty"`
     Uploaded      int      `json:"uploaded,omitempty"`
     UploadErrors  []struct {
         SessionID string `json:"session_id"`
