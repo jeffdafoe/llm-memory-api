@@ -116,17 +116,12 @@
     <div v-if="configSubTab === 'apilog'" class="apilog-page">
     <div class="apilog-toolbar">
         <div class="apilog-filters">
-            <select v-model="apiLogFilterAgent" class="apilog-filter-select">
-                <option value="">All agents</option>
-                <option v-for="a in apiLogAgents" :key="a" :value="a">{{ a }}</option>
-            </select>
-            <select v-model="apiLogFilterStatus" class="apilog-filter-select">
-                <option value="">All statuses</option>
-                <option value="ok">2xx OK</option>
-                <option value="redirect">3xx Redirect</option>
-                <option value="client">4xx Client Error</option>
-                <option value="server">5xx Server Error</option>
-            </select>
+            <custom-select v-model="apiLogFilterAgent" class="apilog-filter-select"
+                :options="[{ value: '', label: 'All agents' }].concat(apiLogAgents.map(a => ({ value: a, label: a })))"
+                placeholder="All agents" />
+            <custom-select v-model="apiLogFilterStatus" class="apilog-filter-select"
+                :options="[{ value: '', label: 'All statuses' }, { value: 'ok', label: '2xx OK' }, { value: 'redirect', label: '3xx Redirect' }, { value: 'client', label: '4xx Client Error' }, { value: 'server', label: '5xx Server Error' }]"
+                placeholder="All statuses" />
             <input type="text" v-model="apiLogFilterPath" placeholder="Filter path..." class="apilog-filter-input">
         </div>
         <div class="apilog-controls">
@@ -178,19 +173,15 @@
     <div v-if="configSubTab === 'errorlog'" class="apilog-page">
     <div class="apilog-toolbar">
         <div class="apilog-filters">
-            <select v-model="errorLogFilterAgent" class="apilog-filter-select">
-                <option value="">All agents</option>
-                <option v-for="a in errorLogAgents" :key="a" :value="a">{{ a }}</option>
-            </select>
-            <select v-model="errorLogFilterSubsystem" class="apilog-filter-select">
-                <option value="">All subsystems</option>
-                <option v-for="s in errorLogSubsystems" :key="s" :value="s">{{ s }}</option>
-            </select>
-            <select v-model="errorLogFilterStatus" class="apilog-filter-select">
-                <option value="">All statuses</option>
-                <option value="5xx">5xx only</option>
-                <option value="4xx">4xx only</option>
-            </select>
+            <custom-select v-model="errorLogFilterAgent" class="apilog-filter-select"
+                :options="[{ value: '', label: 'All agents' }].concat(errorLogAgents.map(a => ({ value: a, label: a })))"
+                placeholder="All agents" />
+            <custom-select v-model="errorLogFilterSubsystem" class="apilog-filter-select"
+                :options="[{ value: '', label: 'All subsystems' }].concat(errorLogSubsystems.map(s => ({ value: s, label: s })))"
+                placeholder="All subsystems" />
+            <custom-select v-model="errorLogFilterStatus" class="apilog-filter-select"
+                :options="[{ value: '', label: 'All statuses' }, { value: '5xx', label: '5xx only' }, { value: '4xx', label: '4xx only' }]"
+                placeholder="All statuses" />
         </div>
         <div class="apilog-controls">
             <span class="apilog-count">{{ errorLogFiltered.length }} errors</span>
@@ -255,10 +246,9 @@
             </div>
             <div class="template-compose-row">
                 <label>Kind</label>
-                <select v-model="templateEditKind">
-                    <option value="welcome">welcome</option>
-                    <option value="welcome-note">welcome-note</option>
-                </select>
+                <custom-select v-model="templateEditKind"
+                    :options="[{ value: 'welcome', label: 'welcome' }, { value: 'welcome-note', label: 'welcome-note' }]"
+                    placeholder="welcome" />
             </div>
             <div class="template-compose-row">
                 <label>Description (optional)</label>
