@@ -111,7 +111,9 @@ async function ingestContent(namespace, sourceFile, content) {
 }
 
 async function searchMemory(query, namespace, limit, readableNamespaces, actorId) {
-    const maxResults = limit || 5;
+    // Coerce limit to a positive integer — Postgres LIMIT requires an integer,
+    // and callers may pass floats (e.g. 0.15) which cause a SQL type error.
+    const maxResults = Math.max(1, Math.floor(limit) || 5);
     const cleanedQuery = preprocessQuery(query);
     const embeddings = await embed(cleanedQuery);
     const queryVector = pgvector.toSql(embeddings[0]);
