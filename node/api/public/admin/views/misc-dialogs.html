@@ -1,24 +1,24 @@
 <div>
 <!-- Discussion detail modal -->
 <dialog :open="selectedDiscussion !== null" @close="selectedDiscussion = null">
-    <article v-if="selectedDiscussion">
+    <article v-if="selectedDiscussion" class="discussion-detail-dialog">
         <header>
             <h3>Discussion #{{ selectedDiscussion.discussion.id }}</h3>
             <button aria-label="Close" rel="prev" @click="selectedDiscussion = null"></button>
         </header>
         <div class="dialog-body">
-            <p style="font-size: 15px; margin-bottom: 12px;">{{ selectedDiscussion.discussion.topic }}</p>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                <div style="font-size: 13px;">
+            <p class="discussion-topic">{{ selectedDiscussion.discussion.topic }}</p>
+            <div class="discussion-info">
+                <div>
                     <strong>Status:</strong> {{ selectedDiscussion.discussion.status }}<br>
                     <strong>Outcome:</strong> <i v-if="selectedDiscussion.discussion.outcome" :class="'outcome-' + selectedDiscussion.discussion.outcome + ' ' + outcomeIcon(selectedDiscussion.discussion.outcome)" :title="selectedDiscussion.discussion.outcome"></i> {{ selectedDiscussion.discussion.outcome || '—' }}<br>
                     <strong>Mode:</strong> {{ selectedDiscussion.discussion.mode }}<br>
                     <strong>Created by:</strong> <span :style="{ color: agentColor(selectedDiscussion.discussion.created_by) }">{{ selectedDiscussion.discussion.created_by }}</span><br>
                     <span class="ts">Created: {{ formatDate(selectedDiscussion.discussion.created_at) }}</span>
                 </div>
-                <div style="font-size: 13px;">
+                <div>
                     <strong>Participants:</strong>
-                    <ul style="margin-top: 4px; padding-left: 16px;">
+                    <ul>
                         <li v-for="p in selectedDiscussion.participants" :key="p.agent" :title="p.agent">
                             <span :style="{ color: agentColor(p.agent) }">{{ p.agent }}</span> <span class="ts">({{ p.status }})</span>
                         </li>
@@ -30,9 +30,9 @@
                 <div v-for="v in selectedDiscussion.votes" :key="v.id" class="vote-card">
                     <strong>Vote #{{ v.id }}:</strong> {{ v.question }}<br>
                     <span class="ts">Status: {{ v.status }} | Type: {{ v.type }}</span>
-                    <div v-if="v.ballots && v.ballots[0]" style="margin-top: 6px;">
+                    <div v-if="v.ballots && v.ballots[0]">
                         <strong>Ballots:</strong>
-                        <ul style="padding-left: 16px; margin-top: 4px;">
+                        <ul>
                             <li v-for="b in v.ballots" :key="b.agent" :title="b.agent">
                                 <span :style="{ color: agentColor(b.agent) }">{{ b.agent }}</span>: choice {{ b.choice }}
                                 <span v-if="b.reason" class="ts"> — {{ b.reason }}</span>
@@ -55,16 +55,14 @@
                         </div>
                     </div>
                 </div>
-                <div v-if="selectedDiscussion.discussion.status === 'active' || selectedDiscussion.discussion.status === 'waiting'" style="margin-top: 12px;">
-                    <div style="display: flex; gap: 8px;">
-                        <input type="text" v-model="discussionMessage" placeholder="Type a message..." style="flex: 1; margin: 0;"
-                            @keydown.enter="!discussionSending && discussionMessage && sendDiscussionMessage()">
-                        <button class="btn btn-primary btn-compact" @click="sendDiscussionMessage" :disabled="discussionSending || !discussionMessage">{{ discussionSending ? '...' : 'Send' }}</button>
-                    </div>
+                <div v-if="selectedDiscussion.discussion.status === 'active' || selectedDiscussion.discussion.status === 'waiting'" class="discussion-chat-input">
+                    <input type="text" v-model="discussionMessage" placeholder="Type a message..."
+                        @keydown.enter="!discussionSending && discussionMessage && sendDiscussionMessage()">
+                    <button class="btn btn-primary btn-compact" @click="sendDiscussionMessage" :disabled="discussionSending || !discussionMessage">{{ discussionSending ? '...' : 'Send' }}</button>
                 </div>
             </div>
         </div>
-        <footer v-if="selectedDiscussion.discussion.status === 'active' || selectedDiscussion.discussion.status === 'waiting'" style="text-align: right; padding: 0 24px 16px;">
+        <footer v-if="selectedDiscussion.discussion.status === 'active' || selectedDiscussion.discussion.status === 'waiting'" class="discussion-footer">
             <button class="btn btn-ghost btn-compact btn-danger" @click="concludeDiscussion"><i class="icon-x"></i> Conclude</button>
         </footer>
     </article>
