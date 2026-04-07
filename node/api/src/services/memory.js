@@ -184,7 +184,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     params.push(filenameBoostValue);
     paramIdx++;
     const filenameBoostExpr = filenameClauses.length > 0
-        ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN $${fnBoostIdx} ELSE 0 END`
+        ? `CASE WHEN ${filenameClauses.join(' OR ')} THEN $${fnBoostIdx}::numeric ELSE 0.0 END`
         : '0';
 
     // BM25 full-text search boost (gated by vector similarity threshold).
@@ -203,8 +203,8 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         params.push(bm25BoostScale);
         paramIdx++;
         bm25BoostExpr = `CASE WHEN (1 - (mc.embedding <=> $1)) > 0.3 AND mc.tsv IS NOT NULL
-            THEN $${bm25ScaleIdx} * ts_rank(mc.tsv, plainto_tsquery('english', $${tsqIdx}))
-            ELSE 0 END`;
+            THEN $${bm25ScaleIdx}::numeric * ts_rank(mc.tsv, plainto_tsquery('english', $${tsqIdx}))
+            ELSE 0.0 END`;
     }
 
     // Namespace filter param (global search only)
@@ -243,7 +243,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         const hlIdx = paramIdx;
         params.push(hl);
         paramIdx++;
-        return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
+        return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx}::numeric)`;
     });
 
     // Kind-based decay cases (fallback for notes without cognitive type)
@@ -252,7 +252,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         const hlIdx = paramIdx;
         params.push(hl);
         paramIdx++;
-        return `WHEN d.kind = '${kind}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx})`;
+        return `WHEN d.kind = '${kind}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx}::numeric)`;
     });
 
     // Cognitive type cases go first — if metadata has a cognitive_type, use that decay.
@@ -266,7 +266,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const dreamWeightIdx = paramIdx;
     params.push(dreamWeight);
     paramIdx++;
-    const kindWeightExpression = `CASE WHEN d.kind = 'conversation' THEN $${convWeightIdx} WHEN d.kind = 'dream' THEN $${dreamWeightIdx} ELSE 1.0 END`;
+    const kindWeightExpression = `CASE WHEN d.kind = 'conversation' THEN $${convWeightIdx}::numeric WHEN d.kind = 'dream' THEN $${dreamWeightIdx}::numeric ELSE 1.0 END`;
 
     // Access boost: linear ramp-down from max to 0 over the window.
     // Uses epoch math with bound params.
@@ -281,8 +281,8 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         accessBoostExpression = `
             CASE WHEN d.last_accessed IS NOT NULL
                 AND EXTRACT(EPOCH FROM (NOW() - d.last_accessed)) < $${windowIdx}
-            THEN $${boostMaxIdx} * (1.0 - EXTRACT(EPOCH FROM (NOW() - d.last_accessed)) / $${windowIdx})
-            ELSE 0 END`;
+            THEN $${boostMaxIdx}::numeric * (1.0 - EXTRACT(EPOCH FROM (NOW() - d.last_accessed)) / $${windowIdx}::numeric)
+            ELSE 0.0 END`;
     }
 
     // Soft-delete filter: exclude chunks belonging to deleted documents.
