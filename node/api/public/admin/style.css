@@ -1614,6 +1614,12 @@ dialog article header button[aria-label="Close"]::after {
     font-size: 14px;
     margin-right: 8px;
     opacity: 0.5;
+    flex-shrink: 0;
+}
+
+/* Multi-select options: label follows checkbox, no space-between */
+.custom-select__option:has(.custom-select__multi-icon) {
+    justify-content: flex-start;
 }
 
 .custom-select__option--selected .custom-select__multi-icon {
