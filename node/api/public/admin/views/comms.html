@@ -17,10 +17,9 @@
         <div v-if="mailComposing" class="mail-compose">
             <div class="mail-compose-row">
                 <label>To</label>
-                <select v-model="mailTo">
-                    <option value="" disabled>Select agent...</option>
-                    <option v-for="a in agents" :key="a.agent" :value="a.agent">{{ a.agent }}</option>
-                </select>
+                <custom-select v-model="mailTo"
+                    :options="agents.map(a => ({ value: a.agent, label: a.agent }))"
+                    placeholder="Select agent..." />
             </div>
             <div class="mail-compose-row">
                 <label>Subject</label>
@@ -105,13 +104,9 @@
     <!-- Discussions sub-tab -->
     <div v-if="commSubTab === 'discussions'">
         <div class="filters">
-            <select v-model="discussionFilter" @change="loadDiscussions">
-                <option value="">All</option>
-                <option value="active">Active</option>
-                <option value="concluded">Concluded</option>
-                <option value="timed_out">Timed Out</option>
-                <option value="cancelled">Cancelled</option>
-            </select>
+            <custom-select v-model="discussionFilter" @update:model-value="loadDiscussions"
+                :options="[{ value: '', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'concluded', label: 'Concluded' }, { value: 'timed_out', label: 'Timed Out' }, { value: 'cancelled', label: 'Cancelled' }]"
+                placeholder="All" />
             <button v-if="!discussionCreating && canDo('comms', 'write')" class="inline-button" @click="startCreateDiscussion"><i class="icon-plus"></i> New Discussion</button>
         </div>
         <div v-if="discussionCreating" class="mail-compose">
@@ -127,10 +122,9 @@
             </div>
             <div class="mail-compose-row">
                 <label>Mode</label>
-                <select v-model="discussionMode">
-                    <option value="realtime">Realtime</option>
-                    <option value="async">Async</option>
-                </select>
+                <custom-select v-model="discussionMode"
+                    :options="[{ value: 'realtime', label: 'Realtime' }, { value: 'async', label: 'Async' }]"
+                    placeholder="Realtime" />
             </div>
             <div class="mail-compose-row">
                 <label>Context <span class="ts">(optional)</span></label>

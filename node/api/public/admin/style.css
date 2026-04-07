@@ -597,21 +597,6 @@ input, select, textarea {
     transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-select {
-    appearance: none;
-    -webkit-appearance: none;
-    padding-right: 32px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    cursor: pointer;
-}
-
-select option {
-    background: var(--bg-input);
-    color: var(--text-primary);
-}
-
 input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
 input:focus, select:focus, textarea:focus {
@@ -2035,6 +2020,9 @@ h4 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; color: var(--text-pr
     width: auto;
     min-width: 10em;
     margin-bottom: 0;
+}
+
+.apilog-filter-select .custom-select__trigger {
     padding: 6px 10px;
     font-size: 12px;
 }
@@ -2246,7 +2234,7 @@ tr.unread {
     margin-bottom: 4px;
 }
 
-.mail-compose-row select,
+.mail-compose-row .custom-select,
 .mail-compose-row input,
 .mail-compose-row textarea {
     margin-bottom: 0;
@@ -2256,10 +2244,6 @@ tr.unread {
 .mail-compose-row textarea {
     font-family: var(--font-mono);
     font-size: 12px;
-}
-
-.mail-compose-row select[multiple] {
-    min-height: 120px;
 }
 
 .mail-compose-actions {
@@ -2298,7 +2282,7 @@ tr.unread {
     margin-bottom: 4px;
 }
 
-.template-compose-row select,
+.template-compose-row .custom-select,
 .template-compose-row input,
 .template-compose-row textarea {
     margin-bottom: 0;
@@ -2987,7 +2971,7 @@ details[open] .summary-chevron { transform: rotate(90deg); }
     margin-bottom: 12px;
 }
 
-.filters select {
+.filters .custom-select {
     max-width: 200px;
 }
 
