@@ -1610,6 +1610,17 @@ dialog article header button[aria-label="Close"]::after {
     font-weight: 500;
 }
 
+.custom-select__multi-icon {
+    font-size: 14px;
+    margin-right: 8px;
+    opacity: 0.5;
+}
+
+.custom-select__option--selected .custom-select__multi-icon {
+    opacity: 1;
+    color: var(--accent);
+}
+
 .custom-select__check {
     font-size: 14px;
     color: var(--accent-text);

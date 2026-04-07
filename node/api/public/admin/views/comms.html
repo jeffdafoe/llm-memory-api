@@ -121,10 +121,9 @@
             </div>
             <div class="mail-compose-row">
                 <label>Participants</label>
-                <select multiple v-model="discussionParticipants">
-                    <option v-for="a in agents.filter(a => a.virtual)" :key="a.agent" :value="a.agent">{{ a.agent }}</option>
-                </select>
-                <small class="ts">Hold Ctrl/Cmd to select multiple agents</small>
+                <custom-select v-model="discussionParticipants" multiple
+                    :options="agents.filter(a => a.virtual).map(a => ({ value: a.agent, label: a.agent }))"
+                    placeholder="Select agents..." />
             </div>
             <div class="mail-compose-row">
                 <label>Mode</label>
