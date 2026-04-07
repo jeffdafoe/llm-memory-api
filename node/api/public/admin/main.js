@@ -213,7 +213,10 @@ createApp({
             } else if (currentView.value === 'agents') {
                 agentsModule.loadAgents();
             } else if (currentView.value === 'comms') {
-                if (commSubTab.value === 'discussions') discussionsModule.loadDiscussions();
+                if (commSubTab.value === 'discussions') {
+                    discussionsModule.loadDiscussions();
+                    if (agentsModule.agents.value.length === 0) agentsModule.loadAgents();
+                }
                 else if (commSubTab.value === 'chat') chatModule.loadChat();
                 else if (commSubTab.value === 'mail') {
                     mailModule.loadMail();
