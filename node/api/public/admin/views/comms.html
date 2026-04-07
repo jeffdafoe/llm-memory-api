@@ -104,7 +104,7 @@
 
     <!-- Discussions sub-tab -->
     <div v-if="commSubTab === 'discussions'">
-        <div class="filters" style="display: flex; align-items: center; gap: 12px;">
+        <div class="filters">
             <select v-model="discussionFilter" @change="loadDiscussions">
                 <option value="">All</option>
                 <option value="active">Active</option>
@@ -114,14 +114,14 @@
             </select>
             <button v-if="!discussionCreating && canDo('comms', 'write')" class="inline-button" @click="startCreateDiscussion"><i class="icon-plus"></i> New Discussion</button>
         </div>
-        <div v-if="discussionCreating" class="mail-compose" style="margin-bottom: 16px;">
+        <div v-if="discussionCreating" class="mail-compose">
             <div class="mail-compose-row">
                 <label>Topic</label>
                 <input type="text" v-model="discussionTopic" placeholder="Discussion topic">
             </div>
             <div class="mail-compose-row">
                 <label>Participants</label>
-                <select multiple v-model="discussionParticipants" style="min-height: 120px;">
+                <select multiple v-model="discussionParticipants">
                     <option v-for="a in agents.filter(a => a.virtual)" :key="a.agent" :value="a.agent">{{ a.agent }}</option>
                 </select>
                 <small class="ts">Hold Ctrl/Cmd to select multiple agents</small>

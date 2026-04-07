@@ -2133,7 +2133,51 @@ tr.unread {
     background: var(--bg-surface);
 }
 
+.vote-card ul {
+    padding-left: 16px;
+    margin-top: 4px;
+}
+
 .vote-choice { margin-left: 8px; }
+
+/* ── Discussion detail ── */
+.discussion-detail-dialog {
+    max-width: 700px;
+}
+
+.discussion-topic {
+    font-size: 15px;
+    margin-bottom: 12px;
+}
+
+.discussion-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+}
+
+.discussion-info ul {
+    margin-top: 4px;
+    padding-left: 16px;
+}
+
+.discussion-chat-input {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.discussion-chat-input input {
+    flex: 1;
+    margin: 0;
+}
+
+.discussion-footer {
+    text-align: right;
+    padding: 0 24px 16px;
+}
 
 /* ── Mail ── */
 .mail-body {
@@ -2174,6 +2218,10 @@ tr.unread {
 .mail-compose-row textarea {
     font-family: var(--font-mono);
     font-size: 12px;
+}
+
+.mail-compose-row select[multiple] {
+    min-height: 120px;
 }
 
 .mail-compose-actions {
@@ -2895,7 +2943,13 @@ details[open] .summary-chevron { transform: rotate(90deg); }
 .config-value-cell { word-break: break-all; }
 
 .filters {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     margin-bottom: 12px;
+}
+
+.filters select {
     max-width: 200px;
 }
 
