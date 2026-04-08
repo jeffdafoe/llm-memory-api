@@ -361,9 +361,10 @@ async function readNote(namespace, slug) {
 }
 
 async function deleteNote(namespace, slug) {
-    // Soft delete — set deleted_at timestamp, keep vector chunks in place.
-    // Chunks are filtered out of search results via a NOT EXISTS join.
-    // Use restoreNote to undo.
+    // Soft delete the document and hard-delete its vector chunks.
+    // The document row is kept (with deleted_at set) so restoreNote can
+    // re-ingest from the preserved content. Chunks are cheap to regenerate
+    // but expensive to leave behind — stale chunks leak into RAG context.
     const result = await pool.query(`
         UPDATE documents
         SET deleted_at = NOW()
@@ -374,6 +375,12 @@ async function deleteNote(namespace, slug) {
     if (result.rows.length === 0) {
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
+
+    // Hard-delete vector chunks so they can't appear in search results
+    pool.query(
+        'DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)',
+        [namespace, slug]
+    ).catch(() => {});
 
     updateUsage(namespace, -1, -(result.rows[0].content_length || 0));
     deleteRelationsForNote(namespace, slug).catch(() => {});
@@ -399,7 +406,8 @@ async function restoreNote(namespace, slug) {
         throw Object.assign(new Error(quotaError), { statusCode: 413 });
     }
 
-    // Clear the deleted_at flag to restore the note and its vector chunks
+    // Clear the deleted_at flag. Vector chunks were hard-deleted on
+    // soft-delete — re-save the note after restoring to re-ingest them.
     const result = await pool.query(`
         UPDATE documents d
         SET deleted_at = NULL
