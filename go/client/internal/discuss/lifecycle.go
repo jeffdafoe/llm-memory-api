@@ -90,7 +90,7 @@ func SetupCreate(client *APIClient, cfg *Config, logger *Logger) (int, error) {
 
 	logger.Log("Created discussion #%d: %s (status: %s)",
 		resp.Discussion.ID, cfg.Topic, resp.Discussion.Status)
-	logger.Log("Channel: discussion-%d, timeout_at: %s",
+	logger.Log("Discussion ID: %d, timeout_at: %s",
 		resp.Discussion.ID, resp.Discussion.TimeoutAt)
 
 	return resp.Discussion.ID, nil
@@ -189,7 +189,7 @@ func SetupJoin(client *APIClient, cfg *Config, logger *Logger, discussionID int)
 
 	logger.Log("Joined discussion #%d: %s (status: %s)",
 		discussionID, cfg.Topic, joinResp.DiscussionStatus)
-	logger.Log("Channel: discussion-%d, Others: %s",
+	logger.Log("Discussion ID: %d, Others: %s",
 		discussionID, strings.Join(others, ", "))
 
 	return discussionID, nil

@@ -7,32 +7,33 @@ const { broadcast } = require('./events');
 const systemHandler = require('./system-handler');
 const { resolveByName, resolveMultipleByName, requireByName, canAccessVirtualAgent } = require('./actors');
 
-const CHANNEL_PATTERN = /^[a-zA-Z0-9_-]{1,50}$/;
-
-function validateChannel(channel) {
-    if (channel === undefined || channel === null) {
-        return null;
-    }
-    if (typeof channel !== 'string' || !CHANNEL_PATTERN.test(channel)) {
-        throw Object.assign(new Error('Invalid channel: must match /^[a-zA-Z0-9_-]{1,50}$/'), { statusCode: 400 });
-    }
-    return channel;
-}
-
 function logChat(action, details) {
     log('chat', action, details);
 }
 
-async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
+// Parse discussion_id from either an integer or a legacy 'discussion-{N}' channel string.
+// Returns null if neither is provided.
+function resolveDiscussionId(discussionId, channel) {
+    if (discussionId) {
+        const parsed = parseInt(discussionId, 10);
+        if (isNaN(parsed)) return null;
+        return parsed;
+    }
+    // Legacy backward compat: extract from channel string
+    if (channel) {
+        const match = channel.match(/^discussion-(\d+)$/);
+        if (match) return parseInt(match[1], 10);
+    }
+    return null;
+}
+
+async function chatSend(fromAgent, toAgents, discussionId, message) {
     if (!fromAgent || !message) {
         throw Object.assign(new Error('Required fields: from_agent, message'), { statusCode: 400 });
     }
     if (!toAgents && !discussionId) {
         throw Object.assign(new Error('Required: to_agents (array) or discussion_id'), { statusCode: 400 });
     }
-
-    // Auto-derive channel from discussion_id when not explicitly provided
-    const ch = validateChannel(channel || (discussionId ? `discussion-${discussionId}` : undefined));
 
     // Resolve sender
     const fromActor = await requireByName(fromAgent);
@@ -86,39 +87,44 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
         }
     }
 
+    // Insert one message text row
+    const textResult = await pool.query(
+        'INSERT INTO chat_message_texts (message, from_actor_id, discussion_id, sent_at) VALUES ($1, $2, $3, NOW()) RETURNING id, sent_at',
+        [message, fromActor.id, discussionId || null]
+    );
+    const messageTextId = textResult.rows[0].id;
+    const sentAt = textResult.rows[0].sent_at;
+
+    // Insert one delivery row per recipient
     const results = [];
     for (const recipient of recipients) {
-        let msgText = message;
-        if (discussionId && !discussionParticipants.has(recipient)) {
-            msgText = `[Forwarded from discussion #${discussionId}] ${message}`;
-        }
         const toActor = recipientActors.get(recipient);
         const result = await pool.query(
-            'INSERT INTO chat_messages (from_actor_id, to_actor_id, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-            [fromActor.id, toActor.id, msgText, ch]
+            'INSERT INTO chat_messages (message_text_id, to_actor_id) VALUES ($1, $2) RETURNING id',
+            [messageTextId, toActor.id]
         );
-        results.push({ id: result.rows[0].id, agent: recipient, sent_at: result.rows[0].sent_at });
+        results.push({ id: result.rows[0].id, agent: recipient, sent_at: sentAt });
     }
 
     // Broadcast to admin WebSocket clients for live updates (once per logical message)
     if (results.length > 0) {
         broadcast('chat_message', {
             id: results[0].id,
+            message_text_id: messageTextId,
             from_agent: fromAgent,
             to_agents: results.map(function(r) { return r.agent; }),
             message: message,
-            channel: ch,
             discussion_id: discussionId || null,
-            sent_at: results[0].sent_at
+            sent_at: sentAt
         });
     }
 
-    logChat('send', { from_agent: fromAgent, to_agents: recipients, message_ids: results.map(r => r.id), channel: ch, discussion_id: discussionId || null });
+    logChat('send', { from_agent: fromAgent, to_agents: recipients, message_text_id: messageTextId, delivery_ids: results.map(r => r.id), discussion_id: discussionId || null });
 
     // Fire-and-forget: if any recipient is 'system', dispatch to system handler
     for (const r of results) {
         if (r.agent === 'system') {
-            systemHandler.handleMessage(r.id, fromAgent, message, ch).catch(() => {});
+            systemHandler.handleMessage(r.id, fromAgent, message, null).catch(() => {});
             break;
         }
     }
@@ -148,7 +154,6 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
                 if (vr.rows.length === 0) return;
                 const { handleDirectChat } = require('./virtual-agent');
                 for (const row of vr.rows) {
-                    // Access control: check if sender can use this virtual agent
                     const vrActor = recipientActors.get(row.agent);
                     if (vrActor) {
                         const hasAccess = await canAccessVirtualAgent(fromActor.id, vrActor.id);
@@ -161,35 +166,35 @@ async function chatSend(fromAgent, toAgents, discussionId, message, channel) {
         })();
     }
 
-    return { from_agent: fromAgent, to_agents: results, sent_at: results[0] ? results[0].sent_at : null };
+    return { from_agent: fromAgent, to_agents: results, sent_at: sentAt };
 }
 
-async function chatReceive(agent, channel, afterId, fromAgent) {
+async function chatReceive(agent, discussionId, afterId, fromAgent) {
     if (!agent) {
         throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
     }
 
-    const ch = validateChannel(channel);
     const actor = await requireByName(agent);
 
-    let query = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.message, cm.sent_at
+    let query = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at
                  FROM chat_messages cm
-                 JOIN actors fa ON fa.id = cm.from_actor_id
+                 JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+                 JOIN actors fa ON fa.id = cmt.from_actor_id
                  JOIN actors ta ON ta.id = cm.to_actor_id
                  WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL`;
     const params = [actor.id];
 
-    if (ch === null) {
-        query += ' AND cm.channel IS NULL';
+    if (discussionId) {
+        params.push(discussionId);
+        query += ` AND cmt.discussion_id = $${params.length}`;
     } else {
-        params.push(ch);
-        query += ` AND cm.channel = $${params.length}`;
+        query += ' AND cmt.discussion_id IS NULL';
     }
 
     if (fromAgent) {
         const fromActor = await requireByName(fromAgent);
         params.push(fromActor.id);
-        query += ` AND cm.from_actor_id = $${params.length}`;
+        query += ` AND cmt.from_actor_id = $${params.length}`;
     }
 
     if (afterId !== undefined) {
@@ -201,7 +206,7 @@ async function chatReceive(agent, channel, afterId, fromAgent) {
 
     const result = await pool.query(query, params);
 
-    logChat('receive', { agent, channel: ch, after_id: afterId || null, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
+    logChat('receive', { agent, discussion_id: discussionId || null, after_id: afterId || null, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
 
     return { messages: result.rows, pending_count: result.rows.length };
 }
@@ -223,42 +228,49 @@ async function chatAck(agent, messageIds) {
     return { agent, acked: result.rows.length, acked_ids: result.rows.map(r => r.id) };
 }
 
-async function chatStatus(agent, channel) {
+async function chatStatus(agent, discussionId) {
     if (!agent) {
         throw Object.assign(new Error('Required field: agent'), { statusCode: 400 });
     }
 
-    const ch = validateChannel(channel);
     const actor = await requireByName(agent);
 
-    let channelFilter;
+    let discussionFilter;
     let params;
-    if (ch === null) {
-        channelFilter = 'AND channel IS NULL';
-        params = [actor.id];
+    if (discussionId) {
+        discussionFilter = 'AND cmt.discussion_id = $2';
+        params = [actor.id, discussionId];
     } else {
-        channelFilter = 'AND channel = $2';
-        params = [actor.id, ch];
+        discussionFilter = 'AND cmt.discussion_id IS NULL';
+        params = [actor.id];
     }
 
     const pending = await pool.query(
-        `SELECT COUNT(*) as count FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NULL AND deleted_at IS NULL ${channelFilter}`,
+        `SELECT COUNT(*) as count FROM chat_messages cm
+         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+         WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL ${discussionFilter}`,
         params
     );
     const latest = await pool.query(
-        `SELECT MAX(id) as max_id FROM chat_messages WHERE to_actor_id = $1 AND deleted_at IS NULL ${channelFilter}`,
+        `SELECT MAX(cm.id) as max_id FROM chat_messages cm
+         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+         WHERE cm.to_actor_id = $1 AND cm.deleted_at IS NULL ${discussionFilter}`,
         params
     );
     const lastActivity = await pool.query(
-        `SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_actor_id = $1 AND deleted_at IS NULL ${channelFilter}`,
+        `SELECT MAX(cmt.sent_at) as last_sent FROM chat_messages cm
+         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+         WHERE cm.to_actor_id = $1 AND cm.deleted_at IS NULL ${discussionFilter}`,
         params
     );
     const lastAcked = await pool.query(
-        `SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NOT NULL AND deleted_at IS NULL ${channelFilter}`,
+        `SELECT MAX(cm.acked_at) as last_acked FROM chat_messages cm
+         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+         WHERE cm.to_actor_id = $1 AND cm.acked_at IS NOT NULL AND cm.deleted_at IS NULL ${discussionFilter}`,
         params
     );
 
-    logChat('status', { agent, channel: ch });
+    logChat('status', { agent, discussion_id: discussionId || null });
 
     return {
         agent,
@@ -269,4 +281,4 @@ async function chatStatus(agent, channel) {
     };
 }
 
-module.exports = { chatSend, chatReceive, chatAck, chatStatus };
+module.exports = { chatSend, chatReceive, chatAck, chatStatus, resolveDiscussionId };

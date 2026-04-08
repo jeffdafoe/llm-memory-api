@@ -537,10 +537,8 @@ router.post('/discussion/join', apiRoute('discussion', 'join', async (req, res) 
 
     logDiscussion('join', { discussion_id, agent });
 
-    getDiscussionChannel(discussion_id).then(ch => {
-        sendDiscussionEvent(ch, `${agent} joined the discussion`).catch(err => {
-            console.error('Failed to send join event:', err.message);
-        });
+    sendDiscussionEvent(discussion_id, `${agent} joined the discussion`).catch(err => {
+        console.error('Failed to send join event:', err.message);
     });
 
     // Evaluate readiness if still waiting
@@ -686,10 +684,8 @@ router.post('/discussion/leave', apiRoute('discussion', 'leave', async (req, res
 
     logDiscussion('leave', { discussion_id, agent });
 
-    getDiscussionChannel(discussion_id).then(ch => {
-        sendDiscussionEvent(ch, `${agent} left the discussion`).catch(err => {
-            console.error('Failed to send leave event:', err.message);
-        });
+    sendDiscussionEvent(discussion_id, `${agent} left the discussion`).catch(err => {
+        console.error('Failed to send leave event:', err.message);
     });
 
     res.json({ discussion_id, agent, status: 'left' });
@@ -751,11 +747,9 @@ router.post('/discussion/vote/propose', apiRoute('discussion', 'vote-propose', a
 
     logDiscussion('vote_propose', { discussion_id, vote_id: result.rows[0].id, proposed_by, question, type: voteType });
 
-    getDiscussionChannel(discussion_id).then(ch => {
-        const msg = `${proposed_by} proposed ${voteType} vote #${result.rows[0].id}: ${question}`;
-        sendDiscussionEvent(ch, msg).catch(err => {
-            console.error('Failed to send vote propose event:', err.message);
-        });
+    const voteMsg = `${proposed_by} proposed ${voteType} vote #${result.rows[0].id}: ${question}`;
+    sendDiscussionEvent(discussion_id, voteMsg).catch(err => {
+        console.error('Failed to send vote propose event:', err.message);
     });
 
     res.json({
