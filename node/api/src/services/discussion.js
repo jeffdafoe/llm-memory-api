@@ -571,10 +571,8 @@ async function discussionConclude(discussionId, agent, { cancel = false } = {}) 
         });
     }
 
-    getDiscussionChannel(discussionId).then(ch => {
-        sendDiscussionEvent(ch, `Discussion ${newStatus} by ${agent}`).catch(err => {
-            console.error('Failed to send conclude event:', err.message);
-        });
+    sendDiscussionEvent(discussionId, `Discussion ${newStatus} by ${agent}`).catch(err => {
+        console.error('Failed to send conclude event:', err.message);
     });
 
     return { discussion_id: discussionId, status: newStatus, outcome };
@@ -623,10 +621,8 @@ async function discussionJoin(discussionId, agent) {
 
     logDiscussion('join', { discussion_id: discussionId, agent });
 
-    getDiscussionChannel(discussionId).then(ch => {
-        sendDiscussionEvent(ch, `${agent} joined the discussion`).catch(err => {
-            console.error('Failed to send join event:', err.message);
-        });
+    sendDiscussionEvent(discussionId, `${agent} joined the discussion`).catch(err => {
+        console.error('Failed to send join event:', err.message);
     });
 
     if (dStatus === 'waiting') {
@@ -727,10 +723,8 @@ async function discussionLeave(discussionId, agent) {
 
     logDiscussion('leave', { discussion_id: discussionId, agent });
 
-    getDiscussionChannel(discussionId).then(ch => {
-        sendDiscussionEvent(ch, `${agent} left the discussion`).catch(err => {
-            console.error('Failed to send leave event:', err.message);
-        });
+    sendDiscussionEvent(discussionId, `${agent} left the discussion`).catch(err => {
+        console.error('Failed to send leave event:', err.message);
     });
 
     // Re-evaluate any open votes — the reduced participant count may now
@@ -776,11 +770,9 @@ async function votePropose(discussionId, proposedBy, question, type, threshold, 
 
     logDiscussion('vote_propose', { discussion_id: discussionId, vote_id: result.rows[0].id, proposed_by: proposedBy, question, type: voteType });
 
-    getDiscussionChannel(discussionId).then(ch => {
-        const msg = `${proposedBy} proposed ${voteType} vote #${result.rows[0].id}: ${question}`;
-        sendDiscussionEvent(ch, msg).catch(err => {
-            console.error('Failed to send vote propose event:', err.message);
-        });
+    const voteMsg = `${proposedBy} proposed ${voteType} vote #${result.rows[0].id}: ${question}`;
+    sendDiscussionEvent(discussionId, voteMsg).catch(err => {
+        console.error('Failed to send vote propose event:', err.message);
     });
 
     // Trigger virtual agents to cast their vote
@@ -851,7 +843,7 @@ async function voteCast(voteId, agent, choice, reason) {
     const voteType = vote.rows[0].type || 'general';
     const voteStatus = updated.rows[0].status;
 
-    getDiscussionChannel(discussionId).then(async (ch) => {
+    (async () => {
         const participants = await pool.query(
             'SELECT actor_id FROM discussion_participants WHERE discussion_id = $1 AND status = $2',
             [discussionId, 'joined']
@@ -866,8 +858,8 @@ async function voteCast(voteId, agent, choice, reason) {
         } else {
             msg += ` ${castCount}/${totalJoined} votes cast.`;
         }
-        sendDiscussionEvent(ch, msg);
-    }).catch(err => {
+        sendDiscussionEvent(discussionId, msg);
+    })().catch(err => {
         console.error('Failed to send vote cast event:', err.message);
     });
 
