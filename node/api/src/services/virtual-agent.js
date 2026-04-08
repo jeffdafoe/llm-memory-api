@@ -44,32 +44,31 @@ async function setAgentStatus(agentName, status) {
 // attempt fails, before the backoff sleep — lets callers send immediate feedback
 // (e.g. "retrying, please wait") so the sender isn't left in the dark.
 async function retryWithBackoff(agentName, fn, onFirstFailure) {
-    const maxRetries = parseInt(config.get('virtual_agent_max_retries')) || 3;
+    // Retry count is derived from the backoff cadence — each entry = one retry.
+    // e.g. "300,600,3600" means 3 retries at 5m, 10m, 1h intervals.
     const backoffStr = config.get('virtual_agent_retry_backoff') || '60,600,3600';
     const backoffs = backoffStr.split(',').map(s => parseInt(s.trim()) * 1000);
 
     let lastError;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (let attempt = 0; attempt <= backoffs.length; attempt++) {
         try {
             const result = await fn();
-            // If we had retried (attempt > 0), restore status
             if (attempt > 0) {
                 await setAgentStatus(agentName, 'available');
             }
             return result;
         } catch (err) {
             lastError = err;
-            if (attempt < maxRetries) {
+            if (attempt < backoffs.length) {
                 await setAgentStatus(agentName, 'degraded');
-                const delay = backoffs[Math.min(attempt, backoffs.length - 1)];
-                logVA('retry-backoff', { agent: agentName, attempt: attempt + 1, maxRetries, delayMs: delay, error: err.message });
+                const delay = backoffs[attempt];
+                logVA('retry-backoff', { agent: agentName, attempt: attempt + 1, retries: backoffs.length, delayMs: delay, error: err.message });
 
                 // Notify caller on first failure so they can send feedback to the sender
                 if (attempt === 0 && onFirstFailure) {
-                    const remainingDelays = backoffs.slice(0, maxRetries);
-                    const totalSeconds = Math.ceil(remainingDelays.reduce((a, b) => a + b, 0) / 1000);
+                    const totalSeconds = Math.ceil(backoffs.reduce((a, b) => a + b, 0) / 1000);
                     try {
-                        await onFirstFailure(err, { retriesRemaining: maxRetries, totalSeconds });
+                        await onFirstFailure(err, { retriesRemaining: backoffs.length, totalSeconds });
                     } catch (cbErr) {
                         logVA('first-failure-callback-error', { agent: agentName, error: cbErr.message });
                     }
