@@ -277,19 +277,20 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
          LIMIT 10`;
     const discussions = await pool.query(discussionsSql, discussionsParams);
 
-    let chatSql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+    let chatSql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.discussion_id, cmt.message, cmt.sent_at, cm.acked_at
          FROM chat_messages cm
-         JOIN actors fa ON fa.id = cm.from_actor_id
+         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+         JOIN actors fa ON fa.id = cmt.from_actor_id
          JOIN actors ta ON ta.id = cm.to_actor_id
          WHERE fa.name != 'system'
            AND cm.deleted_at IS NULL
-           AND (cm.channel IS NULL OR NOT cm.channel LIKE 'discussion-%')`;
+           AND cmt.discussion_id IS NULL`;
     const chatParams = [];
     if (hasFilter) {
-        chatSql += ' AND (cm.from_actor_id = ANY($1) OR cm.to_actor_id = ANY($1))';
+        chatSql += ' AND (cmt.from_actor_id = ANY($1) OR cm.to_actor_id = ANY($1))';
         chatParams.push(idsArray);
     }
-    chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cm.sent_at DESC LIMIT 15`;
+    chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cmt.sent_at DESC LIMIT 15`;
     const chat = await pool.query(chatSql, chatParams);
 
     let mailSql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
@@ -305,9 +306,10 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
     mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
     const mail = await pool.query(mailSql, mailParams);
 
-    let sysMsgSql = `SELECT cm.id, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
+    let sysMsgSql = `SELECT cm.id, ta.name AS to_agent, cmt.discussion_id, cmt.message, cmt.sent_at, cm.acked_at
          FROM chat_messages cm
-         JOIN actors fa ON fa.id = cm.from_actor_id
+         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+         JOIN actors fa ON fa.id = cmt.from_actor_id
          JOIN actors ta ON ta.id = cm.to_actor_id
          WHERE fa.name = 'system' AND cm.deleted_at IS NULL`;
     const sysMsgParams = [];
@@ -315,7 +317,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
         sysMsgSql += ' AND cm.to_actor_id = ANY($1)';
         sysMsgParams.push(idsArray);
     }
-    sysMsgSql += ' ORDER BY cm.sent_at DESC LIMIT 15';
+    sysMsgSql += ' ORDER BY cmt.sent_at DESC LIMIT 15';
     const systemMessages = await pool.query(sysMsgSql, sysMsgParams);
 
     // Note counts by namespace, filtered by readable namespaces
@@ -721,30 +723,50 @@ router.post('/admin/discussions/conclude', requirePerm('comms', 'write'), adminR
 
 // POST /admin/chat — list recent chat messages
 router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list', async (req, res) => {
-    const { limit = 50, channel } = req.body;
+    const { limit = 50, discussion_id } = req.body;
     const visibleIds = await getVisibleActorIds(req.actorId);
     const hasFilter = visibleIds !== null;
 
-    let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.channel, cm.message, cm.sent_at, cm.acked_at
-               FROM chat_messages cm
-               JOIN actors fa ON fa.id = cm.from_actor_id
-               JOIN actors ta ON ta.id = cm.to_actor_id`;
-    const conditions = ['cm.deleted_at IS NULL'];
-    const params = [];
-    if (channel) {
-        params.push(channel);
-        conditions.push('cm.channel = $' + params.length);
-    }
-    if (hasFilter) {
-        params.push(Array.from(visibleIds));
-        conditions.push('(cm.from_actor_id = ANY($' + params.length + ') OR cm.to_actor_id = ANY($' + params.length + '))');
-    }
-    sql += ' WHERE ' + conditions.join(' AND ');
-    sql += ` ORDER BY cm.sent_at DESC LIMIT $${params.length + 1}`;
-    params.push(limit);
+    const discussionId = discussion_id ? parseInt(discussion_id, 10) : null;
 
-    const result = await pool.query(sql, params);
-    res.json({ messages: result.rows });
+    // For discussion channels, query distinct messages from chat_message_texts
+    // to avoid showing duplicate delivery rows
+    if (discussionId) {
+        let sql = `SELECT cmt.id, fa.name AS from_agent, cmt.message, cmt.sent_at, cmt.discussion_id
+                   FROM chat_message_texts cmt
+                   JOIN actors fa ON fa.id = cmt.from_actor_id`;
+        const conditions = ['cmt.discussion_id = $1'];
+        const params = [discussionId];
+        if (hasFilter) {
+            params.push(Array.from(visibleIds));
+            conditions.push('cmt.from_actor_id = ANY($' + params.length + ')');
+        }
+        sql += ' WHERE ' + conditions.join(' AND ');
+        sql += ` ORDER BY cmt.sent_at DESC LIMIT $${params.length + 1}`;
+        params.push(limit);
+
+        const result = await pool.query(sql, params);
+        res.json({ messages: result.rows });
+    } else {
+        // Non-discussion: query delivery rows as before
+        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at, cm.acked_at
+                   FROM chat_messages cm
+                   JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+                   JOIN actors fa ON fa.id = cmt.from_actor_id
+                   JOIN actors ta ON ta.id = cm.to_actor_id`;
+        const conditions = ['cm.deleted_at IS NULL', 'cmt.discussion_id IS NULL'];
+        const params = [];
+        if (hasFilter) {
+            params.push(Array.from(visibleIds));
+            conditions.push('(cmt.from_actor_id = ANY($' + params.length + ') OR cm.to_actor_id = ANY($' + params.length + '))');
+        }
+        sql += ' WHERE ' + conditions.join(' AND ');
+        sql += ` ORDER BY cmt.sent_at DESC LIMIT $${params.length + 1}`;
+        params.push(limit);
+
+        const result = await pool.query(sql, params);
+        res.json({ messages: result.rows });
+    }
 }));
 
 // POST /admin/mail — list mail
@@ -812,7 +834,9 @@ router.post('/admin/chat/delete', requirePerm('comms', 'delete'), adminRoute('ch
     if (visibleIds !== null) {
         const idsArray = Array.from(visibleIds);
         params.push(idsArray);
-        sql += ' AND (from_actor_id = ANY($2) OR to_actor_id = ANY($2))';
+        sql += ` AND (to_actor_id = ANY($2) OR EXISTS (
+            SELECT 1 FROM chat_message_texts cmt WHERE cmt.id = chat_messages.message_text_id AND cmt.from_actor_id = ANY($2)
+        ))`;
     }
     sql += ' RETURNING id';
     const result = await pool.query(sql, params);
@@ -2474,8 +2498,10 @@ router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('
             await client.query('DELETE FROM discussion_votes WHERE proposed_by_actor_id = $1', [id]);
             await client.query('DELETE FROM discussion_participants WHERE actor_id = $1', [id]);
 
-            // Chat & mail
-            await client.query('DELETE FROM chat_messages WHERE from_actor_id = $1 OR to_actor_id = $1', [id]);
+            // Chat & mail — delete delivery rows first (FK to chat_message_texts), then orphaned text rows
+            await client.query('DELETE FROM chat_messages WHERE to_actor_id = $1', [id]);
+            await client.query('DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM chat_message_texts WHERE from_actor_id = $1)', [id]);
+            await client.query('DELETE FROM chat_message_texts WHERE from_actor_id = $1', [id]);
             await client.query('DELETE FROM mail WHERE from_actor_id = $1 OR to_actor_id = $1', [id]);
 
             // Sessions & keys

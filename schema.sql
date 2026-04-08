@@ -272,17 +272,41 @@ CREATE VIEW public.agent_status AS
 ALTER VIEW public.agent_status OWNER TO postgres;
 
 --
+-- Name: chat_message_texts; Type: TABLE; Schema: public; Owner: postgres
+-- Stores message content once per logical send (MEM-107)
+--
+
+CREATE TABLE public.chat_message_texts (
+    id integer NOT NULL,
+    message text NOT NULL,
+    from_actor_id integer NOT NULL,
+    discussion_id integer,
+    sent_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE public.chat_message_texts OWNER TO postgres;
+
+CREATE SEQUENCE public.chat_message_texts_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.chat_message_texts_id_seq OWNER TO postgres;
+ALTER SEQUENCE public.chat_message_texts_id_seq OWNED BY public.chat_message_texts.id;
+
+--
 -- Name: chat_messages; Type: TABLE; Schema: public; Owner: postgres
+-- Delivery/recipient tracking table (MEM-107)
 --
 
 CREATE TABLE public.chat_messages (
     id integer NOT NULL,
-    message text NOT NULL,
-    sent_at timestamp with time zone DEFAULT now() NOT NULL,
-    acked_at timestamp with time zone,
-    channel character varying(50) DEFAULT NULL::character varying,
-    from_actor_id integer NOT NULL,
+    message_text_id integer NOT NULL,
     to_actor_id integer,
+    acked_at timestamp with time zone,
     deleted_at timestamp with time zone
 );
 
@@ -908,6 +932,8 @@ ALTER TABLE ONLY public.agent_api_keys ALTER COLUMN id SET DEFAULT nextval('publ
 -- Name: chat_messages id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
+ALTER TABLE ONLY public.chat_message_texts ALTER COLUMN id SET DEFAULT nextval('public.chat_message_texts_id_seq'::regclass);
+
 ALTER TABLE ONLY public.chat_messages ALTER COLUMN id SET DEFAULT nextval('public.chat_messages_id_seq'::regclass);
 
 
@@ -1284,14 +1310,18 @@ CREATE UNIQUE INDEX idx_avc_wildcard ON public.actor_visibility_configuration US
 -- Name: idx_chat_messages_to_actor; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_chat_messages_to_actor ON public.chat_messages USING btree (to_actor_id, id);
+CREATE INDEX idx_cmt_discussion ON public.chat_message_texts USING btree (discussion_id) WHERE (discussion_id IS NOT NULL);
+CREATE INDEX idx_cmt_from_actor ON public.chat_message_texts USING btree (from_actor_id);
+CREATE INDEX idx_cmt_sent_at ON public.chat_message_texts USING btree (sent_at);
 
+CREATE INDEX idx_chat_messages_to_actor ON public.chat_messages USING btree (to_actor_id, id);
+CREATE INDEX idx_cm_message_text ON public.chat_messages USING btree (message_text_id);
 
 --
 -- Name: idx_chat_messages_unacked; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_chat_messages_unacked ON public.chat_messages USING btree (to_actor_id, channel) WHERE (acked_at IS NULL);
+CREATE INDEX idx_chat_messages_unacked ON public.chat_messages USING btree (to_actor_id) WHERE (acked_at IS NULL);
 
 
 --
@@ -1518,9 +1548,14 @@ ALTER TABLE ONLY public.agent_permissions
 -- Name: chat_messages fk_chat_from_actor; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.chat_messages
-    ADD CONSTRAINT fk_chat_from_actor FOREIGN KEY (from_actor_id) REFERENCES public.actors(id);
+ALTER TABLE ONLY public.chat_message_texts
+    ADD CONSTRAINT fk_cmt_from_actor FOREIGN KEY (from_actor_id) REFERENCES public.actors(id);
 
+ALTER TABLE ONLY public.chat_message_texts
+    ADD CONSTRAINT fk_cmt_discussion FOREIGN KEY (discussion_id) REFERENCES public.discussions(id);
+
+ALTER TABLE ONLY public.chat_messages
+    ADD CONSTRAINT fk_cm_message_text FOREIGN KEY (message_text_id) REFERENCES public.chat_message_texts(id);
 
 --
 -- Name: chat_messages fk_chat_to_actor; Type: FK CONSTRAINT; Schema: public; Owner: postgres
@@ -1714,6 +1749,12 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.agent_status TO claude;
 --
 -- Name: TABLE chat_messages; Type: ACL; Schema: public; Owner: postgres
 --
+
+GRANT ALL ON TABLE public.chat_message_texts TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.chat_message_texts TO claude;
+
+GRANT ALL ON SEQUENCE public.chat_message_texts_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.chat_message_texts_id_seq TO claude;
 
 GRANT ALL ON TABLE public.chat_messages TO memory_api;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.chat_messages TO claude;

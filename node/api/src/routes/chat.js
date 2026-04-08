@@ -1,32 +1,12 @@
 const { Router } = require('express');
-const pool = require('../db');
-const { log } = require('../services/logger');
-const { requireByName, resolveByName } = require('../services/actors');
+const { chatSend, chatReceive, chatAck, chatStatus, resolveDiscussionId } = require('../services/chat');
 const { apiRoute } = require('../middleware/route-wrapper');
 const sanitize = require('../sanitize');
 
 const router = Router();
 
-const CHANNEL_PATTERN = /^[a-zA-Z0-9_-]{1,50}$/;
-
-function validateChannel(channel) {
-    if (channel === undefined || channel === null) {
-        return { valid: true, value: null };
-    }
-    if (typeof channel !== 'string' || !CHANNEL_PATTERN.test(channel)) {
-        return { valid: false };
-    }
-    return { valid: true, value: channel };
-}
-
-function logChat(action, details) {
-    log('chat', action, details);
-}
-
 router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
-    let { discussion_id } = req.body;
     let message = sanitize.content(req.body.message);
-    let channel = req.body.channel;
     let from_agent = sanitize.agentName(req.body.from_agent);
     let to_agents = Array.isArray(req.body.to_agents)
         ? req.body.to_agents.map(a => a === '*' ? a : sanitize.agentName(a))
@@ -40,116 +20,17 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         from_agent = req.authenticatedAgent;
     }
 
-    if (!from_agent || !message) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required fields: from_agent, message' }
-        });
-    }
+    // Accept discussion_id directly, or extract from legacy channel string
+    const discussionId = resolveDiscussionId(req.body.discussion_id, req.body.channel);
 
-    if (!to_agents && !discussion_id) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required: to_agents (array) or discussion_id' }
-        });
-    }
-
-    const ch = validateChannel(channel);
-    if (!ch.valid) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Invalid channel: must match /^[a-zA-Z0-9_-]{1,50}$/' }
-        });
-    }
-
-    // Resolve recipients — union of to_agents and discussion participants
-    const discussionParticipants = new Set();
-    const recipientSet = new Set();
-
-    if (discussion_id) {
-        const fromActor = await requireByName(from_agent);
-        const participants = await pool.query(
-            `SELECT ac.name AS agent FROM discussion_participants dp
-             JOIN actors ac ON ac.id = dp.actor_id
-             WHERE dp.discussion_id = $1 AND dp.status = $2 AND dp.actor_id != $3`,
-            [discussion_id, 'joined', fromActor.id]
-        );
-        for (const row of participants.rows) {
-            discussionParticipants.add(row.agent);
-            recipientSet.add(row.agent);
-        }
-    }
-
-    if (to_agents && to_agents.length === 1 && to_agents[0] === '*') {
-        const fromActor = await requireByName(from_agent);
-        const known = await pool.query(
-            `SELECT ac.name AS agent FROM agent_configuration agc
-             JOIN actors ac ON ac.id = agc.actor_id
-             WHERE agc.actor_id != $1`,
-            [fromActor.id]
-        );
-        for (const row of known.rows) {
-            recipientSet.add(row.agent);
-        }
-    } else if (to_agents) {
-        if (!Array.isArray(to_agents) || to_agents.length === 0) {
-            return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'to_agents must be a non-empty array' }
-            });
-        }
-        for (const agent of to_agents) {
-            recipientSet.add(agent);
-        }
-    }
-
-    // Remove sender from recipients (in case discussion includes them)
-    recipientSet.delete(from_agent);
-
-    const recipients = Array.from(recipientSet);
-    if (recipients.length === 0) {
-        return res.status(400).json({
-            error: { code: 'NO_RECIPIENTS', message: 'No recipients resolved' }
-        });
-    }
-
-    // Validate all recipients exist and resolve actor_ids
-    const fromActor = await requireByName(from_agent);
-    const recipientActors = {};
-    for (const agent of recipients) {
-        const actor = await resolveByName(agent);
-        if (!actor) {
-            return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: `Agent "${agent}" is not registered` }
-            });
-        }
-        recipientActors[agent] = actor;
-    }
-
-    // Insert a message for each recipient
-    // If discussion_id is set, prefix forwarded messages for non-participants
-    const results = [];
-    for (const recipient of recipients) {
-        let msgText = message;
-        if (discussion_id && !discussionParticipants.has(recipient)) {
-            msgText = `[Forwarded from discussion #${discussion_id}] ${message}`;
-        }
-        const result = await pool.query(
-            'INSERT INTO chat_messages (from_actor_id, to_actor_id, message, channel) VALUES ($1, $2, $3, $4) RETURNING id, sent_at',
-            [fromActor.id, recipientActors[recipient].id, msgText, ch.value]
-        );
-        results.push({ id: result.rows[0].id, agent: recipient, sent_at: result.rows[0].sent_at });
-    }
-
-    logChat('send', { from_agent, to_agents: recipients, message_ids: results.map(r => r.id), channel: ch.value, discussion_id: discussion_id || null });
-
-    res.json({
-        from_agent,
-        to_agents: results,
-        sent_at: results[0] ? results[0].sent_at : null
-    });
+    const result = await chatSend(from_agent, to_agents, discussionId, message);
+    res.json(result);
 }));
 
 router.post('/chat/receive', apiRoute('chat', 'receive', async (req, res) => {
     let agent = sanitize.agentName(req.body.agent);
     let from_agent = sanitize.agentName(req.body.from_agent);
-    const { channel, after_id } = req.body;
+    const { after_id } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -159,68 +40,17 @@ router.post('/chat/receive', apiRoute('chat', 'receive', async (req, res) => {
         agent = req.authenticatedAgent;
     }
 
-    if (!agent) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
-        });
-    }
-
-    const ch = validateChannel(channel);
-    if (!ch.valid) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Invalid channel: must match /^[a-zA-Z0-9_-]{1,50}$/' }
-        });
-    }
-
     if (after_id !== undefined && (!Number.isInteger(after_id) || after_id < 0)) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'after_id must be a non-negative integer' }
         });
     }
 
-    if (from_agent !== undefined && (typeof from_agent !== 'string' || from_agent.length === 0)) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'from_agent must be a non-empty string' }
-        });
-    }
+    // Accept discussion_id directly, or extract from legacy channel string
+    const discussionId = resolveDiscussionId(req.body.discussion_id, req.body.channel);
 
-    // Build query dynamically — optional channel, after_id, and from_agent filters
-    const actor = await requireByName(agent);
-    let query = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cm.message, cm.sent_at
-                  FROM chat_messages cm
-                  JOIN actors fa ON fa.id = cm.from_actor_id
-                  JOIN actors ta ON ta.id = cm.to_actor_id
-                  WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL`;
-    const params = [actor.id];
-
-    if (ch.value === null) {
-        query += ' AND cm.channel IS NULL';
-    } else {
-        params.push(ch.value);
-        query += ` AND cm.channel = $${params.length}`;
-    }
-
-    if (from_agent) {
-        const fromActor = await requireByName(from_agent);
-        params.push(fromActor.id);
-        query += ` AND cm.from_actor_id = $${params.length}`;
-    }
-
-    if (after_id !== undefined) {
-        params.push(after_id);
-        query += ` AND cm.id > $${params.length}`;
-    }
-
-    query += ' ORDER BY cm.id ASC';
-
-    const result = await pool.query(query, params);
-
-    logChat('receive', { agent, channel: ch.value, after_id: after_id || null, pending_count: result.rows.length, message_ids: result.rows.map(r => r.id) });
-
-    res.json({
-        messages: result.rows,
-        pending_count: result.rows.length
-    });
+    const result = await chatReceive(agent, discussionId, after_id, from_agent);
+    res.json(result);
 }));
 
 router.post('/chat/ack', apiRoute('chat', 'ack', async (req, res) => {
@@ -238,30 +68,12 @@ router.post('/chat/ack', apiRoute('chat', 'ack', async (req, res) => {
         agent = req.authenticatedAgent;
     }
 
-    if (!agent || !ids || !Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required fields: ids (non-empty array of message IDs)' }
-        });
-    }
-
-    const actor = await requireByName(agent);
-    const result = await pool.query(
-        'UPDATE chat_messages SET acked_at = NOW() WHERE id = ANY($1) AND to_actor_id = $2 AND acked_at IS NULL RETURNING id',
-        [ids, actor.id]
-    );
-
-    logChat('ack', { agent, requested_ids: ids, acked_ids: result.rows.map(r => r.id) });
-
-    res.json({
-        agent,
-        acked: result.rows.length,
-        acked_ids: result.rows.map(r => r.id)
-    });
+    const result = await chatAck(agent, ids);
+    res.json(result);
 }));
 
 router.post('/chat/status', apiRoute('chat', 'status', async (req, res) => {
     let agent = sanitize.agentName(req.body.agent);
-    const { channel } = req.body;
 
     // Enforce agent identity (skip for admin user sessions)
     if (req.authenticatedAgent) {
@@ -271,59 +83,11 @@ router.post('/chat/status', apiRoute('chat', 'status', async (req, res) => {
         agent = req.authenticatedAgent;
     }
 
-    if (!agent) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required field: agent' }
-        });
-    }
+    // Accept discussion_id directly, or extract from legacy channel string
+    const discussionId = resolveDiscussionId(req.body.discussion_id, req.body.channel);
 
-    const ch = validateChannel(channel);
-    if (!ch.valid) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Invalid channel: must match /^[a-zA-Z0-9_-]{1,50}$/' }
-        });
-    }
-
-    const actor = await requireByName(agent);
-    let channelFilter;
-    let params;
-    if (ch.value === null) {
-        channelFilter = 'AND channel IS NULL';
-        params = [actor.id];
-    } else {
-        channelFilter = 'AND channel = $2';
-        params = [actor.id, ch.value];
-    }
-
-    const pending = await pool.query(
-        `SELECT COUNT(*) as count FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NULL AND deleted_at IS NULL ${channelFilter}`,
-        params
-    );
-
-    const latest = await pool.query(
-        `SELECT MAX(id) as max_id FROM chat_messages WHERE to_actor_id = $1 AND deleted_at IS NULL ${channelFilter}`,
-        params
-    );
-
-    const lastActivity = await pool.query(
-        `SELECT MAX(sent_at) as last_sent FROM chat_messages WHERE to_actor_id = $1 AND deleted_at IS NULL ${channelFilter}`,
-        params
-    );
-
-    const lastAcked = await pool.query(
-        `SELECT MAX(acked_at) as last_acked FROM chat_messages WHERE to_actor_id = $1 AND acked_at IS NOT NULL AND deleted_at IS NULL ${channelFilter}`,
-        params
-    );
-
-    logChat('status', { agent, channel: ch.value });
-
-    res.json({
-        agent,
-        pending_count: parseInt(pending.rows[0].count),
-        max_message_id: latest.rows[0].max_id,
-        last_message_at: lastActivity.rows[0].last_sent,
-        last_ack_at: lastAcked.rows[0].last_acked
-    });
+    const result = await chatStatus(agent, discussionId);
+    res.json(result);
 }));
 
 module.exports = router;
