@@ -39,7 +39,8 @@ WITH grouped AS (
         channel,
         sent_at,
         CASE
-            WHEN channel LIKE 'discussion-%'
+            WHEN channel ~ '^discussion-\d+$'
+                 AND CAST(SUBSTRING(channel FROM 'discussion-(\d+)') AS BIGINT) <= 2147483647
             THEN CAST(SUBSTRING(channel FROM 'discussion-(\d+)') AS INTEGER)
             ELSE NULL
         END AS discussion_id,
@@ -70,7 +71,8 @@ WITH grouped AS (
         channel,
         sent_at,
         CASE
-            WHEN channel LIKE 'discussion-%'
+            WHEN channel ~ '^discussion-\d+$'
+                 AND CAST(SUBSTRING(channel FROM 'discussion-(\d+)') AS BIGINT) <= 2147483647
             THEN CAST(SUBSTRING(channel FROM 'discussion-(\d+)') AS INTEGER)
             ELSE NULL
         END AS discussion_id,
