@@ -189,8 +189,7 @@ const TOOLS = [
                 to: { type: 'string', description: 'Recipient agent (e.g., "home", "work") or "*" for broadcast' },
                 message: { type: 'string', description: 'Message to send' },
                 from: { type: 'string', description: 'Sender agent (default: configured agent)' },
-                channel: { type: 'string', description: 'Optional channel for message isolation (e.g., "discussion"). Omit for regular chat.' },
-                discussion_id: { type: 'number', description: 'Send to all joined participants in a discussion (alternative to "to"). Auto-derives channel to discussion-{id} and resolves recipients from joined participants.' }
+                discussion_id: { type: 'number', description: 'Send to all joined participants in a discussion (alternative to "to"). Resolves recipients from joined participants.' }
             },
             required: ['message']
         }
@@ -202,8 +201,7 @@ const TOOLS = [
             type: 'object',
             properties: {
                 agent: { type: 'string', description: 'Agent to check messages for (default: configured agent)' },
-                channel: { type: 'string', description: 'Optional channel to filter by (e.g., "discussion"). Omit for regular chat only.' },
-                discussion_id: { type: 'number', description: 'Filter to messages from a specific discussion. Auto-derives channel to discussion-{id}.' }
+                discussion_id: { type: 'number', description: 'Filter to messages from a specific discussion.' }
             }
         }
     },
@@ -225,7 +223,7 @@ const TOOLS = [
             type: 'object',
             properties: {
                 agent: { type: 'string', description: 'Agent to check status for (default: configured agent)' },
-                channel: { type: 'string', description: 'Optional channel to filter by. Omit for regular chat only.' }
+                discussion_id: { type: 'number', description: 'Filter to a specific discussion. Omit for regular chat only.' }
             }
         }
     },
@@ -387,7 +385,6 @@ const TOOLS = [
             properties: {
                 topic: { type: 'string', description: 'Discussion topic' },
                 participants: { type: 'array', items: { type: 'string' }, description: 'List of participant agent names (must include creator)' },
-                channel: { type: 'string', description: 'Optional chat channel name for this discussion' },
                 created_by: { type: 'string', description: 'Creator agent (default: configured agent)' },
                 mode: { type: 'string', description: 'Discussion mode: "realtime" (transport + subagent, live back-and-forth) or "async" (independent investigation + direct voting). Default: realtime' },
                 context: { type: 'string', description: 'Optional background/context for the discussion (max 10k chars). Visible to joining agents via discussion_status.' }
@@ -827,22 +824,15 @@ const TOOL_HANDLERS = {
         if (args.to) {
             toAgents = [args.to === '*' ? '*' : sanitize.agentName(args.to)];
         }
-        // Auto-detect discussion_id from channel name pattern
-        let discussionId = args.discussion_id;
-        if (!discussionId && args.channel) {
-            const match = args.channel.match(/^discussion-(\d+)$/);
-            if (match) {
-                discussionId = parseInt(match[1], 10);
-            }
-        }
-        const data = await chatSend(fromAgent, toAgents, discussionId, sanitize.content(args.message), args.channel);
+        const discussionId = args.discussion_id || null;
+        const data = await chatSend(fromAgent, toAgents, discussionId, sanitize.content(args.message));
         const targets = data.to_agents.map(r => r.agent).join(', ');
         return `Message sent to ${targets}`;
     },
 
     async chat_receive(args, agent, namespace) {
-        const channel = args.channel || (args.discussion_id ? `discussion-${args.discussion_id}` : undefined);
-        const data = await chatReceive(validateIdentity(args.agent, agent, 'agent'), channel);
+        const discussionId = args.discussion_id || null;
+        const data = await chatReceive(validateIdentity(args.agent, agent, 'agent'), discussionId);
         if (data.messages.length === 0) {
             return 'No new messages.';
         }
@@ -861,7 +851,8 @@ const TOOL_HANDLERS = {
     },
 
     async chat_status(args, agent, namespace) {
-        const data = await chatStatus(validateIdentity(args.agent, agent, 'agent'), args.channel);
+        const discussionId = args.discussion_id || null;
+        const data = await chatStatus(validateIdentity(args.agent, agent, 'agent'), discussionId);
         return `Chat status for ${data.agent}:\n  Pending: ${data.pending_count}\n  Max message ID: ${data.max_message_id}\n  Last message: ${data.last_message_at}\n  Last ack: ${data.last_ack_at}`;
     },
 
@@ -975,10 +966,11 @@ const TOOL_HANDLERS = {
                 COALESCE(m.unread_count, 0)::int AS unread_mail
             FROM agent_status a
             LEFT JOIN (
-                SELECT cm.from_actor_id, COUNT(*) AS unread_count
+                SELECT cmt.from_actor_id, COUNT(*) AS unread_count
                 FROM chat_messages cm
-                WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL AND cm.channel IS NULL
-                GROUP BY cm.from_actor_id
+                JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+                WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL AND cmt.discussion_id IS NULL
+                GROUP BY cmt.from_actor_id
             ) c ON c.from_actor_id = a.actor_id
             LEFT JOIN (
                 SELECT ml.from_actor_id, COUNT(*) AS unread_count
@@ -1082,12 +1074,10 @@ const TOOL_HANDLERS = {
             : args.participants;
         const data = await discussionCreate(
             sanitize.content(args.topic), creator, participants,
-            null, sanitize.identifier(args.channel), args.mode, sanitize.content(args.context)
+            null, null, args.mode, sanitize.content(args.context)
         );
         const parts = data.participants.map(p => `${p.agent} (${p.status})`).join(', ');
-        const channel = args.channel || `discussion-${data.discussion.id}`;
-        let text = `Discussion #${data.discussion.id} created [${data.discussion.mode}]: "${data.discussion.topic}"\nParticipants: ${parts}\nChannel: ${channel}\nUse discussion_id: ${data.discussion.id} with chat_send to message participants.`;
-        return text;
+        return `Discussion #${data.discussion.id} created [${data.discussion.mode}]: "${data.discussion.topic}"\nParticipants: ${parts}\nUse discussion_id: ${data.discussion.id} with chat_send to message participants.`;
     },
 
     async discussion_list(args, agent, namespace) {

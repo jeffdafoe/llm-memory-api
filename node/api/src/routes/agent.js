@@ -269,8 +269,9 @@ router.post('/agent/status', apiRoute('agent', 'status', async (req, res) => {
         LEFT JOIN (
             SELECT fa.name AS from_agent, COUNT(*) AS unread_count
             FROM chat_messages cm
-            JOIN actors fa ON fa.id = cm.from_actor_id
-            WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL AND cm.channel IS NULL
+            JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+            JOIN actors fa ON fa.id = cmt.from_actor_id
+            WHERE cm.to_actor_id = $1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL AND cmt.discussion_id IS NULL
             GROUP BY fa.name
         ) c ON c.from_agent = a.agent
         LEFT JOIN (

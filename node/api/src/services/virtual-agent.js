@@ -552,16 +552,15 @@ async function loadDiscussion(discussionId) {
     return { discussion: disc.rows[0], participants: parts.rows };
 }
 
-// Get recent chat history for a discussion channel, excluding system-to-system triggers.
-async function loadChatHistory(channel, limit) {
+// Get recent chat history for a discussion, excluding system messages.
+async function loadChatHistory(discussionId, limit) {
     const result = await pool.query(
-        `SELECT fa.name AS from_agent, ta.name AS to_agent, cm.message, cm.sent_at
-         FROM chat_messages cm
-         JOIN actors fa ON fa.id = cm.from_actor_id
-         JOIN actors ta ON ta.id = cm.to_actor_id
-         WHERE cm.channel = $1 AND cm.deleted_at IS NULL AND NOT (fa.name = 'system' AND ta.name = 'system')
-         ORDER BY cm.id DESC LIMIT $2`,
-        [channel, limit || 50]
+        `SELECT DISTINCT ON (cmt.id) fa.name AS from_agent, cmt.message, cmt.sent_at
+         FROM chat_message_texts cmt
+         JOIN actors fa ON fa.id = cmt.from_actor_id
+         WHERE cmt.discussion_id = $1 AND NOT (fa.name = 'system')
+         ORDER BY cmt.id DESC LIMIT $2`,
+        [discussionId, limit || 50]
     );
     return result.rows.reverse();
 }
@@ -577,13 +576,14 @@ async function loadDirectChatHistory(agent1, agent2) {
     const actor2 = await requireByName(agent2);
 
     const result = await pool.query(
-        `SELECT fa.name AS from_agent, ta.name AS to_agent, cm.message, cm.sent_at
+        `SELECT fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at
          FROM chat_messages cm
-         JOIN actors fa ON fa.id = cm.from_actor_id
+         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
+         JOIN actors fa ON fa.id = cmt.from_actor_id
          JOIN actors ta ON ta.id = cm.to_actor_id
-         WHERE cm.channel IS NULL AND cm.deleted_at IS NULL
-         AND ((cm.from_actor_id = $1 AND cm.to_actor_id = $2) OR (cm.from_actor_id = $2 AND cm.to_actor_id = $1))
-         AND cm.sent_at >= NOW() - INTERVAL '1 hour' * $3
+         WHERE cmt.discussion_id IS NULL AND cm.deleted_at IS NULL
+         AND ((cmt.from_actor_id = $1 AND cm.to_actor_id = $2) OR (cmt.from_actor_id = $2 AND cm.to_actor_id = $1))
+         AND cmt.sent_at >= NOW() - INTERVAL '1 hour' * $3
          ORDER BY cm.id DESC LIMIT $4`,
         [actor1.id, actor2.id, hours, maxMessages]
     );
@@ -764,10 +764,10 @@ function buildMailUserMessage(mail) {
     return `From: ${mail.from_agent}\nSubject: ${mail.subject}\n\n${mail.body}`;
 }
 
-// Post an error message to the discussion channel from the virtual agent.
-async function postError(agentName, discussionId, channel, error) {
+// Post an error message to the discussion from the virtual agent.
+async function postError(agentName, discussionId, error) {
     try {
-        await chatSend(agentName, null, discussionId, `[Error: ${error}]`, channel);
+        await chatSend(agentName, null, discussionId, `[Error: ${error}]`);
     } catch (err) {
         logVA('post-error-failed', { agent: agentName, error: err.message });
     }
@@ -836,7 +836,7 @@ async function handleVirtualAgent(payload) {
         return;
     }
 
-    const channel = discussion.channel || `discussion-${discussionId}`;
+
 
     // Find virtual participants who are joined
     const joinedVirtual = [];
@@ -853,7 +853,7 @@ async function handleVirtualAgent(payload) {
     }
 
     // Load chat history
-    const chatHistory = await loadChatHistory(channel, 50);
+    const chatHistory = await loadChatHistory(discussionId, 50);
 
     // For 'message' triggers, skip if the last non-system message was from a virtual agent
     // (prevents infinite response loops)
@@ -881,11 +881,11 @@ async function handleVirtualAgent(payload) {
     for (const agent of joinedVirtual) {
         try {
             if (!agent.api_key) {
-                await postError(agent.agent, discussionId, channel, 'No API key configured');
+                await postError(agent.agent, discussionId, 'No API key configured');
                 continue;
             }
             if (!agent.provider || !agent.model) {
-                await postError(agent.agent, discussionId, channel, 'No provider/model configured');
+                await postError(agent.agent, discussionId, 'No provider/model configured');
                 continue;
             }
 
@@ -903,14 +903,14 @@ async function handleVirtualAgent(payload) {
 
             // Rate limit check
             if (isRateLimited(agent.agent)) {
-                await postError(agent.agent, discussionId, channel, 'Rate limited — too many API calls. Cooling down.');
+                await postError(agent.agent, discussionId, 'Rate limited — too many API calls. Cooling down.');
                 continue;
             }
 
             // Budget check
             const costCheck = await isOverCostLimit(agent);
             if (costCheck.limited) {
-                await postError(agent.agent, discussionId, channel, costCheck.reason);
+                await postError(agent.agent, discussionId, costCheck.reason);
                 continue;
             }
 
@@ -931,16 +931,16 @@ async function handleVirtualAgent(payload) {
                     await castVote(voteId, agent.agent, voteResponse.choice, voteResponse.reason);
                     // Also post the reasoning as a chat message
                     if (voteResponse.reason) {
-                        await chatSend(agent.agent, null, discussionId, voteResponse.reason, channel);
+                        await chatSend(agent.agent, null, discussionId, voteResponse.reason);
                     }
                 } else {
                     // Couldn't parse vote, post response as chat and log
                     logVA('vote-parse-failed', { discussionId, agent: agent.agent });
-                    await chatSend(agent.agent, null, discussionId, response, channel);
+                    await chatSend(agent.agent, null, discussionId, response);
                 }
             } else {
                 // Regular message response
-                await chatSend(agent.agent, null, discussionId, response, channel);
+                await chatSend(agent.agent, null, discussionId, response);
             }
 
             logVA('responded', { discussionId, agent: agent.agent, triggerType, responseLength: response.length });
@@ -971,7 +971,7 @@ async function handleVirtualAgent(payload) {
                 statusCode: 500
             });
             await chatSend(agent.agent, null, discussionId,
-                `[Malfunction] ${agent.agent} encountered an error and is leaving the discussion: ${err.message}`, channel);
+                `[Malfunction] ${agent.agent} encountered an error and is leaving the discussion: ${err.message}`);
             try {
                 const { discussionLeave } = require('./discussion');
                 await discussionLeave(discussionId, agent.agent);
@@ -1049,7 +1049,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         await recordUsage(agent.agent, agent.provider, agent.model, usage, 'chat');
 
         // Send response as direct chat back to the sender
-        await chatSend(agent.agent, [fromAgent], null, response, null);
+        await chatSend(agent.agent, [fromAgent], null, response);
 
         // Ack the incoming message (virtual agent "read" it)
         if (messageId) {

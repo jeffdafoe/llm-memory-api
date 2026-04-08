@@ -43,7 +43,7 @@ function useDiscussions({ api, showToast, onEvent }) {
             if (requestId !== currentDiscussionRequest) return;
             selectedDiscussion.value = data;
             // Auto-load transcript
-            const chatData = await api('/admin/chat', { channel: 'discussion-' + id, limit: 500 });
+            const chatData = await api('/admin/chat', { discussion_id: id, limit: 500 });
             if (requestId !== currentDiscussionRequest) return;
             discussionChat.value = chatData.messages.reverse();
             // Scroll dialog to bottom so chat input is visible
@@ -64,7 +64,7 @@ function useDiscussions({ api, showToast, onEvent }) {
 
     async function loadDiscussionChat(id) {
         try {
-            const data = await api('/admin/chat', { channel: 'discussion-' + id, limit: 500 });
+            const data = await api('/admin/chat', { discussion_id: id, limit: 500 });
             discussionChat.value = data.messages.reverse();
             await nextTick();
             scrollDiscussionToBottom();
@@ -143,18 +143,17 @@ function useDiscussions({ api, showToast, onEvent }) {
     // Handle incoming WebSocket chat_message events — append to transcript if relevant
     function handleChatMessage(data) {
         if (!selectedDiscussion.value || !discussionChat.value) return;
-        var expectedChannel = 'discussion-' + selectedDiscussion.value.discussion.id;
-        if (data.channel !== expectedChannel) return;
-        // Avoid duplicates
-        if (discussionChat.value.some(function(m) { return m.id === data.id; })) return;
+        if (data.discussion_id !== selectedDiscussion.value.discussion.id) return;
+        // Avoid duplicates (use message_text_id to prevent fan-out duplication)
+        var dedupId = data.message_text_id || data.id;
+        if (discussionChat.value.some(function(m) { return (m.message_text_id || m.id) === dedupId; })) return;
         discussionChat.value.push({
             id: data.id,
+            message_text_id: data.message_text_id,
             from_agent: data.from_agent,
-            to_agent: data.to_agent,
             message: data.message,
-            channel: data.channel,
-            sent_at: data.sent_at,
-            acked_at: null
+            discussion_id: data.discussion_id,
+            sent_at: data.sent_at
         });
         nextTick().then(scrollDiscussionToBottom);
     }
