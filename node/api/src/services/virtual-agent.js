@@ -422,10 +422,20 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
     const suffix = Math.random().toString(36).substring(2, 6);
     const slug = `conversations/${datePart}-${timePart}-${suffix}`;
 
-    // Flatten structured prompt for readable logging
-    const { flattenPrompt } = require('./provider');
-    let systemText = (typeof systemPrompt === 'string') ? systemPrompt : flattenPrompt(systemPrompt);
-    let userText = (typeof userMessage === 'string') ? userMessage : flattenPrompt(userMessage);
+    // Log only the static portion of the system prompt (character instructions,
+    // discussion context). The dynamic portion (RAG search results) is ephemeral
+    // and must NOT be stored — it gets chunked into the vector store and can
+    // cycle back into future RAG queries, creating a feedback loop.
+    let systemText;
+    if (typeof systemPrompt === 'string') {
+        systemText = systemPrompt;
+    } else if (systemPrompt && systemPrompt.static) {
+        systemText = systemPrompt.static;
+    } else {
+        const { flattenPrompt } = require('./provider');
+        systemText = flattenPrompt(systemPrompt);
+    }
+    let userText = (typeof userMessage === 'string') ? userMessage : userMessage;
 
     // Truncate context if too large (keep under 100KB to stay well within 500KB note cap)
     const MAX_CONTEXT = 100000;
