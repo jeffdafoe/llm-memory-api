@@ -78,10 +78,10 @@ func (t *Transport) RestoreState() {
 // Run executes the main transport loop: poll for messages, relay to/from
 // the subagent, check convergence, and handle timeouts.
 func (t *Transport) Run() error {
-	channel := fmt.Sprintf("discussion-%d", t.discussionID)
 	t.logger.Log("Discussion transport starting: %s <-> %s",
 		t.cfg.Agent, strings.Join(t.cfg.OtherAgents(), ", "))
 	t.logger.Log("Work dir: %s", t.cfg.WorkDir)
+	t.logger.Log("Discussion ID: %d", t.discussionID)
 	t.setStatus("POLLING")
 
 	for {
@@ -109,7 +109,7 @@ func (t *Transport) Run() error {
 			t.setStatus("TIMEOUT")
 			time.Sleep(30 * time.Second)
 			if msg, ok := t.paths.CheckOutbox(); ok {
-				t.sendMessage(channel, msg)
+				t.sendMessage(msg)
 			}
 			t.setStatus("DONE")
 			t.paths.WriteDone("timeout")
@@ -128,12 +128,12 @@ func (t *Transport) Run() error {
 			t.lastOutboxTime = time.Now()
 			t.stallWarningLogged = false
 			t.subagentDeathReported = false
-			t.sendMessage(channel, msg)
+			t.sendMessage(msg)
 			time.Sleep(t.cfg.SendDelay)
 		}
 
 		// 5. Poll for incoming messages
-		messages := t.receiveMessages(channel)
+		messages := t.receiveMessages()
 
 		// 6-7. Process: dedup, write inbox, transcript
 		allIDs, newIDs := t.processReceivedMessages(messages)
@@ -145,7 +145,7 @@ func (t *Transport) Run() error {
 		result := t.convergence.Check(t.client, t.discussionID, t.cfg.Agent)
 		if result == "terminate" {
 			t.logger.Log("Convergence termination — exiting transport loop")
-			t.waitForResult(channel)
+			t.waitForResult()
 			t.paths.WriteDone("terminated")
 			t.setStatus("TERMINATED")
 			return nil
@@ -155,7 +155,7 @@ func (t *Transport) Run() error {
 		t.statusCheckCounter++
 		if t.statusCheckCounter >= statusCheckInterval {
 			t.statusCheckCounter = 0
-			if t.checkServerStatus(channel) {
+			if t.checkServerStatus() {
 				return nil
 			}
 		}
@@ -224,7 +224,7 @@ func (t *Transport) IsTerminated() bool {
 // waitForResult gives the subagent time to write result.md after
 // receiving a shutdown notice. Polls for result.md with a 60-second
 // timeout. Also drains any outbox messages while waiting.
-func (t *Transport) waitForResult(channel string) {
+func (t *Transport) waitForResult() {
 	timeout := time.Duration(t.cfg.ResultTimeout) * time.Second
 	poll := 2 * time.Second
 	start := time.Now()
@@ -232,7 +232,7 @@ func (t *Transport) waitForResult(channel string) {
 	for time.Since(start) < timeout {
 		// Drain outbox while waiting
 		if msg, ok := t.paths.CheckOutbox(); ok {
-			t.sendMessage(channel, msg)
+			t.sendMessage(msg)
 		}
 
 		// Check if result.md exists
@@ -247,16 +247,16 @@ func (t *Transport) waitForResult(channel string) {
 	t.logger.Log("WARNING: result.md not found after %ds — proceeding with shutdown", int(timeout.Seconds()))
 	// Final outbox drain
 	if msg, ok := t.paths.CheckOutbox(); ok {
-		t.sendMessage(channel, msg)
+		t.sendMessage(msg)
 	}
 }
 
 // --- Messaging ---
 
-func (t *Transport) receiveMessages(channel string) []ChatMessage {
+func (t *Transport) receiveMessages() []ChatMessage {
 	body := map[string]interface{}{
-		"agent":   t.cfg.Agent,
-		"channel": channel,
+		"agent":         t.cfg.Agent,
+		"discussion_id": t.discussionID,
 	}
 	if t.lastDeliveredID > 0 {
 		body["after_id"] = t.lastDeliveredID
@@ -288,12 +288,11 @@ func (t *Transport) processReceivedMessages(messages []ChatMessage) (allIDs, new
 	return
 }
 
-func (t *Transport) sendMessage(channel, message string) {
+func (t *Transport) sendMessage(message string) {
 	err := t.client.Post("/chat/send", map[string]interface{}{
 		"from_agent":    t.cfg.Agent,
 		"discussion_id": t.discussionID,
 		"message":       message,
-		"channel":       channel,
 	}, nil)
 	if err != nil {
 		// Discussion already concluded — other side left, no recipients
@@ -405,7 +404,7 @@ func (t *Transport) checkTimeout() bool {
 
 // --- Server-side status check ---
 
-func (t *Transport) checkServerStatus(channel string) bool {
+func (t *Transport) checkServerStatus() bool {
 	var resp statusResponse
 	err := t.client.Post("/discussion/status", map[string]interface{}{
 		"discussion_id": t.discussionID,
@@ -421,7 +420,7 @@ func (t *Transport) checkServerStatus(channel string) bool {
 		notice := fmt.Sprintf("[SYSTEM] This discussion has been %s. Please wrap up and write your result file.", status)
 		t.paths.WriteInboxFile(fmt.Sprintf("%s.txt", status), notice)
 		t.paths.AppendTranscript("system", fmt.Sprintf("Discussion %s server-side", status))
-		t.waitForResult(channel)
+		t.waitForResult()
 		t.paths.WriteDone(status)
 		t.setStatus("DONE")
 		return true
