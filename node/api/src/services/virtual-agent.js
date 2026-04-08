@@ -101,7 +101,7 @@ async function pingErroredAgents() {
             `SELECT ac.name AS agent
              FROM actors ac
              JOIN agent_configuration agc ON agc.actor_id = ac.id
-             WHERE agc.virtual = TRUE AND ac.status = 'error'`
+             WHERE agc.virtual = TRUE AND ac.status IN ('error', 'degraded')`
         );
         for (const row of result.rows) {
             await pingAgent(row.agent);
