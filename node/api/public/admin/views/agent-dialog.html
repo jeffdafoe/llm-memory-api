@@ -52,7 +52,7 @@
             </div>
 
             <!-- Profile edit form -->
-            <div v-if="agentProfileEditing" class="agent-card" style="margin-bottom: 20px;">
+            <div v-if="agentProfileEditing" class="agent-card agent-profile-form">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <label>Provider
                         <custom-select v-model="agentProfileProvider" @update:model-value="onProfileProviderChange"
@@ -97,7 +97,7 @@
                 <label v-if="selectedAgent.virtual">API Key
                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
                 </label>
-                <div class="dialog-actions" style="margin-top: 12px;">
+                <div class="dialog-actions">
                     <button class="btn btn-secondary btn-compact" @click="agentProfileEditing = false">Cancel</button>
                     <button class="btn btn-primary btn-compact" @click="saveProfile" :disabled="agentProfileSaving">Save</button>
                 </div>
