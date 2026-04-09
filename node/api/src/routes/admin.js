@@ -1778,11 +1778,17 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
     try {
         await client.query('BEGIN');
 
+        // Inherit realms from the creator so new agents land in the same realm(s)
+        const creatorRealms = await client.query('SELECT realms FROM actors WHERE id = $1', [req.authenticatedUser.id]);
+        const realms = (creatorRealms.rows[0] && creatorRealms.rows[0].realms.length > 0)
+            ? creatorRealms.rows[0].realms
+            : ['llm-memory'];
+
         // Create actor
         const actorResult = await client.query(
-            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-            [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active', req.authenticatedUser.id]
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, created_by, realms)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+            [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active', req.authenticatedUser.id, realms]
         );
         actorId = actorResult.rows[0].id;
 
@@ -2638,10 +2644,15 @@ router.post('/admin/access-requests/approve', requirePerm('access', 'write'), ad
             `UPDATE access_requests SET status = 'approved', reviewed_at = NOW(), reviewer_notes = $1 WHERE id = $2`,
             [notes || null, id]
         );
+        // Invite inherits realm from approver
+        const approverRealms = await client.query('SELECT realms FROM actors WHERE id = $1', [req.authenticatedUser.id]);
+        const inviteRealm = (approverRealms.rows[0] && approverRealms.rows[0].realms.length > 0)
+            ? approverRealms.rows[0].realms[0]
+            : 'llm-memory';
         await client.query(
-            `INSERT INTO invite_codes (code, created_by, access_request_id, expires_at)
-             VALUES ($1, $2, $3, NOW() + INTERVAL '30 days')`,
-            [code, req.authenticatedUser.username, id]
+            `INSERT INTO invite_codes (code, created_by, access_request_id, expires_at, realm)
+             VALUES ($1, $2, $3, NOW() + INTERVAL '30 days', $4)`,
+            [code, req.authenticatedUser.username, id, inviteRealm]
         );
         await client.query('COMMIT');
     } catch (err) {
@@ -2698,16 +2709,27 @@ router.post('/admin/invite-codes', requirePerm('access', 'read'), adminRoute('in
 
 // POST /admin/invite-codes/generate — generate invite codes (batch)
 router.post('/admin/invite-codes/generate', requirePerm('access', 'write'), adminRoute('invite-codes-generate', async (req, res) => {
-    const { count = 1, expires_days } = req.body;
+    const { count = 1, expires_days, realm } = req.body;
     const num = Math.min(Math.max(parseInt(count) || 1, 1), 50);
-    const codes = [];
 
+    // Determine realm: explicit param, or derive from creator's first realm
+    let codeRealm = realm || null;
+    if (!codeRealm) {
+        const creatorResult = await pool.query('SELECT realms FROM actors WHERE id = $1', [req.authenticatedUser.id]);
+        if (creatorResult.rows.length > 0 && creatorResult.rows[0].realms.length > 0) {
+            codeRealm = creatorResult.rows[0].realms[0];
+        } else {
+            codeRealm = 'llm-memory';
+        }
+    }
+
+    const codes = [];
     for (let i = 0; i < num; i++) {
         const code = crypto.randomBytes(16).toString('hex');
         const expiresAt = expires_days ? `NOW() + INTERVAL '${parseInt(expires_days)} days'` : 'NULL';
         await pool.query(
-            `INSERT INTO invite_codes (code, created_by, expires_at) VALUES ($1, $2, ${expiresAt})`,
-            [code, req.authenticatedUser.username]
+            `INSERT INTO invite_codes (code, created_by, expires_at, realm) VALUES ($1, $2, ${expiresAt}, $3)`,
+            [code, req.authenticatedUser.username, codeRealm]
         );
         codes.push(code);
     }

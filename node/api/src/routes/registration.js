@@ -71,7 +71,7 @@ router.post('/api/register', async (req, res) => {
 
         // Validate invite code
         const invite = await client.query(
-            `SELECT id, used_by, expires_at FROM invite_codes WHERE code = $1 FOR UPDATE`,
+            `SELECT id, used_by, expires_at, realm FROM invite_codes WHERE code = $1 FOR UPDATE`,
             [code.trim()]
         );
         if (invite.rows.length === 0) {
@@ -112,10 +112,11 @@ router.post('/api/register', async (req, res) => {
         const passwordSalt = generateSalt();
         const passwordHash = hashToken(password, passwordSalt);
 
-        // Create actor (created_by is set to self after insert)
+        // Create actor — realm inherited from invite code
+        const realm = inv.realm || 'llm-memory';
         await client.query(
-            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status) VALUES ($1, $2, $3, $4, $5, 'active')`,
-            [agentName, passphraseHash, salt, passwordHash, passwordSalt]
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, realms) VALUES ($1, $2, $3, $4, $5, 'active', $6)`,
+            [agentName, passphraseHash, salt, passwordHash, passwordSalt, [realm]]
         );
         // Set created_by to self so the agent owns itself
         await client.query(
