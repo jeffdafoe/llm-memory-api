@@ -1136,10 +1136,12 @@ dialog article header button[aria-label="Close"]::after {
 .agent-properties {
     font-size: 13px;
     line-height: 1.8;
+    color: var(--text-muted);
     padding-bottom: 18px;
     border-bottom: 1px solid var(--border-subtle);
     margin-bottom: 20px;
 }
+.agent-properties strong { color: var(--text-primary); }
 
 /* Realm chips — edit mode toggles */
 .realm-toggle-group {
