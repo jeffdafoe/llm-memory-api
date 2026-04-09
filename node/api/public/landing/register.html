@@ -841,12 +841,27 @@ document.getElementById('mcpUrlBlock').textContent = location.origin + '/mcp';
 document.getElementById('dashboardLink').textContent = location.hostname;
 document.getElementById('dashboardLink').href = location.origin;
 
-// Auto-fill invite code from URL
-const urlCode = new URLSearchParams(window.location.search).get('code');
-if (urlCode) {
-    document.getElementById('inviteCode').value = urlCode;
-    validateCode();
-}
+// Check if open registration is enabled — skip code step if so
+fetch('/api/registration-mode')
+    .then(r => r.json())
+    .then(data => {
+        if (data.open) {
+            // Skip the invite code step entirely
+            document.getElementById('step-code').style.display = 'none';
+            showStep('name');
+            document.getElementById('agentName').focus();
+        } else {
+            // Auto-fill invite code from URL
+            const urlCode = new URLSearchParams(window.location.search).get('code');
+            if (urlCode) {
+                document.getElementById('inviteCode').value = urlCode;
+                validateCode();
+            }
+        }
+    })
+    .catch(() => {
+        // If the check fails, fall back to invite code flow
+    });
 
 function showError(name, msg) {
     const el = document.getElementById('error-' + name);
