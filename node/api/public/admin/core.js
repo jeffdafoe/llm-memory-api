@@ -375,6 +375,15 @@ function useCore() {
         return fallbackColors[Math.abs(hash) % fallbackColors.length];
     }
 
+    function realmColor(realm) {
+        if (!realm) return 'var(--text-muted)';
+        let hash = 0;
+        for (let i = 0; i < realm.length; i++) {
+            hash = realm.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return fallbackColors[Math.abs(hash) % fallbackColors.length];
+    }
+
     function voteQuestion(text) {
         const match = text.match(/^(.*?\?)\s*(.+)$/);
         if (!match) return { question: text, choices: [] };
@@ -406,7 +415,7 @@ function useCore() {
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
         formatDate, formatShortDate, timeAgo, formatBytes, formatDuration, formatTime,
-        statusIcon, outcomeIcon, agentColor, voteQuestion, lastSeenColor,
+        statusIcon, outcomeIcon, agentColor, realmColor, voteQuestion, lastSeenColor,
         USER_ROLE_LABEL
     };
 }
