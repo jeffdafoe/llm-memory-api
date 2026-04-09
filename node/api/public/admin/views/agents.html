@@ -11,6 +11,7 @@
                     <col style="width: 16em;">
                     <col style="width: 10em;">
                     <col>
+                    <col style="width: 10em;">
                     <col style="width: 9em;">
                     <col style="width: 9em;">
                     <col class="col-time">
@@ -21,6 +22,7 @@
                         <th class="sortable" @click="toggleAgentSort('agent')">Agent <span class="sort-arrow" v-html="agentSortArrow('agent')"></span></th>
                         <th class="sortable" @click="toggleAgentSort('personality')">Personality <span class="sort-arrow" v-html="agentSortArrow('personality')"></span></th>
                         <th class="sortable" @click="toggleAgentSort('provider')">Provider / Model <span class="sort-arrow" v-html="agentSortArrow('provider')"></span></th>
+                        <th>Realms</th>
                         <th>Who Can See</th>
                         <th>Who Can Use</th>
                         <th class="sortable time-cell" @click="toggleAgentSort('last_seen')">Last Seen <span class="sort-arrow" v-html="agentSortArrow('last_seen')"></span></th>
@@ -42,6 +44,12 @@
                         <td class="muted">
                             {{ [agent.provider, agent.model].filter(Boolean).join(' / ') || '—' }}
                             <br v-if="agent.pricing_info"><small v-if="agent.pricing_info" style="opacity: 0.7;">{{ agent.pricing_info }}</small>
+                        </td>
+                        <td class="ts">
+                            <template v-if="agent.realms && agent.realms.length">
+                                <span v-for="(r, i) in agent.realms" :key="r"><span :style="{ color: realmColor(r) }">{{ r }}</span><span v-if="i < agent.realms.length - 1" class="muted">, </span></span>
+                            </template>
+                            <span v-else class="muted">—</span>
                         </td>
                         <td class="ts">
                             <span class="access-badge" :class="agent.visibility_summary === 'all agents' ? 'access-badge--accent' : ''">
