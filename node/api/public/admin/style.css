@@ -1246,6 +1246,10 @@ dialog article header button[aria-label="Close"]::after {
     margin-bottom: 16px;
 }
 
+/* Profile edit form — add vertical spacing between field rows */
+.agent-profile-form > * + * { margin-top: 12px; }
+.agent-profile-form > .dialog-actions { margin-top: 16px; }
+
 .agent-card-header {
     display: flex;
     justify-content: space-between;
