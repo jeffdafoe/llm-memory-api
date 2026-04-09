@@ -1132,64 +1132,16 @@ dialog article header button[aria-label="Close"]::after {
     margin-bottom: 12px;
 }
 
-/* Agent properties — summary tiles below identity header */
+/* Agent properties — compact label/value list below identity header */
 .agent-properties {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    font-size: 13px;
+    line-height: 1.8;
     padding-bottom: 18px;
     border-bottom: 1px solid var(--border-subtle);
     margin-bottom: 20px;
 }
-.agent-prop {
-    padding: 10px 12px;
-    border-radius: 8px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
-}
-.agent-prop--personality,
-.agent-prop--realms { grid-column: 1 / -1; }
-.agent-prop-label {
-    margin-bottom: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-}
-.agent-prop-value {
-    color: var(--text-primary);
-    font-size: 13px;
-    line-height: 1.45;
-}
-.agent-prop-value--numeric {
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-}
-.agent-prop-value--clamp {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
 
-/* Status pill — read mode */
-.status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    background: var(--accent-subtle);
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    color: var(--accent-text);
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1;
-}
-
-/* Realm chips — shared between read and edit */
-.realm-chip-list,
+/* Realm chips — edit mode toggles */
 .realm-toggle-group {
     display: flex;
     flex-wrap: wrap;
@@ -1218,10 +1170,6 @@ dialog article header button[aria-label="Close"]::after {
 .realm-chip:focus-visible {
     outline: none;
     border-color: var(--accent);
-}
-.realm-chip-list .realm-chip {
-    cursor: default;
-    pointer-events: none;
 }
 
 /* Identity editor — grouped edit form */
