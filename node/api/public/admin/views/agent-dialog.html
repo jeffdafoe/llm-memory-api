@@ -39,38 +39,16 @@
 
             <!-- Agent properties (visible without editing) -->
             <div v-if="!agentProfileEditing" class="agent-properties">
-                <div v-if="selectedAgent.personality" class="agent-prop agent-prop--personality">
-                    <div class="agent-prop-label">Personality</div>
-                    <div class="agent-prop-value agent-prop-value--clamp" style="font-style: italic;">{{ selectedAgent.personality }}</div>
-                </div>
-                <div class="agent-prop">
-                    <div class="agent-prop-label">Dream</div>
-                    <div class="agent-prop-value">
-                        <span v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="status-pill">
-                            <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'"></i>{{ selectedAgent.dream_mode }}
-                        </span>
-                        <span v-else class="muted">none</span>
-                    </div>
-                </div>
-                <div class="agent-prop">
-                    <div class="agent-prop-label">Learning</div>
-                    <div class="agent-prop-value">
-                        <span class="status-pill">{{ selectedAgent.learning_enabled !== false ? 'Enabled' : 'Off' }}</span>
-                    </div>
-                </div>
-                <div class="agent-prop">
-                    <div class="agent-prop-label">Storage</div>
-                    <div class="agent-prop-value agent-prop-value--numeric">{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</div>
-                </div>
-                <div class="agent-prop agent-prop--realms">
-                    <div class="agent-prop-label">Realms</div>
-                    <div class="agent-prop-value">
-                        <div v-if="selectedAgent.realms && selectedAgent.realms.length" class="realm-chip-list">
-                            <span v-for="r in selectedAgent.realms" :key="r" class="realm-chip is-active" :style="{ borderColor: realmColor(r) + '7a', background: realmColor(r) + '1a', color: realmColor(r) }">{{ r }}</span>
-                        </div>
-                        <span v-else class="status-pill">No realms</span>
-                    </div>
-                </div>
+                <div v-if="selectedAgent.personality" style="font-style: italic; color: var(--text-secondary); margin-bottom: 4px;">{{ selectedAgent.personality }}</div>
+                <span>Dream: <strong>{{ selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none' ? selectedAgent.dream_mode : 'none' }}</strong></span>
+                <br><span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span>
+                <br><span>Storage: <strong>{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</strong></span>
+                <br><span>Realms:
+                    <template v-if="selectedAgent.realms && selectedAgent.realms.length">
+                        <span v-for="(r, i) in selectedAgent.realms" :key="r"><span :style="{ color: realmColor(r) }">{{ r }}</span><span v-if="i < selectedAgent.realms.length - 1">, </span></span>
+                    </template>
+                    <strong v-else>none</strong>
+                </span>
             </div>
 
             <!-- Profile edit form -->
