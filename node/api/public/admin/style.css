@@ -1132,19 +1132,172 @@ dialog article header button[aria-label="Close"]::after {
     margin-bottom: 12px;
 }
 
-/* Agent properties shown below identity header */
+/* Agent properties — summary tiles below identity header */
 .agent-properties {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 16px;
-    font-size: 13px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
     padding-bottom: 18px;
     border-bottom: 1px solid var(--border-subtle);
     margin-bottom: 20px;
 }
-.agent-prop { display: flex; gap: 8px; align-items: baseline; }
-.agent-prop-label { color: var(--text-muted); min-width: 70px; }
-.agent-prop-value { color: var(--text); }
+.agent-prop {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+}
+.agent-prop--personality,
+.agent-prop--realms { grid-column: 1 / -1; }
+.agent-prop-label {
+    margin-bottom: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.agent-prop-value {
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.45;
+}
+.agent-prop-value--numeric {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+.agent-prop-value--clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Status pill — read mode */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--accent-subtle);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    color: var(--accent-text);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+}
+
+/* Realm chips — shared between read and edit */
+.realm-chip-list,
+.realm-toggle-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.realm-chip {
+    appearance: none;
+    border: 1px solid var(--border-default);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.realm-chip:hover {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+.realm-chip.is-active {
+    color: var(--text-primary);
+}
+.realm-chip:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+}
+.realm-chip-list .realm-chip {
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Identity editor — grouped edit form */
+.identity-editor {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.identity-group {
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+}
+.identity-group--sensitive {
+    border-color: rgba(234, 179, 8, 0.2);
+}
+.identity-group-eyebrow {
+    margin-bottom: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.identity-grid {
+    display: grid;
+    gap: 10px;
+}
+.identity-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.identity-grid--compact { align-items: start; }
+.identity-field { display: grid; gap: 4px; }
+.identity-field--full { margin-top: 4px; }
+.identity-editor label > span,
+.identity-field > span,
+.field-header > span {
+    display: inline-block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+.field-header { margin-bottom: 6px; }
+.field-header small,
+.field-help {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Learning toggle card */
+.toggle-card { display: grid; gap: 4px; min-height: 100%; }
+.toggle-card__label { margin-bottom: 0 !important; }
+.toggle-card__control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+}
+.toggle-card__control input[type="checkbox"] { margin: 0; }
+.toggle-card__text {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 720px) {
+    .agent-properties,
+    .identity-grid--2 { grid-template-columns: 1fr; }
+    .agent-prop--personality,
+    .agent-prop--realms { grid-column: auto; }
+}
 
 .agent-avatar-lg {
     width: 44px;
