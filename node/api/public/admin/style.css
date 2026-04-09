@@ -1129,10 +1129,22 @@ dialog article header button[aria-label="Close"]::after {
     display: flex;
     align-items: center;
     gap: 14px;
+    margin-bottom: 12px;
+}
+
+/* Agent properties shown below identity header */
+.agent-properties {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 16px;
+    font-size: 13px;
     padding-bottom: 18px;
     border-bottom: 1px solid var(--border-subtle);
     margin-bottom: 20px;
 }
+.agent-prop { display: flex; gap: 8px; align-items: baseline; }
+.agent-prop-label { color: var(--text-muted); min-width: 70px; }
+.agent-prop-value { color: var(--text); }
 
 .agent-avatar-lg {
     width: 44px;

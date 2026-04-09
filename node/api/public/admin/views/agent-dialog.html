@@ -34,12 +34,40 @@
                         <span v-if="selectedAgent.provider || selectedAgent.model">{{ [selectedAgent.provider, selectedAgent.model].filter(Boolean).join(' / ') }}</span>
                         <button v-if="!agentProfileEditing && canDo('agents', 'write')" class="btn btn-ghost btn-compact" @click="startEditProfile" title="Edit"><i class="icon-edit"></i></button>
                     </div>
-                    <div v-if="selectedAgent.personality" class="agent-identity-meta" style="font-style: italic; margin-top: 2px;">{{ selectedAgent.personality }}</div>
-                    <div v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="agent-identity-meta" style="margin-top: 2px;">
-                        <span class="badge" :style="{ background: selectedAgent.dream_mode === 'companion' ? '#7c3aed22' : '#0891b222', color: selectedAgent.dream_mode === 'companion' ? '#7c3aed' : '#0891b2' }">
-                            <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'" style="margin-right: 3px;"></i>{{ selectedAgent.dream_mode }} dream
+                </div>
+            </div>
+
+            <!-- Agent properties (visible without editing) -->
+            <div v-if="!agentProfileEditing" class="agent-properties">
+                <div v-if="selectedAgent.personality" class="agent-prop">
+                    <span class="agent-prop-label">Personality</span>
+                    <span class="agent-prop-value" style="font-style: italic;">{{ selectedAgent.personality }}</span>
+                </div>
+                <div class="agent-prop">
+                    <span class="agent-prop-label">Dream</span>
+                    <span class="agent-prop-value">
+                        <span v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="badge" :style="{ background: selectedAgent.dream_mode === 'companion' ? '#7c3aed22' : '#0891b222', color: selectedAgent.dream_mode === 'companion' ? '#7c3aed' : '#0891b2' }">
+                            <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'" style="margin-right: 3px;"></i>{{ selectedAgent.dream_mode }}
                         </span>
-                    </div>
+                        <span v-else class="muted">none</span>
+                    </span>
+                </div>
+                <div class="agent-prop">
+                    <span class="agent-prop-label">Learning</span>
+                    <span class="agent-prop-value">{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</span>
+                </div>
+                <div class="agent-prop">
+                    <span class="agent-prop-label">Storage</span>
+                    <span class="agent-prop-value">{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</span>
+                </div>
+                <div class="agent-prop">
+                    <span class="agent-prop-label">Realms</span>
+                    <span class="agent-prop-value">
+                        <template v-if="selectedAgent.realms && selectedAgent.realms.length">
+                            <span v-for="r in selectedAgent.realms" :key="r" class="badge" :style="{ background: realmColor(r) + '33', color: realmColor(r), marginRight: '4px' }">{{ r }}</span>
+                        </template>
+                        <span v-else class="muted">none</span>
+                    </span>
                 </div>
             </div>
 
@@ -61,15 +89,32 @@
                 <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
                     &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
                 </small>
-                <label>Dream Mode
-                    <custom-select v-model="agentProfileDreamMode"
-                        :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
-                        placeholder="None" />
-                    <small class="ts">Post-session log analysis: companion (emotional/personal) or technical (work/code-focused)</small>
-                </label>
                 <label>Personality
                     <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
                 </label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <label>Dream Mode
+                        <custom-select v-model="agentProfileDreamMode"
+                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
+                            placeholder="None" />
+                    </label>
+                    <label>Storage Quota (MB)
+                        <input type="number" v-model="agentProfileStorageQuota" placeholder="blank = default" min="1">
+                    </label>
+                </div>
+                <label class="checkbox-label">
+                    <input type="checkbox" v-model="agentProfileLearningEnabled"> Learning enabled
+                </label>
+                <div>
+                    <label style="margin-bottom: 4px; display: block;">Realms</label>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <span v-for="r in hostedRealms" :key="r" class="badge" style="cursor: pointer; user-select: none;"
+                            :style="agentProfileRealms.includes(r)
+                                ? { background: realmColor(r) + '33', color: realmColor(r), border: '1px solid ' + realmColor(r) }
+                                : { background: 'transparent', color: 'var(--text-muted)', border: '1px dashed var(--border)' }"
+                            @click="toggleProfileRealm(r)">{{ r }}</span>
+                    </div>
+                </div>
                 <label v-if="selectedAgent.virtual">API Key
                     <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
                 </label>
@@ -165,30 +210,19 @@
                 <small v-if="agentUsageLoading" class="ts">Loading usage...</small>
             </div>
 
-            <!-- Configuration card (virtual agents) -->
-            <div v-if="selectedAgent.virtual" class="agent-card">
+            <!-- Model-specific configuration card (virtual agents with provider+model set) -->
+            <div v-if="selectedAgent.virtual && selectedAgent.provider && selectedAgent.model && Object.keys(capabilitiesFor(selectedAgent.provider, selectedAgent.model)).length > 0" class="agent-card">
                 <div class="agent-card-header">
-                    <span class="agent-card-title"><i class="icon-settings"></i>Configuration</span>
+                    <span class="agent-card-title"><i class="icon-settings"></i>Model Settings</span>
                     <button v-if="!agentSettingsEditing" class="btn btn-ghost btn-compact" @click="startEditSettings" title="Edit"><i class="icon-edit"></i></button>
                 </div>
                 <div v-if="!agentSettingsEditing" style="font-size: 13px; line-height: 1.8;">
-                    <span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span>
-                    <br><span>Storage quota: <strong>{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</strong></span>
                     <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
-                        <br><span>{{ cap.label }}: <strong>{{ formatConfigValue(key, parseAgentConfig(selectedAgent)[key], cap) }}</strong></span>
-                    </template>
-                    <template v-if="!selectedAgent.provider || !selectedAgent.model">
-                        <br><span class="ts">Set a provider and model to see configuration options.</span>
+                        <span>{{ cap.label }}: <strong>{{ formatConfigValue(key, parseAgentConfig(selectedAgent)[key], cap) }}</strong></span><br>
                     </template>
                 </div>
                 <!-- Edit mode -->
                 <div v-if="agentSettingsEditing">
-                    <label class="checkbox-label">
-                        <input type="checkbox" v-model="agentSettingsLearningEnabled"> Learning enabled
-                    </label>
-                    <label>Storage quota (MB)
-                        <input type="number" v-model="agentSettingsStorageQuota" placeholder="blank = default" min="1">
-                    </label>
                     <template v-for="(cap, key) in capabilitiesFor(selectedAgent.provider, selectedAgent.model)" :key="key">
                         <div v-if="capabilityVisible(cap, agentSettingsConfig)" style="margin-bottom: 8px;" :style="capabilityDisabled(cap, agentSettingsConfig) ? { opacity: 0.45 } : {}">
                             <label v-if="cap.type === 'boolean'" class="checkbox-label">
