@@ -39,86 +39,113 @@
 
             <!-- Agent properties (visible without editing) -->
             <div v-if="!agentProfileEditing" class="agent-properties">
-                <div v-if="selectedAgent.personality" class="agent-prop">
-                    <span class="agent-prop-label">Personality</span>
-                    <span class="agent-prop-value" style="font-style: italic;">{{ selectedAgent.personality }}</span>
+                <div v-if="selectedAgent.personality" class="agent-prop agent-prop--personality">
+                    <div class="agent-prop-label">Personality</div>
+                    <div class="agent-prop-value agent-prop-value--clamp" style="font-style: italic;">{{ selectedAgent.personality }}</div>
                 </div>
                 <div class="agent-prop">
-                    <span class="agent-prop-label">Dream</span>
-                    <span class="agent-prop-value">
-                        <span v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="badge" :style="{ background: selectedAgent.dream_mode === 'companion' ? '#7c3aed22' : '#0891b222', color: selectedAgent.dream_mode === 'companion' ? '#7c3aed' : '#0891b2' }">
-                            <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'" style="margin-right: 3px;"></i>{{ selectedAgent.dream_mode }}
+                    <div class="agent-prop-label">Dream</div>
+                    <div class="agent-prop-value">
+                        <span v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="status-pill">
+                            <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'"></i>{{ selectedAgent.dream_mode }}
                         </span>
                         <span v-else class="muted">none</span>
-                    </span>
+                    </div>
                 </div>
                 <div class="agent-prop">
-                    <span class="agent-prop-label">Learning</span>
-                    <span class="agent-prop-value">{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</span>
+                    <div class="agent-prop-label">Learning</div>
+                    <div class="agent-prop-value">
+                        <span class="status-pill">{{ selectedAgent.learning_enabled !== false ? 'Enabled' : 'Off' }}</span>
+                    </div>
                 </div>
                 <div class="agent-prop">
-                    <span class="agent-prop-label">Storage</span>
-                    <span class="agent-prop-value">{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</span>
+                    <div class="agent-prop-label">Storage</div>
+                    <div class="agent-prop-value agent-prop-value--numeric">{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</div>
                 </div>
-                <div class="agent-prop">
-                    <span class="agent-prop-label">Realms</span>
-                    <span class="agent-prop-value">
-                        <template v-if="selectedAgent.realms && selectedAgent.realms.length">
-                            <span v-for="r in selectedAgent.realms" :key="r" class="badge" :style="{ background: realmColor(r) + '33', color: realmColor(r), marginRight: '4px' }">{{ r }}</span>
-                        </template>
-                        <span v-else class="muted">none</span>
-                    </span>
+                <div class="agent-prop agent-prop--realms">
+                    <div class="agent-prop-label">Realms</div>
+                    <div class="agent-prop-value">
+                        <div v-if="selectedAgent.realms && selectedAgent.realms.length" class="realm-chip-list">
+                            <span v-for="r in selectedAgent.realms" :key="r" class="realm-chip is-active" :style="{ borderColor: realmColor(r) + '7a', background: realmColor(r) + '1a', color: realmColor(r) }">{{ r }}</span>
+                        </div>
+                        <span v-else class="status-pill">No realms</span>
+                    </div>
                 </div>
             </div>
 
             <!-- Profile edit form -->
-            <div v-if="agentProfileEditing" class="agent-card" style="margin-bottom: 20px;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <label>Provider
-                        <custom-select v-model="agentProfileProvider" @update:model-value="onProfileProviderChange"
-                            :options="[{ value: '', label: 'None' }].concat((providerRegistry || []).map(p => ({ value: p.name, label: p.label })))"
-                            placeholder="None" />
-                    </label>
-                    <label>Model
-                        <custom-select v-model="agentProfileModel"
-                            :options="[{ value: '', label: 'None' }].concat(modelsForProvider(agentProfileProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
-                            :allow-custom="agentProfileProvider === 'openrouter'"
-                            placeholder="None" />
-                    </label>
+            <div v-if="agentProfileEditing" class="identity-editor">
+                <div class="identity-group">
+                    <div class="identity-group-eyebrow">Model Configuration</div>
+                    <div class="identity-grid identity-grid--2">
+                        <label><span>Provider</span>
+                            <custom-select v-model="agentProfileProvider" @update:model-value="onProfileProviderChange"
+                                :options="[{ value: '', label: 'None' }].concat((providerRegistry || []).map(p => ({ value: p.name, label: p.label })))"
+                                placeholder="None" />
+                        </label>
+                        <label><span>Model</span>
+                            <custom-select v-model="agentProfileModel"
+                                :options="[{ value: '', label: 'None' }].concat(modelsForProvider(agentProfileProvider).map(m => ({ value: m.id, label: m.label + (m.deprecated ? ' (deprecated)' : '') })))"
+                                :allow-custom="agentProfileProvider === 'openrouter'"
+                                placeholder="None" />
+                        </label>
+                    </div>
+                    <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
+                        &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
+                    </small>
                 </div>
-                <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
-                    &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
-                </small>
-                <label>Personality
-                    <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
-                </label>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <label>Dream Mode
-                        <custom-select v-model="agentProfileDreamMode"
-                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
-                            placeholder="None" />
+
+                <div class="identity-group">
+                    <div class="identity-group-eyebrow">Behavior</div>
+                    <label class="identity-field identity-field--full"><span>Personality</span>
+                        <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
                     </label>
-                    <label>Storage Quota (MB)
-                        <input type="number" v-model="agentProfileStorageQuota" placeholder="blank = default" min="1">
-                    </label>
-                </div>
-                <label class="checkbox-label">
-                    <input type="checkbox" v-model="agentProfileLearningEnabled"> Learning enabled
-                </label>
-                <div>
-                    <label style="margin-bottom: 4px; display: block;">Realms</label>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                        <span v-for="r in hostedRealms" :key="r" class="badge" style="cursor: pointer; user-select: none;"
-                            :style="agentProfileRealms.includes(r)
-                                ? { background: realmColor(r) + '33', color: realmColor(r), border: '1px solid ' + realmColor(r) }
-                                : { background: 'transparent', color: 'var(--text-muted)', border: '1px dashed var(--border)' }"
-                            @click="toggleProfileRealm(r)">{{ r }}</span>
+                    <div class="identity-grid identity-grid--2 identity-grid--compact">
+                        <label><span>Dream Mode</span>
+                            <custom-select v-model="agentProfileDreamMode"
+                                :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
+                                placeholder="None" />
+                        </label>
+                        <label class="toggle-card"><span class="toggle-card__label">Learning</span>
+                            <span class="toggle-card__control">
+                                <input type="checkbox" v-model="agentProfileLearningEnabled">
+                                <span class="toggle-card__text">Enable memory learning</span>
+                            </span>
+                        </label>
                     </div>
                 </div>
-                <label v-if="selectedAgent.virtual">API Key
-                    <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
-                </label>
-                <div class="dialog-actions" style="margin-top: 12px;">
+
+                <div class="identity-group">
+                    <div class="identity-group-eyebrow">Scope &amp; Limits</div>
+                    <div class="identity-grid identity-grid--2 identity-grid--compact">
+                        <label><span>Storage Quota (MB)</span>
+                            <input type="number" v-model="agentProfileStorageQuota" placeholder="blank = default" min="1">
+                        </label>
+                    </div>
+                    <div class="identity-field identity-field--full" style="margin-top: 8px;">
+                        <div class="field-header">
+                            <span>Realms</span>
+                            <small>Select where this agent can operate</small>
+                        </div>
+                        <div class="realm-toggle-group">
+                            <button v-for="r in hostedRealms" :key="r" type="button" class="realm-chip"
+                                :class="{ 'is-active': agentProfileRealms.includes(r) }"
+                                :aria-pressed="agentProfileRealms.includes(r) ? 'true' : 'false'"
+                                :style="agentProfileRealms.includes(r) ? { borderColor: realmColor(r) + '7a', background: realmColor(r) + '1a', color: realmColor(r) } : {}"
+                                @click="toggleProfileRealm(r)">{{ r }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="selectedAgent.virtual" class="identity-group identity-group--sensitive">
+                    <div class="identity-group-eyebrow">Credentials</div>
+                    <label class="identity-field identity-field--full"><span>API Key</span>
+                        <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)" autocomplete="off">
+                        <small class="field-help">Stored encrypted for provider access.</small>
+                    </label>
+                </div>
+
+                <div class="dialog-actions" style="margin-top: 4px;">
                     <button class="btn btn-secondary btn-compact" @click="agentProfileEditing = false">Cancel</button>
                     <button class="btn btn-primary btn-compact" @click="saveProfile" :disabled="agentProfileSaving">Save</button>
                 </div>
