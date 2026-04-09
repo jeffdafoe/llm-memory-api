@@ -378,10 +378,12 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     // Subqueries for visibility and VA access summaries shown in the agent list
     let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
                 s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, s.storage_quota, ac.configuration,
+                a.realms,
                 COALESCE(vis.summary, 'self only') AS visibility_summary,
                 va.summary AS va_access_summary
          FROM agent_status s
          LEFT JOIN agent_configuration ac ON ac.actor_id = s.actor_id
+         LEFT JOIN actors a ON a.id = s.actor_id
          LEFT JOIN LATERAL (
              SELECT CASE
                  WHEN EXISTS (SELECT 1 FROM actor_visibility_configuration WHERE actor_id = s.actor_id AND target_actor_id IS NULL)
@@ -2134,6 +2136,7 @@ router.post('/admin/actors/list', requirePerm('agents', 'read'), adminRoute('act
         `SELECT a.id, a.name, a.created_at, a.visible_to_others, a.created_by,
                 (ac.actor_id IS NOT NULL) AS is_agent,
                 (a.password_hash IS NOT NULL) AS is_user,
+                a.realms,
                 s.status, s.last_seen, s.registered_at,
                 s.provider, s.model, s.virtual, s.personality,
                 s.active_since, ac.configuration,

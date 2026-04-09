@@ -24,6 +24,7 @@
                     <col style="width: 10em;">
                     <col style="width: 6em;">
                     <col style="width: 10em;">
+                    <col style="width: 10em;">
                     <col>
                     <col class="col-time">
                 </colgroup>
@@ -32,6 +33,7 @@
                         <th class="col-activity"></th>
                         <th class="sortable" @click="toggleActorSort('name')">Name <span class="sort-arrow" v-html="actorSortArrow('name')"></span></th>
                         <th class="sortable" @click="toggleActorSort('is_agent')">Type <span class="sort-arrow" v-html="actorSortArrow('is_agent')"></span></th>
+                        <th>Realms</th>
                         <th class="sortable" @click="toggleActorSort('personality')">Personality <span class="sort-arrow" v-html="actorSortArrow('personality')"></span></th>
                         <th class="sortable" @click="toggleActorSort('provider')">Provider / Model <span class="sort-arrow" v-html="actorSortArrow('provider')"></span></th>
                         <th class="sortable time-cell" @click="toggleActorSort('last_seen')">Last Seen <span class="sort-arrow" v-html="actorSortArrow('last_seen')"></span></th>
@@ -52,6 +54,9 @@
                         <td>
                             <span v-if="actor.is_agent" class="badge badge-type-agent">agent</span>
                             <span v-if="actor.is_user" class="badge badge-type-user">user</span>
+                        </td>
+                        <td>
+                            <span v-for="r in (actor.realms || [])" :key="r" class="badge" :style="{ background: realmColor(r) + '33', color: realmColor(r), marginRight: '4px' }">{{ r }}</span>
                         </td>
                         <td class="muted truncate" style="font-style: italic;">{{ actor.personality || '' }}</td>
                         <td class="muted">
