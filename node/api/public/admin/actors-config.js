@@ -395,6 +395,23 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
 
     // ─── Agent Configuration Save ───
 
+    // Rebuild editAgentConfig from the new model's capability defaults,
+    // preserving values for keys that exist in both old and new models
+    // (e.g. temperature). Drops keys that don't belong to the new model.
+    function rebuildConfigForModel(providerName, modelId) {
+        const caps = agentsModule.capabilitiesFor(providerName, modelId);
+        const oldConfig = editAgentConfig.value;
+        const newConfig = {};
+        for (const [key, cap] of Object.entries(caps)) {
+            if (oldConfig[key] !== undefined) {
+                newConfig[key] = oldConfig[key];
+            } else if (cap.default !== undefined) {
+                newConfig[key] = cap.default;
+            }
+        }
+        editAgentConfig.value = newConfig;
+    }
+
     function onEditProviderChange() {
         // For providers that support custom model IDs (e.g. OpenRouter), don't
         // auto-reset the model — let the user type whatever they want.
@@ -408,10 +425,22 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         } else {
             editAgentModel.value = '';
         }
+        rebuildConfigForModel(editAgentProvider.value, editAgentModel.value);
+    }
+
+    function onEditModelChange() {
+        rebuildConfigForModel(editAgentProvider.value, editAgentModel.value);
     }
 
     async function saveAgentConfiguration() {
         if (!selectedActorConfig.value) return;
+        // Block save if provider registry hasn't loaded — without it,
+        // configVersionFor returns null and the version stamp gets skipped,
+        // leaving stale _configVersion values in the stored config.
+        if (editAgentProvider.value && editAgentModel.value && !agentsModule.configVersionFor(editAgentProvider.value, editAgentModel.value)) {
+            showToast('Provider registry not loaded yet — please wait and try again', 'error');
+            return;
+        }
         agentConfigSaving.value = true;
         try {
             const body = { agent: selectedActorConfig.value.name };
@@ -562,6 +591,10 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
 
     async function createActor() {
         if (!newActorName.value.trim()) return;
+        if (editAgentProvider.value && editAgentModel.value && !agentsModule.configVersionFor(editAgentProvider.value, editAgentModel.value)) {
+            showToast('Provider registry not loaded yet — please wait and try again', 'error');
+            return;
+        }
         newActorCreating.value = true;
         try {
             const body = { name: newActorName.value.trim() };
@@ -760,7 +793,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         actorPasswordInput, actorPasswordSaving, setActorPassword, clearActorPassword,
         // Agent configuration editing
         editAgentProvider, editAgentModel, editAgentPersonality, editAgentApiKey, editAgentDreamMode, editAgentLearningEnabled, editAgentConfig,
-        agentConfigSaving, onEditProviderChange, saveAgentConfiguration,
+        agentConfigSaving, onEditProviderChange, onEditModelChange, saveAgentConfiguration,
         // Delete actor
         actorDeleting, deleteActor,
         // Create actor

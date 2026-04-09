@@ -45,12 +45,27 @@ router.post('/api/check-name', async (req, res) => {
     res.json(result);
 });
 
-// POST /api/register — redeem invite code, create agent, return passphrase
+// Resolve realm from request host using the realm_host_map config.
+// Falls back to 'llm-memory' if no mapping matches.
+function realmFromHost(req) {
+    const host = (req.get('x-forwarded-host') || req.get('host') || '').split(':')[0];
+    try {
+        const map = JSON.parse(config.get('realm_host_map') || '{}');
+        if (map[host]) return map[host];
+    } catch (e) { /* ignore parse errors */ }
+    return 'llm-memory';
+}
+
+// POST /api/register — create agent via invite code or open registration
 router.post('/api/register', async (req, res) => {
     const { code, name } = req.body;
+    const openRegistration = config.get('open_registration') === 'true';
 
-    if (!code || !name) {
-        return res.status(400).json({ error: 'Invite code and agent name are required' });
+    if (!name) {
+        return res.status(400).json({ error: 'Agent name is required' });
+    }
+    if (!code && !openRegistration) {
+        return res.status(400).json({ error: 'Invite code is required (open registration is disabled)' });
     }
 
     const { password, dream_mode } = req.body;
@@ -69,23 +84,33 @@ router.post('/api/register', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Validate invite code
-        const invite = await client.query(
-            `SELECT id, used_by, expires_at FROM invite_codes WHERE code = $1 FOR UPDATE`,
-            [code.trim()]
-        );
-        if (invite.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Invalid invite code' });
-        }
-        const inv = invite.rows[0];
-        if (inv.used_by) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'This invite code has already been used' });
-        }
-        if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'This invite code has expired' });
+        // Determine realm — from invite code if present, otherwise from host
+        let realm;
+        let inv = null;
+
+        if (code) {
+            // Validate invite code
+            const invite = await client.query(
+                `SELECT id, used_by, expires_at, realm FROM invite_codes WHERE code = $1 FOR UPDATE`,
+                [code.trim()]
+            );
+            if (invite.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Invalid invite code' });
+            }
+            inv = invite.rows[0];
+            if (inv.used_by) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'This invite code has already been used' });
+            }
+            if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'This invite code has expired' });
+            }
+            realm = inv.realm || 'llm-memory';
+        } else {
+            // Open registration — derive realm from request host
+            realm = realmFromHost(req);
         }
 
         // Check name availability (existing actors, existing namespaces)
@@ -112,10 +137,10 @@ router.post('/api/register', async (req, res) => {
         const passwordSalt = generateSalt();
         const passwordHash = hashToken(password, passwordSalt);
 
-        // Create actor (created_by is set to self after insert)
+        // Create actor with realm
         await client.query(
-            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status) VALUES ($1, $2, $3, $4, $5, 'active')`,
-            [agentName, passphraseHash, salt, passwordHash, passwordSalt]
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, realms) VALUES ($1, $2, $3, $4, $5, 'active', $6)`,
+            [agentName, passphraseHash, salt, passwordHash, passwordSalt, [realm]]
         );
         // Set created_by to self so the agent owns itself
         await client.query(
@@ -130,11 +155,13 @@ router.post('/api/register', async (req, res) => {
             [agentName, dreamMode]
         );
 
-        // Mark invite code as used
-        await client.query(
-            `UPDATE invite_codes SET used_by = $1, used_at = NOW() WHERE id = $2`,
-            [agentName, inv.id]
-        );
+        // Mark invite code as used (if one was provided)
+        if (inv) {
+            await client.query(
+                `UPDATE invite_codes SET used_by = $1, used_at = NOW() WHERE id = $2`,
+                [agentName, inv.id]
+            );
+        }
 
         // Get the new actor's ID for permission grants
         const actorResult = await client.query('SELECT id FROM actors WHERE name = $1', [agentName]);

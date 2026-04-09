@@ -97,10 +97,11 @@ function useDiscussions({ api, showToast, onEvent }) {
                 context: discussionContext.value || undefined
             });
             discussionCreating.value = false;
-            showToast('Discussion #' + data.discussion_id + ' created');
+            const newId = data.discussion ? data.discussion.id : data.discussion_id;
+            showToast('Discussion #' + newId + ' created');
             await loadDiscussions();
             // Open the new discussion
-            await viewDiscussion(data.discussion_id);
+            await viewDiscussion(newId);
         } catch (err) {
             showToast(err.message || 'Failed to create discussion', 'error');
         } finally {
