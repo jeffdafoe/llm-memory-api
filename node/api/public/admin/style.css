@@ -1174,79 +1174,8 @@ dialog article header button[aria-label="Close"]::after {
     border-color: var(--accent);
 }
 
-/* Identity editor — grouped edit form */
-.identity-editor {
-    display: grid;
-    gap: 12px;
-    margin-bottom: 20px;
-}
-.identity-group {
-    padding: 12px;
-    border-radius: 8px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
-}
-.identity-group--sensitive {
-    border-color: rgba(234, 179, 8, 0.2);
-}
-.identity-group-eyebrow {
-    margin-bottom: 10px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-}
-.identity-grid {
-    display: grid;
-    gap: 10px;
-}
-.identity-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.identity-grid--compact { align-items: start; }
-.identity-field { display: grid; gap: 4px; }
-.identity-field--full { margin-top: 4px; }
-.identity-editor label > span,
-.identity-field > span,
-.field-header > span {
-    display: inline-block;
-    margin-bottom: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-secondary);
-}
-.field-header { margin-bottom: 6px; }
-.field-header small,
-.field-help {
-    display: block;
-    margin-top: 2px;
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
-/* Learning toggle card */
-.toggle-card { display: grid; gap: 4px; min-height: 100%; }
-.toggle-card__label { margin-bottom: 0 !important; }
-.toggle-card__control {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 44px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-}
-.toggle-card__control input[type="checkbox"] { margin: 0; }
-.toggle-card__text {
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-
 @media (max-width: 720px) {
-    .agent-properties,
-    .identity-grid--2 { grid-template-columns: 1fr; }
-    .agent-prop--personality,
-    .agent-prop--realms { grid-column: auto; }
+    .agent-properties { font-size: 12px; }
 }
 
 .agent-avatar-lg {
