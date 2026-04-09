@@ -34,7 +34,7 @@ function useDashboard({ api, authenticated, onEvent }) {
             try {
                 const [detail, chat] = await Promise.all([
                     api('/admin/discussions/detail', { discussion_id: d.id }),
-                    api('/admin/chat', { channel: 'discussion-' + d.id, limit: 500 })
+                    api('/admin/chat', { discussion_id: d.id, limit: 500 })
                 ]);
                 return {
                     discussion: detail.discussion,
@@ -61,7 +61,7 @@ function useDashboard({ api, authenticated, onEvent }) {
                 try {
                     const [detail, chat] = await Promise.all([
                         api('/admin/discussions/detail', { discussion_id: live.discussion.id }),
-                        api('/admin/chat', { channel: 'discussion-' + live.discussion.id, limit: 500 })
+                        api('/admin/chat', { discussion_id: live.discussion.id, limit: 500 })
                     ]);
                     if (detail.discussion.status !== 'active') return null;
                     return {
