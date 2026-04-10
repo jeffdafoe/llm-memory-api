@@ -1255,7 +1255,7 @@ dialog article header button[aria-label="Close"]::after {
 /* Profile edit form — consistent spacing and label-above-input layout */
 .agent-profile-form > * + * { margin-top: 12px; }
 .agent-profile-form > .dialog-actions { margin-top: 16px; }
-.agent-profile-form label > input,
+.agent-profile-form label > input:not([type="checkbox"]):not([type="radio"]),
 .agent-profile-form label > textarea { display: block; width: 100%; margin-top: 4px; }
 
 .agent-card-header {
