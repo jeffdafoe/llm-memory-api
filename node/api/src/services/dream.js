@@ -184,8 +184,7 @@ async function runDream() {
         `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.last_dream_at
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
-         WHERE agc.dream_mode IN ('companion', 'technical')
-         AND agc.virtual = false`
+         WHERE agc.dream_mode IN ('companion', 'technical')`
     );
 
     if (agents.rows.length === 0) {
