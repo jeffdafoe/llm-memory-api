@@ -394,7 +394,8 @@ async function runDream() {
                         // No soul yet — first run, start fresh
                     }
 
-                    const soulUserMessage = '## Current soul document\n\n'
+                    const soulUserMessage = '## Agent: ' + agent.name + '\n\n'
+                        + '## Current soul document\n\n'
                         + (existingSoul || '(empty — first run)')
                         + '\n\n## Tonight\'s dream snapshot\n\n'
                         + content;
