@@ -1258,6 +1258,10 @@ dialog article header button[aria-label="Close"]::after {
 .agent-profile-form label > input:not([type="checkbox"]):not([type="radio"]),
 .agent-profile-form label > textarea { display: block; width: 100%; margin-top: 4px; }
 
+/* Cards with label > input need the same block layout as the profile form */
+.agent-card label > input:not([type="checkbox"]):not([type="radio"]),
+.agent-card label > textarea { display: block; width: 100%; margin-top: 4px; }
+
 .agent-card-header {
     display: flex;
     justify-content: space-between;
@@ -1344,6 +1348,64 @@ dialog article header button[aria-label="Close"]::after {
 
 .instructions-expand-btn:hover {
     text-decoration: underline;
+}
+
+/* Usage table: clickable rows and error highlighting */
+.clickable-row { cursor: pointer; }
+.clickable-row:hover { background: var(--surface-hover, rgba(255,255,255,0.05)); }
+.error-row { color: var(--error, #ef4444); }
+.badge-error { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+/* Call detail modal */
+.call-detail-dialog {
+    z-index: 1001;   /* above the agent dialog */
+}
+.call-detail-dialog article {
+    max-width: 800px;
+    max-height: 85vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.call-detail-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 0 4px;
+}
+.call-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    font-size: 13px;
+}
+.call-detail-section {
+    margin-bottom: 16px;
+}
+.call-detail-section h5 {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.call-detail-pre {
+    max-height: 300px;
+    overflow-y: auto;
+    font-size: 11px;
+    line-height: 1.5;
+    background: var(--bg-secondary, rgba(0,0,0,0.2));
+    border-radius: 6px;
+    padding: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.call-detail-error pre {
+    color: #ef4444;
+    background: rgba(239,68,68,0.08);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 11px;
+    white-space: pre-wrap;
 }
 
 .agent-detail-dialog p { margin-bottom: 6px; font-size: 13px; }
