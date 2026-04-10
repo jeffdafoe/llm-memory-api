@@ -10,7 +10,7 @@ const { searchMemory } = require('./memory');
 const { createProvider, decryptApiKey, calculateCost, getModelConfigVersion } = require('./provider');
 const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
-const { saveNote } = require('./documents');
+const { saveNote, readNote } = require('./documents');
 const config = require('./config');
 const { requireByName } = require('./actors');
 
@@ -705,10 +705,21 @@ async function loadRAGContext(agentName, query) {
     }
 }
 
+// Load the context/soul document for a virtual agent, if it exists.
+// Returns the soul text or empty string. Never throws.
+async function loadSoul(agentName) {
+    try {
+        const note = await readNote(agentName, 'context/soul');
+        return (note && note.content) ? note.content : '';
+    } catch (e) {
+        return '';
+    }
+}
+
 // Build the system prompt for a virtual agent.
 // Returns { static, dynamic } — static content is cacheable across calls,
 // dynamic content (RAG, closing) changes per message.
-function buildSystemPrompt(agent, discussion, ragContext) {
+function buildSystemPrompt(agent, discussion, ragContext, soul) {
     let staticPart = '';
 
     // Global bootstrap (prepended to all agents)
@@ -720,6 +731,11 @@ function buildSystemPrompt(agent, discussion, ragContext) {
     // Agent's own instructions (set via save_instructions)
     if (agent.startup_instructions) {
         staticPart += agent.startup_instructions + '\n\n';
+    }
+
+    // Soul document — accumulated identity from dream processing
+    if (soul) {
+        staticPart += soul + '\n\n';
     }
 
     // Discussion context — stable for the life of the discussion
@@ -780,7 +796,7 @@ function formatRelativeTime(sentAt) {
 
 // Build system prompt for direct chat (no discussion context).
 // Returns { static, dynamic } — static content is cacheable across calls.
-function buildDirectChatSystemPrompt(agent, ragContext) {
+function buildDirectChatSystemPrompt(agent, ragContext, soul) {
     let staticPart = '';
     var globalBootstrap = config.get('global_bootstrap') || '';
     if (globalBootstrap) {
@@ -788,6 +804,9 @@ function buildDirectChatSystemPrompt(agent, ragContext) {
     }
     if (agent.startup_instructions) {
         staticPart += agent.startup_instructions + '\n\n';
+    }
+    if (soul) {
+        staticPart += soul + '\n\n';
     }
     staticPart += `You are "${agent.agent}". You are chatting directly with another agent.`;
     if (agent.personality) {
@@ -835,7 +854,7 @@ function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
 
 // Build system prompt for mail replies.
 // Returns { static, dynamic } for consistency, though mail is one-shot (no caching benefit).
-function buildMailSystemPrompt(agent, ragContext) {
+function buildMailSystemPrompt(agent, ragContext, soul) {
     let staticPart = '';
     var globalBootstrap = config.get('global_bootstrap') || '';
     if (globalBootstrap) {
@@ -843,6 +862,9 @@ function buildMailSystemPrompt(agent, ragContext) {
     }
     if (agent.startup_instructions) {
         staticPart += agent.startup_instructions + '\n\n';
+    }
+    if (soul) {
+        staticPart += soul + '\n\n';
     }
     staticPart += `You are "${agent.agent}". You have received a mail message and should compose a reply.`;
     if (agent.personality) {
@@ -993,11 +1015,12 @@ async function handleVirtualAgent(payload) {
 
             const conf = buildProviderConf(agent);
 
-            // RAG context
+            // RAG context and soul
             const ragContext = await loadRAGContext(agent.agent, discussion.topic);
+            const soul = await loadSoul(agent.agent);
 
             // Build prompts
-            const systemPrompt = buildSystemPrompt(agent, discussion, ragContext);
+            const systemPrompt = buildSystemPrompt(agent, discussion, ragContext, soul);
             const userMessage = buildUserMessage(chatHistory, triggerType, voteQuestion);
 
             // Rate limit check
@@ -1131,9 +1154,10 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             ragQuery = prev.message + ' ' + messageText;
         }
         const ragContext = await loadRAGContext(agent.agent, ragQuery);
+        const soul = await loadSoul(agent.agent);
 
         // Build prompts
-        const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext);
+        const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul);
         const userMessage = buildDirectChatUserMessage(history, fromAgent, messageText);
 
         // Rate limit check
@@ -1263,9 +1287,10 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 
         // RAG context from the agent's namespace
         const ragContext = await loadRAGContext(agent.agent, `${mail.subject} ${mail.body}`);
+        const soul = await loadSoul(agent.agent);
 
         // Build prompts
-        const systemPrompt = buildMailSystemPrompt(agent, ragContext);
+        const systemPrompt = buildMailSystemPrompt(agent, ragContext, soul);
         const userMessage = buildMailUserMessage(mail);
 
         // Rate limit check
