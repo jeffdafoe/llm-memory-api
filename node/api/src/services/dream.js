@@ -111,47 +111,67 @@ function prefilterLog(content) {
 }
 
 // Extract unique speakers from conversation logs and group lines by speaker.
-// Handles two formats:
-//   memory-sync uploads: "[HH:MM speaker] message text"
-//   VA transcripts:      "- **From:** speaker" in metadata section
+// Handles three formats:
+//   memory-sync uploads:    "[HH:MM speaker] message text"
+//   VA transcript metadata: "- **From:** speaker"
+//   discussion history:     "speaker: message text" or "[timestamp] speaker: message text"
 // Returns a Map of speaker name → array of relevant lines.
 function extractSpeakers(content, agentName) {
     const lines = content.split('\n');
     const speakerLines = new Map();
+    const agentLower = agentName.toLowerCase();
 
     // Pattern for memory-sync format: [HH:MM speaker]
     const chatPattern = /^\[(\d{2}:\d{2})\s+(\S+)\]/;
     // Pattern for VA transcript metadata: - **From:** speaker
     const fromPattern = /^-\s+\*\*From:\*\*\s+(\S+)/;
+    // Pattern for discussion history: "speaker: message" or "[timestamp] speaker: message"
+    // Speaker names are agent identifiers (lowercase, may contain hyphens)
+    const discussionPattern = /^(?:\[.*?\]\s+)?([a-z][a-z0-9-]*):(?:\s|$)/;
 
     let currentSpeaker = null;
 
+    function addSpeaker(name, line) {
+        const lower = name.toLowerCase();
+        if (lower === agentLower) {
+            currentSpeaker = null;
+            return;
+        }
+        currentSpeaker = lower;
+        if (!speakerLines.has(lower)) {
+            speakerLines.set(lower, []);
+        }
+        if (line) {
+            speakerLines.get(lower).push(line);
+        }
+    }
+
     for (const line of lines) {
+        // Skip section headers and metadata
+        if (line.startsWith('##') || line.startsWith('---')) {
+            continue;
+        }
+
         const chatMatch = line.match(chatPattern);
         if (chatMatch) {
-            currentSpeaker = chatMatch[2].toLowerCase();
-            if (currentSpeaker !== agentName.toLowerCase()) {
-                if (!speakerLines.has(currentSpeaker)) {
-                    speakerLines.set(currentSpeaker, []);
-                }
-                speakerLines.get(currentSpeaker).push(line);
-            }
+            addSpeaker(chatMatch[2], line);
             continue;
         }
 
         const fromMatch = line.match(fromPattern);
         if (fromMatch) {
-            currentSpeaker = fromMatch[1].toLowerCase();
-            if (currentSpeaker !== agentName.toLowerCase()) {
-                if (!speakerLines.has(currentSpeaker)) {
-                    speakerLines.set(currentSpeaker, []);
-                }
-            }
+            addSpeaker(fromMatch[1], null);
+            continue;
+        }
+
+        const discussionMatch = line.match(discussionPattern);
+        if (discussionMatch) {
+            addSpeaker(discussionMatch[1], line);
             continue;
         }
 
         // Continuation lines belong to the current speaker
-        if (currentSpeaker && currentSpeaker !== agentName.toLowerCase() && line.trim()) {
+        if (currentSpeaker && line.trim()) {
             if (speakerLines.has(currentSpeaker)) {
                 speakerLines.get(currentSpeaker).push(line);
             }
