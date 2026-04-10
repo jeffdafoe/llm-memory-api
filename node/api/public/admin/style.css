@@ -1972,6 +1972,19 @@ dialog article header button[aria-label="Close"]::after {
     min-height: 0;
 }
 
+.live-chat-input {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 8px;
+    flex-shrink: 0;
+}
+.live-chat-input input {
+    flex: 1;
+    margin: 0;
+}
+
 /* Activity pulse dot — blue, not green (green = online status, blue = actively working) */
 .live-pulse-dot {
     display: inline-block;
