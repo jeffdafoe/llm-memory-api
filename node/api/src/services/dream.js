@@ -253,7 +253,8 @@ async function runDream() {
 
     // Find agents with dream mode enabled
     const agents = await pool.query(
-        `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.last_dream_at
+        `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.last_dream_at,
+                agc.startup_instructions
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
          WHERE agc.dream_mode IN ('companion', 'technical')`
@@ -395,6 +396,9 @@ async function runDream() {
                     }
 
                     const soulUserMessage = '## Agent: ' + agent.name + '\n\n'
+                        + (agent.startup_instructions
+                            ? '## Character description\n\n' + agent.startup_instructions + '\n\n'
+                            : '')
                         + '## Current soul document\n\n'
                         + (existingSoul || '(empty — first run)')
                         + '\n\n## Tonight\'s dream snapshot\n\n'
