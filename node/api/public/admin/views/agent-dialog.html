@@ -40,7 +40,12 @@
             <!-- Agent properties (visible without editing) -->
             <div v-if="!agentProfileEditing" class="agent-properties">
                 <div v-if="selectedAgent.personality" style="font-style: italic; color: var(--text-secondary); margin-bottom: 4px;">{{ selectedAgent.personality }}</div>
-                <span>Dream Mode: <strong>{{ selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none' ? selectedAgent.dream_mode : 'none' }}</strong></span>
+                <span>Dream Mode:
+                    <span v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="badge" :style="{ background: selectedAgent.dream_mode === 'companion' ? '#7c3aed22' : '#0891b222', color: selectedAgent.dream_mode === 'companion' ? '#7c3aed' : '#0891b2' }">
+                        <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'" style="margin-right: 3px;"></i>{{ selectedAgent.dream_mode }}
+                    </span>
+                    <strong v-else>none</strong>
+                </span>
                 <br><span>Learning: <strong>{{ selectedAgent.learning_enabled !== false ? 'on' : 'off' }}</strong></span>
                 <br><span>Storage: <strong>{{ selectedAgent.storage_quota != null ? Math.round(selectedAgent.storage_quota / (1024 * 1024)) + ' MB' : 'default (' + Math.round(defaultStorageQuota / (1024 * 1024)) + ' MB)' }}</strong></span>
                 <br><span>Realms:
