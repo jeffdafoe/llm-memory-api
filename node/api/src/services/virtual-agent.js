@@ -308,12 +308,23 @@ async function invokeAgent(agentName, options) {
     };
 
     let result;
+    const callStart = Date.now();
     try {
         if (options.skipRetry !== false) {
             result = await callFn();
         } else {
             result = await retryWithBackoff(agentName, callFn);
         }
+    } catch (err) {
+        // Log the failed call before re-throwing
+        const durationMs = Date.now() - callStart;
+        logCall({
+            actorId: actor.id, agentName, context: options.context,
+            provider: agent.provider, model: agent.model,
+            systemPrompt, userMessage: options.userMessage,
+            error: err, durationMs,
+        }).catch(() => {});
+        throw err;
     } finally {
         // Clear active status when done (keep last_seen updated)
         await pool.query(
@@ -322,6 +333,7 @@ async function invokeAgent(agentName, options) {
         ).catch(() => {});
     }
 
+    const durationMs = Date.now() - callStart;
     const { text, usage } = result;
 
     // Record rate limit call
@@ -338,6 +350,14 @@ async function invokeAgent(agentName, options) {
          usage.cache_creation_input_tokens || 0, usage.cache_read_input_tokens || 0,
          cost, options.context || null]
     );
+
+    // Log full call details (fire-and-forget)
+    logCall({
+        actorId: actor.id, agentName, context: options.context,
+        provider: agent.provider, model: agent.model,
+        systemPrompt, userMessage: options.userMessage,
+        response: text, usage, cost, durationMs,
+    }).catch(() => {});
 
     logVA('invoke', { agent: agentName, context: options.context || null, cost: cost.toFixed(6),
         input: usage.input_tokens || 0, output: usage.output_tokens || 0 });
@@ -463,6 +483,74 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
 
     const title = `${triggerType} — ${datePart} ${timePart}`;
     await saveNote(agentName, title, content, slug, agentName);
+}
+
+// Log a virtual agent call to the virtual_agent_calls table.
+// Captures full request/response for diagnostics and fine-tuning.
+// Fire-and-forget — call with .catch() from the handler.
+// Options:
+//   actorId        — actor ID of the virtual agent
+//   agentName      — agent name (for logging)
+//   context        — trigger type (mail, chat, discussion, dream, soul, learning)
+//   contextId      — mail UUID, discussion ID, etc.
+//   provider/model — which provider and model were called
+//   systemPrompt   — system prompt (string or { static, dynamic } object)
+//   userMessage    — user/input message
+//   response       — response text (or null on failure)
+//   usage          — token usage object from provider (or null on failure)
+//   cost           — calculated cost (or 0 on failure)
+//   durationMs     — wall-clock time for the call
+//   error          — error object (if the call failed)
+async function logCall(options) {
+    try {
+        // Extract the static portion of the system prompt (skip RAG context)
+        let systemText;
+        if (typeof options.systemPrompt === 'string') {
+            systemText = options.systemPrompt;
+        } else if (options.systemPrompt && options.systemPrompt.static) {
+            systemText = options.systemPrompt.static;
+        } else if (options.systemPrompt) {
+            const { flattenPrompt } = require('./provider');
+            systemText = flattenPrompt(options.systemPrompt);
+        } else {
+            systemText = null;
+        }
+
+        const usage = options.usage || {};
+        const status = options.error ? 'error' : 'success';
+        const statusCode = options.error ? (options.error.status || options.error.statusCode || null) : null;
+
+        await pool.query(
+            `INSERT INTO virtual_agent_calls
+             (actor_id, context, context_id, provider, model, system_prompt, user_message,
+              response, status, status_code, error_message,
+              input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+              cost, duration_ms)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+            [
+                options.actorId,
+                options.context || null,
+                options.contextId || null,
+                options.provider,
+                options.model,
+                systemText,
+                options.userMessage || null,
+                options.error ? (options.error.message || String(options.error)) : (options.response || null),
+                status,
+                statusCode,
+                options.error ? (options.error.message || String(options.error)) : null,
+                usage.input_tokens || 0,
+                usage.output_tokens || 0,
+                usage.cache_read_input_tokens || 0,
+                usage.cache_creation_input_tokens || 0,
+                options.cost || 0,
+                options.durationMs || null,
+            ]
+        );
+    } catch (err) {
+        // Never let call logging break the main flow
+        logVA('call-log-error', { agent: options.agentName, error: err.message });
+    }
 }
 
 // Extract learnings from an interaction and save as a note in the agent's namespace.
@@ -928,10 +1016,21 @@ async function handleVirtualAgent(payload) {
             // stalling other participants with a long retry cycle.
             const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
             recordCall(agent.agent);
+            const discussionCallStart = Date.now();
             const { text: response, usage } = await withActivityIndicator(agent.agent, () =>
                 providerFn(systemPrompt, userMessage, { cache: true })
             );
+            const discussionDurationMs = Date.now() - discussionCallStart;
             await recordUsage(agent.agent, agent.provider, agent.model, usage, 'discussion');
+
+            // Fire-and-forget call logging
+            const discussionCost = calculateCost(agent.provider, agent.model, usage);
+            logCall({
+                actorId: agent.actor_id, agentName: agent.agent, context: 'discussion',
+                contextId: String(discussionId), provider: agent.provider, model: agent.model,
+                systemPrompt, userMessage, response, usage, cost: discussionCost,
+                durationMs: discussionDurationMs,
+            }).catch(() => {});
 
             // Handle vote-proposed: parse response and cast ballot
             if (triggerType === 'vote-proposed' && voteId) {
@@ -971,6 +1070,12 @@ async function handleVirtualAgent(payload) {
         } catch (err) {
             // Provider failed — remove the agent from the discussion so it
             // doesn't block other participants. Error ping will recover it later.
+            const discussionErrDuration = typeof discussionCallStart !== 'undefined' ? Date.now() - discussionCallStart : null;
+            logCall({
+                actorId: agent.actor_id, agentName: agent.agent, context: 'discussion',
+                contextId: String(discussionId), provider: agent.provider, model: agent.model,
+                systemPrompt, userMessage, error: err, durationMs: discussionErrDuration,
+            }).catch(() => {});
             logError('virtual-agent', 'discussion-agent-error', {
                 agent: agent.agent,
                 context: 'discussion',
@@ -1048,6 +1153,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // On first failure, send an immediate chat message so the sender knows retries are in progress.
         const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
+        const chatCallStart = Date.now();
         const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
             withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, { cache: true })),
             async (err, retryInfo) => {
@@ -1055,7 +1161,17 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
                     `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, null);
             }
         );
+        const chatDurationMs = Date.now() - chatCallStart;
         await recordUsage(agent.agent, agent.provider, agent.model, usage, 'chat');
+
+        // Fire-and-forget call logging
+        const chatCost = calculateCost(agent.provider, agent.model, usage);
+        logCall({
+            actorId: agent.actor_id, agentName: agent.agent, context: 'chat',
+            provider: agent.provider, model: agent.model,
+            systemPrompt, userMessage, response, usage, cost: chatCost,
+            durationMs: chatDurationMs,
+        }).catch(() => {});
 
         // Send response as direct chat back to the sender
         await chatSend(agent.agent, [fromAgent], null, response);
@@ -1082,6 +1198,15 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
+        // Log the failed call
+        const chatErrDuration = typeof chatCallStart !== 'undefined' ? Date.now() - chatCallStart : null;
+        logCall({
+            actorId: agent ? agent.actor_id : null, agentName: virtualAgentName, context: 'chat',
+            provider: agent ? agent.provider : 'unknown', model: agent ? agent.model : 'unknown',
+            systemPrompt: typeof systemPrompt !== 'undefined' ? systemPrompt : null,
+            userMessage: typeof userMessage !== 'undefined' ? userMessage : messageText,
+            error: err, durationMs: chatErrDuration,
+        }).catch(() => {});
         logError('virtual-agent', 'direct-chat-error', {
             agent: virtualAgentName,
             context: 'chat',
@@ -1162,6 +1287,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
         const replySubjectPrefix = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
+        const mailCallStart = Date.now();
         const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
             withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage)),
             async (err, retryInfo) => {
@@ -1171,7 +1297,17 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
                     mailId);
             }
         );
+        const mailDurationMs = Date.now() - mailCallStart;
         await recordUsage(agent.agent, agent.provider, agent.model, usage, 'mail');
+
+        // Fire-and-forget call logging
+        const mailCost = calculateCost(agent.provider, agent.model, usage);
+        logCall({
+            actorId: agent.actor_id, agentName: agent.agent, context: 'mail',
+            contextId: mailId, provider: agent.provider, model: agent.model,
+            systemPrompt, userMessage, response, usage, cost: mailCost,
+            durationMs: mailDurationMs,
+        }).catch(() => {});
 
         // Ack the incoming mail (virtual agent "read" it)
         await pool.query(
@@ -1197,6 +1333,15 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
         });
     } catch (err) {
+        // Log the failed call
+        const mailErrDuration = typeof mailCallStart !== 'undefined' ? Date.now() - mailCallStart : null;
+        logCall({
+            actorId: agent ? agent.actor_id : null, agentName: virtualAgentName, context: 'mail',
+            contextId: mailId, provider: agent ? agent.provider : 'unknown', model: agent ? agent.model : 'unknown',
+            systemPrompt: typeof systemPrompt !== 'undefined' ? systemPrompt : null,
+            userMessage: typeof userMessage !== 'undefined' ? userMessage : null,
+            error: err, durationMs: mailErrDuration,
+        }).catch(() => {});
         logError('virtual-agent', 'direct-mail-error', {
             agent: virtualAgentName,
             context: 'mail',
