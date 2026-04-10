@@ -436,11 +436,12 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
         delete row.configuration;
     }
 
-    // Include global default storage quota so the frontend can display it
+    // Include global defaults so the frontend can display them
     const config = require('../services/config');
     const defaultStorageQuota = parseInt(config.get('default_storage_quota')) || 52428800;
+    const hostedRealms = (config.get('hosted_realms') || '').split(',').map(r => r.trim()).filter(Boolean);
 
-    res.json({ agents: result.rows, default_storage_quota: defaultStorageQuota });
+    res.json({ agents: result.rows, default_storage_quota: defaultStorageQuota, hosted_realms: hostedRealms });
 }));
 
 // POST /admin/agents/instructions/read — read an agent's startup instructions
@@ -1933,7 +1934,7 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
                 agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
                 agc.cost_budget_daily, agc.cost_budget_monthly, agc.storage_quota,
                 agc.api_key IS NOT NULL AS has_api_key,
-                agc.dream_mode
+                agc.dream_mode, ac.realms
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
          WHERE agc.actor_id = $1`,
@@ -1995,7 +1996,7 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
     const agent = sanitize.agentName(req.body.agent);
     const { personality, api_key, configuration, provider, model,
             cost_budget_daily, cost_budget_monthly, storage_quota,
-            cache_prompts, learning_enabled, max_tokens, temperature, dream_mode } = req.body;
+            cache_prompts, learning_enabled, max_tokens, temperature, dream_mode, realms } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -2081,19 +2082,30 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         updates.push(`dream_mode = $${idx++}`);
     }
 
-    if (updates.length === 0) {
+    // Realms lives on actors table, not agent_configuration — handle separately
+    const hasRealmsUpdate = Array.isArray(realms);
+
+    if (updates.length === 0 && !hasRealmsUpdate) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'No fields to update' }
         });
     }
 
-    params.push(actor.id);
-    await pool.query(
-        `UPDATE agent_configuration SET ${updates.join(', ')} WHERE actor_id = $${idx}`,
-        params
-    );
+    if (updates.length > 0) {
+        params.push(actor.id);
+        await pool.query(
+            `UPDATE agent_configuration SET ${updates.join(', ')} WHERE actor_id = $${idx}`,
+            params
+        );
+    }
 
-    logAdmin('agent_update', { agent, fields: updates.map(u => u.split(' ')[0]), user_id: req.authenticatedUser.id });
+    if (hasRealmsUpdate) {
+        await pool.query('UPDATE actors SET realms = $1 WHERE id = $2', [realms, actor.id]);
+    }
+
+    const allFields = updates.map(u => u.split(' ')[0]);
+    if (hasRealmsUpdate) allFields.push('realms');
+    logAdmin('agent_update', { agent, fields: allFields, user_id: req.authenticatedUser.id });
 
     res.json({ agent, updated: true });
 }));
