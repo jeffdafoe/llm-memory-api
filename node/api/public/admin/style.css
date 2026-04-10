@@ -1906,7 +1906,7 @@ dialog article header button[aria-label="Close"]::after {
 .dashboard-page-content.dashboard-live-active {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden !important;
 }
 
 /* Stat strip — compact horizontal row */
