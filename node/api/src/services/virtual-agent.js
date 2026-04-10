@@ -716,10 +716,37 @@ async function loadSoul(agentName) {
     }
 }
 
+// Load per-person relationship files for a virtual agent.
+// counterparts is an array of agent names the VA is interacting with.
+// Returns formatted string or empty. Never throws.
+async function loadPeopleContext(agentName, counterparts) {
+    if (!counterparts || counterparts.length === 0) {
+        return '';
+    }
+
+    const sections = [];
+    for (const person of counterparts) {
+        try {
+            const note = await readNote(agentName, 'context/people/' + person.toLowerCase());
+            if (note && note.content) {
+                sections.push('## Your impressions of ' + person + '\n\n' + note.content);
+            }
+        } catch (e) {
+            // No relationship file for this person — that's fine
+        }
+    }
+
+    if (sections.length === 0) {
+        return '';
+    }
+
+    return sections.join('\n\n');
+}
+
 // Build the system prompt for a virtual agent.
 // Returns { static, dynamic } — static content is cacheable across calls,
 // dynamic content (RAG, closing) changes per message.
-function buildSystemPrompt(agent, discussion, ragContext, soul) {
+function buildSystemPrompt(agent, discussion, ragContext, soul, peopleContext) {
     let staticPart = '';
 
     // Global bootstrap (prepended to all agents)
@@ -736,6 +763,11 @@ function buildSystemPrompt(agent, discussion, ragContext, soul) {
     // Soul document — accumulated identity from dream processing
     if (soul) {
         staticPart += soul + '\n\n';
+    }
+
+    // Per-person relationship impressions from dream processing
+    if (peopleContext) {
+        staticPart += peopleContext + '\n\n';
     }
 
     // Discussion context — stable for the life of the discussion
@@ -796,7 +828,7 @@ function formatRelativeTime(sentAt) {
 
 // Build system prompt for direct chat (no discussion context).
 // Returns { static, dynamic } — static content is cacheable across calls.
-function buildDirectChatSystemPrompt(agent, ragContext, soul) {
+function buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext) {
     let staticPart = '';
     var globalBootstrap = config.get('global_bootstrap') || '';
     if (globalBootstrap) {
@@ -807,6 +839,9 @@ function buildDirectChatSystemPrompt(agent, ragContext, soul) {
     }
     if (soul) {
         staticPart += soul + '\n\n';
+    }
+    if (peopleContext) {
+        staticPart += peopleContext + '\n\n';
     }
     staticPart += `You are "${agent.agent}". You are chatting directly with another agent.`;
     if (agent.personality) {
@@ -854,7 +889,7 @@ function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
 
 // Build system prompt for mail replies.
 // Returns { static, dynamic } for consistency, though mail is one-shot (no caching benefit).
-function buildMailSystemPrompt(agent, ragContext, soul) {
+function buildMailSystemPrompt(agent, ragContext, soul, peopleContext) {
     let staticPart = '';
     var globalBootstrap = config.get('global_bootstrap') || '';
     if (globalBootstrap) {
@@ -865,6 +900,9 @@ function buildMailSystemPrompt(agent, ragContext, soul) {
     }
     if (soul) {
         staticPart += soul + '\n\n';
+    }
+    if (peopleContext) {
+        staticPart += peopleContext + '\n\n';
     }
     staticPart += `You are "${agent.agent}". You have received a mail message and should compose a reply.`;
     if (agent.personality) {
@@ -1015,12 +1053,17 @@ async function handleVirtualAgent(payload) {
 
             const conf = buildProviderConf(agent);
 
-            // RAG context and soul
+            // RAG context, soul, and people impressions
             const ragContext = await loadRAGContext(agent.agent, discussion.topic);
             const soul = await loadSoul(agent.agent);
+            // Load impressions of all other participants in this discussion
+            const counterparts = participants
+                .filter(p => p.agent !== agent.agent && p.status === 'joined')
+                .map(p => p.agent);
+            const peopleContext = await loadPeopleContext(agent.agent, counterparts);
 
             // Build prompts
-            const systemPrompt = buildSystemPrompt(agent, discussion, ragContext, soul);
+            const systemPrompt = buildSystemPrompt(agent, discussion, ragContext, soul, peopleContext);
             const userMessage = buildUserMessage(chatHistory, triggerType, voteQuestion);
 
             // Rate limit check
@@ -1155,9 +1198,10 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         }
         const ragContext = await loadRAGContext(agent.agent, ragQuery);
         const soul = await loadSoul(agent.agent);
+        const peopleContext = await loadPeopleContext(agent.agent, [fromAgent]);
 
         // Build prompts
-        const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul);
+        const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
         const userMessage = buildDirectChatUserMessage(history, fromAgent, messageText);
 
         // Rate limit check
@@ -1288,9 +1332,10 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         // RAG context from the agent's namespace
         const ragContext = await loadRAGContext(agent.agent, `${mail.subject} ${mail.body}`);
         const soul = await loadSoul(agent.agent);
+        const peopleContext = await loadPeopleContext(agent.agent, [fromAgent]);
 
         // Build prompts
-        const systemPrompt = buildMailSystemPrompt(agent, ragContext, soul);
+        const systemPrompt = buildMailSystemPrompt(agent, ragContext, soul, peopleContext);
         const userMessage = buildMailUserMessage(mail);
 
         // Rate limit check
