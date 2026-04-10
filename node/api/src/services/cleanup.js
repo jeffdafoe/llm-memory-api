@@ -76,12 +76,12 @@ function buildDecayConditions(threshold) {
 
 // Soft-delete notes whose decay factor has dropped below the threshold.
 async function runDecayCleanup() {
-    if (config.get('decay_cleanup_enabled') !== 'true') {
-        logCleanup('decay-skip', { reason: 'decay_cleanup_enabled is false' });
+    if (config.get('cleanup_enabled') !== 'true') {
+        logCleanup('decay-skip', { reason: 'cleanup_enabled is false' });
         return { skipped: true, reason: 'disabled' };
     }
 
-    const threshold = parseFloat(config.get('search_decay_cleanup_threshold')) || 0.05;
+    const threshold = parseFloat(config.get('cleanup_decay_threshold')) || 0.05;
     const { conditions, params } = buildDecayConditions(threshold);
 
     if (conditions.length === 0) {
@@ -173,10 +173,10 @@ let scheduledTask = null;
 
 function startCleanupScheduler() {
     const cron = require('node-cron');
-    const schedule = config.get('decay_cleanup_cron_schedule') || '';
+    const schedule = config.get('cleanup_cron_schedule') || '';
 
     if (!schedule) {
-        logCleanup('scheduler', { message: 'No decay_cleanup_cron_schedule configured, scheduler disabled' });
+        logCleanup('scheduler', { message: 'No cleanup_cron_schedule configured, scheduler disabled' });
         return;
     }
 
