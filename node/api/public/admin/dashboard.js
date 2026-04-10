@@ -125,9 +125,30 @@ function useDashboard({ api, authenticated, onEvent }) {
         });
     }
 
+    // Live chat input
+    const liveChatText = ref('');
+    const liveChatSending = ref(false);
+
+    async function sendLiveChat(discussionId) {
+        const message = liveChatText.value.trim();
+        if (!message || liveChatSending.value) return;
+        liveChatSending.value = true;
+        try {
+            await api('/admin/discussions/send', { discussion_id: discussionId, message });
+            liveChatText.value = '';
+            await refreshLiveChats();
+            scrollLiveChats(true);
+        } catch (err) {
+            console.error('Failed to send chat:', err);
+        } finally {
+            liveChatSending.value = false;
+        }
+    }
+
     return {
         dashboard, liveDiscussions,
-        loadDashboard, startLivePolling, stopLivePolling
+        loadDashboard, startLivePolling, stopLivePolling,
+        liveChatText, liveChatSending, sendLiveChat
     };
 }
 

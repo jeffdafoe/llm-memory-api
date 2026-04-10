@@ -72,6 +72,11 @@
                     </div>
                 </template>
             </div>
+            <div v-if="canDo('comms', 'write')" class="live-chat-input">
+                <input type="text" v-model="liveChatText" placeholder="Send a message..."
+                    @keydown.enter="sendLiveChat(live.discussion.id)" :disabled="liveChatSending">
+                <button class="btn btn-primary btn-compact" @click="sendLiveChat(live.discussion.id)" :disabled="liveChatSending || !liveChatText.trim()">Send</button>
+            </div>
         </div>
     </template>
 
