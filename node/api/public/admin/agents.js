@@ -6,6 +6,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
     const selectedAgent = ref(null);
     const defaultStorageQuota = ref(52428800); // updated from backend on load
+    const hostedRealms = ref([]); // available realms from config
 
     // Sortable table — default sort by agent name
     const agentSort = useSortable(agents, 'agent', 'asc');
@@ -36,6 +37,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentProfileApiKey = ref('');
     const agentProfilePersonality = ref('');
     const agentProfileDreamMode = ref('none');
+    const agentProfileLearningEnabled = ref(true);
+    const agentProfileStorageQuota = ref('');
+    const agentProfileRealms = ref([]);
     const agentProfileSaving = ref(false);
 
     // Cost budgets
@@ -47,10 +51,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentUsageHistory = ref([]);
     const agentUsageLoading = ref(false);
 
-    // Agent settings (dynamic configuration)
+    // Agent settings (model-specific configuration only)
     const agentSettingsEditing = ref(false);
-    const agentSettingsLearningEnabled = ref(true);
-    const agentSettingsStorageQuota = ref('');
     const agentSettingsConfig = ref({});
     const agentSettingsSaving = ref(false);
 
@@ -246,6 +248,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             if (data.default_storage_quota) {
                 defaultStorageQuota.value = data.default_storage_quota;
             }
+            if (data.hosted_realms) {
+                hostedRealms.value = data.hosted_realms;
+            }
             if (selectedAgent.value) {
                 const updated = data.agents.find(a => a.agent === selectedAgent.value.agent);
                 // Merge list data onto existing selectedAgent so detail-only fields (configuration, expertise, etc.) survive
@@ -269,10 +274,22 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentProfileModel.value = selectedAgent.value.model || '';
         agentProfilePersonality.value = selectedAgent.value.personality || '';
         agentProfileDreamMode.value = selectedAgent.value.dream_mode || 'none';
+        agentProfileLearningEnabled.value = selectedAgent.value.learning_enabled !== false;
+        agentProfileStorageQuota.value = selectedAgent.value.storage_quota != null ? Math.round(selectedAgent.value.storage_quota / (1024 * 1024)) : '';
+        agentProfileRealms.value = selectedAgent.value.realms ? [...selectedAgent.value.realms] : [];
         agentProfileApiKey.value = '';
         // Pre-fetch catalog if editing an agent already on OpenRouter
         if (agentProfileProvider.value === 'openrouter') {
             loadOpenRouterCatalog();
+        }
+    }
+
+    function toggleProfileRealm(realm) {
+        const idx = agentProfileRealms.value.indexOf(realm);
+        if (idx >= 0) {
+            agentProfileRealms.value.splice(idx, 1);
+        } else {
+            agentProfileRealms.value.push(realm);
         }
     }
 
@@ -294,12 +311,16 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     async function saveProfile() {
         agentProfileSaving.value = true;
         try {
+            const quotaBytes = agentProfileStorageQuota.value !== '' ? parseInt(agentProfileStorageQuota.value) * 1024 * 1024 : null;
             const body = {
                 agent: selectedAgent.value.agent,
                 provider: agentProfileProvider.value || null,
                 model: agentProfileModel.value || null,
                 personality: agentProfilePersonality.value || null,
-                dream_mode: agentProfileDreamMode.value || 'none'
+                dream_mode: agentProfileDreamMode.value || 'none',
+                learning_enabled: agentProfileLearningEnabled.value,
+                storage_quota: quotaBytes,
+                realms: agentProfileRealms.value
             };
             if (agentProfileApiKey.value) {
                 body.api_key = agentProfileApiKey.value;
@@ -309,6 +330,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             selectedAgent.value.model = agentProfileModel.value || null;
             selectedAgent.value.personality = agentProfilePersonality.value || null;
             selectedAgent.value.dream_mode = agentProfileDreamMode.value || 'none';
+            selectedAgent.value.learning_enabled = agentProfileLearningEnabled.value;
+            selectedAgent.value.storage_quota = quotaBytes;
+            selectedAgent.value.realms = [...agentProfileRealms.value];
             agentProfileEditing.value = false;
             showToast('Profile updated', 'success');
         } catch (err) {
@@ -363,8 +387,6 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     function startEditSettings() {
         loadProviderRegistry();
         agentSettingsEditing.value = true;
-        agentSettingsLearningEnabled.value = selectedAgent.value.learning_enabled !== false;
-        agentSettingsStorageQuota.value = selectedAgent.value.storage_quota != null ? Math.round(selectedAgent.value.storage_quota / (1024 * 1024)) : '';
 
         // Load config, filling in defaults from capabilities where not set
         const conf = parseAgentConfig(selectedAgent.value);
@@ -386,16 +408,11 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             if (version != null) {
                 configCopy._configVersion = version;
             }
-            const quotaBytes = agentSettingsStorageQuota.value !== '' ? parseInt(agentSettingsStorageQuota.value) * 1024 * 1024 : null;
             const body = {
                 agent: selectedAgent.value.agent,
-                learning_enabled: agentSettingsLearningEnabled.value,
-                storage_quota: quotaBytes,
                 configuration: configCopy
             };
             await api('/admin/agents/update', body);
-            selectedAgent.value.learning_enabled = body.learning_enabled;
-            selectedAgent.value.storage_quota = quotaBytes;
             selectedAgent.value.configuration = JSON.stringify(configCopy);
             // Sync legacy columns for display consistency
             if (agentSettingsConfig.value.cache_prompts !== undefined) {
@@ -660,13 +677,15 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentInstructions, agentInstructionsEditing, agentInstructionsExpanded, agentInstructionsEditContent, agentInstructionsSaving,
         agentExpertise, agentExpertiseEditing, agentExpertiseEditText, agentExpertiseSaving,
         agentPassphraseConfirming, agentNewPassphrase,
-        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileDreamMode, agentProfileSaving,
+        agentProfileEditing, agentProfileProvider, agentProfileModel, agentProfileApiKey, agentProfilePersonality, agentProfileDreamMode,
+        agentProfileLearningEnabled, agentProfileStorageQuota, agentProfileRealms, agentProfileSaving,
+        hostedRealms,
         loadAgents, viewAgent,
-        startEditProfile, onProfileProviderChange, saveProfile,
+        startEditProfile, onProfileProviderChange, toggleProfileRealm, saveProfile,
         costBudgetEditing, costBudgetDailyValue, costBudgetMonthlyValue, startEditCostBudget, saveCostBudget,
         agentUsageHistory, agentUsageLoading, loadUsageHistory,
         defaultStorageQuota,
-        agentSettingsEditing, agentSettingsLearningEnabled, agentSettingsStorageQuota, agentSettingsConfig, agentSettingsSaving,
+        agentSettingsEditing, agentSettingsConfig, agentSettingsSaving,
         startEditSettings, saveSettings,
         startEditInstructions, cancelEditInstructions, saveInstructions,
         startEditExpertise, cancelEditExpertise, saveExpertise,

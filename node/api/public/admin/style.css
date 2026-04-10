@@ -590,9 +590,10 @@ input, select, textarea {
     border: 1px solid var(--border-default);
     border-radius: 8px;
     padding: 8px 12px;
+    min-height: 38px;
     color: var(--text-primary);
     font-family: var(--font-sans);
-    font-size: 13px;
+    font-size: 14px;
     outline: none;
     transition: border-color 150ms ease, box-shadow 150ms ease;
 }
@@ -602,6 +603,11 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 input:focus, select:focus, textarea:focus {
     border-color: var(--border-strong);
     box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+input[type="checkbox"], input[type="radio"] {
+    min-height: auto;
+    padding: 0;
 }
 
 input[type="checkbox"] {
@@ -1129,9 +1135,53 @@ dialog article header button[aria-label="Close"]::after {
     display: flex;
     align-items: center;
     gap: 14px;
+    margin-bottom: 12px;
+}
+
+/* Agent properties — compact label/value list below identity header */
+.agent-properties {
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--text-muted);
     padding-bottom: 18px;
     border-bottom: 1px solid var(--border-subtle);
     margin-bottom: 20px;
+}
+.agent-properties strong { color: var(--text-primary); }
+
+/* Realm chips — edit mode toggles */
+.realm-toggle-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.realm-chip {
+    appearance: none;
+    border: 1px solid var(--border-default);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.realm-chip:hover {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+.realm-chip.is-active {
+    color: var(--text-primary);
+}
+.realm-chip:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+}
+
+@media (max-width: 720px) {
+    .agent-properties { font-size: 12px; }
 }
 
 .agent-avatar-lg {
@@ -1201,6 +1251,12 @@ dialog article header button[aria-label="Close"]::after {
     padding: 18px;
     margin-bottom: 16px;
 }
+
+/* Profile edit form — consistent spacing and label-above-input layout */
+.agent-profile-form > * + * { margin-top: 12px; }
+.agent-profile-form > .dialog-actions { margin-top: 16px; }
+.agent-profile-form label > input:not([type="checkbox"]):not([type="radio"]),
+.agent-profile-form label > textarea { display: block; width: 100%; margin-top: 4px; }
 
 .agent-card-header {
     display: flex;
@@ -1848,9 +1904,11 @@ dialog article header button[aria-label="Close"]::after {
 }
 
 .dashboard-page-content.dashboard-live-active {
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden !important;
+    min-height: 0;
 }
 
 /* Stat strip — compact horizontal row */
@@ -1914,6 +1972,19 @@ dialog article header button[aria-label="Close"]::after {
     border-top: 1px solid var(--border-subtle);
     padding-top: 8px;
     min-height: 0;
+}
+
+.live-chat-input {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 8px;
+    flex-shrink: 0;
+}
+.live-chat-input input {
+    flex: 1;
+    margin: 0;
 }
 
 /* Activity pulse dot — blue, not green (green = online status, blue = actively working) */
