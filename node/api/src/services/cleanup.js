@@ -1,20 +1,19 @@
-// Decay cleanup — soft-deletes notes whose decay factor has dropped below the
-// configured threshold. Runs on a cron schedule (after dream processing).
+// Cleanup service — scheduled maintenance tasks that run on a daily cron.
 //
-// Uses the same decay formula as search: 0.5 ^ (age_days / half_life), where
-// age is based on the most recent of created_at, updated_at, or last_accessed.
-// Notes that keep getting accessed stay fresh; forgotten ones eventually get
-// cleaned up.
-//
-// Only targets note kinds/cognitive types that have a non-zero half-life.
-// Instructions, references, and other non-decaying kinds are never touched.
+// Tasks:
+//   1. Decay cleanup — soft-deletes notes whose decay factor has dropped below
+//      the configured threshold. Uses the same formula as search:
+//      0.5 ^ (age_days / half_life), where age is the most recent of
+//      created_at, updated_at, or last_accessed.
+//   2. Call log purge — hard-deletes old virtual_agent_calls rows past
+//      the retention period.
 
 const pool = require('../db');
 const config = require('./config');
 const { log, logError } = require('./logger');
 
 function logCleanup(action, details) {
-    log('decay-cleanup', action, details);
+    log('cleanup', action, details);
 }
 
 // Build SQL conditions that identify notes below the decay threshold.
@@ -75,9 +74,10 @@ function buildDecayConditions(threshold) {
     return { conditions, params };
 }
 
+// Soft-delete notes whose decay factor has dropped below the threshold.
 async function runDecayCleanup() {
     if (config.get('decay_cleanup_enabled') !== 'true') {
-        logCleanup('skip', { reason: 'decay_cleanup_enabled is false' });
+        logCleanup('decay-skip', { reason: 'decay_cleanup_enabled is false' });
         return { skipped: true, reason: 'disabled' };
     }
 
@@ -85,7 +85,7 @@ async function runDecayCleanup() {
     const { conditions, params } = buildDecayConditions(threshold);
 
     if (conditions.length === 0) {
-        logCleanup('skip', { reason: 'No decaying note types configured' });
+        logCleanup('decay-skip', { reason: 'No decaying note types configured' });
         return { skipped: true, reason: 'No decaying note types' };
     }
 
@@ -102,11 +102,11 @@ async function runDecayCleanup() {
     );
 
     if (result.rows.length === 0) {
-        logCleanup('complete', { deleted: 0, threshold });
+        logCleanup('decay-complete', { deleted: 0, threshold });
         return { deleted: 0, threshold };
     }
 
-    logCleanup('found', { count: result.rows.length, threshold });
+    logCleanup('decay-found', { count: result.rows.length, threshold });
 
     // Soft-delete each note and hard-delete its vector chunks
     let deleted = 0;
@@ -123,7 +123,7 @@ async function runDecayCleanup() {
                 [row.namespace, row.slug]
             );
 
-            logCleanup('deleted', {
+            logCleanup('decay-deleted', {
                 namespace: row.namespace,
                 slug: row.slug,
                 kind: row.kind,
@@ -133,7 +133,7 @@ async function runDecayCleanup() {
             });
             deleted++;
         } catch (err) {
-            logCleanup('delete-error', {
+            logCleanup('decay-delete-error', {
                 namespace: row.namespace,
                 slug: row.slug,
                 error: err.message
@@ -141,15 +141,37 @@ async function runDecayCleanup() {
         }
     }
 
-    logCleanup('complete', { deleted, total: result.rows.length, threshold });
+    logCleanup('decay-complete', { deleted, total: result.rows.length, threshold });
     return { deleted, threshold };
 }
 
-// Start the decay cleanup scheduler. Reads config and schedules runDecayCleanup().
+// Hard-delete old rows from virtual_agent_calls.
+// Retention period is configurable via va_call_log_retention_days.
+async function purgeCallLogs() {
+    const retentionDays = parseInt(config.get('va_call_log_retention_days')) || 0;
+    if (retentionDays <= 0) {
+        return { purged: 0 };
+    }
+
+    const result = await pool.query(
+        `DELETE FROM virtual_agent_calls
+         WHERE created_at < NOW() - INTERVAL '1 day' * $1
+         RETURNING id`,
+        [retentionDays]
+    );
+
+    const purged = result.rowCount;
+    if (purged > 0) {
+        logCleanup('call-logs-purged', { purged, retentionDays });
+    }
+    return { purged, retentionDays };
+}
+
+// Start the cleanup scheduler. Runs all cleanup tasks on the same cron schedule.
 // Called once at server startup.
 let scheduledTask = null;
 
-function startDecayCleanupScheduler() {
+function startCleanupScheduler() {
     const cron = require('node-cron');
     const schedule = config.get('decay_cleanup_cron_schedule') || '';
 
@@ -169,16 +191,29 @@ function startDecayCleanupScheduler() {
 
     scheduledTask = cron.schedule(schedule, async () => {
         logCleanup('cron-trigger', { schedule });
+
+        // Task 1: Decay cleanup (soft-delete old notes)
         try {
             const result = await runDecayCleanup();
-            logCleanup('cron-complete', { result });
+            logCleanup('cron-decay-complete', { result });
         } catch (err) {
-            logCleanup('cron-error', { error: err.message });
-            logError('decay-cleanup', 'cron-error', { message: err.message, detail: err.stack });
+            logCleanup('cron-decay-error', { error: err.message });
+            logError('cleanup', 'cron-decay-error', { message: err.message, detail: err.stack });
+        }
+
+        // Task 2: Purge old VA call logs (hard-delete)
+        try {
+            const purgeResult = await purgeCallLogs();
+            if (purgeResult.purged > 0) {
+                logCleanup('cron-purge-complete', { result: purgeResult });
+            }
+        } catch (err) {
+            logCleanup('cron-purge-error', { error: err.message });
+            logError('cleanup', 'cron-purge-error', { message: err.message, detail: err.stack });
         }
     });
 
-    logCleanup('scheduler', { message: 'Decay cleanup scheduler started', schedule });
+    logCleanup('scheduler', { message: 'Cleanup scheduler started', schedule });
 }
 
-module.exports = { runDecayCleanup, startDecayCleanupScheduler };
+module.exports = { runDecayCleanup, purgeCallLogs, startCleanupScheduler };
