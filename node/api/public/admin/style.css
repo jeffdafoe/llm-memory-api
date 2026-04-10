@@ -605,6 +605,11 @@ input:focus, select:focus, textarea:focus {
     box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 
+input[type="checkbox"], input[type="radio"] {
+    min-height: auto;
+    padding: 0;
+}
+
 input[type="checkbox"] {
     width: 1.2em;
     min-width: 1.2em;
