@@ -69,8 +69,9 @@ router.post('/api/register', async (req, res) => {
     }
 
     const { password, dream_mode } = req.body;
-    if (!password || password.length < 8) {
-        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const minPwLen = parseInt(config.get('minimum_password_length')) || 10;
+    if (!password || password.length < minPwLen) {
+        return res.status(400).json({ error: 'Password must be at least ' + minPwLen + ' characters' });
     }
     const validDreamModes = ['none', 'companion', 'technical'];
     const dreamMode = validDreamModes.includes(dream_mode) ? dream_mode : 'none';
