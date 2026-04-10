@@ -590,9 +590,10 @@ input, select, textarea {
     border: 1px solid var(--border-default);
     border-radius: 8px;
     padding: 8px 12px;
+    min-height: 38px;
     color: var(--text-primary);
     font-family: var(--font-sans);
-    font-size: 13px;
+    font-size: 14px;
     outline: none;
     transition: border-color 150ms ease, box-shadow 150ms ease;
 }
