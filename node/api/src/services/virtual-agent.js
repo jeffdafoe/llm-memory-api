@@ -767,6 +767,10 @@ function buildSystemPrompt(agent, discussion, ragContext, soul, peopleContext) {
 
     // Per-person relationship impressions from dream processing
     if (peopleContext) {
+        const preamble = config.get('people_context_preamble') || '';
+        if (preamble) {
+            staticPart += preamble + '\n\n';
+        }
         staticPart += peopleContext + '\n\n';
     }
 
@@ -841,6 +845,10 @@ function buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext) {
         staticPart += soul + '\n\n';
     }
     if (peopleContext) {
+        const preamble = config.get('people_context_preamble') || '';
+        if (preamble) {
+            staticPart += preamble + '\n\n';
+        }
         staticPart += peopleContext + '\n\n';
     }
     staticPart += `You are "${agent.agent}". You are chatting directly with another agent.`;
@@ -902,6 +910,10 @@ function buildMailSystemPrompt(agent, ragContext, soul, peopleContext) {
         staticPart += soul + '\n\n';
     }
     if (peopleContext) {
+        const preamble = config.get('people_context_preamble') || '';
+        if (preamble) {
+            staticPart += preamble + '\n\n';
+        }
         staticPart += peopleContext + '\n\n';
     }
     staticPart += `You are "${agent.agent}". You have received a mail message and should compose a reply.`;
