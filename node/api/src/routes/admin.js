@@ -207,9 +207,10 @@ router.post('/admin/change-password', async (req, res) => {
         });
     }
 
-    if (new_password.length < 4) {
+    const minPwLen = parseInt(config.get('minimum_password_length')) || 10;
+    if (new_password.length < minPwLen) {
         return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+            error: { code: 'BAD_REQUEST', message: 'Password must be at least ' + minPwLen + ' characters' }
         });
     }
 
@@ -1721,9 +1722,10 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
 
     // Validate UI access fields
     if (ui_access) {
-        if (!password || password.length < 4) {
+        const minPwLen = parseInt(config.get('minimum_password_length')) || 10;
+        if (!password || password.length < minPwLen) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+                error: { code: 'BAD_REQUEST', message: 'Password must be at least ' + minPwLen + ' characters' }
             });
         }
     }
@@ -2399,9 +2401,10 @@ router.post('/admin/actors/password', requirePerm('agents', 'write'), adminRoute
         logAdmin('actor_password_clear', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
         res.json({ message: 'UI access removed', is_user: false });
     } else {
-        if (typeof password !== 'string' || password.length < 4) {
+        const minPwLen = parseInt(config.get('minimum_password_length')) || 10;
+        if (typeof password !== 'string' || password.length < minPwLen) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+                error: { code: 'BAD_REQUEST', message: 'Password must be at least ' + minPwLen + ' characters' }
             });
         }
         const salt = generateSalt();
