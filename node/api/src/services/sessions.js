@@ -10,7 +10,7 @@ const { SESSION_KIND } = require('../constants');
 // Returns the matching row ({ id, actor_id, name, expires_at }) or null.
 async function validateSessionToken(token, kind) {
     const result = await pool.query(
-        `SELECT s.id, s.actor_id, s.token_hash, s.token_salt, s.expires_at, ac.name
+        `SELECT s.id, s.actor_id, s.token_hash, s.token_salt, s.expires_at, ac.name, ac.realms
          FROM sessions s
          JOIN actors ac ON ac.id = s.actor_id
          WHERE s.kind = $1 AND s.expires_at > NOW()`,

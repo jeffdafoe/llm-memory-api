@@ -25,6 +25,7 @@ router.post('/auth/verify', async (req, res) => {
                 valid: true,
                 agent: webRow.name,
                 actor_id: webRow.actor_id,
+                realms: webRow.realms || [],
             });
         }
 
@@ -35,6 +36,7 @@ router.post('/auth/verify', async (req, res) => {
                 valid: true,
                 agent: apiRow.name,
                 actor_id: apiRow.actor_id,
+                realms: apiRow.realms || [],
             });
         }
 
