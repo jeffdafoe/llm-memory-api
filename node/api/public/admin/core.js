@@ -209,8 +209,8 @@ function useCore() {
             changePasswordError.value = 'New passwords do not match';
             return;
         }
-        if (changePasswordForm.value.newPassword.length < 4) {
-            changePasswordError.value = 'Password must be at least 4 characters';
+        if (changePasswordForm.value.newPassword.length < 1) {
+            changePasswordError.value = 'Password is required';
             return;
         }
         changePasswordSaving.value = true;

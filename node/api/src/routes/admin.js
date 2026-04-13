@@ -207,9 +207,10 @@ router.post('/admin/change-password', async (req, res) => {
         });
     }
 
-    if (new_password.length < 4) {
+    const minPwLen = parseInt(config.get('minimum_password_length')) || 10;
+    if (new_password.length < minPwLen) {
         return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+            error: { code: 'BAD_REQUEST', message: 'Password must be at least ' + minPwLen + ' characters' }
         });
     }
 
@@ -1721,9 +1722,10 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
 
     // Validate UI access fields
     if (ui_access) {
-        if (!password || password.length < 4) {
+        const minPwLen = parseInt(config.get('minimum_password_length')) || 10;
+        if (!password || password.length < minPwLen) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+                error: { code: 'BAD_REQUEST', message: 'Password must be at least ' + minPwLen + ' characters' }
             });
         }
     }
@@ -2120,14 +2122,39 @@ router.post('/admin/agents/usage', requirePerm('agents', 'read'), adminRoute('ag
     const actor = await requireVisibility(req, res, agent);
     if (!actor) return;
     const result = await pool.query(
-        `SELECT id, provider, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, cost, context, created_at
-         FROM virtual_agent_usage
-         WHERE actor_id = $1
-         ORDER BY created_at DESC
+        `SELECT u.id, u.provider, u.model, u.input_tokens, u.output_tokens, u.cache_write_tokens, u.cache_read_tokens,
+                u.cost, u.context, u.status, u.error_message, u.created_at,
+                (SELECT c.id FROM virtual_agent_calls c WHERE c.usage_id = u.id LIMIT 1) AS call_id
+         FROM virtual_agent_usage u
+         WHERE u.actor_id = $1
+         ORDER BY u.created_at DESC
          LIMIT $2`,
         [actor.id, Math.min(parseInt(limit) || 50, 200)]
     );
     res.json({ usage: result.rows });
+}));
+
+// POST /admin/agents/call-detail — get full call detail by call ID
+router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRoute('agents-call-detail', async (req, res) => {
+    const callId = parseInt(req.body.call_id);
+    if (!callId || callId <= 0) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: call_id' } });
+    }
+    const result = await pool.query(
+        `SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model,
+                c.system_prompt, c.user_message, c.response,
+                c.status, c.status_code, c.error_message,
+                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,
+                c.cost, c.duration_ms, c.created_at
+         FROM virtual_agent_calls c
+         JOIN actors ac ON ac.id = c.actor_id
+         WHERE c.id = $1`,
+        [callId]
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Call detail not found (may have been purged)' } });
+    }
+    res.json({ call: result.rows[0] });
 }));
 
 // ─── Actor permissions & visibility management ───
@@ -2374,9 +2401,10 @@ router.post('/admin/actors/password', requirePerm('agents', 'write'), adminRoute
         logAdmin('actor_password_clear', { actor_id: actorId, actor_name: actor.name, user_id: req.authenticatedUser.id });
         res.json({ message: 'UI access removed', is_user: false });
     } else {
-        if (typeof password !== 'string' || password.length < 4) {
+        const minPwLen = parseInt(config.get('minimum_password_length')) || 10;
+        if (typeof password !== 'string' || password.length < minPwLen) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'Password must be at least 4 characters' }
+                error: { code: 'BAD_REQUEST', message: 'Password must be at least ' + minPwLen + ' characters' }
             });
         }
         const salt = generateSalt();

@@ -172,6 +172,9 @@ pool.init().then(() => config.init()).then(() => {
     const { startDreamScheduler } = require('./services/dream');
     startDreamScheduler();
 
+    const { startCleanupScheduler } = require('./services/cleanup');
+    startCleanupScheduler();
+
     const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
     });

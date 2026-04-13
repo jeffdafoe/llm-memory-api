@@ -110,6 +110,77 @@ function prefilterLog(content) {
     return result.join('\n');
 }
 
+// Extract unique speakers from conversation logs and group lines by speaker.
+// Handles three formats:
+//   memory-sync uploads:    "[HH:MM speaker] message text"
+//   VA transcript metadata: "- **From:** speaker"
+//   discussion history:     "speaker: message text" or "[timestamp] speaker: message text"
+// Returns a Map of speaker name → array of relevant lines.
+function extractSpeakers(content, agentName) {
+    const lines = content.split('\n');
+    const speakerLines = new Map();
+    const agentLower = agentName.toLowerCase();
+
+    // Pattern for memory-sync format: [HH:MM speaker]
+    const chatPattern = /^\[(\d{2}:\d{2})\s+(\S+)\]/;
+    // Pattern for VA transcript metadata: - **From:** speaker
+    const fromPattern = /^-\s+\*\*From:\*\*\s+(\S+)/;
+    // Pattern for discussion history: "speaker: message" or "[timestamp] speaker: message"
+    // Speaker names are agent identifiers (lowercase, may contain hyphens)
+    const discussionPattern = /^(?:\[.*?\]\s+)?([a-z][a-z0-9-]*):(?:\s|$)/;
+
+    let currentSpeaker = null;
+
+    function addSpeaker(name, line) {
+        const lower = name.toLowerCase();
+        if (lower === agentLower) {
+            currentSpeaker = null;
+            return;
+        }
+        currentSpeaker = lower;
+        if (!speakerLines.has(lower)) {
+            speakerLines.set(lower, []);
+        }
+        if (line) {
+            speakerLines.get(lower).push(line);
+        }
+    }
+
+    for (const line of lines) {
+        // Skip section headers and metadata
+        if (line.startsWith('##') || line.startsWith('---')) {
+            continue;
+        }
+
+        const chatMatch = line.match(chatPattern);
+        if (chatMatch) {
+            addSpeaker(chatMatch[2], line);
+            continue;
+        }
+
+        const fromMatch = line.match(fromPattern);
+        if (fromMatch) {
+            addSpeaker(fromMatch[1], null);
+            continue;
+        }
+
+        const discussionMatch = line.match(discussionPattern);
+        if (discussionMatch) {
+            addSpeaker(discussionMatch[1], line);
+            continue;
+        }
+
+        // Continuation lines belong to the current speaker
+        if (currentSpeaker && line.trim()) {
+            if (speakerLines.has(currentSpeaker)) {
+                speakerLines.get(currentSpeaker).push(line);
+            }
+        }
+    }
+
+    return speakerLines;
+}
+
 // Find a dream agent by expertise tag. Verifies it exists, is owned by system
 // or by a user with 'agents/create_system_equivalent' permission, and has
 // provider/model/api_key configured. Returns the agent name or null.
@@ -173,6 +244,7 @@ async function runDream() {
     const technicalAgentName = await findDreamAgent('dream-technical');
     const companionSoulAgentName = await findDreamAgent('dream-companion-soul');
     const technicalSoulAgentName = await findDreamAgent('dream-technical-soul');
+    const companionPeopleAgentName = await findDreamAgent('dream-companion-people');
 
     if (!companionAgentName && !technicalAgentName) {
         logDream('abort', { reason: 'Neither dream agent found or valid' });
@@ -181,11 +253,11 @@ async function runDream() {
 
     // Find agents with dream mode enabled
     const agents = await pool.query(
-        `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.last_dream_at
+        `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.last_dream_at,
+                agc.startup_instructions
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
-         WHERE agc.dream_mode IN ('companion', 'technical')
-         AND agc.virtual = false`
+         WHERE agc.dream_mode IN ('companion', 'technical')`
     );
 
     if (agents.rows.length === 0) {
@@ -323,7 +395,11 @@ async function runDream() {
                         // No soul yet — first run, start fresh
                     }
 
-                    const soulUserMessage = '## Current soul document\n\n'
+                    const soulUserMessage = '## Agent: ' + agent.name + '\n\n'
+                        + (agent.startup_instructions
+                            ? '## Character description\n\n' + agent.startup_instructions + '\n\n'
+                            : '')
+                        + '## Current soul document\n\n'
                         + (existingSoul || '(empty — first run)')
                         + '\n\n## Tonight\'s dream snapshot\n\n'
                         + content;
@@ -343,6 +419,72 @@ async function runDream() {
                 } catch (soulErr) {
                     // Soul update failure shouldn't block the rest of the dream process
                     logDream('soul-error', { agent: agent.name, error: soulErr.message });
+                }
+            }
+
+            // People synthesis: update per-person relationship files (companion mode only)
+            if (agent.dream_mode === 'companion' && companionPeopleAgentName) {
+                try {
+                    // Extract speakers from the filtered conversation log
+                    const speakers = extractSpeakers(filtered, agent.name);
+                    const today = new Date().toISOString().slice(0, 10);
+
+                    for (const [personName, personLines] of speakers) {
+                        if (personLines.length === 0) {
+                            continue;
+                        }
+
+                        try {
+                            // Load existing relationship file if it exists
+                            let existingFile = '';
+                            try {
+                                const note = await readNote(agent.name, 'context/people/' + personName);
+                                existingFile = note.content || '';
+                            } catch (e) {
+                                // No existing file — first encounter
+                            }
+
+                            const peopleUserMessage = '## Agent: ' + agent.name + '\n'
+                                + '## Person: ' + personName + '\n'
+                                + '## Today\'s date: ' + today + '\n\n'
+                                + '## Current relationship file\n\n'
+                                + (existingFile || '(empty — first encounter)')
+                                + '\n\n## Recent conversation excerpts involving ' + personName + '\n\n'
+                                + personLines.join('\n');
+
+                            const { text: updatedFile } = await invokeAgent(companionPeopleAgentName, {
+                                userMessage: peopleUserMessage,
+                                context: 'people',
+                                skipRateLimit: true,
+                                skipCostLimit: true,
+                                skipRetry: false,
+                            });
+
+                            if (updatedFile && updatedFile.trim()) {
+                                await saveNote(
+                                    agent.name,
+                                    'People — ' + personName,
+                                    updatedFile.trim(),
+                                    'context/people/' + personName,
+                                    companionPeopleAgentName
+                                );
+                                logDream('people-updated', {
+                                    agent: agent.name,
+                                    person: personName,
+                                    size: updatedFile.length
+                                });
+                            }
+                        } catch (personErr) {
+                            logDream('people-error', {
+                                agent: agent.name,
+                                person: personName,
+                                error: personErr.message
+                            });
+                        }
+                    }
+                } catch (peopleErr) {
+                    // People synthesis failure shouldn't block the rest
+                    logDream('people-error', { agent: agent.name, error: peopleErr.message });
                 }
             }
 
