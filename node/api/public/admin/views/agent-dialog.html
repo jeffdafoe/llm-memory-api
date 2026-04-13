@@ -176,14 +176,18 @@
                 <!-- Usage history -->
                 <details v-if="agentUsageHistory.length > 0" style="margin-top: 10px;">
                     <summary style="font-size: 12px; color: var(--accent-text); cursor: pointer;">Recent usage ({{ agentUsageHistory.length }})</summary>
-                    <div style="max-height: 180px; overflow-y: auto; margin-top: 6px;">
+                    <div style="max-height: 240px; overflow-y: auto; margin-top: 6px;">
                         <table style="width: 100%; font-size: 11px;">
-                            <thead><tr><th>Time</th><th>Model</th><th>Context</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+                            <thead><tr><th>Time</th><th>Model</th><th>Context</th><th>Status</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
                             <tbody>
-                                <tr v-for="u in agentUsageHistory" :key="u.id">
+                                <tr v-for="u in agentUsageHistory" :key="u.id"
+                                    :class="{ 'clickable-row': u.call_id, 'error-row': u.status === 'error' }"
+                                    :title="u.call_id ? 'Click to view call detail' : (u.status === 'error' ? u.error_message : 'Detail expired')"
+                                    @click="u.call_id && viewCallDetail(u)">
                                     <td class="ts nowrap">{{ formatShortDate(u.created_at) }}</td>
                                     <td class="ts">{{ u.model }}</td>
                                     <td>{{ u.context || '-' }}</td>
+                                    <td><span v-if="u.status === 'error'" class="badge badge-error" style="font-size: 10px;">error</span><span v-else class="ts">ok</span></td>
                                     <td class="num ts">{{ (u.input_tokens + (u.cache_read_tokens || 0) + u.output_tokens).toLocaleString() }}</td>
                                     <td class="num ts">${{ Number(u.cost).toFixed(4) }}</td>
                                 </tr>
@@ -276,6 +280,43 @@
                     <button v-if="!agentInstructionsExpanded" class="instructions-expand-btn" @click="agentInstructionsExpanded = true">Show full instructions</button>
                     <button v-else class="instructions-expand-btn" @click="agentInstructionsExpanded = false">Collapse</button>
                 </template>
+            </div>
+        </div>
+    </article>
+</dialog>
+
+<!-- Call detail modal (overlays the agent dialog) -->
+<dialog :open="callDetail !== null" @close="callDetail = null" class="call-detail-dialog">
+    <article v-if="callDetail">
+        <header>
+            <h4 style="margin: 0;">Call Detail</h4>
+            <button aria-label="Close" rel="prev" @click="callDetail = null"></button>
+        </header>
+        <div class="call-detail-body">
+            <div class="call-detail-meta">
+                <span><strong>{{ callDetail.context || '-' }}</strong></span>
+                <span class="ts">{{ callDetail.provider }} / {{ callDetail.model }}</span>
+                <span :class="callDetail.status === 'error' ? 'badge badge-error' : 'badge badge-online'" style="font-size: 11px;">{{ callDetail.status }}</span>
+                <span class="ts" v-if="callDetail.duration_ms">{{ callDetail.duration_ms }}ms</span>
+                <span class="ts">{{ (callDetail.input_tokens || 0) + (callDetail.cache_read_tokens || 0) }} in / {{ callDetail.output_tokens || 0 }} out</span>
+                <span class="ts">${{ Number(callDetail.cost || 0).toFixed(4) }}</span>
+                <span class="ts nowrap">{{ formatShortDate(callDetail.created_at) }}</span>
+            </div>
+            <div v-if="callDetail.error_message" class="call-detail-section call-detail-error">
+                <h5>Error</h5>
+                <pre>{{ callDetail.error_message }}</pre>
+            </div>
+            <div v-if="callDetail.system_prompt" class="call-detail-section">
+                <h5>System Prompt <span class="ts">({{ callDetail.system_prompt.length.toLocaleString() }} chars)</span></h5>
+                <pre class="call-detail-pre">{{ callDetail.system_prompt }}</pre>
+            </div>
+            <div v-if="callDetail.user_message" class="call-detail-section">
+                <h5>User Message <span class="ts">({{ callDetail.user_message.length.toLocaleString() }} chars)</span></h5>
+                <pre class="call-detail-pre">{{ callDetail.user_message }}</pre>
+            </div>
+            <div v-if="callDetail.response && callDetail.status !== 'error'" class="call-detail-section">
+                <h5>Response <span class="ts">({{ callDetail.response.length.toLocaleString() }} chars)</span></h5>
+                <pre class="call-detail-pre">{{ callDetail.response }}</pre>
             </div>
         </div>
     </article>

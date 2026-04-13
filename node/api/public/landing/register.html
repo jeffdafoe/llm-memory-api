@@ -679,8 +679,8 @@ function checkPasswords() {
         updateRegisterBtn();
         return;
     }
-    if (pw.length < 8) {
-        statusEl.textContent = 'Must be at least 8 characters';
+    if (pw.length < 10) {
+        statusEl.textContent = 'Must be at least 10 characters';
         statusEl.className = 'name-status taken';
         updateRegisterBtn();
         return;

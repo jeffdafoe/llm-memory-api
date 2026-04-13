@@ -237,6 +237,8 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     // Time-decay: two-tier system. Cognitive type takes priority when available
     // (stored in metadata->>'cognitive_type' by enrichment), falls back to kind-based.
     // decay = 0.5 ^ (age_days / half_life). If half_life is 0, no decay (1.0).
+    // Age is based on the most recent of created_at, updated_at, or last_accessed —
+    // so a note that keeps getting pulled into search results stays fresh.
 
     // Cognitive type decay cases (checked first via metadata)
     // Use LOWER(TRIM(...)) to handle any legacy data with inconsistent casing/whitespace
@@ -245,7 +247,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         const hlIdx = paramIdx;
         params.push(hl);
         paramIdx++;
-        return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx}::numeric)`;
+        return `WHEN LOWER(TRIM(d.metadata->>'cognitive_type')) = '${ctype}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $${hlIdx}::numeric)`;
     });
 
     // Kind-based decay cases (fallback for notes without cognitive type)
@@ -254,7 +256,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         const hlIdx = paramIdx;
         params.push(hl);
         paramIdx++;
-        return `WHEN d.kind = '${kind}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - COALESCE(d.updated_at, d.created_at))) / 86400.0 / $${hlIdx}::numeric)`;
+        return `WHEN d.kind = '${kind}' THEN POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $${hlIdx}::numeric)`;
     });
 
     // Cognitive type cases go first — if metadata has a cognitive_type, use that decay.

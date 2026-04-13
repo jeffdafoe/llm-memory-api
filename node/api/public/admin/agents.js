@@ -51,6 +51,10 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agentUsageHistory = ref([]);
     const agentUsageLoading = ref(false);
 
+    // Call detail (modal showing full request/response for a usage row)
+    const callDetail = ref(null);
+    const callDetailLoading = ref(false);
+
     // Agent settings (model-specific configuration only)
     const agentSettingsEditing = ref(false);
     const agentSettingsConfig = ref({});
@@ -382,6 +386,20 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         }
     }
 
+    async function viewCallDetail(usageRow) {
+        if (!usageRow.call_id) return;
+        callDetailLoading.value = true;
+        try {
+            const data = await api('/admin/agents/call-detail', { call_id: usageRow.call_id });
+            callDetail.value = data.call;
+        } catch (err) {
+            console.error('Failed to load call detail:', err);
+            callDetail.value = null;
+        } finally {
+            callDetailLoading.value = false;
+        }
+    }
+
     // ── Settings (dynamic configuration) ─────────────────────────────────────
 
     function startEditSettings() {
@@ -446,6 +464,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         costBudgetEditing.value = false;
         agentSettingsEditing.value = false;
         agentUsageHistory.value = [];
+        callDetail.value = null;
         agentPassphraseConfirming.value = false;
         agentNewPassphrase.value = null;
         loadProviderRegistry();
@@ -684,6 +703,7 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         startEditProfile, onProfileProviderChange, toggleProfileRealm, saveProfile,
         costBudgetEditing, costBudgetDailyValue, costBudgetMonthlyValue, startEditCostBudget, saveCostBudget,
         agentUsageHistory, agentUsageLoading, loadUsageHistory,
+        callDetail, callDetailLoading, viewCallDetail,
         defaultStorageQuota,
         agentSettingsEditing, agentSettingsConfig, agentSettingsSaving,
         startEditSettings, saveSettings,

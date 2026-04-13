@@ -18,23 +18,27 @@ router.post('/auth/verify', async (req, res) => {
     }
 
     try {
-        // Check web sessions (the kind the village viewer uses)
+        // Check web sessions (admin users who log in via browser)
         const webRow = await validateSessionToken(token, SESSION_KIND.WEB);
         if (webRow) {
             return res.json({
                 valid: true,
                 agent: webRow.name,
                 actor_id: webRow.actor_id,
+                realms: webRow.realms || [],
+                session_kind: 'web',
             });
         }
 
-        // Also check API sessions in case an agent token is used
+        // Also check API sessions (agents that log in programmatically)
         const apiRow = await validateSessionToken(token, SESSION_KIND.API);
         if (apiRow) {
             return res.json({
                 valid: true,
                 agent: apiRow.name,
                 actor_id: apiRow.actor_id,
+                realms: apiRow.realms || [],
+                session_kind: 'api',
             });
         }
 
