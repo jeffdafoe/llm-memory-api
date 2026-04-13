@@ -129,7 +129,7 @@ function titleToSlug(title) {
         .substring(0, 200);
 }
 
-async function saveNote(namespace, title, content, slug, createdBy, metadata, extension) {
+async function saveNote(namespace, title, content, slug, createdBy, metadata, extension, opts) {
     if (!title || !content) {
         throw Object.assign(new Error('Required fields: title, content'), { statusCode: 400 });
     }
@@ -159,17 +159,21 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         ), { statusCode: 400 });
     }
 
-    // Check if an active note already exists at this slug
-    // Case-insensitive lookup — slugs are preserved as-is, only matching is lowered
-    const existing = await pool.query(
-        'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
-        [namespace, resolvedSlug]
-    );
+    const upsert = opts && opts.upsert;
+
+    // Check if an active note already exists at this slug (only when upserting)
+    let existing = { rows: [] };
+    if (upsert) {
+        existing = await pool.query(
+            'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
+            [namespace, resolvedSlug]
+        );
+    }
 
     // Check storage quota before writing
     const additionalBytes = existing.rows.length > 0
-        ? content.length - (existing.rows[0].content_length || 0) // update: delta only
-        : content.length; // insert: full size
+        ? content.length - (existing.rows[0].content_length || 0)
+        : content.length;
     if (additionalBytes > 0) {
         const quotaError = await checkQuota(namespace, additionalBytes);
         if (quotaError) {
@@ -209,25 +213,22 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         }
     }
 
-    // Build optional SET clauses for fields that should only update when provided
-    const optionalSets = [];
-    const optionalParams = [];
-    let paramIndex = 6; // $1-$5 are title, content, namespace, slug, kind
-    if (metadataJson) {
-        optionalSets.push('metadata = $' + paramIndex);
-        optionalParams.push(metadataJson);
-        paramIndex++;
-    }
-    if (cleanExtension) {
-        optionalSets.push('extension = $' + paramIndex);
-        optionalParams.push(cleanExtension);
-        paramIndex++;
-    }
-
     let result;
     if (existing.rows.length > 0) {
-        // Update existing row — also clears deleted_at if it was soft-deleted.
-        // Don't overwrite created_by_actor_id on updates — preserve original author.
+        // Upsert: update existing row. Preserve original created_by_actor_id.
+        const optionalSets = [];
+        const optionalParams = [];
+        let paramIndex = 6;
+        if (metadataJson) {
+            optionalSets.push('metadata = $' + paramIndex);
+            optionalParams.push(metadataJson);
+            paramIndex++;
+        }
+        if (cleanExtension) {
+            optionalSets.push('extension = $' + paramIndex);
+            optionalParams.push(cleanExtension);
+            paramIndex++;
+        }
         const extraSets = optionalSets.length ? ', ' + optionalSets.join(', ') : '';
         result = await pool.query(`
             UPDATE documents
@@ -236,7 +237,6 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
             RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
         `, [title, content, namespace, resolvedSlug, kind, ...optionalParams]);
     } else {
-        // For inserts, include extension and metadata directly
         result = await pool.query(`
             INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind, metadata, extension)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -247,14 +247,11 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
     const doc = result.rows[0];
 
     // Update namespace usage counters
-    const newBytes = content.length;
     if (existing.rows.length > 0) {
-        // Update — bytes delta only
         const oldBytes = existing.rows[0].content_length || 0;
-        updateUsage(namespace, 0, newBytes - oldBytes);
+        updateUsage(namespace, 0, content.length - oldBytes);
     } else {
-        // Insert — +1 note, +bytes
-        updateUsage(namespace, 1, newBytes);
+        updateUsage(namespace, 1, content.length);
     }
 
     // Resolve created_by_actor_id to name for API response
