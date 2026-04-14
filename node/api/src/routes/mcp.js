@@ -56,7 +56,7 @@ const TOOLS = [
     // --- Document tools ---
     {
         name: 'save_note',
-        description: 'Save a note to memory. Creates or updates based on slug. Auto-indexes into vector DB.',
+        description: 'Save a note to memory. Creates a new note — fails if slug already exists (use edit_note to update). Auto-indexes into vector DB.',
         inputSchema: {
             type: 'object',
             properties: {

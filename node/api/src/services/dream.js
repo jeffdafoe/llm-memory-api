@@ -413,7 +413,7 @@ async function runDream() {
                     });
 
                     if (updatedSoul && updatedSoul.trim()) {
-                        await saveNote(agent.name, 'Soul', updatedSoul.trim(), 'context/soul', soulAgentName);
+                        await saveNote(agent.name, 'Soul', updatedSoul.trim(), 'context/soul', soulAgentName, null, null, { upsert: true });
                         logDream('soul-updated', { agent: agent.name, size: updatedSoul.length });
                     }
                 } catch (soulErr) {
@@ -466,7 +466,8 @@ async function runDream() {
                                     'People — ' + personName,
                                     updatedFile.trim(),
                                     'context/people/' + personName,
-                                    companionPeopleAgentName
+                                    companionPeopleAgentName,
+                                    null, null, { upsert: true }
                                 );
                                 logDream('people-updated', {
                                     agent: agent.name,
