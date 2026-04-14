@@ -237,11 +237,26 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
             RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
         `, [title, content, namespace, resolvedSlug, kind, ...optionalParams]);
     } else {
-        result = await pool.query(`
-            INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind, metadata, extension)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
-        `, [namespace, resolvedSlug, title, content, createdByActorId, kind, metadataJson, cleanExtension]);
+        // Insert-only path. If a row already exists at this slug, surface a clean
+        // 409 DUPLICATE_SLUG instead of letting the PG unique-constraint violation
+        // become an opaque 500. Callers that want overwrite semantics should pass
+        // { upsert: true } (or use editNote for incremental edits).
+        try {
+            result = await pool.query(`
+                INSERT INTO documents (namespace, slug, title, content, created_by_actor_id, kind, metadata, extension)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
+            `, [namespace, resolvedSlug, title, content, createdByActorId, kind, metadataJson, cleanExtension]);
+        } catch (err) {
+            // 23505 = unique_violation in PostgreSQL
+            if (err.code === '23505') {
+                throw Object.assign(
+                    new Error(`Note already exists at slug "${resolvedSlug}" in namespace "${namespace}". Use edit_note to update existing notes, or pass upsert:true to overwrite.`),
+                    { statusCode: 409, code: 'DUPLICATE_SLUG' }
+                );
+            }
+            throw err;
+        }
     }
 
     const doc = result.rows[0];

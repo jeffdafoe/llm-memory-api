@@ -15,7 +15,7 @@ function getActor(req) {
 }
 
 router.post('/documents/save', apiRoute('documents', 'save', async (req, res) => {
-    const { namespace, title, content, slug, created_by } = req.body;
+    const { namespace, title, content, slug, created_by, upsert } = req.body;
 
     if (!namespace || !title || !content) {
         return res.status(400).json({
@@ -26,7 +26,12 @@ router.post('/documents/save', apiRoute('documents', 'save', async (req, res) =>
     validateNamespace(namespace);
     const actor = getActor(req);
     await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'write');
-    const result = await saveNote(namespace, title, content, slug, created_by);
+    // upsert:true allows overwriting an existing note at the same slug. Used by
+    // sync clients (e.g. Go memory-sync) where "the local file is the source of
+    // truth and may differ from the server" is the expected semantics. Default
+    // false so callers without this intent get the safer 409 DUPLICATE_SLUG path.
+    const opts = upsert === true ? { upsert: true } : undefined;
+    const result = await saveNote(namespace, title, content, slug, created_by, null, null, opts);
     res.json(result);
 }));
 
