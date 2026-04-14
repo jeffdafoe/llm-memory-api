@@ -848,7 +848,12 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                         const slug = 'conversations/' + upload.date + '-' + upload.session_id;
                         const title = 'Conversation ' + upload.date + ' (' + upload.session_id.slice(0, 8) + ')';
 
-                        await saveNote(agent, title, upload.content, slug, agent, upload.metadata || undefined);
+                        // Conversation slugs are server-controlled and re-upload is
+                        // expected behavior (Claude Code .jsonl files grow during a
+                        // session, so a later sync will resend with more content).
+                        // Always upsert — without this, re-uploads hit the unique
+                        // constraint and fail with a 409/500.
+                        await saveNote(agent, title, upload.content, slug, agent, upload.metadata || undefined, null, { upsert: true });
                         uploaded++;
                     } catch (uploadErr) {
                         uploadErrors.push({ session_id: upload.session_id || 'unknown', error: uploadErr.message });

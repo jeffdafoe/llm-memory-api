@@ -141,11 +141,15 @@ func syncSingleNote(client *api.Client, namespace string, slug string, localDir 
         }
         title := extractSyncTitle(string(content), baseName)
         var doc noteDocument
+        // upsert:true — sync clients overwrite by design. Without this, the
+        // server returns 409 DUPLICATE_SLUG if a row appeared at this slug
+        // between the read above and this push (race) or for any other reason.
         err = client.Post("/documents/save", map[string]interface{}{
             "namespace": namespace,
             "slug":      slug,
             "title":     title,
             "content":   string(content),
+            "upsert":    true,
         }, &doc)
         if err != nil {
             fmt.Fprintf(os.Stderr, "  NOTE SYNC ERROR saving %s: %s\n", slug, err)
@@ -196,11 +200,13 @@ func syncSingleNote(client *api.Client, namespace string, slug string, localDir 
             } else {
                 title := extractSyncTitle(string(localContent), baseName)
                 var doc noteDocument
+                // upsert:true — local copy wins when local is newer than remote.
                 err = client.Post("/documents/save", map[string]interface{}{
                     "namespace": namespace,
                     "slug":      slug,
                     "title":     title,
                     "content":   string(localContent),
+                    "upsert":    true,
                 }, &doc)
                 if err != nil {
                     fmt.Fprintf(os.Stderr, "  NOTE SYNC ERROR saving %s: %s\n", slug, err)
@@ -329,11 +335,14 @@ func syncNotePrefix(client *api.Client, namespace string, prefix string, localDi
                 // Push: local exists, remote never existed
                 title := extractSyncTitle(local.content, relPath)
                 var doc noteDocument
+                // upsert:true — sync clients overwrite by design (covers race
+                // where another writer created the slug between list and push).
                 err := client.Post("/documents/save", map[string]interface{}{
                     "namespace": namespace,
                     "slug":      slug,
                     "title":     title,
                     "content":   local.content,
+                    "upsert":    true,
                 }, &doc)
                 if err != nil {
                     fmt.Fprintf(os.Stderr, "  NOTE SYNC ERROR saving %s: %s\n", slug, err)
@@ -388,11 +397,13 @@ func syncNotePrefix(client *api.Client, namespace string, prefix string, localDi
                 } else {
                     title := extractSyncTitle(local.content, relPath)
                     var doc noteDocument
+                    // upsert:true — local copy wins when local is newer than remote.
                     err := client.Post("/documents/save", map[string]interface{}{
                         "namespace": namespace,
                         "slug":      slug,
                         "title":     title,
                         "content":   local.content,
+                        "upsert":    true,
                     }, &doc)
                     if err != nil {
                         fmt.Fprintf(os.Stderr, "  NOTE SYNC ERROR saving %s: %s\n", slug, err)
