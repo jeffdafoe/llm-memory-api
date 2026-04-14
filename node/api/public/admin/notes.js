@@ -189,7 +189,11 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         return tree;
     }
 
-    // Return visible tree nodes — only show children if their parent folder is expanded
+    // Return visible tree nodes — a node is shown only if EVERY ancestor folder
+    // along its path is expanded. Walking only the immediate parent (older
+    // behavior) causes a bug where collapsing a mid-level folder leaves its
+    // already-expanded grandchildren visible, because their immediate parent's
+    // expanded state is unchanged. The fix is to walk the full ancestor chain.
     function visibleTree(namespace) {
         const allNodes = notesTreesRaw.value[namespace];
         if (!allNodes) return [];
@@ -200,17 +204,26 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                 result.push(node);
                 continue;
             }
-            let parentPath;
-            if (node.type === 'folder') {
-                const lastSlash = node.path.lastIndexOf('/');
-                parentPath = lastSlash > 0 ? node.path.substring(0, lastSlash) : null;
-            } else {
-                const lastSlash = node.slug.lastIndexOf('/');
-                parentPath = lastSlash > 0 ? node.slug.substring(0, lastSlash) : null;
-            }
-            if (!parentPath) {
+            // Path used to derive ancestor chain — folders use node.path, files use slug
+            const nodePath = node.type === 'folder' ? node.path : node.slug;
+            const lastSlash = nodePath.lastIndexOf('/');
+            if (lastSlash <= 0) {
                 result.push(node);
-            } else if (expandedFolders.value[namespace + '/' + parentPath]) {
+                continue;
+            }
+            // Walk up: every ancestor folder path must be in expandedFolders.
+            // Stop as soon as one is not.
+            let ancestor = nodePath.substring(0, lastSlash);
+            let allAncestorsExpanded = true;
+            while (ancestor) {
+                if (!expandedFolders.value[namespace + '/' + ancestor]) {
+                    allAncestorsExpanded = false;
+                    break;
+                }
+                const slash = ancestor.lastIndexOf('/');
+                ancestor = slash > 0 ? ancestor.substring(0, slash) : null;
+            }
+            if (allAncestorsExpanded) {
                 result.push(node);
             }
         }
