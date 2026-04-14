@@ -725,7 +725,7 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                     await ensureWriteAccess();
                     const slug = prefix + filename;
                     const title = extractTitle(local.content, filename);
-                    const doc = await saveNote(namespace, title, local.content, slug, agent);
+                    const doc = await saveNote(namespace, title, local.content, slug, agent, null, null, { upsert: true });
                     actions.push({
                         filename,
                         action: 'push',

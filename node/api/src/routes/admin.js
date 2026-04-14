@@ -1015,7 +1015,7 @@ router.post('/admin/notes/save', requirePerm('notes', 'write'), adminRoute('note
             return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
         }
     }
-    const doc = await saveNote(namespace, title, content, slug, null, null, extension);
+    const doc = await saveNote(namespace, title, content, slug, null, null, extension, { upsert: true });
     logAdmin('note_save', { namespace, slug, user_id: req.authenticatedUser.id });
     res.json({ note: doc });
 }));
