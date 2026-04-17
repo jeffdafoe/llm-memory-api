@@ -32,6 +32,11 @@ const FILLER_WORDS = new Set([
 ]);
 
 function preprocessQuery(query) {
+    // Defensive guard — the MCP dispatcher validates required fields, but
+    // the /v1/search HTTP route and internal callers may reach here with a
+    // non-string. Return empty to keep embedding calls from crashing; the
+    // caller will get "no results" rather than a 500.
+    if (typeof query !== 'string') return '';
     let cleaned = query.trim();
     // Strip leading filler phrases (apply repeatedly for stacked phrases)
     let prev;
