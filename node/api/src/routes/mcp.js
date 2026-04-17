@@ -590,6 +590,181 @@ function validateIdentity(argValue, authAgent, paramName) {
     return authAgent;
 }
 
+// Lookup table for per-tool inputSchema. Built once at module load so the
+// dispatcher can validate args in O(1) without scanning TOOLS every call.
+const TOOL_SCHEMAS = Object.fromEntries(TOOLS.map(t => [t.name, t.inputSchema]));
+
+// Upper bound on array field length. Protects against "small JSON, expensive
+// semantics" inputs (e.g. 10k-entry ids array into mail_ack). Generic cap
+// rather than per-tool — if a legitimate use case needs higher, revisit.
+const MAX_ARRAY_ITEMS = 1000;
+
+// Validate tool call arguments against the tool's declared input schema.
+//
+// The MCP SDK doesn't enforce `required` or type declarations — it forwards
+// whatever JSON arrives. Every MCP field is untrusted input until we say
+// otherwise, so we gate at the dispatcher boundary.
+//
+// Returns the normalized args (original object, or {} if args was undefined).
+// Callers should use the returned value when invoking the handler; that way
+// the envelope validation can't be bypassed by pre-coercing null to {}.
+//
+// Rules enforced (all violations throw 400 — never crash the handler):
+//   - undefined args normalize to {} (zero-arg tools like activity_start)
+//   - args must be a plain object (not null, not array, not scalar, and its
+//     prototype must be Object.prototype or null — no crafted objects)
+//   - every `required` field must be present as an own property and
+//     non-null/undefined
+//   - if the required field is a string, it must be non-empty after trim
+//   - every present own-property field must match its declared type:
+//       string  → typeof === 'string'
+//       number  → typeof === 'number' && isFinite
+//       boolean → typeof === 'boolean'
+//       array   → Array.isArray, length <= MAX_ARRAY_ITEMS; if items.type is
+//                 set, each item must match
+//       object  → typeof === 'object' && !null && !Array
+//   - explicit null on an optional field is a type error, not a skip — we
+//     only skip truly absent properties (undefined, not own)
+//   - unknown types in the schema are ignored (future-proof, not enforced)
+//
+// Only the minimum needed to keep bad input from reaching service code —
+// format/pattern/enum validation is deliberately out of scope.
+function validateToolArgs(toolName, args) {
+    const schema = TOOL_SCHEMAS[toolName];
+    if (!schema) {
+        // Unknown tool — the dispatcher handles this separately, but be
+        // defensive in case we're called from somewhere else later.
+        throw Object.assign(new Error(`Unknown tool: ${toolName}`), { statusCode: 400 });
+    }
+
+    // Only undefined is normalized to {}. Null / arrays / scalars are rejected
+    // below — normalizing them would weaken the envelope check.
+    if (args === undefined) args = {};
+
+    if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+        const gotType = (args === null) ? 'null' : (Array.isArray(args) ? 'array' : typeof args);
+        throw Object.assign(
+            new Error(`Tool arguments must be an object, got ${gotType}`),
+            { statusCode: 400 }
+        );
+    }
+
+    // Reject objects with non-standard prototypes — defense against crafted
+    // inputs where prototype-chain semantics could confuse `in`/hasOwn or
+    // downstream access. JSON.parse always produces Object.prototype objects,
+    // so this doesn't affect legitimate MCP callers.
+    const proto = Object.getPrototypeOf(args);
+    if (proto !== Object.prototype && proto !== null) {
+        throw Object.assign(
+            new Error('Tool arguments must be a plain object'),
+            { statusCode: 400 }
+        );
+    }
+
+    const properties = schema.properties || {};
+    const required = schema.required || [];
+
+    // hasOwn avoids the prototype chain, so inherited properties can't satisfy
+    // required checks. Node 16+ has Object.hasOwn; fall back for safety.
+    const hasOwn = Object.hasOwn || ((obj, key) => Object.prototype.hasOwnProperty.call(obj, key));
+
+    for (const fieldName of required) {
+        if (!hasOwn(args, fieldName) || args[fieldName] === undefined || args[fieldName] === null) {
+            throw Object.assign(
+                new Error(`${toolName}: "${fieldName}" is required`),
+                { statusCode: 400 }
+            );
+        }
+        // Required strings must also be non-empty. Optional strings may be
+        // empty or omitted entirely.
+        const fieldSchema = properties[fieldName];
+        if (fieldSchema && fieldSchema.type === 'string') {
+            if (typeof args[fieldName] !== 'string' || args[fieldName].trim().length === 0) {
+                throw Object.assign(
+                    new Error(`${toolName}: "${fieldName}" must be a non-empty string`),
+                    { statusCode: 400 }
+                );
+            }
+        }
+    }
+
+    for (const [fieldName, fieldSchema] of Object.entries(properties)) {
+        // Only skip truly absent properties. Explicit null is NOT "absent" —
+        // it falls through to the type check below and is rejected for any
+        // declared type (we don't model JSON-nullable fields).
+        if (!hasOwn(args, fieldName) || args[fieldName] === undefined) {
+            continue;
+        }
+        const value = args[fieldName];
+        const expected = fieldSchema.type;
+
+        if (expected === 'string') {
+            if (typeof value !== 'string') {
+                throw Object.assign(
+                    new Error(`${toolName}: "${fieldName}" must be a string`),
+                    { statusCode: 400 }
+                );
+            }
+        } else if (expected === 'number') {
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+                throw Object.assign(
+                    new Error(`${toolName}: "${fieldName}" must be a finite number`),
+                    { statusCode: 400 }
+                );
+            }
+        } else if (expected === 'boolean') {
+            if (typeof value !== 'boolean') {
+                throw Object.assign(
+                    new Error(`${toolName}: "${fieldName}" must be a boolean`),
+                    { statusCode: 400 }
+                );
+            }
+        } else if (expected === 'array') {
+            if (!Array.isArray(value)) {
+                throw Object.assign(
+                    new Error(`${toolName}: "${fieldName}" must be an array`),
+                    { statusCode: 400 }
+                );
+            }
+            if (value.length > MAX_ARRAY_ITEMS) {
+                throw Object.assign(
+                    new Error(`${toolName}: "${fieldName}" exceeds maximum array length (${value.length} > ${MAX_ARRAY_ITEMS})`),
+                    { statusCode: 400 }
+                );
+            }
+            // If items.type is declared, every element must match
+            const itemType = fieldSchema.items && fieldSchema.items.type;
+            if (itemType) {
+                for (let i = 0; i < value.length; i++) {
+                    const item = value[i];
+                    const itemOk =
+                        (itemType === 'string' && typeof item === 'string') ||
+                        (itemType === 'number' && typeof item === 'number' && Number.isFinite(item)) ||
+                        (itemType === 'boolean' && typeof item === 'boolean');
+                    if (!itemOk) {
+                        throw Object.assign(
+                            new Error(`${toolName}: "${fieldName}[${i}]" must be a ${itemType}`),
+                            { statusCode: 400 }
+                        );
+                    }
+                }
+            }
+        } else if (expected === 'object') {
+            if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+                throw Object.assign(
+                    new Error(`${toolName}: "${fieldName}" must be an object`),
+                    { statusCode: 400 }
+                );
+            }
+        }
+        // Unknown `type` in a schema is ignored — schemas may declare types
+        // we haven't implemented yet, and we'd rather be permissive than
+        // block a legitimate caller because of a schema enhancement.
+    }
+
+    return args;
+}
+
 // Tool handler functions — each takes (args, agent, namespace) and returns a text string
 const TOOL_HANDLERS = {
     // --- Memory ---
@@ -1270,11 +1445,20 @@ async function createMcpServer(req) {
         }
 
         try {
-            const result = await handler(args || {}, agent, defaultNamespace, req.mcpActorId);
+            // Fail fast on malformed input — bad args must never reach the
+            // handler or the service layer. Throws 400 on any schema
+            // violation; we catch in the outer try/catch below just like
+            // any other handler error. Returns the validated/normalized args
+            // (undefined is coerced to {} for zero-arg tools; null/arrays/
+            // scalars are rejected as invalid envelopes inside the validator).
+            const validArgs = validateToolArgs(name, args);
+
+            const result = await handler(validArgs, agent, defaultNamespace, req.mcpActorId);
             return { content: [{ type: 'text', text: result }] };
         } catch (err) {
             // Log all errors with status code so the dashboard can distinguish
-            // expected 4xx (note not found, old_string not found) from real 5xx failures.
+            // expected 4xx (note not found, old_string not found, bad input)
+            // from real 5xx failures.
             logError('mcp', `tool-${name}`, {
                 agent,
                 message: err.message,
@@ -1468,3 +1652,8 @@ router.delete('/mcp', mcpAuth, async (req, res) => {
 });
 
 module.exports = router;
+// Internal exports for tests / scripts — the Express router remains the default
+// consumption path for the app.
+module.exports.validateToolArgs = validateToolArgs;
+module.exports.TOOL_SCHEMAS = TOOL_SCHEMAS;
+module.exports.TOOLS = TOOLS;
