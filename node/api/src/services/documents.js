@@ -223,26 +223,30 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         // an unhandled 23505 from this UPDATE (which has no try/catch).
         // Using id scopes the update to one row and sidesteps that entirely.
         const existingId = existing.rows[0].id;
+        // Fixed positions: $1 title, $2 content, $3 id, $4 kind. Optional sets
+        // (metadata, extension) come after, with explicit ::jsonb / ::varchar
+        // casts so node-postgres' untyped parameter binds don't trip PG's
+        // "could not determine data type" on the assignment target.
         const optionalSets = [];
         const optionalParams = [];
-        let paramIndex = 4;
+        let paramIndex = 5;
         if (metadataJson) {
-            optionalSets.push('metadata = $' + paramIndex);
+            optionalSets.push('metadata = $' + paramIndex + '::jsonb');
             optionalParams.push(metadataJson);
             paramIndex++;
         }
         if (cleanExtension) {
-            optionalSets.push('extension = $' + paramIndex);
+            optionalSets.push('extension = $' + paramIndex + '::varchar');
             optionalParams.push(cleanExtension);
             paramIndex++;
         }
         const extraSets = optionalSets.length ? ', ' + optionalSets.join(', ') : '';
         result = await pool.query(`
             UPDATE documents
-            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $${paramIndex}
+            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $4${extraSets}
             WHERE id = $3
             RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
-        `, [title, content, existingId, ...optionalParams, kind]);
+        `, [title, content, existingId, kind, ...optionalParams]);
     } else {
         // Insert-only path. If a row already exists at this slug, surface a clean
         // 409 DUPLICATE_SLUG instead of letting the PG unique-constraint violation
