@@ -10,12 +10,51 @@ function logProvider(action, details) {
 // ── Model registry ──────────────────────────────────────────────────────────
 
 const models = {
+    'claude-opus-4-7': {
+        label: 'Opus 4.7',
+        apiId: 'claude-opus-4-7',
+        configVersion: 2,
+        // Pricing: dollars per million tokens. Source: claude.com/pricing, 2026-04-20.
+        pricing: { input: 5, output: 25, cache_write: 6.25, cache_read: 0.50 },
+        capabilities: {
+            temperature: {
+                type: 'number',
+                label: 'Temperature',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative. Ignored when thinking is enabled.',
+                default: 1.0,
+                min: 0,
+                max: 1.0,
+                step: 0.1
+            },
+            max_tokens: {
+                type: 'number',
+                label: 'Max Output Tokens',
+                description: 'Maximum number of tokens the model will generate (thinking + response combined).',
+                default: 16384,
+                min: 1,
+                max: 128000
+            },
+            thinking_effort: {
+                type: 'select',
+                label: 'Thinking Effort',
+                description: 'Controls how much the model thinks before responding. Higher effort produces better results on complex tasks but costs more tokens. "off" disables thinking entirely. Opus 4.7 uses adaptive thinking — extended thinking is not supported on this model.',
+                default: 'off',
+                options: ['off', 'low', 'medium', 'high', 'max']
+            },
+            cache_prompts: {
+                type: 'boolean',
+                label: 'Prompt Caching',
+                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                default: false
+            }
+        }
+    },
     'claude-opus-4-6': {
         label: 'Opus 4.6',
-        apiId: 'claude-opus-4-20250514',
+        apiId: 'claude-opus-4-6',
         configVersion: 2,
-        // Pricing: dollars per million tokens
-        pricing: { input: 15, output: 75, cache_write: 18.75, cache_read: 1.50 },
+        // Pricing: dollars per million tokens. Source: claude.com/pricing, 2026-04-20.
+        pricing: { input: 5, output: 25, cache_write: 6.25, cache_read: 0.50 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -51,8 +90,9 @@ const models = {
     },
     'claude-sonnet-4-6': {
         label: 'Sonnet 4.6',
-        apiId: 'claude-sonnet-4-20250514',
+        apiId: 'claude-sonnet-4-6',
         configVersion: 2,
+        // Pricing: dollars per million tokens. Source: claude.com/pricing, 2026-04-20.
         pricing: { input: 3, output: 15, cache_write: 3.75, cache_read: 0.30 },
         capabilities: {
             temperature: {
@@ -91,7 +131,8 @@ const models = {
         label: 'Haiku 4.5',
         apiId: 'claude-haiku-4-5-20251001',
         configVersion: 1,
-        pricing: { input: 0.80, output: 4, cache_write: 1.00, cache_read: 0.08 },
+        // Pricing: dollars per million tokens. Source: claude.com/pricing, 2026-04-20.
+        pricing: { input: 1, output: 5, cache_write: 1.25, cache_read: 0.10 },
         capabilities: {
             temperature: {
                 type: 'number',
@@ -108,7 +149,7 @@ const models = {
                 description: 'Maximum number of tokens the model will generate in its response.',
                 default: 4096,
                 min: 1,
-                max: 8192
+                max: 64000
             },
             cache_prompts: {
                 type: 'boolean',
