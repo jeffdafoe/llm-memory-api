@@ -215,10 +215,17 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
 
     let result;
     if (existing.rows.length > 0) {
-        // Upsert: update existing row. Preserve original created_by_actor_id.
+        // Upsert: update the specific live row we just located (by id).
+        // Matching by (namespace, LOWER(slug)) would also hit any soft-deleted
+        // row at the same case-insensitive slug — setting deleted_at=NULL on
+        // both would produce two live rows and violate the partial unique
+        // index `(namespace, slug) WHERE deleted_at IS NULL`, bubbling up as
+        // an unhandled 23505 from this UPDATE (which has no try/catch).
+        // Using id scopes the update to one row and sidesteps that entirely.
+        const existingId = existing.rows[0].id;
         const optionalSets = [];
         const optionalParams = [];
-        let paramIndex = 6;
+        let paramIndex = 4;
         if (metadataJson) {
             optionalSets.push('metadata = $' + paramIndex);
             optionalParams.push(metadataJson);
@@ -232,10 +239,10 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         const extraSets = optionalSets.length ? ', ' + optionalSets.join(', ') : '';
         result = await pool.query(`
             UPDATE documents
-            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $5${extraSets}
-            WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
+            SET title = $1, content = $2, deleted_at = NULL, updated_at = NOW(), kind = $${paramIndex}
+            WHERE id = $3
             RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at, metadata, extension
-        `, [title, content, namespace, resolvedSlug, kind, ...optionalParams]);
+        `, [title, content, existingId, ...optionalParams, kind]);
     } else {
         // Insert-only path. If a row already exists at this slug, surface a clean
         // 409 DUPLICATE_SLUG instead of letting the PG unique-constraint violation
