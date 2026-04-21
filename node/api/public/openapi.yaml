@@ -248,7 +248,13 @@ paths:
         post:
             operationId: read_note
             summary: Read a note
-            description: Read a specific note by slug.
+            description: |
+                Read a note's content. Returns the full content by default.
+                For large notes, use `offset` (1-indexed line number) and `limit`
+                (line count, default 2000 when offset is given, max 10000) to
+                paginate. Paginated responses are prefixed with
+                `[lines N-M of TOTAL]\n\n`. If offset is past the end of the note,
+                the response is `[lines N- of TOTAL]\n\n` with an empty body.
             tags: [Notes]
             requestBody:
                 required: true
@@ -264,6 +270,12 @@ paths:
                                 slug:
                                     type: string
                                     description: Note slug
+                                offset:
+                                    type: number
+                                    description: 1-indexed line number to start from (omit for full note)
+                                limit:
+                                    type: number
+                                    description: Max lines to return (default 2000 when offset given, max 10000)
             responses:
                 "200":
                     description: Note content
@@ -386,7 +398,16 @@ paths:
         post:
             operationId: grep
             summary: Text search across notes
-            description: Search notes for exact text matches (case-insensitive). Use for finding specific strings, identifiers, file paths, or references.
+            description: |
+                Search notes for text matches (case-insensitive). Returns
+                matching lines with line numbers and ±2 lines of surrounding
+                context by default. Widen or narrow the window with
+                `context_before`/`context_after` (or `context` for both);
+                max 50 per direction, 0 disables context. Pass `regex: true`
+                to treat the pattern as a case-insensitive JavaScript regex.
+                Output: match lines prefixed `> NNNN: `, context lines prefixed
+                `  NNNN: `, notes separated by `---`, non-contiguous blocks
+                within a note separated by `--`.
             tags: [Notes]
             requestBody:
                 required: true
@@ -398,13 +419,25 @@ paths:
                             properties:
                                 pattern:
                                     type: string
-                                    description: Text pattern to search for (case-insensitive substring match)
+                                    description: Text to search for. Case-insensitive substring by default; regex when regex=true.
                                 namespace:
                                     type: string
                                     description: Namespace to search (default: agent namespace, "*" for all)
                                 limit:
                                     type: number
                                     description: Max matching notes to return (default: 20)
+                                context_before:
+                                    type: number
+                                    description: Lines of context before each match (default: 2, max: 50)
+                                context_after:
+                                    type: number
+                                    description: Lines of context after each match (default: 2, max: 50)
+                                context:
+                                    type: number
+                                    description: Symmetric shortcut for context_before and context_after
+                                regex:
+                                    type: boolean
+                                    description: Treat pattern as case-insensitive regex (default false)
             responses:
                 "200":
                     description: Matching notes with context

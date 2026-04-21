@@ -383,6 +383,84 @@ async function readNote(namespace, slug) {
     return result.rows[0];
 }
 
+// Maximum number of lines a single paginated read can return. Guards against a
+// caller asking for 1M lines and OOM'ing the server on a pathological note.
+const READ_MAX_LIMIT = 10000;
+
+// Apply line-based pagination to a note's content. Used by both the MCP
+// read_note handler and the /documents/read HTTP route.
+//
+// Returns { text, totalLines, paginated }:
+//   text         — content prefixed with "[lines START-END of TOTAL]\n\n" when
+//                  paginated; raw content when not.
+//   totalLines   — total line count (only meaningful when paginated).
+//   paginated    — true when offset or limit was supplied.
+//
+// Semantics match Claude Code's local Read tool:
+//   - 1-indexed (first line = 1).
+//   - No params at all => full note returned verbatim (back-compat).
+//   - offset without limit => limit defaults to 2000.
+//   - limit without offset => offset defaults to 1.
+//   - offset past end of note => header with empty body (no placeholder text).
+//
+// Throws 400 on out-of-range params. No silent clamping — surfacing errors
+// beats breeding superstition about what the caller actually got back.
+function paginateContent(content, offset, limit) {
+    const hasOffset = offset !== undefined && offset !== null;
+    const hasLimit = limit !== undefined && limit !== null;
+
+    if (!hasOffset && !hasLimit) {
+        return { text: content, paginated: false };
+    }
+
+    const startLine = hasOffset ? offset : 1;
+    const effectiveLimit = hasLimit ? limit : 2000;
+
+    if (!Number.isInteger(startLine) || startLine < 1) {
+        throw Object.assign(
+            new Error('offset must be a positive integer (1-indexed)'),
+            { statusCode: 400 }
+        );
+    }
+    if (!Number.isInteger(effectiveLimit) || effectiveLimit < 1) {
+        throw Object.assign(
+            new Error('limit must be a positive integer'),
+            { statusCode: 400 }
+        );
+    }
+    if (effectiveLimit > READ_MAX_LIMIT) {
+        throw Object.assign(
+            new Error(`limit must not exceed ${READ_MAX_LIMIT}`),
+            { statusCode: 400 }
+        );
+    }
+
+    const lines = content.split('\n');
+    const totalLines = lines.length;
+
+    // Offset past end: emit header with open-ended range, zero-byte body.
+    // Callers use this as the signal to stop paginating.
+    if (startLine > totalLines) {
+        return {
+            text: `[lines ${startLine}- of ${totalLines}]\n\n`,
+            totalLines,
+            paginated: true
+        };
+    }
+
+    const startIdx = startLine - 1;
+    const endIdx = Math.min(startIdx + effectiveLimit, totalLines);
+    const endLine = endIdx;
+    const slice = lines.slice(startIdx, endIdx).join('\n');
+    const header = `[lines ${startLine}-${endLine} of ${totalLines}]\n\n`;
+
+    return {
+        text: header + slice,
+        totalLines,
+        paginated: true
+    };
+}
+
 async function deleteNote(namespace, slug) {
     // Soft delete the document and hard-delete its vector chunks.
     // The document row is kept (with deleted_at set) so restoreNote can
@@ -542,79 +620,160 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
 }
 
 // Text search across notes — like grep but for the notes database.
-// Returns matching documents with line numbers and surrounding context.
-async function grepNotes(pattern, namespace, limit, readableNamespaces) {
+// Upper bound on grep context lines per direction. The `limit` on matching
+// notes already caps worst-case output size, but this bound protects against
+// a single note with many matches flooding the response.
+const GREP_MAX_CONTEXT = 50;
+
+// Search notes for text matches and return matching lines with context.
+//
+// options:
+//   contextBefore  — lines of context before each match (default 2, cap 50)
+//   contextAfter   — lines of context after each match  (default 2, cap 50)
+//   context        — symmetric shortcut; specific params take precedence
+//   regex          — treat pattern as case-insensitive regex (default false)
+//
+// Returns per-doc objects:
+//   { namespace, slug, title, matchCount, matches: [{ lineNumber, line, isMatch, newBlock? }] }
+//
+// `newBlock: true` marks the first line of a non-contiguous context block
+// within a note — formatters use this to emit a ripgrep-style `--` separator.
+async function grepNotes(pattern, namespace, limit, readableNamespaces, options) {
     if (!pattern) {
         throw Object.assign(new Error('Required field: pattern'), { statusCode: 400 });
     }
 
+    const opts = options || {};
+    const regex = opts.regex === true;
+
+    // Resolve context window. `context` sets both sides; the specific params
+    // win when both are supplied. Defaults to ±2 for back-compat.
+    let contextBefore = opts.contextBefore;
+    let contextAfter = opts.contextAfter;
+    if (contextBefore === undefined || contextBefore === null) {
+        contextBefore = (opts.context !== undefined && opts.context !== null) ? opts.context : 2;
+    }
+    if (contextAfter === undefined || contextAfter === null) {
+        contextAfter = (opts.context !== undefined && opts.context !== null) ? opts.context : 2;
+    }
+
+    if (!Number.isInteger(contextBefore) || contextBefore < 0 || contextBefore > GREP_MAX_CONTEXT) {
+        throw Object.assign(
+            new Error(`context_before must be an integer between 0 and ${GREP_MAX_CONTEXT}`),
+            { statusCode: 400 }
+        );
+    }
+    if (!Number.isInteger(contextAfter) || contextAfter < 0 || contextAfter > GREP_MAX_CONTEXT) {
+        throw Object.assign(
+            new Error(`context_after must be an integer between 0 and ${GREP_MAX_CONTEXT}`),
+            { statusCode: 400 }
+        );
+    }
+
     const maxResults = limit || 20;
-    const ilikePattern = `%${pattern}%`;
+
+    // PG's `~*` is case-insensitive POSIX regex; ILIKE handles the plain
+    // substring case. Both prefilter candidate notes so the JS scan below
+    // only walks content we already know contains a match somewhere.
+    let sqlPattern, sqlOp;
+    if (regex) {
+        try {
+            new RegExp(pattern, 'i');
+        } catch (err) {
+            throw Object.assign(
+                new Error(`Invalid regex pattern: ${err.message}`),
+                { statusCode: 400 }
+            );
+        }
+        sqlPattern = pattern;
+        sqlOp = '~*';
+    } else {
+        sqlPattern = `%${pattern}%`;
+        sqlOp = 'ILIKE';
+    }
 
     let sql, params;
     if (namespace && namespace !== '*') {
         sql = `
             SELECT id, namespace, slug, title, content, updated_at
             FROM documents
-            WHERE namespace = $1 AND deleted_at IS NULL AND (content ILIKE $2 OR title ILIKE $2)
+            WHERE namespace = $1 AND deleted_at IS NULL AND (content ${sqlOp} $2 OR title ${sqlOp} $2)
             ORDER BY updated_at DESC
             LIMIT $3
         `;
-        params = [namespace, ilikePattern, maxResults];
+        params = [namespace, sqlPattern, maxResults];
     } else if (readableNamespaces) {
         // Filter at query level to ensure LIMIT returns correct result count
         sql = `
             SELECT id, namespace, slug, title, content, updated_at
             FROM documents
-            WHERE namespace = ANY($1) AND deleted_at IS NULL AND (content ILIKE $2 OR title ILIKE $2)
+            WHERE namespace = ANY($1) AND deleted_at IS NULL AND (content ${sqlOp} $2 OR title ${sqlOp} $2)
             ORDER BY updated_at DESC
             LIMIT $3
         `;
-        params = [readableNamespaces, ilikePattern, maxResults];
+        params = [readableNamespaces, sqlPattern, maxResults];
     } else {
         sql = `
             SELECT id, namespace, slug, title, content, updated_at
             FROM documents
-            WHERE deleted_at IS NULL AND (content ILIKE $1 OR title ILIKE $1)
+            WHERE deleted_at IS NULL AND (content ${sqlOp} $1 OR title ${sqlOp} $1)
             ORDER BY updated_at DESC
             LIMIT $2
         `;
-        params = [ilikePattern, maxResults];
+        params = [sqlPattern, maxResults];
     }
 
     const result = await pool.query(sql, params);
 
-    // Extract matching lines with context (±2 lines, like grep -C 2)
-    const lowerPattern = pattern.toLowerCase();
+    // Build a per-line matcher once per call. Regex path compiles /pattern/i;
+    // substring path lowercases the needle and uses String#includes.
+    let matcher;
+    if (regex) {
+        const re = new RegExp(pattern, 'i');
+        matcher = (line) => re.test(line);
+    } else {
+        const lowerPattern = pattern.toLowerCase();
+        matcher = (line) => line.toLowerCase().includes(lowerPattern);
+    }
+
     return result.rows.map(doc => {
         const lines = doc.content.split('\n');
         const matchLineNumbers = new Set();
 
-        // Find lines that contain the pattern
         for (let i = 0; i < lines.length; i++) {
-            if (lines[i].toLowerCase().includes(lowerPattern)) {
+            if (matcher(lines[i])) {
                 matchLineNumbers.add(i);
             }
         }
 
-        // Expand to include context lines (±2)
+        // Expand to include context lines on both sides.
         const contextLineNumbers = new Set();
         for (const lineNum of matchLineNumbers) {
-            for (let offset = -2; offset <= 2; offset++) {
-                const idx = lineNum + offset;
+            for (let delta = -contextBefore; delta <= contextAfter; delta++) {
+                const idx = lineNum + delta;
                 if (idx >= 0 && idx < lines.length) {
                     contextLineNumbers.add(idx);
                 }
             }
         }
 
-        // Build match groups (consecutive context lines grouped together)
+        // Sort and tag the first line of any non-contiguous run so the
+        // formatter can emit a `--` separator between blocks.
         const sortedLines = Array.from(contextLineNumbers).sort((a, b) => a - b);
-        const matches = sortedLines.map(idx => ({
-            lineNumber: idx + 1,
-            line: lines[idx],
-            isMatch: matchLineNumbers.has(idx)
-        }));
+        const matches = [];
+        let prevIdx = null;
+        for (const idx of sortedLines) {
+            const entry = {
+                lineNumber: idx + 1,
+                line: lines[idx],
+                isMatch: matchLineNumbers.has(idx)
+            };
+            if (prevIdx !== null && idx > prevIdx + 1) {
+                entry.newBlock = true;
+            }
+            matches.push(entry);
+            prevIdx = idx;
+        }
 
         return {
             namespace: doc.namespace,
@@ -696,4 +855,4 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
     return doc;
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, titleToSlug, validateSlug, escapeLike };
+module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, paginateContent, titleToSlug, validateSlug, escapeLike, READ_MAX_LIMIT, GREP_MAX_CONTEXT };
