@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, paginateContent } = require('../services/documents');
 const { requireAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
 const { apiRoute } = require('../middleware/route-wrapper');
 
@@ -52,7 +52,7 @@ router.post('/documents/list', apiRoute('documents', 'list', async (req, res) =>
 }));
 
 router.post('/documents/read', apiRoute('documents', 'read', async (req, res) => {
-    const { namespace, slug } = req.body;
+    const { namespace, slug, offset, limit } = req.body;
 
     if (!namespace || !slug) {
         return res.status(400).json({
@@ -64,6 +64,16 @@ router.post('/documents/read', apiRoute('documents', 'read', async (req, res) =>
     const actor = getActor(req);
     await requireAccess(actor.actorId, actor.actorName, actor.actorType, namespace, 'read');
     const result = await readNote(namespace, slug);
+
+    // Apply pagination if offset or limit was supplied. When neither is
+    // given, the response is byte-for-byte identical to the pre-pagination
+    // shape — callers that expect the full content (admin UI, memory-sync)
+    // are unaffected.
+    const paginated = paginateContent(result.content, offset, limit);
+    if (paginated.paginated) {
+        result.content = paginated.text;
+        result.total_lines = paginated.totalLines;
+    }
     res.json(result);
 }));
 
@@ -137,7 +147,7 @@ router.post('/documents/move', apiRoute('documents', 'move', async (req, res) =>
 }));
 
 router.post('/documents/grep', apiRoute('documents', 'grep', async (req, res) => {
-    const { pattern, namespace, limit } = req.body;
+    const { pattern, namespace, limit, context_before, context_after, context, regex } = req.body;
 
     if (!pattern) {
         return res.status(400).json({
@@ -157,7 +167,13 @@ router.post('/documents/grep', apiRoute('documents', 'grep', async (req, res) =>
     if (!namespace || namespace === '*') {
         readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
     }
-    let results = await grepNotes(pattern, namespace, limit, readable);
+    const options = {
+        contextBefore: context_before,
+        contextAfter: context_after,
+        context,
+        regex
+    };
+    const results = await grepNotes(pattern, namespace, limit, readable, options);
     res.json({ results });
 }));
 
