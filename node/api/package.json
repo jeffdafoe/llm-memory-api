@@ -33,7 +33,7 @@
     },
     "private": true,
     "devDependencies": {
-        "vite": "^8.0.8"
+        "vite": "^8.0.9"
     },
     "overrides": {
         "lodash-es": "^4.18.0"
