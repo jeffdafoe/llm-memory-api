@@ -217,6 +217,11 @@ function createCall(model, apiKey, configuration) {
             body.temperature = conf.temperature;
         }
 
+        // Per-call stop sequences. Anthropic allows up to 4.
+        if (opts && Array.isArray(opts.stop) && opts.stop.length > 0) {
+            body.stop_sequences = opts.stop.slice(0, 4);
+        }
+
         logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!useThinking });
 
         const response = await fetch('https://api.anthropic.com/v1/messages', {

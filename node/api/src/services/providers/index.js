@@ -41,6 +41,15 @@ function resolveProvider(providerName) {
 // This is the main entry point used by virtual-agent.js.
 // The returned function is wrapped with a request timeout (from config) so that
 // hung API calls don't block the retry pipeline indefinitely.
+//
+// Signature: (systemPrompt, userMessage, opts?) -> { text, usage }
+//
+// Per-call opts contract (all fields optional):
+//   cache: boolean   — request Anthropic prompt caching if agent has cache_prompts=true
+//   stop:  string[]  — provider-agnostic stop sequences, translated per-provider
+//                      (Anthropic stop_sequences / OpenAI-family stop / Google stopSequences)
+//
+// Unknown opts fields are dropped at this boundary so providers never see them.
 function createProvider(provider, model, apiKey, configuration) {
     const mod = resolveProvider(provider);
     if (!mod) {
@@ -54,12 +63,14 @@ function createProvider(provider, model, apiKey, configuration) {
     // Wrap with request timeout. If the provider call doesn't resolve within
     // the configured limit, reject with a timeout error so retryWithBackoff
     // can kick in. The abandoned fetch response is silently discarded by GC.
-    return function callWithTimeout(systemPrompt, userMessage) {
+    return function callWithTimeout(systemPrompt, userMessage, opts) {
         const timeoutSeconds = parseInt(config.get('virtual_agent_request_timeout')) || 120;
         const timeoutMs = timeoutSeconds * 1000;
 
+        const sanitizedOpts = sanitizeOpts(opts);
+
         return Promise.race([
-            callFn(systemPrompt, userMessage),
+            callFn(systemPrompt, userMessage, sanitizedOpts),
             new Promise((_, reject) => {
                 setTimeout(() => {
                     reject(new Error(`Provider request timed out after ${timeoutSeconds}s (${provider}/${model})`));
@@ -67,6 +78,26 @@ function createProvider(provider, model, apiKey, configuration) {
             })
         ]);
     };
+}
+
+// Narrow the opts bag to the documented contract. Silently drops unknown keys
+// so a typo in one call site can't leak through to provider request bodies.
+// Returns undefined when there's nothing useful to forward — lets providers
+// keep cheap `opts && opts.x` guards.
+function sanitizeOpts(opts) {
+    if (!opts || typeof opts !== 'object') return undefined;
+    const out = {};
+    if (opts.cache === true) {
+        out.cache = true;
+    }
+    if (Array.isArray(opts.stop)) {
+        const stops = opts.stop.filter(s => typeof s === 'string' && s.length > 0);
+        if (stops.length > 0) {
+            out.stop = stops;
+        }
+    }
+    if (Object.keys(out).length === 0) return undefined;
+    return out;
 }
 
 // Flatten a structured system prompt into a string.

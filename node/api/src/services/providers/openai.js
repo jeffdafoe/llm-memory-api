@@ -398,7 +398,7 @@ function computeCost(modelId, serviceTier, promptTokens, cachedTokens, completio
 function createCall(model, apiKey, configuration) {
     const conf = configuration || {};
 
-    return async function call(systemPrompt, userMessage) {
+    return async function call(systemPrompt, userMessage, opts) {
         const prompt = flattenPrompt(systemPrompt);
         const reasoning = isReasoningModel(model);
 
@@ -441,6 +441,11 @@ function createCall(model, apiKey, configuration) {
         const requestedServiceTier = conf.service_tier || 'auto';
         if (requestedServiceTier && requestedServiceTier !== 'auto') {
             body.service_tier = requestedServiceTier;
+        }
+
+        // Per-call stop sequences. OpenAI chat completions accept up to 4.
+        if (opts && Array.isArray(opts.stop) && opts.stop.length > 0) {
+            body.stop = opts.stop.slice(0, 4);
         }
 
         logProvider('api-call', { provider: 'openai', model, reasoning, serviceTier: requestedServiceTier });
