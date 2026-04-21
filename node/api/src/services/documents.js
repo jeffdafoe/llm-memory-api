@@ -2,12 +2,18 @@
 // Documents are stored in the documents table and auto-indexed into the vector DB.
 
 const pool = require('../db');
+const safeRegex = require('safe-regex');
 const { ingestContent } = require('./memory');
 const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 const config = require('./config');
 const { deleteRelationsForNote, updateRelationsForMove, autoExtractRelations } = require('./relations');
+
+// Longest regex pattern grep will accept. Length alone doesn't prevent
+// ReDoS (short patterns can still backtrack pathologically), but it caps
+// the blast radius of pattern parsing and pairs with safe-regex below.
+const GREP_REGEX_MAX_LENGTH = 200;
 
 // Update namespace_usage counters. Fire-and-forget — usage tracking
 // should never block or fail a document operation.
@@ -675,13 +681,37 @@ async function grepNotes(pattern, namespace, limit, readableNamespaces, options)
     // PG's `~*` is case-insensitive POSIX regex; ILIKE handles the plain
     // substring case. Both prefilter candidate notes so the JS scan below
     // only walks content we already know contains a match somewhere.
+    //
+    // Regex mode is guarded in two layers before the pattern touches the
+    // matcher or Postgres:
+    //   1. Length cap — bounds worst-case parser work and keeps the
+    //      surface area of any clever pattern small.
+    //   2. safe-regex static analysis — rejects patterns with nested
+    //      quantifiers and other shapes known to cause catastrophic
+    //      backtracking (ReDoS). Node's regex engine does not bound
+    //      runtime, so a pathological pattern run on a long line would
+    //      stall the single event loop for every request.
+    // Callers are authenticated agents, but a mistake by one agent must
+    // not DoS every other agent sharing the process.
     let sqlPattern, sqlOp;
     if (regex) {
+        if (pattern.length > GREP_REGEX_MAX_LENGTH) {
+            throw Object.assign(
+                new Error(`regex pattern exceeds ${GREP_REGEX_MAX_LENGTH} characters`),
+                { statusCode: 400 }
+            );
+        }
         try {
             new RegExp(pattern, 'i');
         } catch (err) {
             throw Object.assign(
                 new Error(`Invalid regex pattern: ${err.message}`),
+                { statusCode: 400 }
+            );
+        }
+        if (!safeRegex(pattern)) {
+            throw Object.assign(
+                new Error('regex pattern rejected by safety check (possible catastrophic backtracking). Simplify the pattern or use substring mode.'),
                 { statusCode: 400 }
             );
         }

@@ -437,7 +437,7 @@ paths:
                                     description: Symmetric shortcut for context_before and context_after
                                 regex:
                                     type: boolean
-                                    description: Treat pattern as case-insensitive regex (default false)
+                                    description: 'Treat pattern as case-insensitive regex (default false). Length-capped at 200 chars; patterns with catastrophic-backtracking shapes are rejected with 400.'
             responses:
                 "200":
                     description: Matching notes with context

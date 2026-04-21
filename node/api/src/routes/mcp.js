@@ -160,7 +160,7 @@ const TOOLS = [
                 context_before: { type: 'number', description: 'Lines of context before each match (default: 2, max: 50)' },
                 context_after: { type: 'number', description: 'Lines of context after each match (default: 2, max: 50)' },
                 context: { type: 'number', description: 'Symmetric shortcut setting both context_before and context_after. Specific params win when both are supplied.' },
-                regex: { type: 'boolean', description: 'Treat pattern as a case-insensitive JavaScript regex (default: false)' }
+                regex: { type: 'boolean', description: 'Treat pattern as a case-insensitive JavaScript regex (default: false). Patterns are length-capped at 200 chars and screened for catastrophic-backtracking shapes (ReDoS); unsafe patterns return 400.' }
             },
             required: ['pattern']
         }

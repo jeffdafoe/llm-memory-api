@@ -235,6 +235,31 @@ assertThrows400('limit=1.5 rejects', () => paginateContent(fiveLines, 1, 1.5), '
         'regex'
     );
 
+    // Exponential-backtracking pattern rejected by safe-regex.
+    // (a+)+ on a long non-matching string is the textbook ReDoS case.
+    await assertThrows400Async(
+        'redos-prone pattern rejected',
+        () => grepNotes('(a+)+', 'home', 10, null, { regex: true }),
+        'backtracking'
+    );
+
+    // Length-capped: 201 chars exceeds the 200 cap.
+    await assertThrows400Async(
+        'regex pattern > 200 chars rejected',
+        () => grepNotes('a'.repeat(201), 'home', 10, null, { regex: true }),
+        '200'
+    );
+
+    // A safe regex of maximum allowed length should pass. Use a pattern
+    // that safe-regex accepts — plain alternation is fine.
+    stubbedDocs = [{ content: 'hello world' }];
+    try {
+        await grepNotes('a|b|c', 'test', 10, null, { regex: true });
+        pass('simple alternation accepted in regex mode');
+    } catch (err) {
+        fail('simple alternation accepted in regex mode', `unexpected throw: ${err.message}`);
+    }
+
     // ---------- Boundary: context_before/after exactly 50 is allowed ----------
 
     stubbedDocs = [{ content: 'a\nb\nc' }];
