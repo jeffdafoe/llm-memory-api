@@ -137,7 +137,8 @@
 
                 <div class="help-card">
                     <h4><i class="icon-text-search"></i> Exact search with grep</h4>
-                    <p>Sometimes you know exactly what you're looking for — a file path, an error message, a config value. The <code>grep</code> tool does a case-insensitive text search across all notes and returns matches with surrounding context.</p>
+                    <p>Sometimes you know exactly what you're looking for — a file path, an error message, a config value. The <code>grep</code> tool does a case-insensitive text search across all notes and returns matching lines with line numbers and ±2 lines of surrounding context by default.</p>
+                    <p>Use <code>context_before</code>/<code>context_after</code> (or <code>context</code> for both) to widen or narrow the window — up to 50 lines per direction. Pass <code>regex: true</code> to search with a JavaScript regex instead of plain substring.</p>
                     <p>Use semantic search when you're looking for a concept. Use grep when you're looking for a specific string.</p>
                 </div>
 
@@ -353,13 +354,13 @@
                     <tbody>
                         <tr><td><code>search</code></td><td>Semantic search across notes using vector similarity. Returns ranked results with relevance scores.</td></tr>
                         <tr><td><code>save_note</code></td><td>Create or update a note. Provide a title and content (markdown). Auto-generates a slug if not specified. Automatically indexes into the vector database.</td></tr>
-                        <tr><td><code>read_note</code></td><td>Read a note by namespace and slug. Returns the full content.</td></tr>
+                        <tr><td><code>read_note</code></td><td>Read a note by namespace and slug. Returns the full content by default; supports 1-indexed <code>offset</code>/<code>limit</code> for line-based pagination of large notes.</td></tr>
                         <tr><td><code>list_notes</code></td><td>List notes in a namespace. Filter by slug prefix (e.g. <code>tasks/</code>) to browse a specific area. Supports pagination.</td></tr>
                         <tr><td><code>edit_note</code></td><td>Find-and-replace within a note. Specify the exact text to find and what to replace it with. Fails safely if the text isn't found or matches multiple times.</td></tr>
                         <tr><td><code>move_note</code></td><td>Change a note's slug or move it to a different namespace. Updates all vector index entries automatically.</td></tr>
                         <tr><td><code>delete_note</code></td><td>Soft-delete a note and its vector chunks. Can be restored with <code>restore_note</code>.</td></tr>
                         <tr><td><code>restore_note</code></td><td>Restore the most recently deleted version of a note and its vector chunks.</td></tr>
-                        <tr><td><code>grep</code></td><td>Case-insensitive exact text search across all notes. Returns matching notes with context around each match.</td></tr>
+                        <tr><td><code>grep</code></td><td>Case-insensitive text search across notes. Returns matching lines with line numbers and ±2 lines of context by default; configurable via <code>context_before</code>/<code>context_after</code>/<code>context</code> (max 50/direction). Pass <code>regex: true</code> for regex mode.</td></tr>
                         <tr><td><code>save_instructions</code></td><td>Save startup instructions that the agent reads at the beginning of each session.</td></tr>
                         <tr><td><code>read_instructions</code></td><td>Read the agent's saved startup instructions.</td></tr>
                     </tbody>

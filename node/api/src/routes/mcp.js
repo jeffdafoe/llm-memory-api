@@ -14,7 +14,7 @@ const config = require('../services/config');
 
 // Services
 const { searchMemory } = require('../services/memory');
-const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, paginateContent } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 const {
@@ -83,12 +83,14 @@ const TOOLS = [
     },
     {
         name: 'read_note',
-        description: 'Read a specific note by slug',
+        description: "Read a note's content. Returns the full content by default. For large notes, use `offset` (1-indexed line number) and `limit` (line count, default 2000 when offset is given, max 10000) to paginate; paginated responses are prefixed with `[lines N-M of TOTAL]\\n\\n` (or `[lines N- of TOTAL]\\n\\n` with an empty body when offset is past end).",
         inputSchema: {
             type: 'object',
             properties: {
                 namespace: { type: 'string', description: 'Namespace (default: agent namespace)' },
-                slug: { type: 'string', description: 'Note slug' }
+                slug: { type: 'string', description: 'Note slug' },
+                offset: { type: 'number', description: '1-indexed line number to start reading from. If limit is also absent, the full note is returned unpaginated.' },
+                limit: { type: 'number', description: 'Max lines to return. Defaults to 2000 when offset is supplied. Hard cap: 10000.' }
             },
             required: ['slug']
         }
@@ -148,13 +150,17 @@ const TOOLS = [
     },
     {
         name: 'grep',
-        description: 'Search notes for exact text matches (case-insensitive). Use this for finding specific strings, identifiers, file paths, or references across all notes.',
+        description: "Search notes for text matches (case-insensitive). Returns matching lines with line numbers and ±2 lines of surrounding context by default. Widen or narrow the window with `context_before`/`context_after` (or `context` for both); max 50 lines per direction, `context: 0` disables context entirely. Pass `regex: true` to treat the pattern as a JavaScript regex (still case-insensitive); default is an exact substring. Output format: match lines prefixed `> NNNN: `, context lines prefixed `  NNNN: `, notes separated by `---`, non-contiguous context blocks within a single note separated by `--`.",
         inputSchema: {
             type: 'object',
             properties: {
-                pattern: { type: 'string', description: 'Text pattern to search for (case-insensitive substring match)' },
+                pattern: { type: 'string', description: 'Text to search for. Case-insensitive substring by default; treated as a regex when regex=true.' },
                 namespace: { type: 'string', description: 'Namespace to search (default: agent namespace, "*" for all)' },
-                limit: { type: 'number', description: 'Max matching notes to return (default: 20)' }
+                limit: { type: 'number', description: 'Max matching notes to return (default: 20)' },
+                context_before: { type: 'number', description: 'Lines of context before each match (default: 2, max: 50)' },
+                context_after: { type: 'number', description: 'Lines of context after each match (default: 2, max: 50)' },
+                context: { type: 'number', description: 'Symmetric shortcut setting both context_before and context_after. Specific params win when both are supplied.' },
+                regex: { type: 'boolean', description: 'Treat pattern as a case-insensitive JavaScript regex (default: false). Patterns are length-capped at 200 chars and screened for catastrophic-backtracking shapes (ReDoS); unsafe patterns return 400.' }
             },
             required: ['pattern']
         }
@@ -854,7 +860,9 @@ const TOOL_HANDLERS = {
             }
         }
         const doc = await readNote(targetNs, args.slug);
-        return doc.content;
+        // paginateContent returns raw content when neither offset nor limit is
+        // supplied (back-compat) and a header-prefixed slice otherwise.
+        return paginateContent(doc.content, args.offset, args.limit).text;
     },
 
     async delete_note(args, agent, namespace, actorId) {
@@ -924,18 +932,33 @@ const TOOL_HANDLERS = {
         if (!targetNs || targetNs === '*') {
             readable = await getReadableNamespaces(actorId, agent, 'agent');
         }
-        let results = await grepNotes(sanitize.content(args.pattern), targetNs, args.limit, readable);
+        const options = {
+            contextBefore: args.context_before,
+            contextAfter: args.context_after,
+            context: args.context,
+            regex: args.regex
+        };
+        // sanitize.content strips control characters from the raw pattern.
+        // Regex mode still sees the sanitized string; invalid regex syntax
+        // surfaces as a 400 from grepNotes before any DB hit.
+        const results = await grepNotes(sanitize.content(args.pattern), targetNs, args.limit, readable, options);
         if (results.length === 0) {
             return `No notes matching "${args.pattern}".`;
         }
-        // Format like grep output: file header, then matching lines with context
+        // Format like grep output: file header, then matching lines with
+        // context. A `newBlock` marker on a match signals a non-contiguous
+        // context region within the same note — emit `--` before it.
         const sections = results.map(doc => {
             const header = `[${doc.namespace}] ${doc.slug} — ${doc.title} (${doc.matchCount} match${doc.matchCount === 1 ? '' : 'es'})`;
-            const lines = doc.matches.map(m => {
+            const lineStrs = [];
+            for (const m of doc.matches) {
+                if (m.newBlock) {
+                    lineStrs.push('--');
+                }
                 const prefix = m.isMatch ? '>' : ' ';
-                return `${prefix} ${String(m.lineNumber).padStart(4)}: ${m.line}`;
-            }).join('\n');
-            return `${header}\n${lines}`;
+                lineStrs.push(`${prefix} ${String(m.lineNumber).padStart(4)}: ${m.line}`);
+            }
+            return `${header}\n${lineStrs.join('\n')}`;
         });
         return sections.join('\n\n---\n\n');
     },
