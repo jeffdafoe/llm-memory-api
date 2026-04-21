@@ -1,15 +1,40 @@
 #!/usr/bin/env node
-// Unit tests for read_note pagination + grep bounds validation.
+// Unit tests for read_note pagination + grep context/regex behavior.
 //
 // Covers:
-//   - paginateContent: no-params (back-compat), 1-indexed offset, limit defaulting,
-//     header format, out-of-range offset, validation errors.
-//   - grepNotes: bounds-check path for context_before / context_after (thrown
-//     before the DB is touched, so no pool needed).
+//   - paginateContent: no-params (back-compat), 1-indexed offset, limit
+//     defaulting, header format, out-of-range offset, validation errors,
+//     CRLF and trailing-newline content.
+//   - grepNotes: bounds-check path thrown before DB (no pool needed); plus
+//     full behavior tests using an injected pool stub (context merging,
+//     non-contiguous block markers, regex mode, context=0, specific params
+//     override the `context` shortcut).
 //
-// No DB, no network — pure function-under-test verification.
+// No real DB, no network — pure function-under-test verification.
 // Run: node scripts/test-documents-pagination.js
 // Exits 0 on pass, 1 on any failure.
+
+// Install a pool stub BEFORE requiring the service. grepNotes imports
+// ../db at module load; intercepting require() here lets us feed synthetic
+// docs to the per-line scan without a Postgres connection.
+const Module = require('module');
+const origRequire = Module.prototype.require;
+let stubbedDocs = [];
+Module.prototype.require = function(id) {
+    if (id === '../db') {
+        return {
+            query: async () => ({ rows: stubbedDocs.map(d => ({
+                id: 1,
+                namespace: d.namespace || 'test',
+                slug: d.slug || 'example',
+                title: d.title || 'Example',
+                content: d.content,
+                updated_at: new Date()
+            })) })
+        };
+    }
+    return origRequire.apply(this, arguments);
+};
 
 const { paginateContent, grepNotes } = require('../src/services/documents');
 
@@ -209,6 +234,107 @@ assertThrows400('limit=1.5 rejects', () => paginateContent(fiveLines, 1, 1.5), '
         () => grepNotes('[unclosed', 'home', 10, null, { regex: true }),
         'regex'
     );
+
+    // ---------- Boundary: context_before/after exactly 50 is allowed ----------
+
+    stubbedDocs = [{ content: 'a\nb\nc' }];
+    try {
+        await grepNotes('b', 'test', 10, null, { contextBefore: 50, contextAfter: 50 });
+        pass('context_before=50 allowed (boundary)');
+    } catch (err) {
+        fail('context_before=50 allowed (boundary)', `unexpected throw: ${err.message}`);
+    }
+
+    // ---------- grepNotes behavior with stub pool ----------
+    //
+    // 12-line content with matches on lines 3 and 8.
+    stubbedDocs = [{
+        content: 'line1\nline2\nfoo line3\nline4\nline5\nline6\nline7\nfoo again line8\nline9\nline10\nline11 zzz\nline12'
+    }];
+
+    // Default context (±2): matches at 3,8 pull in 1..5 and 6..10 — contiguous, no block marker.
+    {
+        const r = await grepNotes('foo', 'test', 10, null, {});
+        assertEqual('default ±2 matchCount', r[0].matchCount, 2);
+        const any = r[0].matches.some(m => m.newBlock);
+        assertEqual('default ±2 contiguous (no newBlock)', any, false);
+        assertDeepEqual(
+            'default ±2 line numbers',
+            r[0].matches.map(m => m.lineNumber),
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        );
+    }
+
+    // context=5 wider — union should cover all 12 lines, still contiguous.
+    {
+        const r = await grepNotes('foo', 'test', 10, null, { context: 5 });
+        assertEqual('context=5 spans all 12 lines', r[0].matches.length, 12);
+        assertEqual('context=5 still contiguous', r[0].matches.some(m => m.newBlock), false);
+    }
+
+    // Asymmetric before=0, after=1 — blocks are now non-contiguous (3-4 and 8-9).
+    {
+        const r = await grepNotes('foo', 'test', 10, null, { contextBefore: 0, contextAfter: 1 });
+        assertDeepEqual(
+            'asymmetric before=0 after=1 lines',
+            r[0].matches.map(m => m.lineNumber),
+            [3, 4, 8, 9]
+        );
+        const blockLines = r[0].matches.filter(m => m.newBlock).map(m => m.lineNumber);
+        assertDeepEqual('asymmetric: newBlock on line 8', blockLines, [8]);
+    }
+
+    // context=0 returns only the match lines, no context.
+    {
+        const r = await grepNotes('foo', 'test', 10, null, { context: 0 });
+        assertEqual('context=0: only matches returned', r[0].matches.length, 2);
+        const allMatches = r[0].matches.every(m => m.isMatch);
+        assertEqual('context=0: all returned lines are matches', allMatches, true);
+    }
+
+    // Regex mode: odd-digit line endings on a single-line basis.
+    {
+        const r = await grepNotes('line[13579]$', 'test', 10, null, { regex: true, context: 0 });
+        assertDeepEqual(
+            'regex: matched only odd-ending lines',
+            r[0].matches.map(m => m.lineNumber),
+            [1, 3, 5, 7, 9]
+        );
+    }
+
+    // Specific param wins over `context` shortcut. contextBefore=10 + context=3
+    // should apply 10 before (clamped to line 1), not 3.
+    {
+        const r = await grepNotes('foo again', 'test', 10, null, { contextBefore: 10, context: 3 });
+        const minLine = Math.min(...r[0].matches.map(m => m.lineNumber));
+        // Match is at line 8; before=10 reaches back before line 1 → clamped to 1.
+        assertEqual('specific contextBefore wins over context shortcut', minLine, 1);
+    }
+
+    // Non-contiguous regex matches produce `--` block markers in consumer
+    // formatter. Verify the `newBlock` flag appears on gaps.
+    {
+        stubbedDocs = [{
+            content: 'aaa\nfoo\nbbb\nccc\nddd\neee\nfff\nfoo\nggg'
+        }];
+        const r = await grepNotes('foo', 'test', 10, null, { context: 1 });
+        // matches at lines 2,8; with context=1: {1,2,3} and {7,8,9} — non-contiguous.
+        assertDeepEqual(
+            'context=1 non-contiguous: line numbers',
+            r[0].matches.map(m => m.lineNumber),
+            [1, 2, 3, 7, 8, 9]
+        );
+        const block = r[0].matches.find(m => m.newBlock);
+        assertEqual('context=1 non-contiguous: newBlock on line 7', block && block.lineNumber, 7);
+    }
+
+    // CRLF content should split on \n and preserve \r in returned lines.
+    {
+        stubbedDocs = [{ content: 'alpha\r\nbeta\r\ngamma foo\r\ndelta' }];
+        const r = await grepNotes('foo', 'test', 10, null, { context: 0 });
+        assertEqual('CRLF: match found', r[0].matchCount, 1);
+        assertEqual('CRLF: \\r preserved in line', r[0].matches[0].line, 'gamma foo\r');
+    }
 
     // ---------- Report ----------
 
