@@ -13,6 +13,7 @@ const { chatSend } = require('./chat');
 const { saveNote, readNote } = require('./documents');
 const config = require('./config');
 const { requireByName } = require('./actors');
+const { canonicalSpeakerId, renderSpeakerLabel, escapeRegExp } = require('./virtual-agent-labels');
 
 const MIN_ACTIVITY_MS = 3000;
 
@@ -789,30 +790,157 @@ function buildSystemPrompt(agent, discussion, ragContext, soul, peopleContext) {
         dynamicPart += 'Relevant knowledge from your notes:\n' + ragContext + '\n\n';
     }
 
-    dynamicPart += 'Respond concisely and stay on topic. You are participating in a multi-agent discussion.';
+    dynamicPart += 'You are participating in a multi-agent discussion. Previous messages are shown as a JSON array of {sender, content} objects. '
+        + 'Respond with your own reply content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants\' messages. '
+        + 'End your reply when your own message is complete.';
 
     return { static: staticPart, dynamic: dynamicPart };
 }
 
 // Build the user message from chat history.
+//
+// Serializes history as JSON so message bodies can never be mistaken for
+// new turns — JSON.stringify handles escaping of embedded newlines, quotes,
+// control characters, non-BMP code points, etc. The alternative flat
+// `name: text` format lets any prior message with speaker-like prefixes
+// or embedded newlines create fake turns that the model conditions on.
+// See virtual-agent-labels.js for the speaker label contract.
 function buildUserMessage(chatHistory, triggerType, voteQuestion) {
     if (chatHistory.length === 0) {
         return 'The discussion has just started. Share your initial thoughts on the topic.';
     }
 
-    let msg = 'Recent discussion:\n\n';
-    for (const m of chatHistory) {
-        msg += `${m.from_agent}: ${m.message}\n`;
-    }
+    const historyJson = JSON.stringify(
+        chatHistory.map(m => ({
+            sender: renderSpeakerLabel(m.from_agent),
+            content: m.message == null ? '' : String(m.message)
+        }))
+    );
+
+    let msg = 'Recent discussion messages (JSON array of {sender, content}):\n';
+    msg += historyJson + '\n';
 
     if (triggerType === 'vote-proposed' && voteQuestion) {
-        msg += `\nA vote has been proposed: "${voteQuestion}"\n`;
+        msg += '\nA vote has been proposed: ' + JSON.stringify(voteQuestion) + '\n';
         msg += 'Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
     } else {
-        msg += '\nRespond to the discussion.';
+        msg += '\nRespond with your own reply content only — plain text, no JSON, no sender labels, no additional messages for other participants.';
     }
 
     return msg;
+}
+
+// Gather the distinct speaker labels that actually appear in the rendered
+// history. Used for both stop-sequence derivation and the post-generation
+// impersonation scan. Includes speakers who have since left the discussion —
+// the model saw them in history and could impersonate them regardless of
+// current roster.
+function collectDistinctSpeakers(chatHistory, selfAgent) {
+    const speakers = new Set();
+    for (const m of chatHistory) {
+        speakers.add(canonicalSpeakerId(m.from_agent));
+    }
+    // Include the agent's own label so self-prefixed output is also stripped.
+    // Per the output contract in buildUserMessage, the model should reply
+    // with plain content only — no "josiah: ..." framing even for itself.
+    if (selfAgent) {
+        speakers.add(canonicalSpeakerId(selfAgent));
+    }
+    speakers.delete('');
+    return speakers;
+}
+
+// Scan a generated response for impersonation or protocol leakage. Two
+// independent line-start checks, both run per response:
+//
+//   1. Generic JSON continuation — any line starting with {"sender":"
+//      indicates the model tried to fabricate another history entry,
+//      regardless of which speaker label it chose. Catches the case where
+//      the model invents a brand-new sender.
+//
+//   2. Legacy name-prefix continuation — any line starting with a known
+//      speaker label followed by a colon. Catches the classic `wendy: ...`
+//      continuation that predates the JSON format (and that weaker models
+//      may still try even when given JSON input).
+//
+// Normalization is done per-line for comparison only; truncation uses the
+// original string's line offsets so NFKC width changes can't shift the
+// slice boundary.
+//
+// Returns { text, truncated, rule?, droppedChars }. The caller decides
+// whether an empty-after-truncation result is a retry or a failure.
+function scanForImpersonation(response, speakers) {
+    if (!response || typeof response !== 'string') {
+        return { text: response, truncated: false, droppedChars: 0 };
+    }
+
+    const labels = [...speakers].map(escapeRegExp).filter(s => s.length > 0);
+    // Label-based pattern only compiles if we actually have speakers.
+    let legacyPattern = null;
+    if (labels.length > 0) {
+        legacyPattern = new RegExp('^\\s*(?:' + labels.join('|') + ')\\s*:', 'i');
+    }
+    const genericPattern = /^\s*\{"sender"\s*:/;
+
+    // Walk the original string line-by-line so we can truncate at the
+    // original offset. The regex tests run against an NFKC-normalized
+    // copy of each line for Unicode equivalence.
+    let offset = 0;
+    const lines = response.split(/(\r?\n)/);
+    // split(/(\r?\n)/) keeps delimiters in the array at odd indices —
+    // we iterate even indices as content lines and track offsets.
+    let cursor = 0;
+    for (let i = 0; i < lines.length; i += 2) {
+        const line = lines[i];
+        const delim = lines[i + 1] || '';
+        const normalized = line.normalize('NFKC');
+
+        if (genericPattern.test(normalized)) {
+            const truncated = response.slice(0, cursor).trimEnd();
+            return {
+                text: truncated,
+                truncated: true,
+                rule: 'generic-json-continuation',
+                droppedChars: response.length - truncated.length
+            };
+        }
+        if (legacyPattern && legacyPattern.test(normalized)) {
+            const truncated = response.slice(0, cursor).trimEnd();
+            return {
+                text: truncated,
+                truncated: true,
+                rule: 'legacy-name-prefix',
+                droppedChars: response.length - truncated.length
+            };
+        }
+
+        cursor += line.length + delim.length;
+        offset++;
+    }
+
+    return { text: response, truncated: false, droppedChars: 0 };
+}
+
+// Classify whether a provider error is specifically "stop parameter not
+// supported" — the only case where we retry without stops. Everything else
+// (timeouts, 5xx, auth, rate limits, unknown 4xx) is a real failure that
+// should not be masked by a silent retry.
+function isStopUnsupportedError(err) {
+    if (!err || typeof err.message !== 'string') return false;
+    const msg = err.message;
+    // Must look like a client-side rejection — status in the 4xx range,
+    // with a hint that the stop field specifically was at fault.
+    const looksLikeClientError = / 4\d\d/.test(msg);
+    if (!looksLikeClientError) return false;
+    const stopMarkers = [
+        'stop_sequences',
+        'stopSequences',
+        '"stop"',
+        'invalid stop',
+        'unsupported parameter'
+    ];
+    const lower = msg.toLowerCase();
+    return stopMarkers.some(marker => lower.includes(marker.toLowerCase()));
 }
 
 // Format a timestamp as a compact relative time string.
@@ -1095,11 +1223,60 @@ async function handleVirtualAgent(payload) {
             // the agent is removed from the discussion immediately rather than
             // stalling other participants with a long retry cycle.
             const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
+
+            // Impersonation guardrails (see buildUserMessage + scanForImpersonation
+            // for the full design). One generic stop sequence targets any attempt
+            // by the model to fabricate another {"sender":"..."} history entry
+            // — one string covers every possible fabricated speaker regardless
+            // of participant count, so no per-speaker lists or provider-cap
+            // juggling. Post-generation scan below is the deterministic backstop.
+            const distinctSpeakers = collectDistinctSpeakers(chatHistory, agent.agent);
+            const stop = ['\n{"sender":"'];
+
             recordCall(agent.agent);
             const discussionCallStart = Date.now();
-            const { text: response, usage } = await withActivityIndicator(agent.agent, () =>
-                providerFn(systemPrompt, userMessage, { cache: true })
-            );
+
+            let providerResult;
+            try {
+                providerResult = await withActivityIndicator(agent.agent, () =>
+                    providerFn(systemPrompt, userMessage, { cache: true, stop })
+                );
+            } catch (providerErr) {
+                // Narrow fallback: a specific provider/model rejected the stop
+                // field (see isStopUnsupportedError). Retry once without stops —
+                // the post-generation scan still covers the impersonation case.
+                // Any other error bubbles to the outer catch which removes the
+                // agent from the discussion.
+                if (isStopUnsupportedError(providerErr)) {
+                    logVA('stop-unsupported', {
+                        agent: agent.agent, provider: agent.provider, model: agent.model,
+                        error: providerErr.message
+                    });
+                    providerResult = await withActivityIndicator(agent.agent, () =>
+                        providerFn(systemPrompt, userMessage, { cache: true })
+                    );
+                } else {
+                    throw providerErr;
+                }
+            }
+
+            const { text: rawResponse, usage } = providerResult;
+
+            // Post-generation impersonation scan — deterministic server-side
+            // control. Runs regardless of whether provider stops fired. Truncates
+            // at the first offending line start; see scanForImpersonation for
+            // the two rules (generic JSON continuation, legacy name-prefix).
+            const scanResult = scanForImpersonation(rawResponse, distinctSpeakers);
+            const response = scanResult.text;
+            if (scanResult.truncated) {
+                logVA('impersonation-truncated', {
+                    discussionId, agent: agent.agent,
+                    rule: scanResult.rule,
+                    droppedChars: scanResult.droppedChars,
+                    provider: agent.provider, model: agent.model
+                });
+            }
+
             const discussionDurationMs = Date.now() - discussionCallStart;
             const discussionUsageId = await recordUsage(agent.agent, agent.provider, agent.model, usage, 'discussion');
 
@@ -1121,17 +1298,31 @@ async function handleVirtualAgent(payload) {
                     if (voteResponse.reason) {
                         await chatSend(agent.agent, null, discussionId, voteResponse.reason);
                     }
-                } else {
+                } else if (response && response.trim().length > 0) {
                     // Couldn't parse vote, post response as chat and log
                     logVA('vote-parse-failed', { discussionId, agent: agent.agent });
                     await chatSend(agent.agent, null, discussionId, response);
+                } else {
+                    // Response was empty or removed by the impersonation scan.
+                    // Log and skip — don't post an empty chat message.
+                    logVA('vote-parse-failed-empty', {
+                        discussionId, agent: agent.agent,
+                        truncated: scanResult.truncated
+                    });
                 }
-            } else {
+            } else if (response && response.trim().length > 0) {
                 // Regular message response
                 await chatSend(agent.agent, null, discussionId, response);
+            } else {
+                // Response was empty or removed by the impersonation scan.
+                // Don't post an empty chat message.
+                logVA('response-empty-skipped', {
+                    discussionId, agent: agent.agent,
+                    truncated: scanResult.truncated
+                });
             }
 
-            logVA('responded', { discussionId, agent: agent.agent, triggerType, responseLength: response.length });
+            logVA('responded', { discussionId, agent: agent.agent, triggerType, responseLength: response ? response.length : 0 });
 
             // Fire-and-forget learning extraction (skip for vote responses)
             if (triggerType !== 'vote-proposed') {

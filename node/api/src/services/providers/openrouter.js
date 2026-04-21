@@ -143,7 +143,7 @@ async function computeCost(modelId, promptTokens, cachedTokens, completionTokens
 function createCall(model, apiKey, configuration) {
     var conf = configuration || {};
 
-    return async function call(systemPrompt, userMessage) {
+    return async function call(systemPrompt, userMessage, opts) {
         var prompt = flattenPrompt(systemPrompt);
 
         var body = {
@@ -160,6 +160,12 @@ function createCall(model, apiKey, configuration) {
 
         if (conf.temperature !== undefined) {
             body.temperature = conf.temperature;
+        }
+
+        // Per-call stop sequences. OpenRouter proxies to many upstreams;
+        // most OpenAI-compatible upstreams allow 4, so cap at 4.
+        if (opts && Array.isArray(opts.stop) && opts.stop.length > 0) {
+            body.stop = opts.stop.slice(0, 4);
         }
 
         logProvider('api-call', { provider: 'openrouter', model });
