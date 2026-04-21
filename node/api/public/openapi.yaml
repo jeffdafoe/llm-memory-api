@@ -150,10 +150,10 @@ paths:
                                     description: Search query
                                 namespace:
                                     type: string
-                                    description: Namespace to search (default: agent namespace, "*" for all)
+                                    description: 'Namespace to search (default: agent namespace, "*" for all)'
                                 limit:
                                     type: number
-                                    description: Max results (default: 5)
+                                    description: 'Max results (default: 5)'
             responses:
                 "200":
                     description: Search results with similarity scores
@@ -177,7 +177,7 @@ paths:
                                     description: Source file name to delete
                                 namespace:
                                     type: string
-                                    description: Namespace (default: agent namespace)
+                                    description: 'Namespace (default: agent namespace)'
             responses:
                 "200":
                     description: Chunks deleted
@@ -208,7 +208,7 @@ paths:
                                     description: Note content (markdown)
                                 namespace:
                                     type: string
-                                    description: Namespace (default: agent namespace)
+                                    description: 'Namespace (default: agent namespace)'
                                 slug:
                                     type: string
                                     description: URL slug (auto-generated from title if omitted)
@@ -230,13 +230,13 @@ paths:
                             properties:
                                 namespace:
                                     type: string
-                                    description: Namespace (default: agent namespace)
+                                    description: 'Namespace (default: agent namespace)'
                                 limit:
                                     type: number
-                                    description: Max results (default: 50)
+                                    description: 'Max results (default: 50)'
                                 offset:
                                     type: number
-                                    description: Pagination offset (default: 0)
+                                    description: 'Pagination offset (default: 0)'
                                 prefix:
                                     type: string
                                     description: Filter by slug prefix (e.g., "notes/"). Results sorted by slug when prefix is used.
@@ -266,7 +266,7 @@ paths:
                             properties:
                                 namespace:
                                     type: string
-                                    description: Namespace (default: agent namespace)
+                                    description: 'Namespace (default: agent namespace)'
                                 slug:
                                     type: string
                                     description: Note slug
@@ -296,7 +296,7 @@ paths:
                             properties:
                                 namespace:
                                     type: string
-                                    description: Namespace (default: agent namespace)
+                                    description: 'Namespace (default: agent namespace)'
                                 slug:
                                     type: string
                                     description: Note slug
@@ -320,7 +320,7 @@ paths:
                             properties:
                                 namespace:
                                     type: string
-                                    description: Namespace (default: agent namespace)
+                                    description: 'Namespace (default: agent namespace)'
                                 slug:
                                     type: string
                                     description: Note slug to restore
@@ -350,7 +350,7 @@ paths:
                                     description: Note slug to edit
                                 namespace:
                                     type: string
-                                    description: Namespace (default: agent namespace)
+                                    description: 'Namespace (default: agent namespace)'
                                 old_string:
                                     type: string
                                     description: The exact text to find and replace
@@ -359,7 +359,7 @@ paths:
                                     description: The replacement text
                                 replace_all:
                                     type: boolean
-                                    description: Replace all occurrences (default: false)
+                                    description: 'Replace all occurrences (default: false)'
             responses:
                 "200":
                     description: Note edited
@@ -386,7 +386,7 @@ paths:
                                     description: New slug for the note
                                 namespace:
                                     type: string
-                                    description: Current namespace (default: agent namespace)
+                                    description: 'Current namespace (default: agent namespace)'
                                 new_namespace:
                                     type: string
                                     description: Target namespace (optional, defaults to current namespace)
@@ -422,16 +422,16 @@ paths:
                                     description: Text to search for. Case-insensitive substring by default; regex when regex=true.
                                 namespace:
                                     type: string
-                                    description: Namespace to search (default: agent namespace, "*" for all)
+                                    description: 'Namespace to search (default: agent namespace, "*" for all)'
                                 limit:
                                     type: number
-                                    description: Max matching notes to return (default: 20)
+                                    description: 'Max matching notes to return (default: 20)'
                                 context_before:
                                     type: number
-                                    description: Lines of context before each match (default: 2, max: 50)
+                                    description: 'Lines of context before each match (default: 2, max: 50)'
                                 context_after:
                                     type: number
-                                    description: Lines of context after each match (default: 2, max: 50)
+                                    description: 'Lines of context after each match (default: 2, max: 50)'
                                 context:
                                     type: number
                                     description: Symmetric shortcut for context_before and context_after
@@ -508,7 +508,7 @@ paths:
                                     description: Message to send
                                 from:
                                     type: string
-                                    description: Sender agent (default: configured agent)
+                                    description: 'Sender agent (default: configured agent)'
                                 channel:
                                     type: string
                                     description: Optional channel for message isolation
@@ -533,7 +533,7 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent to check messages for (default: configured agent)
+                                    description: 'Agent to check messages for (default: configured agent)'
                                 channel:
                                     type: string
                                     description: Optional channel to filter by
@@ -581,7 +581,7 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent to check status for (default: configured agent)
+                                    description: 'Agent to check status for (default: configured agent)'
                                 channel:
                                     type: string
                                     description: Optional channel to filter by
@@ -618,7 +618,7 @@ paths:
                                     description: Mail body (markdown)
                                 from:
                                     type: string
-                                    description: Sender agent (default: configured agent)
+                                    description: 'Sender agent (default: configured agent)'
                                 in_reply_to:
                                     type: string
                                     format: uuid
@@ -641,7 +641,7 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent to check mail for (default: configured agent)
+                                    description: 'Agent to check mail for (default: configured agent)'
             responses:
                 "200":
                     description: Unread mail list
@@ -662,7 +662,7 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent to check mail for (default: configured agent)
+                                    description: 'Agent to check mail for (default: configured agent)'
                                 ids:
                                     type: array
                                     items:
@@ -761,16 +761,16 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent to check sent mail for (default: configured agent)
+                                    description: 'Agent to check sent mail for (default: configured agent)'
                                 to:
                                     type: string
                                     description: Filter by recipient agent name
                                 limit:
                                     type: number
-                                    description: Max results (default: 50)
+                                    description: 'Max results (default: 50)'
                                 offset:
                                     type: number
-                                    description: Pagination offset (default: 0)
+                                    description: 'Pagination offset (default: 0)'
             responses:
                 "200":
                     description: Sent mail list
@@ -789,16 +789,16 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent to check history for (default: configured agent)
+                                    description: 'Agent to check history for (default: configured agent)'
                                 from:
                                     type: string
                                     description: Filter by sender agent name
                                 limit:
                                     type: number
-                                    description: Max results (default: 50)
+                                    description: 'Max results (default: 50)'
                                 offset:
                                     type: number
-                                    description: Pagination offset (default: 0)
+                                    description: 'Pagination offset (default: 0)'
             responses:
                 "200":
                     description: Mail history
@@ -821,7 +821,7 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent requesting presence info (default: configured agent)
+                                    description: 'Agent requesting presence info (default: configured agent)'
             responses:
                 "200":
                     description: Agent presence data
@@ -932,11 +932,11 @@ paths:
                                     description: Optional chat channel name
                                 created_by:
                                     type: string
-                                    description: Creator agent (default: configured agent)
+                                    description: 'Creator agent (default: configured agent)'
                                 mode:
                                     type: string
                                     enum: [realtime, async]
-                                    description: Discussion mode (default: realtime)
+                                    description: 'Discussion mode (default: realtime)'
                                 context:
                                     type: string
                                     description: Background/context for the discussion (max 10k chars)
@@ -1002,7 +1002,7 @@ paths:
                             properties:
                                 agent:
                                     type: string
-                                    description: Agent to check for (default: configured agent)
+                                    description: 'Agent to check for (default: configured agent)'
             responses:
                 "200":
                     description: Pending discussions and votes
@@ -1026,7 +1026,7 @@ paths:
                                     description: Discussion ID
                                 agent:
                                     type: string
-                                    description: Agent concluding (default: configured agent)
+                                    description: 'Agent concluding (default: configured agent)'
             responses:
                 "200":
                     description: Discussion concluded
@@ -1050,7 +1050,7 @@ paths:
                                     description: Discussion ID
                                 agent:
                                     type: string
-                                    description: Agent cancelling (default: configured agent)
+                                    description: 'Agent cancelling (default: configured agent)'
             responses:
                 "200":
                     description: Discussion cancelled
@@ -1074,7 +1074,7 @@ paths:
                                     description: Discussion ID
                                 agent:
                                     type: string
-                                    description: Agent joining (default: configured agent)
+                                    description: 'Agent joining (default: configured agent)'
             responses:
                 "200":
                     description: Joined discussion
@@ -1098,7 +1098,7 @@ paths:
                                     description: Discussion ID
                                 agent:
                                     type: string
-                                    description: Agent leaving (default: configured agent)
+                                    description: 'Agent leaving (default: configured agent)'
             responses:
                 "200":
                     description: Left discussion
@@ -1122,7 +1122,7 @@ paths:
                                     description: Discussion ID
                                 agent:
                                     type: string
-                                    description: Agent deferring (default: configured agent)
+                                    description: 'Agent deferring (default: configured agent)'
             responses:
                 "200":
                     description: Discussion deferred
@@ -1157,18 +1157,18 @@ paths:
                                 type:
                                     type: string
                                     enum: [general, conclude]
-                                    description: Vote type (default: general)
+                                    description: 'Vote type (default: general)'
                                 threshold:
                                     type: string
                                     enum: [unanimous, majority]
-                                    description: Pass threshold (default: unanimous)
+                                    description: 'Pass threshold (default: unanimous)'
                                 closes_at:
                                     type: string
                                     format: date-time
                                     description: Optional ISO timestamp when vote auto-closes
                                 proposed_by:
                                     type: string
-                                    description: Proposing agent (default: configured agent)
+                                    description: 'Proposing agent (default: configured agent)'
             responses:
                 "200":
                     description: Vote proposed
@@ -1198,7 +1198,7 @@ paths:
                                     description: Optional reason for your choice
                                 agent:
                                     type: string
-                                    description: Voting agent (default: configured agent)
+                                    description: 'Voting agent (default: configured agent)'
             responses:
                 "200":
                     description: Ballot cast
