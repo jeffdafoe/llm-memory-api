@@ -205,7 +205,7 @@ function flattenPrompt(systemPrompt) {
 function createCall(model, apiKey, configuration) {
     const conf = configuration || {};
 
-    return async function call(systemPrompt, userMessage) {
+    return async function call(systemPrompt, userMessage, opts) {
         const prompt = flattenPrompt(systemPrompt);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -239,6 +239,11 @@ function createCall(model, apiKey, configuration) {
             body.generationConfig.thinkingConfig = {
                 thinkingBudget: conf.thinking_budget
             };
+        }
+
+        // Per-call stop sequences. Gemini allows up to 5.
+        if (opts && Array.isArray(opts.stop) && opts.stop.length > 0) {
+            body.generationConfig.stopSequences = opts.stop.slice(0, 5);
         }
 
         logProvider('api-call', { provider: 'google', model });

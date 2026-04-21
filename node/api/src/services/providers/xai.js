@@ -186,7 +186,7 @@ function computeCost(modelId, promptTokens, cachedTokens, completionTokens) {
 function createCall(model, apiKey, configuration) {
     const conf = configuration || {};
 
-    return async function call(systemPrompt, userMessage) {
+    return async function call(systemPrompt, userMessage, opts) {
         const prompt = flattenPrompt(systemPrompt);
 
         // Build input messages — system instruction + user message
@@ -208,6 +208,12 @@ function createCall(model, apiKey, configuration) {
         // Temperature — only for non-reasoning models
         if (conf.temperature !== undefined) {
             body.temperature = conf.temperature;
+        }
+
+        // Per-call stop sequences. xAI Responses API accepts `stop` like
+        // OpenAI chat completions — cap at 4 to match the family.
+        if (opts && Array.isArray(opts.stop) && opts.stop.length > 0) {
+            body.stop = opts.stop.slice(0, 4);
         }
 
         // Build tools array — search tools are server-side, xAI handles execution

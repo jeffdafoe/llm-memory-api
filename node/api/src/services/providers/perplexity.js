@@ -130,7 +130,7 @@ function flattenPrompt(systemPrompt) {
 function createCall(model, apiKey, configuration) {
     const conf = configuration || {};
 
-    return async function call(systemPrompt, userMessage) {
+    return async function call(systemPrompt, userMessage, opts) {
         const prompt = flattenPrompt(systemPrompt);
 
         const body = {
@@ -149,6 +149,11 @@ function createCall(model, apiKey, configuration) {
         }
         if (conf.search_recency_filter) {
             body.search_recency_filter = conf.search_recency_filter;
+        }
+
+        // Per-call stop sequences. Perplexity is OpenAI-compatible — cap at 4.
+        if (opts && Array.isArray(opts.stop) && opts.stop.length > 0) {
+            body.stop = opts.stop.slice(0, 4);
         }
 
         logProvider('api-call', { provider: 'perplexity', model });
