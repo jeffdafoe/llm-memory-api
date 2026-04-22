@@ -30,6 +30,24 @@ function formatDuration(totalSeconds) {
 // In-memory rate limiter: agent -> array of call timestamps
 const callHistory = {};
 
+// Coalescing guard for discussion virtual-agent generations.
+// Key: `${discussionId}:${agentName}` → { rerunPending: boolean }
+//
+// Prevents concurrent trigger dispatches (e.g. `discussion-active` firing
+// immediately before a `message` trigger) from spawning parallel generations
+// for the same agent in the same discussion. When a trigger arrives while a
+// generation is already in flight for that (discussion, agent) pair, the
+// existing generation marks `rerunPending = true`; on completion it reloads
+// the chat history and fires once more with the freshest context. That way
+// every trigger is served, but with exactly one response per coalesced burst
+// — and that response sees the newest channel state rather than a stale
+// snapshot from when the first trigger fired.
+//
+// Vote (`vote-proposed`) triggers bypass this guard so ballots are never
+// dropped by coalescing. In-memory only; entries are removed when the
+// generation loop exits, and the Map resets on server restart.
+const inFlightVA = new Map();
+
 // --- Virtual agent status lifecycle ---
 
 // Set a virtual agent's status (available, degraded, error).
@@ -655,7 +673,7 @@ async function loadDiscussion(discussionId) {
 // Get recent chat history for a discussion, excluding system messages.
 async function loadChatHistory(discussionId, limit) {
     const result = await pool.query(
-        `SELECT DISTINCT ON (cmt.id) fa.name AS from_agent, cmt.message, cmt.sent_at
+        `SELECT DISTINCT ON (cmt.id) cmt.id, fa.name AS from_agent, cmt.message, cmt.sent_at
          FROM chat_message_texts cmt
          JOIN actors fa ON fa.id = cmt.from_actor_id
          WHERE cmt.discussion_id = $1 AND NOT (fa.name = 'system')
@@ -1151,13 +1169,16 @@ async function handleVirtualAgent(payload) {
         return;
     }
 
+    // Set of virtual agent names in this discussion — used by the initial
+    // loop-prevention gate below and by the per-agent rerun watermark check.
+    const virtualNames = new Set(joinedVirtual.map(a => a.agent));
+
     // Load chat history
     const chatHistory = await loadChatHistory(discussionId, 50);
 
     // For 'message' triggers, skip if the last non-system message was from a virtual agent
     // (prevents infinite response loops)
     if (triggerType === 'message' && chatHistory.length > 0) {
-        const virtualNames = new Set(joinedVirtual.map(a => a.agent));
         const lastNonSystem = [...chatHistory].reverse().find(m => m.from_agent !== 'system');
         if (lastNonSystem && virtualNames.has(lastNonSystem.from_agent)) {
             logVA('skip-self-response', { discussionId, lastFrom: lastNonSystem.from_agent });
@@ -1178,14 +1199,55 @@ async function handleVirtualAgent(payload) {
 
     // Process each virtual agent
     for (const agent of joinedVirtual) {
+        // Coalescing guard — message/discussion-active triggers share a
+        // single in-flight slot per (discussion, agent). Vote triggers
+        // bypass the guard so ballots are never dropped.
+        const coalesceable = triggerType === 'message' || triggerType === 'discussion-active';
+        const guardKey = discussionId + ':' + agent.agent;
+
+        if (coalesceable && inFlightVA.has(guardKey)) {
+            inFlightVA.get(guardKey).rerunPending = true;
+            logVA('coalesce-trigger', { discussionId, agent: agent.agent, triggerType });
+            continue;
+        }
+        if (coalesceable) {
+            inFlightVA.set(guardKey, { rerunPending: false });
+        }
+
+        // currentHistory / currentTrigger are rebound on each rerun so that
+        // coalesced triggers produce a response against the freshest channel
+        // state. On rerun we always treat the trigger as 'message' — by then
+        // the thing we're responding to is whatever new non-VA messages
+        // arrived while the first generation was running.
+        let currentHistory = chatHistory;
+        let currentTrigger = triggerType;
+
+        // Watermark for rerun decisions: the id of the newest non-VA (human
+        // or system-agent) message in the snapshot we're about to respond
+        // against. On rerun, we only fire again if the fresh history contains
+        // a non-VA message with a newer id than this — otherwise another VA
+        // posting during our generation would mask a pending human message
+        // and we'd skip responding to the thing the rerun was queued for.
+        let lastHandledNonVAId = null;
+
         try {
+            // Top of rerun loop — one pass per coalesced burst.
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+            // Capture the watermark before we respond, so the rerun check
+            // can tell whether a newer non-VA message has arrived since.
+            const watermarkMsg = [...currentHistory]
+                .reverse()
+                .find(m => m.from_agent !== 'system' && !virtualNames.has(m.from_agent));
+            lastHandledNonVAId = watermarkMsg ? watermarkMsg.id : null;
+
             if (!agent.api_key) {
                 await postError(agent.agent, discussionId, 'No API key configured');
-                continue;
+                break;
             }
             if (!agent.provider || !agent.model) {
                 await postError(agent.agent, discussionId, 'No provider/model configured');
-                continue;
+                break;
             }
 
             // Decrypt API key
@@ -1204,19 +1266,19 @@ async function handleVirtualAgent(payload) {
 
             // Build prompts
             const systemPrompt = buildSystemPrompt(agent, discussion, ragContext, soul, peopleContext);
-            const userMessage = buildUserMessage(chatHistory, triggerType, voteQuestion);
+            const userMessage = buildUserMessage(currentHistory, currentTrigger, voteQuestion);
 
             // Rate limit check
             if (isRateLimited(agent.agent)) {
                 await postError(agent.agent, discussionId, 'Rate limited — too many API calls. Cooling down.');
-                continue;
+                break;
             }
 
             // Budget check
             const costCheck = await isOverCostLimit(agent);
             if (costCheck.limited) {
                 await postError(agent.agent, discussionId, costCheck.reason);
-                continue;
+                break;
             }
 
             // Single attempt — no retries for discussions. If the provider fails,
@@ -1230,7 +1292,7 @@ async function handleVirtualAgent(payload) {
             // — one string covers every possible fabricated speaker regardless
             // of participant count, so no per-speaker lists or provider-cap
             // juggling. Post-generation scan below is the deterministic backstop.
-            const distinctSpeakers = collectDistinctSpeakers(chatHistory, agent.agent);
+            const distinctSpeakers = collectDistinctSpeakers(currentHistory, agent.agent);
             const stop = ['\n{"sender":"'];
 
             recordCall(agent.agent);
@@ -1290,7 +1352,7 @@ async function handleVirtualAgent(payload) {
             }).catch(() => {});
 
             // Handle vote-proposed: parse response and cast ballot
-            if (triggerType === 'vote-proposed' && voteId) {
+            if (currentTrigger === 'vote-proposed' && voteId) {
                 const voteResponse = parseVoteResponse(response);
                 if (voteResponse) {
                     await castVote(voteId, agent.agent, voteResponse.choice, voteResponse.reason);
@@ -1322,10 +1384,10 @@ async function handleVirtualAgent(payload) {
                 });
             }
 
-            logVA('responded', { discussionId, agent: agent.agent, triggerType, responseLength: response ? response.length : 0 });
+            logVA('responded', { discussionId, agent: agent.agent, triggerType: currentTrigger, responseLength: response ? response.length : 0 });
 
             // Fire-and-forget learning extraction (skip for vote responses)
-            if (triggerType !== 'vote-proposed') {
+            if (currentTrigger !== 'vote-proposed') {
                 extractLearnings(agent, systemPrompt, userMessage, response, 'discussion', discussion.topic).catch(err => {
                     logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
                 });
@@ -1338,6 +1400,41 @@ async function handleVirtualAgent(payload) {
                 logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
             });
 
+            // Rerun evaluation — if another trigger arrived while we were
+            // generating, fire once more with the freshest history so the
+            // new message gets served. Reached only after a successful
+            // generation; early exits (no-key, rate-limit, budget, provider
+            // error) bypass this via break/catch.
+            //
+            // Check whether there's a new non-VA message (user or other real
+            // agent) in fresh history with a higher id than the watermark we
+            // recorded before this generation. Basing the rerun decision on
+            // "is there something new worth responding to" rather than "is
+            // the last message from a VA" prevents another VA's interleaved
+            // post from hiding a pending human message. (Credit: code_review
+            // catch on initial coalesce diff, 2026-04-22.)
+            if (coalesceable) {
+                const entry = inFlightVA.get(guardKey);
+                if (entry && entry.rerunPending) {
+                    entry.rerunPending = false;
+                    const freshHistory = await loadChatHistory(discussionId, 50);
+                    const hasNewNonVAMessage = freshHistory.some(m =>
+                        m.from_agent !== 'system'
+                        && !virtualNames.has(m.from_agent)
+                        && (lastHandledNonVAId == null || m.id > lastHandledNonVAId)
+                    );
+                    if (!hasNewNonVAMessage) {
+                        logVA('rerun-skip-no-new-message', { discussionId, agent: agent.agent });
+                        break;
+                    }
+                    currentHistory = freshHistory;
+                    currentTrigger = 'message';
+                    logVA('rerun', { discussionId, agent: agent.agent });
+                    continue;
+                }
+            }
+            break;
+            }
         } catch (err) {
             // Provider failed — remove the agent from the discussion so it
             // doesn't block other participants. Error ping will recover it later.
@@ -1367,6 +1464,8 @@ async function handleVirtualAgent(payload) {
                 logVA('discussion-leave-failed', { agent: agent.agent, discussionId, error: leaveErr.message });
             }
             await setAgentStatus(agent.agent, 'error');
+        } finally {
+            if (coalesceable) inFlightVA.delete(guardKey);
         }
     }
 }
