@@ -41,7 +41,6 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
     const expandedNamespaces = ref({});
     const expandedFolders = ref({});
     const selectedNote = ref(null);
-    const noteRelations = ref([]);
 
     // ---- Sync mappings ----
     const allSyncMappings = ref([]);         // all mappings for sync indicator icons
@@ -436,11 +435,6 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
             }
 
             selectedNote.value = note;
-
-            // Load related notes (fire-and-forget — don't block the note from rendering)
-            api('/admin/notes/relations', { namespace, slug, direction: 'both' })
-                .then(data => { noteRelations.value = data.relations || []; })
-                .catch(() => { noteRelations.value = []; });
         } catch (err) {
             console.error('Failed to open note:', err);
         }
@@ -745,13 +739,6 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                         msg += ' (' + data.result.errors.length + ' errors)';
                     }
                     showToast(msg, (data.result.errors && data.result.errors.length > 0) ? 'error' : 'success', 8000);
-                    // Auto-generate keyword relations after successful reindex
-                    try {
-                        var krResult = await api('/admin/notes/keyword-relations', { min_shared: 3 });
-                        showToast('Keyword relations: ' + (krResult.created || 0) + ' created', 'success', 5000);
-                    } catch (krErr) {
-                        console.error('Keyword relations failed:', krErr);
-                    }
                 } else if (data.result && data.result.error) {
                     showToast('Reindex failed: ' + data.result.error, 'error');
                 }
@@ -1080,7 +1067,7 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
 
     return {
         notesNamespaces, notesTrees, expandedNamespaces, expandedFolders,
-        selectedNote, noteRelations, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
+        selectedNote, renderedNoteContent, isMermaid, mermaidContainer, notesSidebarCollapsed, notesFullscreen, toggleFullscreen,
         notesEditing, notesEditTitle, notesEditContent, notesSaving,
         notesSearchQuery, notesSearchResults,
         notesReindexing, reindexStatus,

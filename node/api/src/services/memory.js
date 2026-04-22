@@ -124,7 +124,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const queryVector = pgvector.toSql(embeddings[0]);
 
     // Candidate pool: fetch more results than requested from pgvector, then
-    // apply all boosts (BM25, filename, graph, decay, access) and trim down.
+    // apply all boosts (BM25, filename, decay, access) and trim down.
     // This improves recall — results that rank low on pure vector similarity
     // can bubble up after boosts are applied.
     const poolMultiplier = Math.min(parseNonNegativeFinite(config.get('search_pool_multiplier'), 3), 10);
@@ -331,130 +331,8 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const result = await pool.query(sql, params);
     let rows = result.rows;
 
-    // Spreading activation: activation propagates from top search results through
-    // the graph, decaying with each hop. Notes reachable from multiple hits
-    // accumulate activation from all paths.
-    //
-    // Algorithm:
-    // 1. Top 5 results become activation sources (initial activation = similarity * graphBoost)
-    // 2. Recursive CTE fetches N-hop neighborhood edges from the graph
-    // 3. Build an adjacency list from those edges
-    // 4. BFS from each anchor, propagating activation layer by layer with decay per hop
-    // 5. Accumulated activation added to similarity scores, results re-sorted
-    //
-    // Config: search_graph_boost (base strength), search_graph_decay (per-hop 0-1),
-    // search_graph_hops (max depth 1-4)
-    const graphBoost = parseNonNegativeFinite(config.get('search_graph_boost'), 0);
-    if (graphBoost > 0 && rows.length > 1) {
-        try {
-            const graphDecay = Math.min(Math.max(parseNonNegativeFinite(config.get('search_graph_decay'), 0.5), 0), 1);
-            const graphHops = Math.min(Math.max(1, parseInt(config.get('search_graph_hops')) || 2), 4);
-
-            // Take the top results as activation sources
-            const topN = Math.min(5, rows.length);
-            const anchors = rows.slice(0, topN);
-            const anchorPairs = anchors.map(r => [r.namespace || namespace, r.source_file]);
-            const anchorScores = {};
-            for (const a of anchors) {
-                const key = ((a.namespace || namespace) + '/' + a.source_file).toLowerCase();
-                anchorScores[key] = parseFloat(a.similarity);
-            }
-
-            // Query N-hop neighborhood of all anchors using recursive CTE.
-            // UNION (not UNION ALL) prevents infinite cycles — each unique
-            // (source, target, depth) row only appears once.
-            const whereClauses = anchorPairs.map((_, i) =>
-                `(nr.source_namespace = $${i * 2 + 1} AND LOWER(nr.source_slug) = LOWER($${i * 2 + 2}))
-                 OR (nr.target_namespace = $${i * 2 + 1} AND LOWER(nr.target_slug) = LOWER($${i * 2 + 2}))`
-            ).join(' OR ');
-
-            const relResult = await pool.query(`
-                WITH RECURSIVE spread AS (
-                    SELECT nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug, 1 AS depth
-                    FROM note_relations nr
-                    WHERE ${whereClauses}
-
-                    UNION
-
-                    SELECT nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug, s.depth + 1
-                    FROM note_relations nr
-                    JOIN spread s ON (
-                        (nr.source_namespace = s.target_namespace AND LOWER(nr.source_slug) = LOWER(s.target_slug))
-                        OR (nr.target_namespace = s.source_namespace AND LOWER(nr.target_slug) = LOWER(s.source_slug))
-                    )
-                    WHERE s.depth < $${anchorPairs.length * 2 + 1}
-                )
-                SELECT DISTINCT source_namespace, source_slug, target_namespace, target_slug
-                FROM spread
-            `, [...anchorPairs.flat(), graphHops]);
-
-            // Build undirected adjacency list from edges
-            const adjacency = {};  // nodeKey -> Set<neighborKey>
-            for (const rel of relResult.rows) {
-                const sKey = (rel.source_namespace + '/' + rel.source_slug).toLowerCase();
-                const tKey = (rel.target_namespace + '/' + rel.target_slug).toLowerCase();
-                if (!adjacency[sKey]) adjacency[sKey] = new Set();
-                if (!adjacency[tKey]) adjacency[tKey] = new Set();
-                adjacency[sKey].add(tKey);
-                adjacency[tKey].add(sKey);
-            }
-
-            // BFS from each anchor, propagating activation layer by layer.
-            // Each anchor seeds its neighbors with (graphBoost * anchorSimilarity * decay).
-            // Activation accumulates — a node reachable from multiple anchors gets
-            // activation from each path.
-            const activation = {};  // nodeKey -> accumulated activation
-
-            for (const anchorKey of Object.keys(anchorScores)) {
-                const initialActivation = graphBoost * anchorScores[anchorKey];
-
-                // BFS with depth tracking — visited per anchor to avoid cycles
-                const visited = new Set([anchorKey]);
-                var frontier = [anchorKey];
-
-                for (var hop = 1; hop <= graphHops; hop++) {
-                    if (frontier.length === 0) break;
-                    var nextFrontier = [];
-                    var hopActivation = initialActivation * Math.pow(graphDecay, hop);
-                    if (hopActivation < 0.001) break;  // stop when activation is negligible
-
-                    for (var fi = 0; fi < frontier.length; fi++) {
-                        var neighbors = adjacency[frontier[fi]];
-                        if (!neighbors) continue;
-                        for (var neighbor of neighbors) {
-                            if (visited.has(neighbor)) continue;
-                            visited.add(neighbor);
-                            activation[neighbor] = (activation[neighbor] || 0) + hopActivation;
-                            nextFrontier.push(neighbor);
-                        }
-                    }
-                    frontier = nextFrontier;
-                }
-            }
-
-            // Remove anchors from activation (they're already scored)
-            for (const key of Object.keys(anchorScores)) {
-                delete activation[key];
-            }
-
-            // Apply accumulated activation to result scores
-            if (Object.keys(activation).length > 0) {
-                for (const row of rows) {
-                    const key = ((row.namespace || namespace) + '/' + row.source_file).toLowerCase();
-                    if (activation[key]) {
-                        row.similarity = parseFloat(row.similarity) + activation[key];
-                    }
-                }
-                // Re-sort by activated similarity
-                rows.sort((a, b) => parseFloat(b.similarity) - parseFloat(a.similarity));
-            }
-        } catch (e) {
-            log('search', 'spreading-activation-error', { error: e.message, rowCount: rows.length });
-        }
-    }
-
     // Trim the candidate pool down to the requested result count.
-    // All boosts (BM25, filename, graph, decay, access, kind weight) have been
+    // All boosts (BM25, filename, decay, access, kind weight) have been
     // applied, so the final ordering reflects the full scoring pipeline.
     if (rows.length > maxResults) {
         rows = rows.slice(0, maxResults);

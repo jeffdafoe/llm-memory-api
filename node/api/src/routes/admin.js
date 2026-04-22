@@ -1267,15 +1267,10 @@ router.post('/admin/notes/reindex', requirePerm('notes', 'write'), adminRoute('n
                     // Enrichment module not available — skip silently
                 }
             }
-            const { autoExtractRelations } = require('../services/relations');
-
             for (const doc of docs.rows) {
                 try {
                     const result = await ingestContent(doc.namespace, doc.slug, doc.content);
                     reindexState.chunks_created += result.chunks_created;
-
-                    // Auto-extract slug references as relations
-                    autoExtractRelations(doc.namespace, doc.slug, doc.content).catch(() => {});
 
                     // Fire-and-forget enrichment for each note (skips conversations/dreams internally)
                     if (enrichModule) {
@@ -1334,20 +1329,6 @@ router.post('/admin/notes/reindex-clear', requirePerm('notes', 'write'), (req, r
     res.json({ ok: true });
 });
 
-// POST /admin/notes/keyword-relations — generate "related" edges between notes
-// that share keywords/tags. Pure SQL/JS, no LLM cost.
-router.post('/admin/notes/keyword-relations', requirePerm('notes', 'write'), adminRoute('notes-keyword-relations', async (req, res) => {
-    var minShared = req.body.min_shared !== undefined ? sanitize.positiveInt(req.body.min_shared, 1, 20) : undefined;
-    if (req.body.min_shared !== undefined && minShared === null) {
-        return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'min_shared must be an integer between 1 and 20' }
-        });
-    }
-    const { generateKeywordRelations } = require('../services/enrichment');
-    const result = await generateKeywordRelations(minShared);
-    res.json(result);
-}));
-
 // POST /admin/notes/usage — namespace storage usage (note count + total bytes).
 // Optionally filter by namespace. Joins actors table to show agent name.
 router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('notes-usage', async (req, res) => {
@@ -1375,121 +1356,7 @@ router.post('/admin/notes/usage', requirePerm('notes', 'read'), adminRoute('note
     res.json({ usage: result.rows });
 }));
 
-// POST /admin/notes/relations — get relations for a note.
-// Params: namespace, slug, direction (outgoing/incoming/both), type (optional).
-// Filters to namespaces the user can read.
-router.post('/admin/notes/relations', requirePerm('notes', 'read'), adminRoute('notes-relations', async (req, res) => {
-    const { namespace, slug, direction, type } = req.body;
-    if (!namespace || !slug) {
-        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
-    }
-    const { getRelations } = require('../services/relations');
-    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
-    let relations = await getRelations(namespace, slug, direction || 'both', type);
-    if (readable !== null) {
-        relations = relations.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
-    }
-    res.json({ relations });
-}));
-
-// POST /admin/notes/graph — graph traversal from a note.
-// Params: namespace, slug, depth (1-5, default 2).
-// Filters nodes/edges to readable namespaces.
-router.post('/admin/notes/graph', requirePerm('notes', 'read'), adminRoute('notes-graph', async (req, res) => {
-    const { namespace, slug, depth } = req.body;
-    if (!namespace || !slug) {
-        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required: namespace, slug' } });
-    }
-    const { getGraph } = require('../services/relations');
-    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
-    const graph = await getGraph(namespace, slug, depth || 2);
-    if (readable !== null) {
-        graph.edges = graph.edges.filter(e => {
-            const sNs = e.source.split('/')[0];
-            const tNs = e.target.split('/')[0];
-            return readable.includes(sNs) && readable.includes(tNs);
-        });
-        const reachable = new Set();
-        for (const e of graph.edges) {
-            reachable.add(e.source);
-            reachable.add(e.target);
-        }
-        // Always keep root node
-        const rootKey = namespace + '/' + slug;
-        reachable.add(rootKey);
-        graph.nodes = graph.nodes.filter(n => reachable.has(n.namespace + '/' + n.slug));
-    }
-    res.json(graph);
-}));
-
-// POST /admin/notes/graph-all — all relations, optionally filtered by namespace.
-// For the graph overview mode. Filters to readable namespaces.
-router.post('/admin/notes/graph-all', requirePerm('notes', 'read'), adminRoute('notes-graph-all', async (req, res) => {
-    const { namespace } = req.body;
-    const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
-
-    // Exclude noisy note kinds from the graph:
-    // - conversation: raw session dumps
-    // - context: system-managed docs (e.g. context/soul)
-    // - instruction: bootstrap, instructions, GUIDELINES — infrastructure that everything references
-    const excludeKinds = ['conversation', 'context', 'instruction'];
-
-    let sql, params;
-    if (namespace) {
-        sql = `SELECT nr.id, nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug,
-                      nr.relation_type, nr.auto_extracted, nr.created_at
-               FROM note_relations nr
-               LEFT JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
-               LEFT JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
-               WHERE (nr.source_namespace = $1 OR nr.target_namespace = $1)
-                 AND (sd.kind IS NULL OR sd.kind != ALL($2))
-                 AND (td.kind IS NULL OR td.kind != ALL($2))
-               ORDER BY nr.created_at DESC`;
-        params = [namespace, excludeKinds];
-    } else {
-        sql = `SELECT nr.id, nr.source_namespace, nr.source_slug, nr.target_namespace, nr.target_slug,
-                      nr.relation_type, nr.auto_extracted, nr.created_at
-               FROM note_relations nr
-               LEFT JOIN documents sd ON sd.namespace = nr.source_namespace AND LOWER(sd.slug) = LOWER(nr.source_slug) AND sd.deleted_at IS NULL
-               LEFT JOIN documents td ON td.namespace = nr.target_namespace AND LOWER(td.slug) = LOWER(nr.target_slug) AND td.deleted_at IS NULL
-               WHERE (sd.kind IS NULL OR sd.kind != ALL($1))
-                 AND (td.kind IS NULL OR td.kind != ALL($1))
-               ORDER BY nr.created_at DESC`;
-        params = [excludeKinds];
-    }
-    const result = await pool.query(sql, params);
-
-    // Filter to readable namespaces
-    let rows = result.rows;
-    if (readable !== null) {
-        rows = rows.filter(r => readable.includes(r.source_namespace) && readable.includes(r.target_namespace));
-    }
-
-    // Build nodes + edges
-    const nodeSet = new Set();
-    const nodes = [];
-    const edges = [];
-    for (const row of rows) {
-        const sourceKey = row.source_namespace + '/' + row.source_slug;
-        const targetKey = row.target_namespace + '/' + row.target_slug;
-        if (!nodeSet.has(sourceKey)) {
-            nodeSet.add(sourceKey);
-            nodes.push({ namespace: row.source_namespace, slug: row.source_slug });
-        }
-        if (!nodeSet.has(targetKey)) {
-            nodeSet.add(targetKey);
-            nodes.push({ namespace: row.target_namespace, slug: row.target_slug });
-        }
-        edges.push({
-            id: row.id,
-            source: sourceKey,
-            target: targetKey,
-            type: row.relation_type,
-            auto_extracted: row.auto_extracted
-        });
-    }
-    res.json({ nodes, edges });
-}));
+// (Relation/graph routes were removed in MEM-116 along with the note_relations table.)
 
 // ---- Note Synchronization CRUD ----
 
