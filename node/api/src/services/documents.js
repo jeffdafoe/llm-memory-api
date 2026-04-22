@@ -8,8 +8,6 @@ const { resolveByName } = require('./actors');
 const { handleError } = require('./error-handler');
 const { broadcast } = require('./events');
 const config = require('./config');
-const { deleteRelationsForNote, updateRelationsForMove, autoExtractRelations } = require('./relations');
-
 // Longest regex pattern grep will accept. Length alone doesn't prevent
 // ReDoS (short patterns can still backtrack pathologically), but it caps
 // the blast radius of pattern parsing and pairs with safe-regex below.
@@ -302,13 +300,10 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
         }).catch(() => {});
     });
 
-    // Auto-extract slug references and create relation graph edges (fire-and-forget)
-    autoExtractRelations(namespace, resolvedSlug, content).catch(() => {});
-
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug: resolvedSlug, operation: 'saved' });
 
-    // LLM-powered enrichment — generates keywords, tags, and suggested relations (fire-and-forget)
+    // Classify the note's cognitive type (fire-and-forget); drives per-type decay in search ranking.
     const { enrichNote } = require('./enrichment');
     var parsedMeta = doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null;
     enrichNote(namespace, resolvedSlug, title, content, parsedMeta).catch(err => {
@@ -490,7 +485,6 @@ async function deleteNote(namespace, slug) {
     ).catch(() => {});
 
     updateUsage(namespace, -1, -(result.rows[0].content_length || 0));
-    deleteRelationsForNote(namespace, slug).catch(() => {});
     broadcast('note_updated', { namespace, slug, operation: 'deleted' });
 
     return { deleted: true, slug };
@@ -612,9 +606,6 @@ async function editNote(namespace, slug, oldString, newString, replaceAll) {
             namespace, slug, error: err.message
         }).catch(() => {});
     });
-
-    // Re-extract slug references after edit (fire-and-forget)
-    autoExtractRelations(namespace, slug, updatedContent).catch(() => {});
 
     // Notify admin dashboard clients that this note changed
     broadcast('note_updated', { namespace, slug, operation: 'edited' });
@@ -856,9 +847,6 @@ async function moveNote(namespace, slug, newSlug, newNamespace) {
         'UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND LOWER(source_file) = LOWER($4)',
         [newSlug, targetNamespace, namespace, slug]
     );
-
-    // Update relation graph edges to follow the move
-    updateRelationsForMove(namespace, slug, targetNamespace, newSlug).catch(() => {});
 
     const doc = result.rows[0];
 
