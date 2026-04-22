@@ -35,6 +35,22 @@ builds:
       - amd64
       - arm64
 
+  - id: mail-send
+    main: ./cmd/mail-send/
+    dir: go/client
+    binary: mail-send
+    ldflags:
+      - -s -w -X github.com/jeffdafoe/llm-memory-api/go/client/internal/selfupdate.Version={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
 archives:
   - id: memory-sync
     ids:
@@ -57,6 +73,17 @@ archives:
         formats:
           - zip
     name_template: "discuss_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: mail-send
+    ids:
+      - mail-send
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "mail-send_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt

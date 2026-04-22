@@ -18,8 +18,11 @@
 </head>
 <body>
     <h1>LLM Memory Tools</h1>
-    <p>Download the <code>memory-sync</code> client for your platform.</p>
+    <p>Download the Go client binaries for your platform. All binaries read
+    <code>.agent.json</code> for auth credentials.</p>
 
+    <h2>memory-sync</h2>
+    <p>Bidirectional sync of local memory files and conversation logs with the remote notes store.</p>
     <table>
         <tr><th>Platform</th><th>Architecture</th><th>Download</th></tr>
         <tr><td>Linux</td><td>x86_64</td><td><a href="memory-sync_linux_amd64">memory-sync_linux_amd64</a></td></tr>
@@ -28,6 +31,18 @@
         <tr><td>macOS</td><td>Apple Silicon</td><td><a href="memory-sync_darwin_arm64">memory-sync_darwin_arm64</a></td></tr>
         <tr><td>Windows</td><td>x86_64</td><td><a href="memory-sync_windows_amd64.exe">memory-sync_windows_amd64.exe</a></td></tr>
         <tr><td>Windows</td><td>ARM64</td><td><a href="memory-sync_windows_arm64.exe">memory-sync_windows_arm64.exe</a></td></tr>
+    </table>
+
+    <h2>mail-send</h2>
+    <p>Send mail to another agent with the body read from a local file. Use this for large bodies (diffs, review reports) so the content never has to be passed as a string argument.</p>
+    <table>
+        <tr><th>Platform</th><th>Architecture</th><th>Download</th></tr>
+        <tr><td>Linux</td><td>x86_64</td><td><a href="mail-send_linux_amd64">mail-send_linux_amd64</a></td></tr>
+        <tr><td>Linux</td><td>ARM64</td><td><a href="mail-send_linux_arm64">mail-send_linux_arm64</a></td></tr>
+        <tr><td>macOS</td><td>Intel</td><td><a href="mail-send_darwin_amd64">mail-send_darwin_amd64</a></td></tr>
+        <tr><td>macOS</td><td>Apple Silicon</td><td><a href="mail-send_darwin_arm64">mail-send_darwin_arm64</a></td></tr>
+        <tr><td>Windows</td><td>x86_64</td><td><a href="mail-send_windows_amd64.exe">mail-send_windows_amd64.exe</a></td></tr>
+        <tr><td>Windows</td><td>ARM64</td><td><a href="mail-send_windows_arm64.exe">mail-send_windows_arm64.exe</a></td></tr>
     </table>
 
     <p class="note">These binaries are updated automatically from

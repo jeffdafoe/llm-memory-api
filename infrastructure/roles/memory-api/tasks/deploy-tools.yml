@@ -44,113 +44,58 @@
         prefix: tools-download-
       register: download_dir
 
-    - name: Download Linux amd64 archive
-      get_url:
-        url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ release_tag }}/memory-sync_{{ release_version }}_linux_amd64.tar.gz"
-        dest: "{{ download_dir.path }}/linux_amd64.tar.gz"
+    # Download + extract + deploy each binary × platform combination.
+    # tool_matrix lists the binaries that ship via the tools landing page.
+    # platform_matrix enumerates goreleaser archive targets. The loop below
+    # replaces what used to be ~30 repetitive tasks with a single pair.
+    - name: Build tool × platform matrix
+      set_fact:
+        tools_platforms: "{{ tools_platforms | default([]) + [{'tool': item[0], 'goos': item[1].goos, 'goarch': item[1].goarch, 'ext': item[1].ext, 'archive_ext': item[1].archive_ext}] }}"
+      loop: "{{ ['memory-sync', 'mail-send'] | product([
+          {'goos': 'linux',   'goarch': 'amd64', 'ext': '',     'archive_ext': 'tar.gz'},
+          {'goos': 'linux',   'goarch': 'arm64', 'ext': '',     'archive_ext': 'tar.gz'},
+          {'goos': 'darwin',  'goarch': 'amd64', 'ext': '',     'archive_ext': 'tar.gz'},
+          {'goos': 'darwin',  'goarch': 'arm64', 'ext': '',     'archive_ext': 'tar.gz'},
+          {'goos': 'windows', 'goarch': 'amd64', 'ext': '.exe', 'archive_ext': 'zip'},
+          {'goos': 'windows', 'goarch': 'arm64', 'ext': '.exe', 'archive_ext': 'zip'}
+        ]) | list }}"
 
-    - name: Download Linux arm64 archive
+    - name: Download release archives
       get_url:
-        url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ release_tag }}/memory-sync_{{ release_version }}_linux_arm64.tar.gz"
-        dest: "{{ download_dir.path }}/linux_arm64.tar.gz"
+        url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ release_tag }}/{{ item.tool }}_{{ release_version }}_{{ item.goos }}_{{ item.goarch }}.{{ item.archive_ext }}"
+        dest: "{{ download_dir.path }}/{{ item.tool }}_{{ item.goos }}_{{ item.goarch }}.{{ item.archive_ext }}"
+      loop: "{{ tools_platforms }}"
+      loop_control:
+        label: "{{ item.tool }} {{ item.goos }}/{{ item.goarch }}"
 
-    - name: Download Darwin amd64 archive
-      get_url:
-        url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ release_tag }}/memory-sync_{{ release_version }}_darwin_amd64.tar.gz"
-        dest: "{{ download_dir.path }}/darwin_amd64.tar.gz"
+    - name: Create per-binary extract subdirs
+      file:
+        path: "{{ download_dir.path }}/{{ item.tool }}_{{ item.goos }}_{{ item.goarch }}"
+        state: directory
+      loop: "{{ tools_platforms }}"
+      loop_control:
+        label: "{{ item.tool }} {{ item.goos }}/{{ item.goarch }}"
 
-    - name: Download Darwin arm64 archive
-      get_url:
-        url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ release_tag }}/memory-sync_{{ release_version }}_darwin_arm64.tar.gz"
-        dest: "{{ download_dir.path }}/darwin_arm64.tar.gz"
-
-    - name: Download Windows amd64 archive
-      get_url:
-        url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ release_tag }}/memory-sync_{{ release_version }}_windows_amd64.zip"
-        dest: "{{ download_dir.path }}/windows_amd64.zip"
-
-    - name: Download Windows arm64 archive
-      get_url:
-        url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ release_tag }}/memory-sync_{{ release_version }}_windows_arm64.zip"
-        dest: "{{ download_dir.path }}/windows_arm64.zip"
-
-    - name: Extract Linux amd64
+    - name: Extract release archives
       unarchive:
-        src: "{{ download_dir.path }}/linux_amd64.tar.gz"
-        dest: "{{ download_dir.path }}"
+        src: "{{ download_dir.path }}/{{ item.tool }}_{{ item.goos }}_{{ item.goarch }}.{{ item.archive_ext }}"
+        # Extract each into its own subdir so binaries from different tools
+        # don't clobber each other when extracted to the same directory.
+        dest: "{{ download_dir.path }}/{{ item.tool }}_{{ item.goos }}_{{ item.goarch }}"
         remote_src: yes
+      loop: "{{ tools_platforms }}"
+      loop_control:
+        label: "{{ item.tool }} {{ item.goos }}/{{ item.goarch }}"
 
-    - name: Deploy Linux amd64 binary
+    - name: Deploy platform binaries
       copy:
-        src: "{{ download_dir.path }}/memory-sync"
-        dest: /var/www/tools/memory-sync_linux_amd64
+        src: "{{ download_dir.path }}/{{ item.tool }}_{{ item.goos }}_{{ item.goarch }}/{{ item.tool }}{{ item.ext }}"
+        dest: "/var/www/tools/{{ item.tool }}_{{ item.goos }}_{{ item.goarch }}{{ item.ext }}"
         remote_src: yes
         mode: "0755"
-
-    - name: Extract Linux arm64
-      unarchive:
-        src: "{{ download_dir.path }}/linux_arm64.tar.gz"
-        dest: "{{ download_dir.path }}"
-        remote_src: yes
-
-    - name: Deploy Linux arm64 binary
-      copy:
-        src: "{{ download_dir.path }}/memory-sync"
-        dest: /var/www/tools/memory-sync_linux_arm64
-        remote_src: yes
-        mode: "0755"
-
-    - name: Extract Darwin amd64
-      unarchive:
-        src: "{{ download_dir.path }}/darwin_amd64.tar.gz"
-        dest: "{{ download_dir.path }}"
-        remote_src: yes
-
-    - name: Deploy Darwin amd64 binary
-      copy:
-        src: "{{ download_dir.path }}/memory-sync"
-        dest: /var/www/tools/memory-sync_darwin_amd64
-        remote_src: yes
-        mode: "0755"
-
-    - name: Extract Darwin arm64
-      unarchive:
-        src: "{{ download_dir.path }}/darwin_arm64.tar.gz"
-        dest: "{{ download_dir.path }}"
-        remote_src: yes
-
-    - name: Deploy Darwin arm64 binary
-      copy:
-        src: "{{ download_dir.path }}/memory-sync"
-        dest: /var/www/tools/memory-sync_darwin_arm64
-        remote_src: yes
-        mode: "0755"
-
-    - name: Extract Windows amd64
-      unarchive:
-        src: "{{ download_dir.path }}/windows_amd64.zip"
-        dest: "{{ download_dir.path }}"
-        remote_src: yes
-
-    - name: Deploy Windows amd64 binary
-      copy:
-        src: "{{ download_dir.path }}/memory-sync.exe"
-        dest: /var/www/tools/memory-sync_windows_amd64.exe
-        remote_src: yes
-        mode: "0755"
-
-    - name: Extract Windows arm64
-      unarchive:
-        src: "{{ download_dir.path }}/windows_arm64.zip"
-        dest: "{{ download_dir.path }}"
-        remote_src: yes
-
-    - name: Deploy Windows arm64 binary
-      copy:
-        src: "{{ download_dir.path }}/memory-sync.exe"
-        dest: /var/www/tools/memory-sync_windows_arm64.exe
-        remote_src: yes
-        mode: "0755"
+      loop: "{{ tools_platforms }}"
+      loop_control:
+        label: "{{ item.tool }} {{ item.goos }}/{{ item.goarch }}"
 
     - name: Write version file
       copy:
