@@ -1195,10 +1195,48 @@ async function handleVirtualAgent(payload) {
         }
     }
 
-    logVA('processing', { discussionId, triggerType: triggerType || 'message', virtualAgents: joinedVirtual.map(a => a.agent) });
+    // Addressing filter — for 'message' triggers, route only to the VAs
+    // whose name appears in the latest non-VA message body. If no VA is
+    // named, fall back to broadcast (current behavior). This keeps "Good
+    // evening, friends" reaching everyone while "Prudence, shall we walk?"
+    // goes only to Prudence.
+    //
+    // Does not apply to 'discussion-active' (no addressee yet) or
+    // 'vote-proposed' (all participants vote).
+    let targets = joinedVirtual;
+    if (triggerType === 'message' && chatHistory.length > 0) {
+        const lastNonVA = [...chatHistory].reverse().find(m =>
+            m.from_agent !== 'system' && !virtualNames.has(m.from_agent)
+        );
+        if (lastNonVA && lastNonVA.message) {
+            const body = lastNonVA.message;
+            const addressed = joinedVirtual.filter(agent => {
+                // Split the agent name on hyphens and test each token as a
+                // word-boundary match against the body. "zbbs-ezekiel-crane"
+                // matches on either "ezekiel" or "crane" in prose; "wendy"
+                // matches on "wendy" alone.
+                const tokens = agent.agent.split('-');
+                return tokens.some(token => {
+                    const re = new RegExp('\\b' + escapeRegExp(token) + '\\b', 'i');
+                    return re.test(body);
+                });
+            });
+            if (addressed.length > 0) {
+                targets = addressed;
+                logVA('addressed', {
+                    discussionId,
+                    from: lastNonVA.from_agent,
+                    addressed: addressed.map(a => a.agent),
+                    skipped: joinedVirtual.filter(a => !addressed.includes(a)).map(a => a.agent)
+                });
+            }
+        }
+    }
+
+    logVA('processing', { discussionId, triggerType: triggerType || 'message', virtualAgents: targets.map(a => a.agent) });
 
     // Process each virtual agent
-    for (const agent of joinedVirtual) {
+    for (const agent of targets) {
         // Coalescing guard — message/discussion-active triggers share a
         // single in-flight slot per (discussion, agent). Vote triggers
         // bypass the guard so ballots are never dropped.
