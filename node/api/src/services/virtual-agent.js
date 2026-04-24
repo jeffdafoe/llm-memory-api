@@ -789,9 +789,15 @@ const DIRECTIVE_RECALL = 'Excerpts from your past notes and conversations that a
 
 const DIRECTIVE_CONVERSATION = 'The live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {"sender": <who>, "content": <what they said>}.';
 
+const DIRECTIVE_DIRECT_CONTEXT = 'The direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.';
+
+const DIRECTIVE_DIRECT_CONVERSATION = 'The live one-on-one conversation, oldest first. Each line has the shape "<relative-time> <speaker>: <message>". Lines of the form "--- gap: Nh ---" mark time gaps between messages. The last line is what you are replying to.';
+
 const DIRECTIVE_REPLY_POLICY = 'You do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else\'s response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.';
 
 const DIRECTIVE_OUTPUT = 'Reply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants\' messages. End when your own message is complete.';
+
+const DIRECTIVE_OUTPUT_CHAT = 'Respond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.';
 
 const DIRECTIVE_VOTE = 'A vote has been proposed. Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
 
@@ -1004,50 +1010,57 @@ function formatRelativeTime(sentAt) {
     return `[${diffDay}d]`;
 }
 
+function renderDirectChatContext(agent) {
+    const lines = [`You are "${agent.agent}". You are chatting one-on-one with another agent.`];
+    if (agent.personality) {
+        lines.push(`Your personality: ${agent.personality}`);
+    }
+    return lines.join('\n');
+}
+
 // Build system prompt for direct chat (no discussion context).
 // Returns { static, dynamic } — static content is cacheable across calls.
+// Uses the same typed-XML block shape as buildSystemPrompt, with a
+// direct-chat context block instead of the Discussion block and a chat-
+// specific OutputDirective (the strict "no JSON / no labels" rules from
+// the discussion path don't apply — direct chat is freeform prose).
 function buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext) {
-    let staticPart = '';
-    var globalBootstrap = config.get('global_bootstrap') || '';
-    if (globalBootstrap) {
-        staticPart += globalBootstrap + '\n\n';
-    }
-    if (agent.startup_instructions) {
-        staticPart += agent.startup_instructions + '\n\n';
-    }
-    if (soul) {
-        staticPart += soul + '\n\n';
-    }
-    if (peopleContext) {
-        const preamble = config.get('people_context_preamble') || '';
-        if (preamble) {
-            staticPart += preamble + '\n\n';
-        }
-        staticPart += peopleContext + '\n\n';
-    }
-    staticPart += `You are "${agent.agent}". You are chatting directly with another agent.`;
-    if (agent.personality) {
-        staticPart += `\nYour personality: ${agent.personality}`;
-    }
+    const staticBlocks = [
+        wrapBlock('Bootstrap', 'global-operating-directives', DIRECTIVE_BOOTSTRAP, config.get('global_bootstrap') || ''),
+        wrapBlock('Instructions', 'operating-rules', DIRECTIVE_INSTRUCTIONS, agent.startup_instructions),
+        wrapBlock('Self', 'voice-identity', DIRECTIVE_SELF, soul),
+        wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext),
+        wrapBlock('DirectChat', 'active-context', DIRECTIVE_DIRECT_CONTEXT, renderDirectChatContext(agent)),
+    ].filter(Boolean);
 
-    let dynamicPart = '';
-    if (ragContext) {
-        dynamicPart += 'Relevant knowledge from your notes:\n' + ragContext + '\n\n';
-    }
-    dynamicPart += 'Messages include relative timestamps and conversation breaks for context. Respond concisely and naturally.';
+    const dynamicBlocks = [
+        wrapBlock('Recall', 'relevant-memories', DIRECTIVE_RECALL, ragContext),
+        wrapStandalone('ReplyPolicy', 'response-discretion', DIRECTIVE_REPLY_POLICY),
+        wrapStandalone('OutputDirective', 'response-format', DIRECTIVE_OUTPUT_CHAT),
+    ].filter(Boolean);
 
-    return { static: staticPart, dynamic: dynamicPart };
+    return {
+        static: staticBlocks.join('\n\n'),
+        dynamic: dynamicBlocks.join('\n\n'),
+    };
 }
 
 // Build user message for direct chat from conversation history.
-// Includes relative timestamps and conversation gap separators.
+// Preserves the existing timestamp + gap-separator format (useful context
+// the model has been getting), just wraps it in a Conversation block so
+// the model knows what it is.
 function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
     if (history.length <= 1) {
-        return `${fromAgent}: ${latestMessage}`;
+        return wrapBlock(
+            'Conversation',
+            'active-dialogue',
+            DIRECTIVE_DIRECT_CONVERSATION,
+            `${fromAgent}: ${latestMessage}`,
+        );
     }
 
     const GAP_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
-    let msg = 'Recent conversation:\n\n';
+    const lines = [];
 
     for (let i = 0; i < history.length; i++) {
         const m = history[i];
@@ -1057,16 +1070,20 @@ function buildDirectChatUserMessage(history, fromAgent, latestMessage) {
             const gap = new Date(m.sent_at).getTime() - new Date(history[i - 1].sent_at).getTime();
             if (gap >= GAP_THRESHOLD_MS) {
                 const gapHours = Math.round(gap / (60 * 60 * 1000));
-                msg += `--- gap: ${gapHours}h ---\n`;
+                lines.push(`--- gap: ${gapHours}h ---`);
             }
         }
 
         const timestamp = m.sent_at ? formatRelativeTime(m.sent_at) : '';
-        msg += `${timestamp} ${m.from_agent}: ${m.message}\n`;
+        lines.push(`${timestamp} ${m.from_agent}: ${m.message}`);
     }
 
-    msg += '\nRespond to the latest message.';
-    return msg;
+    return wrapBlock(
+        'Conversation',
+        'active-dialogue',
+        DIRECTIVE_DIRECT_CONVERSATION,
+        lines.join('\n'),
+    );
 }
 
 // Build system prompt for mail replies.
