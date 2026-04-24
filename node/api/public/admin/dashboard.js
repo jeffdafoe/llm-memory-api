@@ -57,6 +57,25 @@ function useDashboard({ api, authenticated, onEvent }) {
         if (livePolling) return; // Guard against overlapping polls
         livePolling = true;
         try {
+            // Snapshot which transcripts are near the bottom BEFORE we replace
+            // liveDiscussions.value. After the replace, Vue rerenders and the
+            // element's scrollHeight grows for any new messages — checking
+            // "atBottom" after the update misclassifies a user who WAS at the
+            // bottom as no-longer-at-bottom, and auto-scroll skips. Keying by
+            // discussion id lets us restore the right transcript's scroll.
+            const nearBottomByDiscussionId = new Map();
+            document.querySelectorAll('.live-discussion-panel').forEach(panel => {
+                const transcript = panel.querySelector('.live-chat-transcript');
+                if (!transcript) return;
+                const discussionId = panel.getAttribute('data-discussion-id');
+                if (!discussionId) return;
+                // 200px of slack so a fresh long message doesn't exit the
+                // "near bottom" zone in the tiny window between arrival and
+                // the scroll fire.
+                const nearBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 200;
+                nearBottomByDiscussionId.set(discussionId, nearBottom);
+            });
+
             const results = await Promise.all(liveDiscussions.value.map(async live => {
                 try {
                     const [detail, chat] = await Promise.all([
@@ -80,18 +99,30 @@ function useDashboard({ api, authenticated, onEvent }) {
             if (stillActive.length === 0) {
                 stopLivePolling();
             }
-            scrollLiveChats();
+            scrollLiveChats(false, nearBottomByDiscussionId);
         } finally {
             livePolling = false;
         }
     }
 
-    function scrollLiveChats(force) {
+    // Scrolls each live-discussion transcript to the bottom.
+    // - force=true: always scroll (used on initial load and after sending).
+    // - nearBottomByDiscussionId: pre-refresh snapshot keyed by discussion id.
+    //   An entry of `true` means the user was at the bottom before the refresh,
+    //   so we should re-pin them to the bottom after the new messages render.
+    //   Omitted entries / falsy values mean "leave scroll alone".
+    function scrollLiveChats(force, nearBottomByDiscussionId) {
         nextTick(() => {
-            document.querySelectorAll('.live-chat-transcript').forEach(el => {
-                const atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
-                if (force || atBottom) {
-                    el.scrollTop = el.scrollHeight;
+            document.querySelectorAll('.live-discussion-panel').forEach(panel => {
+                const transcript = panel.querySelector('.live-chat-transcript');
+                if (!transcript) return;
+                if (force) {
+                    transcript.scrollTop = transcript.scrollHeight;
+                    return;
+                }
+                const discussionId = panel.getAttribute('data-discussion-id');
+                if (nearBottomByDiscussionId && nearBottomByDiscussionId.get(discussionId)) {
+                    transcript.scrollTop = transcript.scrollHeight;
                 }
             });
         });

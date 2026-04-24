@@ -40,7 +40,7 @@
 
     <!-- Live Discussion — fills remaining height when active -->
     <template v-if="liveDiscussions.length > 0">
-        <div v-for="live in liveDiscussions" :key="live.discussion.id" class="live-discussion-panel" style="flex:1; min-height:0;">
+        <div v-for="live in liveDiscussions" :key="live.discussion.id" :data-discussion-id="live.discussion.id" class="live-discussion-panel" style="flex:1; min-height:0;">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
                 <span class="live-pulse-dot"></span>
                 <h3 class="section-title" style="color: var(--success); margin:0;">Live Discussion #{{ live.discussion.id }}</h3>
