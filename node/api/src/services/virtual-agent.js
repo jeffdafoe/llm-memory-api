@@ -762,57 +762,87 @@ async function loadPeopleContext(agentName, counterparts) {
     return sections.join('\n\n');
 }
 
+// --- Typed prompt blocks ---
+//
+// Each dynamic chunk of context that lands in the system prompt is wrapped
+// in a named XML block with a short inline directive telling the model
+// what the block IS and how to USE it. Framing-in-XML is Anthropic-idiomatic
+// (Claude is trained on the convention) and avoids the class of failure
+// where the model treats one kind of context as another — e.g. reading a
+// private impression aloud, or treating a recalled memory as new user input.
+//
+// Hardcoded on purpose. These are prompt-architecture decisions, not
+// operating parameters; tuning them is a code review, not an admin UI
+// tweak. If you want to change the wording, change it here and deploy.
+
+const DIRECTIVE_BOOTSTRAP = 'System-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.';
+
+const DIRECTIVE_INSTRUCTIONS = 'Your standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.';
+
+const DIRECTIVE_SELF = 'Your self-narrative and accumulated identity. Speak FROM this perspective. Never quote it, describe yourself in third person from it, or narrate it as exposition.';
+
+const DIRECTIVE_IMPRESSIONS = 'Your private notes about the other participants in this conversation. Let them shape your tone, what you engage with, and what you remember. NEVER read them aloud, quote them, or attribute them back to the person.';
+
+const DIRECTIVE_DISCUSSION = 'The discussion you are participating in. Stable for the life of the discussion.';
+
+const DIRECTIVE_RECALL = 'Excerpts from your past notes and conversations that are semantically related to the current topic. These are NOT what anyone said in this conversation. Reference them only when directly useful; otherwise ignore.';
+
+const DIRECTIVE_CONVERSATION = 'The live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {"sender": <who>, "content": <what they said>}.';
+
+const DIRECTIVE_REPLY_POLICY = 'You do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else\'s response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.';
+
+const DIRECTIVE_OUTPUT = 'Reply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants\' messages. End when your own message is complete.';
+
+const DIRECTIVE_VOTE = 'A vote has been proposed. Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
+
+// wrapBlock returns a typed XML block around `content`, or an empty string
+// when there's no content to wrap. Empty blocks are omitted on purpose —
+// `<Recall>(empty)</Recall>` only adds noise.
+function wrapBlock(tag, purpose, directive, content) {
+    if (content == null) return '';
+    const text = String(content).trim();
+    if (text === '') return '';
+    return `<${tag} purpose="${purpose}">\n${directive}\n\n${text}\n</${tag}>`;
+}
+
+// wrapStandalone is for blocks that are pure directive with no variable
+// content (ReplyPolicy, OutputDirective, Vote when active).
+function wrapStandalone(tag, purpose, directive) {
+    return `<${tag} purpose="${purpose}">\n${directive}\n</${tag}>`;
+}
+
+function renderDiscussionContext(agent, discussion) {
+    const lines = [
+        `You are "${agent.agent}", a participant in discussion #${discussion.id}.`,
+        `Topic: ${discussion.topic}`,
+    ];
+    if (discussion.context) lines.push(`Context: ${discussion.context}`);
+    lines.push(`Mode: ${discussion.mode}`);
+    return lines.join('\n');
+}
+
 // Build the system prompt for a virtual agent.
 // Returns { static, dynamic } — static content is cacheable across calls,
-// dynamic content (RAG, closing) changes per message.
+// dynamic content (RAG, closing directives) changes per message.
 function buildSystemPrompt(agent, discussion, ragContext, soul, peopleContext) {
-    let staticPart = '';
+    const staticBlocks = [
+        wrapBlock('Bootstrap', 'global-operating-directives', DIRECTIVE_BOOTSTRAP, config.get('global_bootstrap') || ''),
+        wrapBlock('Instructions', 'operating-rules', DIRECTIVE_INSTRUCTIONS, agent.startup_instructions),
+        wrapBlock('Self', 'voice-identity', DIRECTIVE_SELF, soul),
+        wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext),
+        wrapBlock('Discussion', 'active-context', DIRECTIVE_DISCUSSION, renderDiscussionContext(agent, discussion)),
+    ].filter(Boolean);
 
-    // Global bootstrap (prepended to all agents)
-    var globalBootstrap = config.get('global_bootstrap') || '';
-    if (globalBootstrap) {
-        staticPart += globalBootstrap + '\n\n';
-    }
+    const dynamicBlocks = [
+        wrapBlock('Recall', 'relevant-memories', DIRECTIVE_RECALL, ragContext),
+        wrapStandalone('ReplyPolicy', 'response-discretion', DIRECTIVE_REPLY_POLICY),
+        wrapStandalone('OutputDirective', 'response-format', DIRECTIVE_OUTPUT),
+    ].filter(Boolean);
 
-    // Agent's own instructions (set via save_instructions)
-    if (agent.startup_instructions) {
-        staticPart += agent.startup_instructions + '\n\n';
-    }
-
-    // Soul document — accumulated identity from dream processing
-    if (soul) {
-        staticPart += soul + '\n\n';
-    }
-
-    // Per-person relationship impressions from dream processing
-    if (peopleContext) {
-        const preamble = config.get('people_context_preamble') || '';
-        if (preamble) {
-            staticPart += preamble + '\n\n';
-        }
-        staticPart += peopleContext + '\n\n';
-    }
-
-    // Discussion context — stable for the life of the discussion
-    staticPart += `You are "${agent.agent}", a participant in discussion #${discussion.id}.\n`;
-    staticPart += `Topic: ${discussion.topic}\n`;
-    if (discussion.context) {
-        staticPart += `Context: ${discussion.context}\n`;
-    }
-    staticPart += `Mode: ${discussion.mode}`;
-
-    let dynamicPart = '';
-
-    // RAG context — changes per message
-    if (ragContext) {
-        dynamicPart += 'Relevant knowledge from your notes:\n' + ragContext + '\n\n';
-    }
-
-    dynamicPart += 'You are participating in a multi-agent discussion. Previous messages are shown as a JSON array of {sender, content} objects. '
-        + 'Respond with your own reply content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants\' messages. '
-        + 'End your reply when your own message is complete.';
-
-    return { static: staticPart, dynamic: dynamicPart };
+    return {
+        static: staticBlocks.join('\n\n'),
+        dynamic: dynamicBlocks.join('\n\n'),
+    };
 }
 
 // Build the user message from chat history.
@@ -835,17 +865,15 @@ function buildUserMessage(chatHistory, triggerType, voteQuestion) {
         }))
     );
 
-    let msg = 'Recent discussion messages (JSON array of {sender, content}):\n';
-    msg += historyJson + '\n';
+    const parts = [
+        wrapBlock('Conversation', 'active-dialogue', DIRECTIVE_CONVERSATION, historyJson),
+    ];
 
     if (triggerType === 'vote-proposed' && voteQuestion) {
-        msg += '\nA vote has been proposed: ' + JSON.stringify(voteQuestion) + '\n';
-        msg += 'Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
-    } else {
-        msg += '\nRespond with your own reply content only — plain text, no JSON, no sender labels, no additional messages for other participants.';
+        parts.push(wrapBlock('Vote', 'ballot-required', DIRECTIVE_VOTE, JSON.stringify(voteQuestion)));
     }
 
-    return msg;
+    return parts.filter(Boolean).join('\n\n');
 }
 
 // Gather the distinct speaker labels that actually appear in the rendered
