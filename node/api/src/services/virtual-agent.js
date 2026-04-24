@@ -1233,10 +1233,22 @@ async function handleVirtualAgent(payload) {
         }
     }
 
+    // Response pacing — delay VA responses so the conversation feels unhurried
+    // and doesn't fire in bursts when multiple humans talk at once (MEM-117).
+    // Vote triggers bypass both delays so ballots stay responsive.
+    const pacingEnabled = triggerType !== 'vote-proposed';
+    const baseDelaySec = pacingEnabled ? (parseInt(config.get('virtual_agent_response_delay_seconds')) || 0) : 0;
+    const staggerSec = pacingEnabled ? (parseInt(config.get('virtual_agent_response_stagger_seconds')) || 0) : 0;
+
+    if (baseDelaySec > 0) {
+        await new Promise(resolve => setTimeout(resolve, baseDelaySec * 1000));
+    }
+
     logVA('processing', { discussionId, triggerType: triggerType || 'message', virtualAgents: targets.map(a => a.agent) });
 
     // Process each virtual agent
-    for (const agent of targets) {
+    for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+        const agent = targets[targetIndex];
         // Coalescing guard — message/discussion-active triggers share a
         // single in-flight slot per (discussion, agent). Vote triggers
         // bypass the guard so ballots are never dropped.
@@ -1250,6 +1262,14 @@ async function handleVirtualAgent(payload) {
         }
         if (coalesceable) {
             inFlightVA.set(guardKey, { rerunPending: false });
+        }
+
+        // Per-agent stagger — space responses out within a single wave so three
+        // VAs don't all post in the same second after their generations finish.
+        // Applied after the guard is set so coalescing still works for other
+        // triggers arriving during the sleep.
+        if (staggerSec > 0 && targetIndex > 0) {
+            await new Promise(resolve => setTimeout(resolve, targetIndex * staggerSec * 1000));
         }
 
         // currentHistory / currentTrigger are rebound on each rerun so that
