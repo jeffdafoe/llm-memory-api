@@ -111,10 +111,16 @@ function prefilterLog(content) {
 }
 
 // Extract unique speakers from conversation logs and group lines by speaker.
-// Handles three formats:
+// Handles four formats:
 //   memory-sync uploads:    "[HH:MM speaker] message text"
 //   VA transcript metadata: "- **From:** speaker"
 //   discussion history:     "speaker: message text" or "[timestamp] speaker: message text"
+//   typed-context-injection JSON array: '[{"sender":"name","content":"..."}, ...]'
+//     — produced by the typed-context VA prompt (the <Discussion> block in
+//     virtual-agent.js). The whole message history sits on one line as a
+//     JSON array; we parse it and treat each entry as a discrete speaker
+//     line. Without this branch the salem NPCs' people-files freeze the
+//     moment their conversation traffic shifts to multi-agent discussions.
 // Returns a Map of speaker name → array of relevant lines.
 function extractSpeakers(content, agentName) {
     const lines = content.split('\n');
@@ -128,6 +134,10 @@ function extractSpeakers(content, agentName) {
     // Pattern for discussion history: "speaker: message" or "[timestamp] speaker: message"
     // Speaker names are agent identifiers (lowercase, may contain hyphens)
     const discussionPattern = /^(?:\[.*?\]\s+)?([a-z][a-z0-9-]*):(?:\s|$)/;
+    // Cheap detection for the typed-context JSON array format. We only
+    // attempt JSON.parse on lines that clearly start with the expected
+    // shape so we don't pay parse cost on every regular line.
+    const jsonArrayHead = /^\s*\[\s*\{\s*"sender"\s*:/;
 
     let currentSpeaker = null;
 
@@ -150,6 +160,43 @@ function extractSpeakers(content, agentName) {
         // Skip section headers and metadata
         if (line.startsWith('##') || line.startsWith('---')) {
             continue;
+        }
+
+        // Typed-context JSON array — handle before the chat/discussion
+        // patterns because the line opens with '[' and could otherwise
+        // confuse the timestamp-prefixed discussionPattern. Failure to
+        // parse falls through to the line-based patterns below.
+        if (jsonArrayHead.test(line)) {
+            try {
+                const messages = JSON.parse(line.trim());
+                if (Array.isArray(messages)) {
+                    for (const msg of messages) {
+                        if (!msg || typeof msg.sender !== 'string') {
+                            continue;
+                        }
+                        const sender = msg.sender;
+                        const lower = sender.toLowerCase();
+                        if (lower === agentLower) {
+                            continue;
+                        }
+                        if (!speakerLines.has(lower)) {
+                            speakerLines.set(lower, []);
+                        }
+                        const text = typeof msg.content === 'string' ? msg.content : '';
+                        // Label each message with the speaker so the
+                        // dream-companion-people LLM can tell turns apart
+                        // when several get joined into one prompt.
+                        speakerLines.get(lower).push('[' + sender + '] ' + text);
+                    }
+                    // Reset currentSpeaker — the JSON array is its own
+                    // self-contained block; don't let stray lines after
+                    // it attach to the last sender from the array.
+                    currentSpeaker = null;
+                    continue;
+                }
+            } catch (err) {
+                // Not a parseable array — fall through to other patterns.
+            }
         }
 
         const chatMatch = line.match(chatPattern);
@@ -525,4 +572,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, startDreamScheduler };
+module.exports = { runDream, prefilterLog, extractSpeakers, startDreamScheduler };
