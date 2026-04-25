@@ -246,7 +246,22 @@ function createCall(model, apiKey, configuration) {
             body.generationConfig.stopSequences = opts.stop.slice(0, 5);
         }
 
-        logProvider('api-call', { provider: 'google', model });
+        // Per-call tool definitions — translate neutral
+        // { name, description, parameters } shape into Gemini's nested
+        // { tools: [{ functionDeclarations: [...] }] }. All function defs
+        // go in a single functionDeclarations array (Gemini groups them).
+        const useTools = opts && Array.isArray(opts.tools) && opts.tools.length > 0;
+        if (useTools) {
+            body.tools = [{
+                functionDeclarations: opts.tools.map(tool => ({
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters || { type: 'object', properties: {} }
+                }))
+            }];
+        }
+
+        logProvider('api-call', { provider: 'google', model, tools: useTools });
 
         const response = await fetch(url, {
             method: 'POST',
@@ -274,14 +289,28 @@ function createCall(model, apiKey, configuration) {
             .map(p => p.text)
             .join('\n');
 
+        // Tool calls are functionCall parts in the candidate's content.
+        // Gemini doesn't emit a per-call id like Anthropic/OpenAI, so we
+        // synthesize one from name+index — the engine's harness loop matches
+        // tool_results by id, and Gemini's tool_result format uses name+order
+        // anyway, so the synthetic id is internal-only.
+        let callIndex = 0;
+        const tool_calls = candidate.content.parts
+            .filter(p => p.functionCall && p.functionCall.name)
+            .map(p => ({
+                id: `gemini-${p.functionCall.name}-${callIndex++}`,
+                name: p.functionCall.name,
+                input: p.functionCall.args || {}
+            }));
+
         const usage = {
             input_tokens: data.usageMetadata?.promptTokenCount || 0,
             output_tokens: data.usageMetadata?.candidatesTokenCount || 0
         };
 
-        logProvider('api-response', { provider: 'google', model, ...usage });
+        logProvider('api-response', { provider: 'google', model, tool_calls: tool_calls.length, ...usage });
 
-        return { text, usage };
+        return { text, tool_calls, usage };
     };
 }
 

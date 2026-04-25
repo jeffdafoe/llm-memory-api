@@ -156,6 +156,12 @@ function createCall(model, apiKey, configuration) {
             body.stop = opts.stop.slice(0, 4);
         }
 
+        // Sonar models are search-focused and don't support function calling.
+        // Drop with a log so callers know their tool spec was ignored.
+        if (opts && Array.isArray(opts.tools) && opts.tools.length > 0) {
+            logProvider('tools-not-supported', { provider: 'perplexity', model, requested: opts.tools.length });
+        }
+
         logProvider('api-call', { provider: 'perplexity', model });
 
         const response = await fetch('https://api.perplexity.ai/chat/completions', {
@@ -196,7 +202,9 @@ function createCall(model, apiKey, configuration) {
 
         logProvider('api-response', { provider: 'perplexity', model, ...usage });
 
-        return { text, usage };
+        // Empty tool_calls so callers always see a uniform shape across
+        // providers — Perplexity Sonar models don't support function calling.
+        return { text, tool_calls: [], usage };
     };
 }
 

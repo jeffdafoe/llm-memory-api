@@ -216,6 +216,15 @@ function createCall(model, apiKey, configuration) {
             body.stop = opts.stop.slice(0, 4);
         }
 
+        // User-defined function tools (per the providers/index.js opts.tools
+        // contract) aren't implemented for xAI yet — the Responses API has its
+        // own shape distinct from Chat Completions and needs separate testing.
+        // Log and drop so callers see tool_calls=[] in the response. Built-in
+        // search tools (x_search, web_search) below are unaffected.
+        if (opts && Array.isArray(opts.tools) && opts.tools.length > 0) {
+            logProvider('tools-not-implemented', { provider: 'xai', model, requested: opts.tools.length });
+        }
+
         // Build tools array — search tools are server-side, xAI handles execution
         const tools = [];
         if (conf.x_search) {
@@ -313,7 +322,9 @@ function createCall(model, apiKey, configuration) {
             search: searchEnabled.length > 0 ? searchEnabled : false
         });
 
-        return { text, usage };
+        // Always return an empty tool_calls so the result shape matches
+        // tool-supporting providers. Real function-calling support is a TODO.
+        return { text, tool_calls: [], usage };
     };
 }
 

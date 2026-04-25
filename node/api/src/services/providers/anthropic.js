@@ -222,12 +222,16 @@ function createCall(model, apiKey, configuration) {
             body.stop_sequences = opts.stop.slice(0, 4);
         }
 
-        // Per-call tool definitions. Each entry must already be in Anthropic's
-        // shape: { name, description, input_schema }. The caller is responsible
-        // for validating shape; we pass through as-is.
+        // Per-call tool definitions. Translate the neutral
+        // { name, description, parameters } shape (per the providers/index.js
+        // contract) to Anthropic's { name, description, input_schema } shape.
         const useTools = opts && Array.isArray(opts.tools) && opts.tools.length > 0;
         if (useTools) {
-            body.tools = opts.tools;
+            body.tools = opts.tools.map(tool => ({
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.parameters || { type: 'object', properties: {} }
+            }));
         }
 
         logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!useThinking, tools: useTools });
