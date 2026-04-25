@@ -146,12 +146,17 @@ function createCall(model, apiKey, configuration) {
     return async function call(systemPrompt, userMessage, opts) {
         var prompt = flattenPrompt(systemPrompt);
 
+        // Same passthrough as openai.js — neutral message shape is OpenAI's,
+        // and OpenRouter's API matches.
+        var userMessages = (opts && Array.isArray(opts.messages) && opts.messages.length > 0)
+            ? opts.messages
+            : [{ role: 'user', content: userMessage }];
+
         var body = {
             model: model,
             messages: [
-                { role: 'system', content: prompt },
-                { role: 'user', content: userMessage }
-            ]
+                { role: 'system', content: prompt }
+            ].concat(userMessages)
         };
 
         if (conf.max_tokens) {

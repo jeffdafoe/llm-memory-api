@@ -168,6 +168,78 @@ function flattenPrompt(systemPrompt) {
     return [systemPrompt.static, systemPrompt.dynamic].filter(Boolean).join('\n\n');
 }
 
+// ── Translate OpenAI-shape messages to Anthropic-shape ──────────────────────
+// The neutral message shape is OpenAI's. Anthropic differs in two ways:
+//   1. Tool calls are content blocks inside the assistant message
+//      (type: "tool_use") rather than a separate tool_calls field.
+//   2. Tool results are content blocks (type: "tool_result") inside a USER
+//      message rather than a separate role:"tool" message. Consecutive
+//      role:"tool" messages must be merged into a single user message
+//      with multiple tool_result blocks.
+function translateMessagesToAnthropic(openaiMessages) {
+    const out = [];
+    let pendingToolResults = null;
+
+    function flushToolResults() {
+        if (pendingToolResults && pendingToolResults.length > 0) {
+            out.push({ role: 'user', content: pendingToolResults });
+            pendingToolResults = null;
+        }
+    }
+
+    for (const msg of openaiMessages) {
+        if (msg.role === 'tool') {
+            // Accumulate tool_result blocks; flush when next non-tool message lands.
+            if (!pendingToolResults) pendingToolResults = [];
+            pendingToolResults.push({
+                type: 'tool_result',
+                tool_use_id: msg.tool_call_id,
+                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+            });
+            continue;
+        }
+        flushToolResults();
+
+        if (msg.role === 'user') {
+            out.push({ role: 'user', content: msg.content });
+        } else if (msg.role === 'assistant') {
+            // Assistant may carry tool_calls alongside text. Build a content
+            // array when both are present; plain string when only text.
+            const blocks = [];
+            if (msg.content) {
+                blocks.push({ type: 'text', text: msg.content });
+            }
+            if (Array.isArray(msg.tool_calls)) {
+                for (const tc of msg.tool_calls) {
+                    if (!tc.function || !tc.function.name) continue;
+                    let input = {};
+                    if (typeof tc.function.arguments === 'string') {
+                        try { input = JSON.parse(tc.function.arguments); }
+                        catch (e) { /* fall through with {} */ }
+                    } else if (tc.function.arguments && typeof tc.function.arguments === 'object') {
+                        input = tc.function.arguments;
+                    }
+                    blocks.push({
+                        type: 'tool_use',
+                        id: tc.id,
+                        name: tc.function.name,
+                        input: input
+                    });
+                }
+            }
+            out.push({
+                role: 'assistant',
+                content: blocks.length === 1 && blocks[0].type === 'text' ? blocks[0].text : blocks
+            });
+        }
+        // role:"system" intentionally dropped — Anthropic uses a separate
+        // top-level system field, not a system role in messages. Callers
+        // pass system content via the systemPrompt argument.
+    }
+    flushToolResults();
+    return out;
+}
+
 // ── API call factory ────────────────────────────────────────────────────────
 
 function createCall(model, apiKey, configuration) {
@@ -200,11 +272,19 @@ function createCall(model, apiKey, configuration) {
             ...(conf.headers || {})
         };
 
+        // When opts.messages is provided, translate the OpenAI-shape array to
+        // Anthropic's native shape. Otherwise fall back to the single-user-
+        // message default. The provided messages are the FULL conversation —
+        // engine includes the original perception as the first user message.
+        const messages = (opts && Array.isArray(opts.messages) && opts.messages.length > 0)
+            ? translateMessagesToAnthropic(opts.messages)
+            : [{ role: 'user', content: userMessage }];
+
         const body = {
             model: model,
             max_tokens: conf.max_tokens || 4096,
             system: system,
-            messages: [{ role: 'user', content: userMessage }]
+            messages: messages
         };
 
         // Adaptive thinking — omit temperature entirely when thinking is active.

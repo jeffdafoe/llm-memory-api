@@ -279,19 +279,25 @@ function logVA(action, details) {
 // Handles: load agent, build provider config, decrypt key, call provider, record usage.
 // Options:
 //   systemPrompt  — override the agent's startup_instructions (default: use agent's)
-//   userMessage    — required, the user/input message
+//   userMessage    — single user message string (required UNLESS `messages` is provided)
+//   messages       — full conversation history in OpenAI shape. When provided, replaces
+//                    the default single-user-message path. Use for multi-turn tool-use
+//                    sessions (e.g. /agent/tick harness loop). See providers/index.js
+//                    opts.messages docs for the shape.
 //   context        — usage tracking label (e.g. 'dream', 'soul', 'learning', 'tick')
-//   tools          — array of tool definitions to pass to the provider. Provider-specific
-//                    shape (Anthropic: { name, description, input_schema }). Currently only
-//                    Anthropic supports; other providers ignore via the opts sanitizer.
+//   tools          — neutral { name, description, parameters } tool defs.
 //   skipRateLimit  — bypass rate limiter (default: false)
 //   skipCostLimit  — bypass cost limit check (default: false)
 //   skipRetry      — don't use retryWithBackoff (default: true — callers manage their own error handling)
 // Returns: { text, tool_calls, usage, cost } or throws on error.
 // tool_calls is an empty array when no tools were requested or none were called.
 async function invokeAgent(agentName, options) {
-    if (!options || !options.userMessage) {
-        throw new Error('invokeAgent: userMessage is required');
+    if (!options) {
+        throw new Error('invokeAgent: options required');
+    }
+    const hasMessages = Array.isArray(options.messages) && options.messages.length > 0;
+    if (!hasMessages && !options.userMessage) {
+        throw new Error('invokeAgent: either userMessage or messages is required');
     }
 
     const agent = await loadAgent(agentName);
@@ -332,14 +338,20 @@ async function invokeAgent(agentName, options) {
     );
 
     // Forward the documented opts contract through to the provider — currently
-    // tools is the only one invokeAgent callers exercise, but the sanitizer in
-    // providers/index.js will silently drop anything else if more get passed.
+    // tools and messages. The sanitizer in providers/index.js drops unknown keys.
     const providerOpts = {};
     if (Array.isArray(options.tools) && options.tools.length > 0) {
         providerOpts.tools = options.tools;
     }
+    if (hasMessages) {
+        providerOpts.messages = options.messages;
+    }
+    // userMessage is the fallback content when messages aren't provided.
+    // Pass empty string when only messages are set so the providers' guard
+    // against undefined doesn't trip.
+    const userMessageForCall = options.userMessage || '';
     const callFn = async () => {
-        return await providerFn(systemPrompt, options.userMessage, providerOpts);
+        return await providerFn(systemPrompt, userMessageForCall, providerOpts);
     };
 
     let result;

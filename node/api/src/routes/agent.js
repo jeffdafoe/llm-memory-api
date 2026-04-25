@@ -952,18 +952,25 @@ router.post('/agent/config', apiRoute('agent', 'agent-config', async (req, res) 
 // principle but only Anthropic implements tool use today; calls to other
 // providers will get back tool_calls=[] regardless of what's requested.
 //
-// Auth: agent session token (via middleware). The agent is the NPC's brain.
-// Body: {
-//   perception: string,    — full perception text the engine assembled
-//   tools?:     object[]   — Anthropic-shape tool defs (name, description, input_schema)
-//   system?:    string     — optional system prompt override (default: agent's startup_instructions)
-// }
+// Auth: agent session token OR API key (Bearer). API key is the recommended
+// path for service-to-service callers — no 24h refresh cycles.
+// Body — exactly one of perception | messages required:
+//   perception: string         — single-turn shortcut: "build a fresh user
+//                                message and ask for a decision"
+//   messages:   object[]       — multi-turn: OpenAI-shape conversation history
+//                                including prior assistant tool_calls and
+//                                user tool_result messages. Use to continue
+//                                a tool-use session across HTTP calls.
+//   tools?:     object[]       — neutral tool defs { name, description, parameters }
+//   system?:    string         — system prompt override (default: agent's startup_instructions)
 //
-// Response: { text, tool_calls, usage, cost }
+// Response: { agent, text, tool_calls, usage, cost }
 //
-// M6.2 stub — single-call only, no harness loop. The harness loop (3-8 calls
-// per tick with observe→think→act) lands in M6.3. M6.2's job is just to give
-// the engine a working endpoint that returns valid tool-call JSON.
+// The harness loop runs ENGINE-SIDE: salem-engine calls /agent/tick, resolves
+// any tool_calls in the response against engine state, appends prior assistant
+// + user/tool_result messages to its running conversation, and re-calls
+// /agent/tick with the updated messages. Loop ends when a commit action is
+// emitted or the engine's per-tick budget is exhausted.
 router.post('/agent/tick', apiRoute('agent', 'tick', async (req, res) => {
     const agent = req.authenticatedAgent;
     if (!agent) {
@@ -972,11 +979,19 @@ router.post('/agent/tick', apiRoute('agent', 'tick', async (req, res) => {
         });
     }
 
-    const { perception, tools, system } = req.body;
+    const { perception, messages, tools, system } = req.body;
 
-    if (typeof perception !== 'string' || perception.length === 0) {
+    const hasPerception = typeof perception === 'string' && perception.length > 0;
+    const hasMessages = Array.isArray(messages) && messages.length > 0;
+
+    if (!hasPerception && !hasMessages) {
         return res.status(400).json({
-            error: { code: 'BAD_REQUEST', message: 'Required field: perception (non-empty string)' }
+            error: { code: 'BAD_REQUEST', message: 'Required: exactly one of perception (string) or messages (array)' }
+        });
+    }
+    if (hasPerception && hasMessages) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Provide either perception or messages, not both' }
         });
     }
 
@@ -998,9 +1013,14 @@ router.post('/agent/tick', apiRoute('agent', 'tick', async (req, res) => {
     let result;
     try {
         const invokeOptions = {
-            userMessage: perception,
             context: 'tick',
         };
+        if (hasPerception) {
+            invokeOptions.userMessage = perception;
+        }
+        if (hasMessages) {
+            invokeOptions.messages = messages;
+        }
         if (Array.isArray(tools) && tools.length > 0) {
             invokeOptions.tools = tools;
         }
