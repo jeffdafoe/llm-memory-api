@@ -448,7 +448,22 @@ function createCall(model, apiKey, configuration) {
             body.stop = opts.stop.slice(0, 4);
         }
 
-        logProvider('api-call', { provider: 'openai', model, reasoning, serviceTier: requestedServiceTier });
+        // Per-call tool definitions. Translate neutral shape to OpenAI's
+        // function-tool wrapper. Empty parameters becomes an empty object schema
+        // because OpenAI rejects function defs without a parameters field.
+        const useTools = opts && Array.isArray(opts.tools) && opts.tools.length > 0;
+        if (useTools) {
+            body.tools = opts.tools.map(tool => ({
+                type: 'function',
+                function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters || { type: 'object', properties: {} }
+                }
+            }));
+        }
+
+        logProvider('api-call', { provider: 'openai', model, reasoning, serviceTier: requestedServiceTier, tools: useTools });
 
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -499,14 +514,34 @@ function createCall(model, apiKey, configuration) {
             usage.cost = cost;
         }
 
+        // Tool calls come back on choice.message.tool_calls in OpenAI's shape:
+        //   [{ id, type: "function", function: { name, arguments: "JSON STRING" } }]
+        // Normalize to the neutral [{ id, name, input }] shape, parsing the
+        // arguments string into an object. Malformed JSON falls back to {} so
+        // the caller still sees the call (and can decide how to handle it).
+        const tool_calls = (choice.message.tool_calls || [])
+            .filter(tc => tc.type === 'function' && tc.function && tc.function.name)
+            .map(tc => {
+                let input = {};
+                if (tc.function.arguments) {
+                    try {
+                        input = JSON.parse(tc.function.arguments);
+                    } catch (e) {
+                        logProvider('tool-args-parse-error', { provider: 'openai', model, error: e.message });
+                    }
+                }
+                return { id: tc.id, name: tc.function.name, input };
+            });
+
         logProvider('api-response', {
             provider: 'openai', model,
             serviceTier: appliedServiceTier,
             input: uncachedInput, cached: cachedTokens,
-            output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown'
+            output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown',
+            tool_calls: tool_calls.length
         });
 
-        return { text: choice.message.content, usage };
+        return { text: choice.message.content || '', tool_calls, usage };
     };
 }
 

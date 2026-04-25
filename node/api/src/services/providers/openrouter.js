@@ -168,7 +168,27 @@ function createCall(model, apiKey, configuration) {
             body.stop = opts.stop.slice(0, 4);
         }
 
-        logProvider('api-call', { provider: 'openrouter', model });
+        // Per-call tool definitions — translate the neutral shape to the OpenAI
+        // function-tool wrapper that OpenRouter passes through to upstream
+        // providers. Tool support varies by upstream model; OpenRouter's API
+        // documentation calls out which models support tools. For ones that
+        // don't, the upstream typically just ignores the field and returns a
+        // text response — we tolerate that case (empty tool_calls in response).
+        var useTools = opts && Array.isArray(opts.tools) && opts.tools.length > 0;
+        if (useTools) {
+            body.tools = opts.tools.map(function (tool) {
+                return {
+                    type: 'function',
+                    function: {
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: tool.parameters || { type: 'object', properties: {} }
+                    }
+                };
+            });
+        }
+
+        logProvider('api-call', { provider: 'openrouter', model, tools: useTools });
 
         var response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -217,13 +237,33 @@ function createCall(model, apiKey, configuration) {
             usage.cost = cost;
         }
 
+        // Tool calls in OpenAI-compatible shape on choice.message.tool_calls.
+        // Normalize to neutral [{ id, name, input }]. Args parsed from JSON
+        // string; malformed JSON falls back to {} and gets logged.
+        var tool_calls = ((choice.message && choice.message.tool_calls) || [])
+            .filter(function (tc) {
+                return tc.type === 'function' && tc.function && tc.function.name;
+            })
+            .map(function (tc) {
+                var input = {};
+                if (tc.function.arguments) {
+                    try {
+                        input = JSON.parse(tc.function.arguments);
+                    } catch (e) {
+                        logProvider('tool-args-parse-error', { provider: 'openrouter', model, error: e.message });
+                    }
+                }
+                return { id: tc.id, name: tc.function.name, input: input };
+            });
+
         logProvider('api-response', {
             provider: 'openrouter', model,
             input: uncachedInput, cached: cachedTokens,
-            output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown'
+            output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown',
+            tool_calls: tool_calls.length
         });
 
-        return { text: choice.message.content, usage };
+        return { text: choice.message.content || '', tool_calls: tool_calls, usage: usage };
     };
 }
 

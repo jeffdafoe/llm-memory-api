@@ -48,10 +48,15 @@ function resolveProvider(providerName) {
 //   cache: boolean   — request Anthropic prompt caching if agent has cache_prompts=true
 //   stop:  string[]  — provider-agnostic stop sequences, translated per-provider
 //                      (Anthropic stop_sequences / OpenAI-family stop / Google stopSequences)
-//   tools: object[]  — tool/function definitions. Provider-specific shape (Anthropic
-//                      uses { name, description, input_schema }). Currently only
-//                      Anthropic implements; other providers ignore. Returned
-//                      tool_calls is an empty array when tools weren't requested.
+//   tools: object[]  — tool/function definitions. Neutral shape:
+//                      { name: string, description: string, parameters: object }
+//                      where `parameters` is a JSON Schema. Each provider translates
+//                      to its native format (Anthropic input_schema, OpenAI/xai/
+//                      OpenRouter "function" wrapper, Google functionDeclarations).
+//                      Returned tool_calls is normalized to [{ id, name, input }]
+//                      across providers; empty array when no tools were called.
+//                      Perplexity Sonar models don't support tools and silently
+//                      drop them.
 //
 // Unknown opts fields are dropped at this boundary so providers never see them.
 function createProvider(provider, model, apiKey, configuration) {
