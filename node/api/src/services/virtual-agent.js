@@ -1317,12 +1317,22 @@ async function handleVirtualAgent(payload) {
             await new Promise(resolve => setTimeout(resolve, targetIndex * staggerSec * 1000));
         }
 
+        // Reload history right before generating so the agent responds to
+        // messages that arrived during baseDelay + stagger. The outer
+        // chatHistory snapshot was taken before any delay; for late-staggered
+        // agents in a chatty discussion, that snapshot is stale by the time
+        // we get here. Without this reload, the agent generates a reply
+        // against an old view, then the rerun watermark check fires as
+        // "new non-VA messages arrived since (stale) snapshot" — producing
+        // a double-response (discussion #107 was the diagnostic case).
+        const freshTopHistory = await loadChatHistory(discussionId, 50);
+
         // currentHistory / currentTrigger are rebound on each rerun so that
         // coalesced triggers produce a response against the freshest channel
         // state. On rerun we always treat the trigger as 'message' — by then
         // the thing we're responding to is whatever new non-VA messages
         // arrived while the first generation was running.
-        let currentHistory = chatHistory;
+        let currentHistory = freshTopHistory;
         let currentTrigger = triggerType;
 
         // Watermark for rerun decisions: the id of the newest non-VA (human
