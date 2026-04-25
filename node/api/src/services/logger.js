@@ -83,7 +83,11 @@ async function getErrorLogEntries(sinceId, limit, visibleActorIds) {
             return [];
         }
         const placeholders = ids.map((id, i) => '$' + (i + 1));
-        visFilter = ` AND e.actor_id IN (${placeholders.join(', ')})`;
+        // Include null-actor rows so admins can still see unattributed 5xxs
+        // (e.g. errors from public/un-authed routes where no agent is known).
+        // SQL: NULL IN (...) is never true, so without the IS NULL branch
+        // these rows would silently disappear from the dashboard.
+        visFilter = ` AND (e.actor_id IN (${placeholders.join(', ')}) OR e.actor_id IS NULL)`;
         params.push(...ids);
     }
     if (sinceId) {

@@ -26,6 +26,9 @@ function apiRoute(category, label, fn) {
             const status = err.statusCode || 500;
             const code = err.code || defaultCode(status);
             logError(category, label, {
+                // Attribute to the authenticated caller when known so admin
+                // visibility filters don't drop the row as null-actor.
+                agent: req.authenticatedAgent,
                 message: err.message,
                 detail: err.stack,
                 statusCode: status
