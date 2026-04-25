@@ -45,18 +45,27 @@ function resolveProvider(providerName) {
 // Signature: (systemPrompt, userMessage, opts?) -> { text, tool_calls, usage }
 //
 // Per-call opts contract (all fields optional):
-//   cache: boolean   — request Anthropic prompt caching if agent has cache_prompts=true
-//   stop:  string[]  — provider-agnostic stop sequences, translated per-provider
-//                      (Anthropic stop_sequences / OpenAI-family stop / Google stopSequences)
-//   tools: object[]  — tool/function definitions. Neutral shape:
-//                      { name: string, description: string, parameters: object }
-//                      where `parameters` is a JSON Schema. Each provider translates
-//                      to its native format (Anthropic input_schema, OpenAI/xai/
-//                      OpenRouter "function" wrapper, Google functionDeclarations).
-//                      Returned tool_calls is normalized to [{ id, name, input }]
-//                      across providers; empty array when no tools were called.
-//                      Perplexity Sonar models don't support tools and silently
-//                      drop them.
+//   cache: boolean    — request Anthropic prompt caching if agent has cache_prompts=true
+//   stop:  string[]   — provider-agnostic stop sequences, translated per-provider
+//                       (Anthropic stop_sequences / OpenAI-family stop / Google stopSequences)
+//   tools: object[]   — tool/function definitions. Neutral shape:
+//                       { name: string, description: string, parameters: object }
+//                       where `parameters` is a JSON Schema. Each provider translates
+//                       to its native format (Anthropic input_schema, OpenAI/xai/
+//                       OpenRouter "function" wrapper, Google functionDeclarations).
+//                       Returned tool_calls is normalized to [{ id, name, input }]
+//                       across providers; empty array when no tools were called.
+//                       Perplexity Sonar models don't support tools and silently
+//                       drop them.
+//   messages: object[] — full conversation history, OpenAI-shape:
+//                       { role: "user"|"assistant"|"tool", content: string,
+//                         tool_calls?: [{id, type:"function", function:{name, arguments}}],
+//                         tool_call_id?: string }
+//                       When provided, overrides the default single-user-message
+//                       built from `userMessage`. Anthropic/Google translate to
+//                       their native formats. Use to continue a tool-use session
+//                       across calls (engine appends prior assistant tool_use +
+//                       user tool_result messages and re-calls the provider).
 //
 // Unknown opts fields are dropped at this boundary so providers never see them.
 function createProvider(provider, model, apiKey, configuration) {
@@ -111,6 +120,14 @@ function sanitizeOpts(opts) {
         const tools = opts.tools.filter(t => t && typeof t === 'object' && typeof t.name === 'string');
         if (tools.length > 0) {
             out.tools = tools;
+        }
+    }
+    if (Array.isArray(opts.messages) && opts.messages.length > 0) {
+        // Light shape check — drop entries without a string role + content.
+        // Tool-call message variants get richer validation provider-side.
+        const messages = opts.messages.filter(m => m && typeof m === 'object' && typeof m.role === 'string');
+        if (messages.length > 0) {
+            out.messages = messages;
         }
     }
     if (Object.keys(out).length === 0) return undefined;

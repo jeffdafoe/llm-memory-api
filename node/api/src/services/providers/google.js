@@ -200,6 +200,59 @@ function flattenPrompt(systemPrompt) {
     return [systemPrompt.static, systemPrompt.dynamic].filter(Boolean).join('\n\n');
 }
 
+// ── Translate OpenAI-shape messages to Gemini-shape ─────────────────────────
+// Gemini uses `contents: [{ role, parts: [{text|functionCall|functionResponse}] }]`
+// with role values "user" / "model" / "function". OpenAI's role:"tool" maps to
+// Gemini's role:"function" with a functionResponse part. Assistant tool_calls
+// become functionCall parts in a "model" message. role:"system" is dropped
+// (handled via top-level system_instruction).
+function translateMessagesToGoogle(openaiMessages) {
+    const out = [];
+    for (const msg of openaiMessages) {
+        if (msg.role === 'system') continue;
+        if (msg.role === 'tool') {
+            // tool_call_id won't match Gemini's name-based functionResponse —
+            // best-effort: assume the upstream id encodes the name (matches
+            // our gemini-* synthesized ids). Caller must pass the function
+            // name in tool_call_id when targeting Google or use the synthetic
+            // id which contains the name.
+            const fnName = (msg.tool_call_id || '').replace(/^gemini-/, '').replace(/-\d+$/, '') || 'unknown';
+            out.push({
+                role: 'function',
+                parts: [{
+                    functionResponse: {
+                        name: fnName,
+                        response: { content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) }
+                    }
+                }]
+            });
+            continue;
+        }
+        if (msg.role === 'user') {
+            out.push({ role: 'user', parts: [{ text: msg.content || '' }] });
+            continue;
+        }
+        if (msg.role === 'assistant') {
+            const parts = [];
+            if (msg.content) parts.push({ text: msg.content });
+            if (Array.isArray(msg.tool_calls)) {
+                for (const tc of msg.tool_calls) {
+                    if (!tc.function || !tc.function.name) continue;
+                    let args = {};
+                    if (typeof tc.function.arguments === 'string') {
+                        try { args = JSON.parse(tc.function.arguments); } catch (e) { /* {} */ }
+                    } else if (tc.function.arguments && typeof tc.function.arguments === 'object') {
+                        args = tc.function.arguments;
+                    }
+                    parts.push({ functionCall: { name: tc.function.name, args: args } });
+                }
+            }
+            out.push({ role: 'model', parts: parts.length > 0 ? parts : [{ text: '' }] });
+        }
+    }
+    return out;
+}
+
 // ── API call factory ────────────────────────────────────────────────────────
 
 function createCall(model, apiKey, configuration) {
@@ -209,14 +262,15 @@ function createCall(model, apiKey, configuration) {
         const prompt = flattenPrompt(systemPrompt);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
+        const contents = (opts && Array.isArray(opts.messages) && opts.messages.length > 0)
+            ? translateMessagesToGoogle(opts.messages)
+            : [{ role: 'user', parts: [{ text: userMessage }] }];
+
         const body = {
             system_instruction: {
                 parts: { text: prompt }
             },
-            contents: [{
-                role: 'user',
-                parts: [{ text: userMessage }]
-            }],
+            contents: contents,
             generationConfig: {}
         };
 

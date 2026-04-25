@@ -405,11 +405,19 @@ function createCall(model, apiKey, configuration) {
         // Reasoning models use "developer" role instead of "system".
         const systemRole = reasoning ? 'developer' : 'system';
 
+        // OpenAI-shape messages array passes through directly. The engine sends
+        // the full conversation (prior assistant tool_calls + user tool_result
+        // messages) so the model sees its own observation history. System
+        // prompt is always pre-pended separately.
+        const userMessages = (opts && Array.isArray(opts.messages) && opts.messages.length > 0)
+            ? opts.messages
+            : [{ role: 'user', content: userMessage }];
+
         const body = {
             model: model,
             messages: [
                 { role: systemRole, content: prompt },
-                { role: 'user', content: userMessage }
+                ...userMessages
             ]
         };
 
