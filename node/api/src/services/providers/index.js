@@ -42,12 +42,16 @@ function resolveProvider(providerName) {
 // The returned function is wrapped with a request timeout (from config) so that
 // hung API calls don't block the retry pipeline indefinitely.
 //
-// Signature: (systemPrompt, userMessage, opts?) -> { text, usage }
+// Signature: (systemPrompt, userMessage, opts?) -> { text, tool_calls, usage }
 //
 // Per-call opts contract (all fields optional):
 //   cache: boolean   — request Anthropic prompt caching if agent has cache_prompts=true
 //   stop:  string[]  — provider-agnostic stop sequences, translated per-provider
 //                      (Anthropic stop_sequences / OpenAI-family stop / Google stopSequences)
+//   tools: object[]  — tool/function definitions. Provider-specific shape (Anthropic
+//                      uses { name, description, input_schema }). Currently only
+//                      Anthropic implements; other providers ignore. Returned
+//                      tool_calls is an empty array when tools weren't requested.
 //
 // Unknown opts fields are dropped at this boundary so providers never see them.
 function createProvider(provider, model, apiKey, configuration) {
@@ -94,6 +98,14 @@ function sanitizeOpts(opts) {
         const stops = opts.stop.filter(s => typeof s === 'string' && s.length > 0);
         if (stops.length > 0) {
             out.stop = stops;
+        }
+    }
+    if (Array.isArray(opts.tools) && opts.tools.length > 0) {
+        // Light shape check — keep only entries that look like tool defs.
+        // Provider does deeper validation as the API rejects malformed bodies.
+        const tools = opts.tools.filter(t => t && typeof t === 'object' && typeof t.name === 'string');
+        if (tools.length > 0) {
+            out.tools = tools;
         }
     }
     if (Object.keys(out).length === 0) return undefined;

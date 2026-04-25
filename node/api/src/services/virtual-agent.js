@@ -280,11 +280,15 @@ function logVA(action, details) {
 // Options:
 //   systemPrompt  — override the agent's startup_instructions (default: use agent's)
 //   userMessage    — required, the user/input message
-//   context        — usage tracking label (e.g. 'dream', 'soul', 'learning')
+//   context        — usage tracking label (e.g. 'dream', 'soul', 'learning', 'tick')
+//   tools          — array of tool definitions to pass to the provider. Provider-specific
+//                    shape (Anthropic: { name, description, input_schema }). Currently only
+//                    Anthropic supports; other providers ignore via the opts sanitizer.
 //   skipRateLimit  — bypass rate limiter (default: false)
 //   skipCostLimit  — bypass cost limit check (default: false)
 //   skipRetry      — don't use retryWithBackoff (default: true — callers manage their own error handling)
-// Returns: { text, usage, cost } or throws on error.
+// Returns: { text, tool_calls, usage, cost } or throws on error.
+// tool_calls is an empty array when no tools were requested or none were called.
 async function invokeAgent(agentName, options) {
     if (!options || !options.userMessage) {
         throw new Error('invokeAgent: userMessage is required');
@@ -327,8 +331,15 @@ async function invokeAgent(agentName, options) {
         [actor.id]
     );
 
+    // Forward the documented opts contract through to the provider — currently
+    // tools is the only one invokeAgent callers exercise, but the sanitizer in
+    // providers/index.js will silently drop anything else if more get passed.
+    const providerOpts = {};
+    if (Array.isArray(options.tools) && options.tools.length > 0) {
+        providerOpts.tools = options.tools;
+    }
     const callFn = async () => {
-        return await providerFn(systemPrompt, options.userMessage);
+        return await providerFn(systemPrompt, options.userMessage, providerOpts);
     };
 
     let result;
@@ -360,7 +371,10 @@ async function invokeAgent(agentName, options) {
     }
 
     const durationMs = Date.now() - callStart;
-    const { text, usage } = result;
+    const { text, tool_calls, usage } = result;
+    // Providers that pre-date tool support return undefined for tool_calls.
+    // Normalize so callers always see an array.
+    const toolCallsOut = Array.isArray(tool_calls) ? tool_calls : [];
 
     // Record rate limit call
     if (!options.skipRateLimit) {
@@ -380,9 +394,10 @@ async function invokeAgent(agentName, options) {
     }).catch(() => {});
 
     logVA('invoke', { agent: agentName, context: options.context || null, cost: cost.toFixed(6),
-        input: usage.input_tokens || 0, output: usage.output_tokens || 0 });
+        input: usage.input_tokens || 0, output: usage.output_tokens || 0,
+        tool_calls: toolCallsOut.length });
 
-    return { text, usage, cost };
+    return { text, tool_calls: toolCallsOut, usage, cost };
 }
 
 // Check if learning extraction is enabled for an agent.

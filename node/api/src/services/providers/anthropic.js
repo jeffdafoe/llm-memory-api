@@ -222,7 +222,15 @@ function createCall(model, apiKey, configuration) {
             body.stop_sequences = opts.stop.slice(0, 4);
         }
 
-        logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!useThinking });
+        // Per-call tool definitions. Each entry must already be in Anthropic's
+        // shape: { name, description, input_schema }. The caller is responsible
+        // for validating shape; we pass through as-is.
+        const useTools = opts && Array.isArray(opts.tools) && opts.tools.length > 0;
+        if (useTools) {
+            body.tools = opts.tools;
+        }
+
+        logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!useThinking, tools: useTools });
 
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
@@ -242,6 +250,14 @@ function createCall(model, apiKey, configuration) {
             .map(block => block.text)
             .join('\n');
 
+        // Tool use blocks come back interleaved with text blocks. Hoist them
+        // into a top-level array so callers don't have to re-walk content.
+        // Empty array (not undefined) when no tools were called — keeps the
+        // shape uniform whether or not tools were requested.
+        const tool_calls = data.content
+            .filter(block => block.type === 'tool_use')
+            .map(block => ({ id: block.id, name: block.name, input: block.input }));
+
         const usage = {
             input_tokens: data.usage?.input_tokens || 0,
             output_tokens: data.usage?.output_tokens || 0,
@@ -249,9 +265,9 @@ function createCall(model, apiKey, configuration) {
             cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0
         };
 
-        logProvider('api-response', { provider: 'anthropic', model, ...usage });
+        logProvider('api-response', { provider: 'anthropic', model, tool_calls: tool_calls.length, ...usage });
 
-        return { text, usage };
+        return { text, tool_calls, usage };
     };
 }
 
