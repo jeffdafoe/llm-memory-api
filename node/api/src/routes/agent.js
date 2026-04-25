@@ -12,6 +12,7 @@ const sanitize = require('../sanitize');
 const { requireAccess, validateNamespace } = require('../services/namespace-permissions');
 const config = require('../services/config');
 const { apiRoute } = require('../middleware/route-wrapper');
+const { invokeAgent } = require('../services/virtual-agent');
 // actors service no longer needed — all routes use req.actorId from auth middleware
 
 const router = Router();
@@ -939,6 +940,96 @@ router.post('/agent/config', apiRoute('agent', 'agent-config', async (req, res) 
         config_values[row.key] = row.value;
     }
     res.json({ config: config_values });
+}));
+
+// POST /agent/tick — invoke the authenticated agent's LLM with a perception
+// and a tool spec, return the resulting tool calls.
+//
+// Built for game-engine driven NPCs (Salem M6) where the engine wakes the
+// agent at game-time intervals, sends a perception block describing what the
+// NPC sees / has heard / is scheduled to do, and accepts back tool calls
+// representing the NPC's decisions. The endpoint is provider-agnostic in
+// principle but only Anthropic implements tool use today; calls to other
+// providers will get back tool_calls=[] regardless of what's requested.
+//
+// Auth: agent session token (via middleware). The agent is the NPC's brain.
+// Body: {
+//   perception: string,    — full perception text the engine assembled
+//   tools?:     object[]   — Anthropic-shape tool defs (name, description, input_schema)
+//   system?:    string     — optional system prompt override (default: agent's startup_instructions)
+// }
+//
+// Response: { text, tool_calls, usage, cost }
+//
+// M6.2 stub — single-call only, no harness loop. The harness loop (3-8 calls
+// per tick with observe→think→act) lands in M6.3. M6.2's job is just to give
+// the engine a working endpoint that returns valid tool-call JSON.
+router.post('/agent/tick', apiRoute('agent', 'tick', async (req, res) => {
+    const agent = req.authenticatedAgent;
+    if (!agent) {
+        return res.status(401).json({
+            error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+        });
+    }
+
+    const { perception, tools, system } = req.body;
+
+    if (typeof perception !== 'string' || perception.length === 0) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required field: perception (non-empty string)' }
+        });
+    }
+
+    if (tools !== undefined && !Array.isArray(tools)) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'tools must be an array of tool definitions' }
+        });
+    }
+
+    if (system !== undefined && typeof system !== 'string') {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'system must be a string' }
+        });
+    }
+
+    // invokeAgent surfaces the rate-limit and cost-budget errors as plain
+    // Error instances. Map them back to 429 / 402 so the engine can react
+    // (back off, log, fall through to scheduler-only behavior for the tick).
+    let result;
+    try {
+        const invokeOptions = {
+            userMessage: perception,
+            context: 'tick',
+        };
+        if (Array.isArray(tools) && tools.length > 0) {
+            invokeOptions.tools = tools;
+        }
+        if (system !== undefined) {
+            invokeOptions.systemPrompt = system;
+        }
+        result = await invokeAgent(agent, invokeOptions);
+    } catch (err) {
+        const message = err.message || 'tick failed';
+        if (message.includes('rate-limited')) {
+            return res.status(429).json({
+                error: { code: 'RATE_LIMITED', message }
+            });
+        }
+        if (message.includes('over cost limit')) {
+            return res.status(402).json({
+                error: { code: 'COST_LIMIT', message }
+            });
+        }
+        throw err;
+    }
+
+    res.json({
+        agent,
+        text: result.text,
+        tool_calls: result.tool_calls,
+        usage: result.usage,
+        cost: result.cost,
+    });
 }));
 
 module.exports = router;
