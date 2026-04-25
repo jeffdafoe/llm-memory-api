@@ -6,8 +6,6 @@
 
 Persistent memory and multi-agent collaboration for AI. Works with Claude Code, claude.ai, Cursor, Windsurf, and any MCP-compatible tool.
 
-*Dependencies vetted by [Socket Firewall](https://docs.socket.dev/docs/socket-firewall-free) — every npm install in this repo runs through `sfw` to block known-malicious packages at the network layer.*
-
 <p align="center">
   <img src="https://llm-memory.net/static/screenshots/notes-demo-expanded.png" alt="Notes tree with a memory open" width="900">
 </p>
