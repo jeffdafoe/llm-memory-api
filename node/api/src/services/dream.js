@@ -277,6 +277,219 @@ function slugify(text) {
         .slice(0, 60);
 }
 
+// Split a [since, now] window into per-UTC-day chunks. The first chunk
+// starts at `since` (not at the start of that UTC day) so we don't
+// re-scan logs already consumed by a prior cron run. Subsequent chunks
+// are full UTC days. The final chunk ends at `now`.
+//
+// Returns [{from: Date, to: Date}, ...]. Empty if since >= now.
+//
+// Bounds are inclusive on `to`, exclusive on `from`, matching the
+// per-chunk SQL query (created_at > from AND created_at <= to). This
+// makes setting last_dream_at = chunk.to safely exclude already-
+// processed boundary-time logs from the next chunk's window.
+function computeDailyChunks(since, now) {
+    const sinceMs = (since instanceof Date ? since : new Date(since)).getTime();
+    const nowMs = (now instanceof Date ? now : new Date(now)).getTime();
+    if (sinceMs >= nowMs) {
+        return [];
+    }
+    const chunks = [];
+    const sinceDate = new Date(sinceMs);
+    let dayEndMs = Date.UTC(
+        sinceDate.getUTCFullYear(),
+        sinceDate.getUTCMonth(),
+        sinceDate.getUTCDate()
+    ) + 24 * 60 * 60 * 1000;
+    let cursorMs = sinceMs;
+    while (cursorMs < nowMs) {
+        const chunkEndMs = Math.min(dayEndMs, nowMs);
+        chunks.push({ from: new Date(cursorMs), to: new Date(chunkEndMs) });
+        cursorMs = chunkEndMs;
+        dayEndMs += 24 * 60 * 60 * 1000;
+    }
+    return chunks;
+}
+
+// Process one (from, to] chunk for one agent: dream → save note → soul →
+// people. Returns a summary object. Throws on dream-call failure (the
+// caller catches and decides whether to retry on the next cron). Soul
+// and people failures are caught here and logged but don't fail the
+// chunk — they're auxiliary to the dream note itself.
+//
+// agentNames: { dreamAgentName, soulAgentName, peopleAgentName }
+// chunk: { from: Date, to: Date }
+async function processDreamChunk(agent, agentNames, chunk) {
+    const { dreamAgentName, soulAgentName, peopleAgentName } = agentNames;
+    const { from, to } = chunk;
+    const chunkDateStr = from.toISOString().slice(0, 10);
+
+    const logs = await pool.query(
+        `SELECT slug, content, created_at FROM documents
+         WHERE namespace = $1 AND slug LIKE 'conversations/%' AND deleted_at IS NULL
+         AND created_at > $2 AND created_at <= $3
+         ORDER BY created_at ASC`,
+        [agent.name, from, to]
+    );
+    if (logs.rows.length === 0) {
+        logDream('chunk-no-logs', { agent: agent.name, chunkDate: chunkDateStr });
+        return { skipped: true, reason: 'no logs', chunkDate: chunkDateStr };
+    }
+
+    const fullLog = logs.rows.map(r => r.content).join('\n\n---\n\n');
+    const filtered = prefilterLog(fullLog);
+    if (!filtered) {
+        logDream('chunk-no-signals', { agent: agent.name, chunkDate: chunkDateStr, logCount: logs.rows.length });
+        return { skipped: true, reason: 'no signals', chunkDate: chunkDateStr, logCount: logs.rows.length };
+    }
+
+    logDream('chunk-processing', {
+        agent: agent.name,
+        mode: agent.dream_mode,
+        chunkDate: chunkDateStr,
+        logCount: logs.rows.length,
+        originalSize: fullLog.length,
+        filteredSize: filtered.length,
+    });
+
+    const userMessage = 'Conversation logs for agent "' + agent.name + '" on ' + chunkDateStr + ':\n\n'
+        + filtered
+        + '\n\nAlso provide a brief title summarizing the overarching subject of the day.';
+
+    const { text: response } = await invokeAgent(dreamAgentName, {
+        userMessage,
+        context: 'dream',
+        skipRateLimit: true,
+        skipCostLimit: true,
+        skipRetry: false,
+    });
+
+    const titleMatch = response.match(/^#\s+(.+)$/m) || response.match(/^title:\s*(.+)$/im);
+    const title = titleMatch ? titleMatch[1].trim() : 'Dream consolidation';
+    const content = response;
+
+    // Slug uses the chunk's date so catching up multiple days produces
+    // distinct dated notes (rather than overwriting the same NOW-dated slug).
+    const slug = 'dreams/' + chunkDateStr + '-' + slugify(title);
+    await saveNote(agent.name, title + ' (' + chunkDateStr + ')', content, slug, dreamAgentName);
+    logDream('chunk-saved', { agent: agent.name, slug, contentLength: content.length });
+
+    // Soul synthesis — runs after each chunk per Jeff's call. The current
+    // soul note is the prior chunk's output, so consecutive chunks build
+    // on each other naturally rather than needing a single end-of-run pass.
+    if (soulAgentName) {
+        try {
+            let existingSoul = '';
+            try {
+                const soulNote = await readNote(agent.name, 'context/soul');
+                existingSoul = soulNote.content || '';
+            } catch (e) {
+                // No soul yet — first run for this agent.
+            }
+
+            const soulUserMessage = '## Agent: ' + agent.name + '\n\n'
+                + (agent.startup_instructions
+                    ? '## Character description\n\n' + agent.startup_instructions + '\n\n'
+                    : '')
+                + '## Current soul document\n\n'
+                + (existingSoul || '(empty — first run)')
+                + '\n\n## Dream snapshot for ' + chunkDateStr + '\n\n'
+                + content;
+
+            const { text: updatedSoul } = await invokeAgent(soulAgentName, {
+                userMessage: soulUserMessage,
+                context: 'soul',
+                skipRateLimit: true,
+                skipCostLimit: true,
+                skipRetry: false,
+            });
+
+            if (updatedSoul && updatedSoul.trim()) {
+                await saveNote(agent.name, 'Soul', updatedSoul.trim(), 'context/soul', soulAgentName, null, null, { upsert: true });
+                logDream('chunk-soul-updated', { agent: agent.name, chunkDate: chunkDateStr, size: updatedSoul.length });
+            }
+        } catch (soulErr) {
+            // Soul failure doesn't block the chunk's dream/people output.
+            logDream('chunk-soul-error', { agent: agent.name, chunkDate: chunkDateStr, error: soulErr.message });
+        }
+    }
+
+    // People synthesis — companion mode only. Runs per-chunk for the same
+    // reason soul does: per-day relationship updates compose better than
+    // one massive end-of-run pass over weeks of conversation.
+    if (agent.dream_mode === 'companion' && peopleAgentName) {
+        try {
+            const speakers = extractSpeakers(filtered, agent.name);
+            for (const [personName, personLines] of speakers) {
+                if (personLines.length === 0) {
+                    continue;
+                }
+                try {
+                    let existingFile = '';
+                    try {
+                        const note = await readNote(agent.name, 'context/people/' + personName);
+                        existingFile = note.content || '';
+                    } catch (e) {
+                        // No existing file — first encounter.
+                    }
+
+                    const peopleUserMessage = '## Agent: ' + agent.name + '\n'
+                        + '## Person: ' + personName + '\n'
+                        + '## Today\'s date: ' + chunkDateStr + '\n\n'
+                        + '## Current relationship file\n\n'
+                        + (existingFile || '(empty — first encounter)')
+                        + '\n\n## Recent conversation excerpts involving ' + personName + '\n\n'
+                        + personLines.join('\n');
+
+                    const { text: updatedFile } = await invokeAgent(peopleAgentName, {
+                        userMessage: peopleUserMessage,
+                        context: 'people',
+                        skipRateLimit: true,
+                        skipCostLimit: true,
+                        skipRetry: false,
+                    });
+
+                    if (updatedFile && updatedFile.trim()) {
+                        await saveNote(
+                            agent.name,
+                            'People — ' + personName,
+                            updatedFile.trim(),
+                            'context/people/' + personName,
+                            peopleAgentName,
+                            null, null, { upsert: true }
+                        );
+                        logDream('chunk-people-updated', {
+                            agent: agent.name,
+                            chunkDate: chunkDateStr,
+                            person: personName,
+                            size: updatedFile.length,
+                        });
+                    }
+                } catch (personErr) {
+                    logDream('chunk-people-error', {
+                        agent: agent.name,
+                        chunkDate: chunkDateStr,
+                        person: personName,
+                        error: personErr.message,
+                    });
+                }
+            }
+        } catch (peopleErr) {
+            logDream('chunk-people-error', { agent: agent.name, chunkDate: chunkDateStr, error: peopleErr.message });
+        }
+    }
+
+    return {
+        processed: true,
+        chunkDate: chunkDateStr,
+        slug,
+        title,
+        logCount: logs.rows.length,
+        filteredSize: filtered.length,
+        responseSize: response.length,
+    };
+}
+
 // Run the dream processing job.
 // Returns a summary object with counts and any errors.
 async function runDream() {
@@ -318,206 +531,84 @@ async function runDream() {
 
     for (const agent of agents.rows) {
         try {
-            // Pick the right dream agent
+            // Pick the right dream/soul/people agents for this dream_mode.
             const dreamAgentName = agent.dream_mode === 'companion' ? companionAgentName : technicalAgentName;
             if (!dreamAgentName) {
                 results.push({ agent: agent.name, error: 'dream-' + agent.dream_mode + ' agent not available' });
                 continue;
             }
-
-            // Get conversation logs since last dream (or last 24h if never run)
-            const since = agent.last_dream_at || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-            const logs = await pool.query(
-                `SELECT slug, content, created_at FROM documents
-                 WHERE namespace = $1 AND slug LIKE 'conversations/%' AND deleted_at IS NULL
-                 AND created_at > $2
-                 ORDER BY created_at ASC`,
-                [agent.name, since]
-            );
-
-            if (logs.rows.length === 0) {
-                logDream('no-logs', { agent: agent.name, since });
-                results.push({ agent: agent.name, skipped: true, reason: 'No new conversation logs' });
-                // Still update last_dream_at so we don't re-scan the same window
-                await pool.query(
-                    'UPDATE agent_configuration SET last_dream_at = NOW() WHERE actor_id = $1',
-                    [agent.actor_id]
-                );
-                continue;
-            }
-
-            // Concatenate all conversation logs for the period
-            let fullLog = logs.rows.map(r => r.content).join('\n\n---\n\n');
-
-            // Pre-filter to signal-bearing passages
-            const filtered = prefilterLog(fullLog);
-            if (!filtered) {
-                logDream('no-signals', { agent: agent.name, logCount: logs.rows.length });
-                results.push({ agent: agent.name, skipped: true, reason: 'No signal-bearing content found' });
-                await pool.query(
-                    'UPDATE agent_configuration SET last_dream_at = NOW() WHERE actor_id = $1',
-                    [agent.actor_id]
-                );
-                continue;
-            }
-
-            logDream('processing', {
-                agent: agent.name,
-                mode: agent.dream_mode,
-                logCount: logs.rows.length,
-                originalSize: fullLog.length,
-                filteredSize: filtered.length
-            });
-
-            // Call the dream agent's LLM via invokeAgent
-            // Uses the dream VA's startup_instructions as system prompt (default behavior)
-            const userMessage = 'Conversation logs for agent "' + agent.name + '":\n\n'
-                + filtered
-                + '\n\nAlso provide a brief title summarizing the overarching subject of the day.';
-
-            const { text: response } = await invokeAgent(dreamAgentName, {
-                userMessage,
-                context: 'dream',
-                skipRateLimit: true,
-                skipCostLimit: true,
-                skipRetry: false,
-            });
-
-            // Parse the response — extract title and content
-            // Expected: the LLM provides a title line and then the consolidated content
-            const titleMatch = response.match(/^#\s+(.+)$/m) || response.match(/^title:\s*(.+)$/im);
-            let title = titleMatch ? titleMatch[1].trim() : 'Dream consolidation';
-            let content = response;
-
-            // Save as a note in the agent's namespace
-            const dateStr = new Date().toISOString().slice(0, 10);
-            const slug = 'dreams/' + dateStr + '-' + slugify(title);
-
-            await saveNote(agent.name, title + ' (' + dateStr + ')', content, slug, dreamAgentName);
-
-            logDream('saved', { agent: agent.name, slug, titleLength: title.length, contentLength: content.length });
-
-            // Soul synthesis: update context/soul with tonight's snapshot
             const soulAgentName = agent.dream_mode === 'companion' ? companionSoulAgentName : technicalSoulAgentName;
-            if (soulAgentName) {
+            const peopleAgentName = agent.dream_mode === 'companion' ? companionPeopleAgentName : null;
+            const agentNames = { dreamAgentName, soulAgentName, peopleAgentName };
+
+            // Split the work since last_dream_at into per-UTC-day chunks so an
+            // agent that's fallen behind doesn't try to fit weeks of logs into
+            // one model call (which is what tripped home with deepseek's 163K
+            // window). First-run agents process the previous 24h.
+            const since = agent.last_dream_at || new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const chunks = computeDailyChunks(since, new Date());
+
+            if (chunks.length === 0) {
+                logDream('no-window', { agent: agent.name, since });
+                results.push({ agent: agent.name, skipped: true, reason: 'last_dream_at is in the future' });
+                continue;
+            }
+
+            logDream('chunks-planned', {
+                agent: agent.name,
+                count: chunks.length,
+                from: chunks[0].from.toISOString(),
+                to: chunks[chunks.length - 1].to.toISOString(),
+            });
+
+            const interChunkDelay = parseInt(config.get('dream_interchunk_delay')) || 1000;
+            const chunkResults = [];
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
                 try {
-                    let existingSoul = '';
-                    try {
-                        const soulNote = await readNote(agent.name, 'context/soul');
-                        existingSoul = soulNote.content || '';
-                    } catch (e) {
-                        // No soul yet — first run, start fresh
-                    }
-
-                    const soulUserMessage = '## Agent: ' + agent.name + '\n\n'
-                        + (agent.startup_instructions
-                            ? '## Character description\n\n' + agent.startup_instructions + '\n\n'
-                            : '')
-                        + '## Current soul document\n\n'
-                        + (existingSoul || '(empty — first run)')
-                        + '\n\n## Tonight\'s dream snapshot\n\n'
-                        + content;
-
-                    const { text: updatedSoul } = await invokeAgent(soulAgentName, {
-                        userMessage: soulUserMessage,
-                        context: 'soul',
-                        skipRateLimit: true,
-                        skipCostLimit: true,
-                        skipRetry: false,
+                    const r = await processDreamChunk(agent, agentNames, chunk);
+                    chunkResults.push(r);
+                    // Advance last_dream_at after each successful chunk so a
+                    // failure on a later chunk doesn't lose the work done on
+                    // earlier ones — the next cron resumes from where we
+                    // stopped, not from the start of the agent's backlog.
+                    await pool.query(
+                        'UPDATE agent_configuration SET last_dream_at = $1 WHERE actor_id = $2',
+                        [chunk.to, agent.actor_id]
+                    );
+                } catch (chunkErr) {
+                    // Don't advance last_dream_at — next cron retries this
+                    // chunk. Stop processing this agent's later chunks so we
+                    // don't skip past a failed one (would lose its logs).
+                    logDream('chunk-error', {
+                        agent: agent.name,
+                        chunkDate: chunk.from.toISOString().slice(0, 10),
+                        error: chunkErr.message,
                     });
-
-                    if (updatedSoul && updatedSoul.trim()) {
-                        await saveNote(agent.name, 'Soul', updatedSoul.trim(), 'context/soul', soulAgentName, null, null, { upsert: true });
-                        logDream('soul-updated', { agent: agent.name, size: updatedSoul.length });
-                    }
-                } catch (soulErr) {
-                    // Soul update failure shouldn't block the rest of the dream process
-                    logDream('soul-error', { agent: agent.name, error: soulErr.message });
+                    logError('dream', 'chunk-error', {
+                        agent: agent.name,
+                        message: chunkErr.message,
+                        detail: chunkErr.stack,
+                    });
+                    chunkResults.push({
+                        chunkDate: chunk.from.toISOString().slice(0, 10),
+                        error: chunkErr.message,
+                    });
+                    break;
+                }
+                // Inter-chunk pause for the same agent — politeness to the
+                // provider when catching up multiple days back-to-back.
+                if (i + 1 < chunks.length && interChunkDelay > 0) {
+                    await new Promise(resolve => setTimeout(resolve, interChunkDelay));
                 }
             }
-
-            // People synthesis: update per-person relationship files (companion mode only)
-            if (agent.dream_mode === 'companion' && companionPeopleAgentName) {
-                try {
-                    // Extract speakers from the filtered conversation log
-                    const speakers = extractSpeakers(filtered, agent.name);
-                    const today = new Date().toISOString().slice(0, 10);
-
-                    for (const [personName, personLines] of speakers) {
-                        if (personLines.length === 0) {
-                            continue;
-                        }
-
-                        try {
-                            // Load existing relationship file if it exists
-                            let existingFile = '';
-                            try {
-                                const note = await readNote(agent.name, 'context/people/' + personName);
-                                existingFile = note.content || '';
-                            } catch (e) {
-                                // No existing file — first encounter
-                            }
-
-                            const peopleUserMessage = '## Agent: ' + agent.name + '\n'
-                                + '## Person: ' + personName + '\n'
-                                + '## Today\'s date: ' + today + '\n\n'
-                                + '## Current relationship file\n\n'
-                                + (existingFile || '(empty — first encounter)')
-                                + '\n\n## Recent conversation excerpts involving ' + personName + '\n\n'
-                                + personLines.join('\n');
-
-                            const { text: updatedFile } = await invokeAgent(companionPeopleAgentName, {
-                                userMessage: peopleUserMessage,
-                                context: 'people',
-                                skipRateLimit: true,
-                                skipCostLimit: true,
-                                skipRetry: false,
-                            });
-
-                            if (updatedFile && updatedFile.trim()) {
-                                await saveNote(
-                                    agent.name,
-                                    'People — ' + personName,
-                                    updatedFile.trim(),
-                                    'context/people/' + personName,
-                                    companionPeopleAgentName,
-                                    null, null, { upsert: true }
-                                );
-                                logDream('people-updated', {
-                                    agent: agent.name,
-                                    person: personName,
-                                    size: updatedFile.length
-                                });
-                            }
-                        } catch (personErr) {
-                            logDream('people-error', {
-                                agent: agent.name,
-                                person: personName,
-                                error: personErr.message
-                            });
-                        }
-                    }
-                } catch (peopleErr) {
-                    // People synthesis failure shouldn't block the rest
-                    logDream('people-error', { agent: agent.name, error: peopleErr.message });
-                }
-            }
-
-            // Update last_dream_at
-            await pool.query(
-                'UPDATE agent_configuration SET last_dream_at = NOW() WHERE actor_id = $1',
-                [agent.actor_id]
-            );
 
             results.push({
                 agent: agent.name,
                 mode: agent.dream_mode,
-                slug,
-                title,
-                logCount: logs.rows.length,
-                filteredSize: filtered.length,
-                responseSize: response.length,
+                chunkCount: chunks.length,
+                chunks: chunkResults,
             });
         } catch (err) {
             logDream('error', { agent: agent.name, error: err.message });
