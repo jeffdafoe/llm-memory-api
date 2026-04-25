@@ -20,6 +20,17 @@
     dest: /etc/logrotate.d/llm-memory-api
     mode: "0644"
 
+# Socket Firewall (sfw) — wraps `npm install` to block known-malicious
+# packages at the network layer before they can land on disk. Installed
+# globally so all subsequent npm tasks below can prefix `sfw`. The npm
+# install of sfw itself is unwrapped (chicken-and-egg) — we trust this
+# one package from socket.dev. Free tier, no API key, anonymous telemetry.
+- name: Install Socket Firewall (sfw) globally
+  npm:
+    name: sfw
+    global: yes
+    state: present
+
 - name: Create deployment directory
   file:
     path: "{{ project_root }}"
@@ -29,8 +40,9 @@
   when: repo_root != project_root
 
 - name: Install build dependencies in repo
-  npm:
-    path: "{{ repo_root }}/node/api"
+  command: sfw npm install
+  args:
+    chdir: "{{ repo_root }}/node/api"
   when: repo_root != project_root
 
 - name: Build admin dashboard
@@ -92,15 +104,16 @@
   notify: Restart memory-api
 
 - name: Install npm dependencies
-  npm:
-    path: "{{ project_root }}"
-    production: yes
+  command: sfw npm install --omit=dev
+  args:
+    chdir: "{{ project_root }}"
   become_user: "{{ app_user }}"
   when: repo_root != project_root
 
 - name: Install npm dependencies (development)
-  npm:
-    path: "{{ project_root }}/node/api"
+  command: sfw npm install
+  args:
+    chdir: "{{ project_root }}/node/api"
   become_user: "{{ app_user }}"
   when: repo_root == project_root
 
