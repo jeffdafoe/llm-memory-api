@@ -521,6 +521,14 @@ async function runDream() {
             });
         } catch (err) {
             logDream('error', { agent: agent.name, error: err.message });
+            // Also surface in the admin error_log so per-agent failures aren't
+            // silently swallowed (the outer cron-level catch only fires if
+            // runDream itself throws, not for individual agents).
+            logError('dream', 'agent-error', {
+                agent: agent.name,
+                message: err.message,
+                detail: err.stack,
+            });
             results.push({ agent: agent.name, error: err.message });
         }
 

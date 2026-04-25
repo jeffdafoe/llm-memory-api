@@ -2,7 +2,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
-const { log } = require('../services/logger');
+const { log, logError } = require('../services/logger');
 const auth = require('../middleware/auth');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
 const { SESSION_KIND } = require('../constants');
@@ -857,6 +857,15 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                         uploaded++;
                     } catch (uploadErr) {
                         uploadErrors.push({ session_id: upload.session_id || 'unknown', error: uploadErr.message });
+                        // The outer route returns HTTP 200 with these per-upload
+                        // errors in the response body, so apiRoute's wrapper catch
+                        // never fires. Log here so persistent client/server bugs
+                        // don't go silent in error_log.
+                        logError('agent', 'conversation-upload', {
+                            agent: agent,
+                            message: uploadErr.message,
+                            detail: uploadErr.stack,
+                        });
                     }
                 }
 
@@ -867,6 +876,12 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
             }
         } catch (conversationErr) {
             conversationsResponse.error = 'Conversation sync failed: ' + conversationErr.message;
+            // Same silent-path concern as the per-upload catch above.
+            logError('agent', 'conversation-sync', {
+                agent: agent,
+                message: conversationErr.message,
+                detail: conversationErr.stack,
+            });
         }
         response.conversations = conversationsResponse;
     }

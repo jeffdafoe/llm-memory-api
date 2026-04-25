@@ -340,7 +340,10 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
     let errorCountSql = `SELECT COUNT(*) AS count FROM error_log WHERE created_at > NOW() - INTERVAL '24 hours' AND (status_code IS NULL OR status_code >= 500)`;
     const errorCountParams = [];
     if (hasFilter) {
-        errorCountSql += ' AND actor_id = ANY($1)';
+        // Include null-actor rows so unattributed 5xxs (e.g. errors from
+        // public/un-authed routes) count toward the badge for filtered admins.
+        // Mirrors the visibility relax in services/logger.js getErrorLogEntries.
+        errorCountSql += ' AND (actor_id = ANY($1) OR actor_id IS NULL)';
         errorCountParams.push(idsArray);
     }
     const errorCountResult = await pool.query(errorCountSql, errorCountParams);
