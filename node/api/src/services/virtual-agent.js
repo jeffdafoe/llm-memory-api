@@ -1942,6 +1942,13 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             [mailId, agent.actor_id]
         );
 
+        // Guard against empty provider responses — mailSend would otherwise reject
+        // with the generic "Required fields" message, which confuses the recipient
+        // into thinking the agent is offline when the real cause is an empty LLM reply.
+        if (!response || !response.trim()) {
+            throw new Error('LLM returned empty response');
+        }
+
         // Send reply mail (threaded via in_reply_to)
         const { mailSend } = require('./mail');
         await mailSend(fromAgent, agent.agent, replySubjectPrefix, response, mailId);
@@ -1989,7 +1996,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
             const { mailSend: mailSendErr } = require('./mail');
             await mailSendErr(fromAgent, virtualAgentName,
                 'Delivery failed',
-                `${virtualAgentName} is unavailable (${err.message}). Your message has been acked — resend when the agent is back online.`,
+                `${virtualAgentName} could not process your message: ${err.message}. Your message has been acked — try resending later.`,
                 mailId);
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
