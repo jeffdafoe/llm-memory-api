@@ -59,6 +59,14 @@ const SIGNAL_PATTERNS = [
 // How many context lines to include before and after a signal match
 const CONTEXT_LINES = 5;
 
+// Cheap detection for the typed-context JSON array format. The whole
+// multi-turn discussion history sits on a single line as a JSON array
+// of {sender, content} objects (see virtual-agent.js's <Conversation>
+// block). prefilterLog and extractSpeakers both need this pattern —
+// prefilterLog so the speaker record survives signal-based filtering,
+// extractSpeakers so it can parse the array into per-speaker lines.
+const JSON_ARRAY_HEAD = /^\s*\[\s*\{\s*"sender"\s*:/;
+
 
 function logDream(action, details) {
     log('dream', action, details);
@@ -90,6 +98,22 @@ function prefilterLog(content) {
         const start = Math.max(0, idx - CONTEXT_LINES);
         const end = Math.min(lines.length - 1, idx + CONTEXT_LINES);
         for (let i = start; i <= end; i++) {
+            includedLines.add(i);
+        }
+    }
+
+    // Always include the typed-context JSON-array conversation record. The
+    // array is one long line carrying every speaker's turn, but its
+    // utterances often don't contain signal-pattern words, so signal-only
+    // filtering can drop it entirely. When that happens extractSpeakers
+    // sees no parseable speaker data and the people-update loop runs zero
+    // iterations — the visible symptom is per-NPC people-files freezing in
+    // place after a multi-agent discussion. Pinning these lines into the
+    // filtered output guarantees extractSpeakers always sees the speaker
+    // enumeration, while the dream LLM still gets the signal-filtered
+    // version of the surrounding narrative.
+    for (let i = 0; i < lines.length; i++) {
+        if (JSON_ARRAY_HEAD.test(lines[i])) {
             includedLines.add(i);
         }
     }
@@ -134,10 +158,6 @@ function extractSpeakers(content, agentName) {
     // Pattern for discussion history: "speaker: message" or "[timestamp] speaker: message"
     // Speaker names are agent identifiers (lowercase, may contain hyphens)
     const discussionPattern = /^(?:\[.*?\]\s+)?([a-z][a-z0-9-]*):(?:\s|$)/;
-    // Cheap detection for the typed-context JSON array format. We only
-    // attempt JSON.parse on lines that clearly start with the expected
-    // shape so we don't pay parse cost on every regular line.
-    const jsonArrayHead = /^\s*\[\s*\{\s*"sender"\s*:/;
 
     let currentSpeaker = null;
 
@@ -166,7 +186,7 @@ function extractSpeakers(content, agentName) {
         // patterns because the line opens with '[' and could otherwise
         // confuse the timestamp-prefixed discussionPattern. Failure to
         // parse falls through to the line-based patterns below.
-        if (jsonArrayHead.test(line)) {
+        if (JSON_ARRAY_HEAD.test(line)) {
             try {
                 const messages = JSON.parse(line.trim());
                 if (Array.isArray(messages)) {
