@@ -1623,6 +1623,13 @@ async function handleVirtualAgent(payload) {
 //   - row to this VA, plain text         → role=user
 // The latest incoming message is already in `history` (loadDirectChatHistory's
 // time window includes it) so callers don't need to append it separately.
+//
+// tool_calls are stored in the neutral {id, name, input} shape that
+// invokeAgent returns to callers. Providers (openrouter / openai) pass
+// messages through without normalization, so we translate to OpenAI's
+// function-tool wrapper here: {id, type: 'function', function: {name,
+// arguments: <JSON string>}}. Anthropic's provider does its own translation
+// upstream, so it's safe to send the same OpenAI shape through invokeAgent.
 function buildToolUseMessages(history, npcAgentName) {
     const messages = [];
     const npcLower = npcAgentName.toLowerCase();
@@ -1634,9 +1641,21 @@ function buildToolUseMessages(history, npcAgentName) {
                 // Stored as JSONB. node-postgres returns it parsed already
                 // when the column type is jsonb, but defensive parse for the
                 // string-fallback case.
-                msg.tool_calls = typeof row.tool_calls === 'string'
+                const raw = typeof row.tool_calls === 'string'
                     ? JSON.parse(row.tool_calls)
                     : row.tool_calls;
+                msg.tool_calls = raw.map(function (tc) {
+                    return {
+                        id: tc.id,
+                        type: 'function',
+                        function: {
+                            name: tc.name,
+                            arguments: typeof tc.input === 'string'
+                                ? tc.input
+                                : JSON.stringify(tc.input || {}),
+                        },
+                    };
+                });
             }
             messages.push(msg);
         } else if (row.tool_call_id) {
