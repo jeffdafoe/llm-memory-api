@@ -177,6 +177,43 @@ const models = {
             }
         }
     },
+    'gpt-5.5': {
+        label: 'GPT-5.5',
+        configVersion: 2,
+        pricing: { input: 5.00, output: 30, cache_read: 0.50 },
+        capabilities: {
+            temperature: {
+                type: 'number',
+                label: 'Temperature',
+                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+                default: 1.0,
+                min: 0,
+                max: 2.0,
+                step: 0.1,
+                disabledWhen: {
+                    field: 'reasoning_effort',
+                    condition: 'notEquals',
+                    value: 'none',
+                    message: 'Not supported when reasoning is active'
+                }
+            },
+            reasoning_effort: {
+                type: 'select',
+                label: 'Reasoning Effort',
+                description: 'Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.',
+                default: 'none',
+                options: ['none', 'low', 'medium', 'high', 'xhigh']
+            },
+            max_completion_tokens: {
+                type: 'number',
+                label: 'Max Output Tokens',
+                description: 'Maximum number of tokens the model will generate in its response.',
+                default: 8192,
+                min: 1,
+                max: 32768
+            }
+        }
+    },
     'gpt-5.4': {
         label: 'GPT-5.4',
         configVersion: 2,
