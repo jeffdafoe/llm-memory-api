@@ -89,6 +89,8 @@ function clearCache() {
 //   2. The actor has an admin_permissions row (admin)
 //   3. There's a virtual_agent_access row with grantee_actor_id = NULL (public)
 //   4. There's a virtual_agent_access row with grantee_actor_id = actor's id
+//   5. The actor and virtual agent share at least one realm (realms function as
+//      VA-access groups — e.g. salem-engine in 'salem' reaches all salem NPCs)
 async function canAccessVirtualAgent(actorId, virtualAgentId) {
     const result = await pool.query(`
         SELECT EXISTS(
@@ -102,6 +104,13 @@ async function canAccessVirtualAgent(actorId, virtualAgentId) {
             SELECT 1 FROM virtual_agent_access
             WHERE virtual_agent_id = $2
               AND (grantee_actor_id IS NULL OR grantee_actor_id = $1)
+            UNION ALL
+            -- Realm overlap: caller and target share at least one realm.
+            -- Empty realms arrays don't overlap (PG && returns false), so this
+            -- only grants access when both sides have explicit realm membership.
+            SELECT 1 FROM actors caller, actors target
+            WHERE caller.id = $1 AND target.id = $2
+              AND caller.realms && target.realms
         ) AS has_access
     `, [actorId, virtualAgentId]);
     return result.rows[0].has_access;
