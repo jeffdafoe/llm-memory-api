@@ -23,8 +23,68 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     // Accept discussion_id directly, or extract from legacy channel string
     const discussionId = resolveDiscussionId(req.body.discussion_id, req.body.channel);
 
-    const result = await chatSend(from_agent, to_agents, discussionId, message);
-    res.json(result);
+    // Tool-use plumbing (MEM-119) — all optional; absent means classic
+    // text-only chat. tools_offered triggers the tool-use branch in
+    // handleDirectChat. tool_calls is for senders that already have an
+    // assistant tool-call to record (rare for direct routes — typically
+    // handleDirectChat populates this on the reply row internally).
+    // tool_call_id is set when this message is a tool result keyed to a
+    // prior assistant tool_call.
+    const toolCalls = req.body.tool_calls;
+    const toolCallId = req.body.tool_call_id;
+    const toolsOffered = req.body.tools_offered;
+    if (toolCalls !== undefined && toolCalls !== null && !Array.isArray(toolCalls)) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_calls must be an array' } });
+    }
+    if (toolsOffered !== undefined && toolsOffered !== null && !Array.isArray(toolsOffered)) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tools_offered must be an array' } });
+    }
+    if (toolCallId !== undefined && toolCallId !== null && typeof toolCallId !== 'string') {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_id must be a string' } });
+    }
+
+    const wait = req.body.wait === true;
+
+    const result = await chatSend(from_agent, to_agents, discussionId, message, {
+        toolCalls, toolCallId, toolsOffered,
+    });
+
+    // wait=true: hold the connection open until the VA reply lands inline.
+    // Only meaningful when there's exactly one virtual-agent recipient;
+    // chatSend exposes pendingReplyPromise in that case (and only that case).
+    if (wait) {
+        if (!result.pendingReplyPromise) {
+            return res.status(400).json({
+                error: {
+                    code: 'NO_REPLY_PENDING',
+                    message: 'wait=true requires exactly one virtual-agent recipient on a non-discussion chat',
+                },
+            });
+        }
+        try {
+            const reply = await result.pendingReplyPromise;
+            // pendingReplyPromise (from handleDirectChat) resolves with the
+            // VA reply payload — text + tool_calls when tool-use was active,
+            // or null when the legacy plain-text branch ran.
+            return res.json({
+                from_agent: result.from_agent,
+                to_agents: result.to_agents,
+                sent_at: result.sent_at,
+                reply: reply || null,
+            });
+        } catch (replyErr) {
+            // The VA reply path failed before sending its [Error] feedback
+            // chat message. Surface the error directly so the wait-mode
+            // caller can react instead of polling for a sentinel.
+            return res.status(502).json({
+                error: { code: 'REPLY_FAILED', message: replyErr.message || 'virtual agent reply failed' },
+            });
+        }
+    }
+
+    // Non-wait path: don't leak the internal promise to the JSON body.
+    const { pendingReplyPromise: _unused, ...safeResult } = result;
+    res.json(safeResult);
 }));
 
 router.post('/chat/receive', apiRoute('chat', 'receive', async (req, res) => {

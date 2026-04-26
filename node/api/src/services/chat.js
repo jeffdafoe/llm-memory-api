@@ -27,13 +27,23 @@ function resolveDiscussionId(discussionId, channel) {
     return null;
 }
 
-async function chatSend(fromAgent, toAgents, discussionId, message) {
-    if (!fromAgent || !message) {
+// Tool-use fields (toolCalls / toolCallId / toolsOffered, all optional) are
+// MEM-119 additions for the Salem engine ↔ NPC chat path. Existing callers
+// pass nothing and behavior is unchanged. When the message carries
+// toolsOffered, handleDirectChat takes the tool-use branch. Returns
+// `pendingReplyPromise` (or null) so wait-mode HTTP routes can await the
+// VA's reply inline; non-wait callers ignore it and the dispatch stays
+// fire-and-forget.
+async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
+    if (!fromAgent || message === undefined || message === null) {
         throw Object.assign(new Error('Required fields: from_agent, message'), { statusCode: 400 });
     }
     if (!toAgents && !discussionId) {
         throw Object.assign(new Error('Required: to_agents (array) or discussion_id'), { statusCode: 400 });
     }
+    const toolCalls = opts && opts.toolCalls !== undefined ? opts.toolCalls : null;
+    const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
+    const toolsOffered = opts && opts.toolsOffered !== undefined ? opts.toolsOffered : null;
 
     // Resolve sender
     const fromActor = await requireByName(fromAgent);
@@ -89,8 +99,18 @@ async function chatSend(fromAgent, toAgents, discussionId, message) {
 
     // Insert one message text row
     const textResult = await pool.query(
-        'INSERT INTO chat_message_texts (message, from_actor_id, discussion_id, sent_at) VALUES ($1, $2, $3, NOW()) RETURNING id, sent_at',
-        [message, fromActor.id, discussionId || null]
+        `INSERT INTO chat_message_texts
+            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered)
+         VALUES ($1, $2, $3, NOW(), $4, $5, $6)
+         RETURNING id, sent_at`,
+        [
+            message,
+            fromActor.id,
+            discussionId || null,
+            toolCalls !== null ? JSON.stringify(toolCalls) : null,
+            toolCallId,
+            toolsOffered !== null ? JSON.stringify(toolsOffered) : null,
+        ]
     );
     const messageTextId = textResult.rows[0].id;
     const sentAt = textResult.rows[0].sent_at;
@@ -135,15 +155,18 @@ async function chatSend(fromAgent, toAgents, discussionId, message) {
         notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'message' }).catch(() => {});
     }
 
-    // Fire-and-forget: trigger virtual agent responses for direct chat (no discussion)
+    // VA eligibility check is hoisted out of the prior fire-and-forget IIFE
+    // so wait-mode callers can know whether a reply is coming. Fast — two
+    // small queries — and the same work the IIFE was doing async anyway.
+    let pendingReplyPromise = null;
     if (!discussionId && fromAgent !== 'system') {
-        (async () => {
-            try {
-                const senderRow = await pool.query(
-                    'SELECT agc.virtual FROM agent_configuration agc WHERE agc.actor_id = $1',
-                    [fromActor.id]
-                );
-                if (senderRow.rows[0] && senderRow.rows[0].virtual) return;
+        try {
+            const senderRow = await pool.query(
+                'SELECT agc.virtual FROM agent_configuration agc WHERE agc.actor_id = $1',
+                [fromActor.id]
+            );
+            const senderIsVirtual = senderRow.rows[0] && senderRow.rows[0].virtual;
+            if (!senderIsVirtual) {
                 const recipientIds = recipients.map(r => recipientActors.get(r).id);
                 const vr = await pool.query(
                     `SELECT ac.name AS agent FROM agent_configuration agc
@@ -151,22 +174,43 @@ async function chatSend(fromAgent, toAgents, discussionId, message) {
                      WHERE agc.actor_id = ANY($1) AND agc.virtual = true`,
                     [recipientIds]
                 );
-                if (vr.rows.length === 0) return;
-                const { handleDirectChat } = require('./virtual-agent');
-                for (const row of vr.rows) {
-                    const vrActor = recipientActors.get(row.agent);
-                    if (vrActor) {
-                        const hasAccess = await canAccessVirtualAgent(fromActor.id, vrActor.id);
-                        if (!hasAccess) continue;
+                if (vr.rows.length > 0) {
+                    const { handleDirectChat } = require('./virtual-agent');
+                    const dispatches = [];
+                    for (const row of vr.rows) {
+                        const vrActor = recipientActors.get(row.agent);
+                        if (vrActor) {
+                            const hasAccess = await canAccessVirtualAgent(fromActor.id, vrActor.id);
+                            if (!hasAccess) continue;
+                        }
+                        const msgRow = results.find(r => r.agent === row.agent);
+                        dispatches.push({ agent: row.agent, msgId: msgRow ? msgRow.id : null });
                     }
-                    const msgRow = results.find(r => r.agent === row.agent);
-                    handleDirectChat(row.agent, fromAgent, message, msgRow ? msgRow.id : null).catch(() => {});
+                    // Single-recipient: expose the promise so wait-mode can
+                    // await it. Multi-recipient: no clean way to surface
+                    // multiple replies in one HTTP response; stay
+                    // fire-and-forget (and leave wait-mode to reject).
+                    if (dispatches.length === 1) {
+                        const d = dispatches[0];
+                        pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
+                            toolsOffered, toolCallId,
+                        });
+                        // Swallow rejection for non-wait callers so unhandled-promise
+                        // warnings don't appear; wait-mode awaiters get the error.
+                        pendingReplyPromise.catch(() => {});
+                    } else {
+                        for (const d of dispatches) {
+                            handleDirectChat(d.agent, fromAgent, message, d.msgId, {
+                                toolsOffered, toolCallId,
+                            }).catch(() => {});
+                        }
+                    }
                 }
-            } catch (e) { /* ignore */ }
-        })();
+            }
+        } catch (e) { /* ignore — eligibility check is best-effort */ }
     }
 
-    return { from_agent: fromAgent, to_agents: results, sent_at: sentAt };
+    return { from_agent: fromAgent, to_agents: results, sent_at: sentAt, pendingReplyPromise };
 }
 
 async function chatReceive(agent, discussionId, afterId, fromAgent) {
@@ -176,7 +220,8 @@ async function chatReceive(agent, discussionId, afterId, fromAgent) {
 
     const actor = await requireByName(agent);
 
-    let query = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at
+    let query = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
+                        cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
                  FROM chat_messages cm
                  JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
                  JOIN actors fa ON fa.id = cmt.from_actor_id
