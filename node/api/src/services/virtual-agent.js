@@ -713,6 +713,10 @@ async function loadChatHistory(discussionId, limit) {
 // Get recent direct chat history between two agents (no channel/discussion).
 // Uses a time window from config (virtual_agent_chat_history_hours) with a count cap
 // to keep context relevant without including stale messages from days ago.
+//
+// MEM-119: now also returns tool_calls / tool_call_id / tools_offered so
+// the tool-use branch in handleDirectChat can rebuild OpenAI-shape messages[]
+// honoring assistant/tool roles. Plain-text callers ignore them.
 async function loadDirectChatHistory(agent1, agent2) {
     const hours = parseInt(config.get('virtual_agent_chat_history_hours')) || 4;
     const maxMessages = 50;
@@ -721,7 +725,8 @@ async function loadDirectChatHistory(agent1, agent2) {
     const actor2 = await requireByName(agent2);
 
     const result = await pool.query(
-        `SELECT fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at
+        `SELECT fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
+                cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
          FROM chat_messages cm
          JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
          JOIN actors fa ON fa.id = cmt.from_actor_id
@@ -1610,19 +1615,71 @@ async function handleVirtualAgent(payload) {
     }
 }
 
+// Build OpenAI-shape messages[] from chat history for the tool-use branch
+// (MEM-119). Each history row maps to one message:
+//   - row from this VA + has tool_calls → role=assistant with tool_calls
+//   - row from this VA, plain text       → role=assistant
+//   - row to this VA + has tool_call_id  → role=tool (a tool result)
+//   - row to this VA, plain text         → role=user
+// The latest incoming message is already in `history` (loadDirectChatHistory's
+// time window includes it) so callers don't need to append it separately.
+function buildToolUseMessages(history, npcAgentName) {
+    const messages = [];
+    const npcLower = npcAgentName.toLowerCase();
+    for (const row of history) {
+        const fromLower = (row.from_agent || '').toLowerCase();
+        if (fromLower === npcLower) {
+            const msg = { role: 'assistant', content: row.message || '' };
+            if (row.tool_calls) {
+                // Stored as JSONB. node-postgres returns it parsed already
+                // when the column type is jsonb, but defensive parse for the
+                // string-fallback case.
+                msg.tool_calls = typeof row.tool_calls === 'string'
+                    ? JSON.parse(row.tool_calls)
+                    : row.tool_calls;
+            }
+            messages.push(msg);
+        } else if (row.tool_call_id) {
+            messages.push({
+                role: 'tool',
+                tool_call_id: row.tool_call_id,
+                content: row.message || '',
+            });
+        } else {
+            messages.push({ role: 'user', content: row.message || '' });
+        }
+    }
+    return messages;
+}
+
 // Handle a direct chat message sent to a virtual agent (no discussion).
-// Called fire-and-forget from chatSend when a non-virtual agent messages a virtual one.
+// Called from chatSend when a non-virtual agent messages a virtual one.
 // messageId is the chat_messages.id of the incoming message (for acking after response).
-async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId) {
+//
+// MEM-119: opts may carry toolsOffered (array of tool defs) and toolCallId
+// (string linking to a prior assistant tool_call). When toolsOffered is set,
+// takes the tool-use branch — rebuilds chat history as OpenAI-shape
+// messages[], calls the provider with `tools` enabled, captures any
+// tool_calls in the reply, and persists them on the reply's
+// chat_message_texts row. When toolsOffered is absent, runs the existing
+// plain-text reply path unchanged.
+//
+// Returns `{ text, tool_calls }` so wait-mode HTTP callers can read the
+// reply inline. Throws on failure (the legacy fire-and-forget callers in
+// chatSend swallow the rejection; wait-mode awaiters surface it as 502).
+async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId, opts) {
+    const toolsOffered = opts && opts.toolsOffered ? opts.toolsOffered : null;
+    const isToolUse = Array.isArray(toolsOffered) && toolsOffered.length > 0;
+
     const agent = await loadAgent(virtualAgentName);
-    if (!agent || !agent.virtual) return;
+    if (!agent || !agent.virtual) return null;
 
     if (!agent.api_key || !agent.provider || !agent.model) {
         logVA('direct-chat-skip', { agent: virtualAgentName, reason: 'missing config' });
-        return;
+        return null;
     }
 
-    logVA('direct-chat-processing', { agent: virtualAgentName, from: fromAgent });
+    logVA('direct-chat-processing', { agent: virtualAgentName, from: fromAgent, tool_use: isToolUse });
 
     try {
         const apiKey = decryptApiKey(agent.api_key);
@@ -1642,16 +1699,19 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         const soul = await loadSoul(agent.agent);
         const peopleContext = await loadPeopleContext(agent.agent, [fromAgent]);
 
-        // Build prompts
+        // Build prompts. Tool-use path builds OpenAI-shape messages[] from
+        // history (tool_calls + tool_call_id flow through assistant/tool
+        // roles); plain-text path uses the legacy timestamp-prefixed wrap.
         const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
-        const userMessage = buildDirectChatUserMessage(history, fromAgent, messageText);
+        const toolUseMessages = isToolUse ? buildToolUseMessages(history, virtualAgentName) : null;
+        const userMessage = isToolUse ? '' : buildDirectChatUserMessage(history, fromAgent, messageText);
 
         // Rate limit check
         if (isRateLimited(agent.agent)) {
             logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
             await chatSend(virtualAgentName, [fromAgent], null,
                 '[Error] Rate limited — too many API calls. Please wait before trying again.', null);
-            return;
+            return null;
         }
 
         // Budget check
@@ -1660,7 +1720,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             logVA('direct-chat-over-cost-limit', { agent: virtualAgentName, from: fromAgent, reason: costCheck.reason });
             await chatSend(virtualAgentName, [fromAgent], null,
                 `[Error] ${costCheck.reason}`, null);
-            return;
+            return null;
         }
 
         // Call provider with retry+backoff and activity spinner.
@@ -1669,13 +1729,21 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
         recordCall(agent.agent);
         const chatCallStart = Date.now();
-        const { text: response, usage } = await retryWithBackoff(agent.agent, () =>
-            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, { cache: true })),
+        const providerCallOpts = { cache: true };
+        if (isToolUse) {
+            providerCallOpts.tools = toolsOffered;
+            providerCallOpts.messages = toolUseMessages;
+        }
+        const providerResult = await retryWithBackoff(agent.agent, () =>
+            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, providerCallOpts)),
             async (err, retryInfo) => {
                 await chatSend(virtualAgentName, [fromAgent], null,
                     `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, null);
             }
         );
+        const response = providerResult.text || '';
+        const usage = providerResult.usage;
+        const replyToolCalls = Array.isArray(providerResult.tool_calls) ? providerResult.tool_calls : [];
         const chatDurationMs = Date.now() - chatCallStart;
         const chatUsageId = await recordUsage(agent.agent, agent.provider, agent.model, usage, 'chat');
 
@@ -1688,8 +1756,12 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             durationMs: chatDurationMs, usageId: chatUsageId,
         }).catch(() => {});
 
-        // Send response as direct chat back to the sender
-        await chatSend(agent.agent, [fromAgent], null, response);
+        // Send response as direct chat back to the sender. Tool-use replies
+        // persist tool_calls on the reply row so the next turn (if the
+        // sender re-enters with tool_results) sees the assistant's prior
+        // tool_call when buildToolUseMessages walks history.
+        await chatSend(agent.agent, [fromAgent], null, response,
+            replyToolCalls.length > 0 ? { toolCalls: replyToolCalls } : null);
 
         // Ack the incoming message (virtual agent "read" it)
         if (messageId) {
@@ -1699,12 +1771,21 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             );
         }
 
-        logVA('direct-chat-responded', { agent: agent.agent, to: fromAgent, responseLength: response.length });
-
-        // Fire-and-forget learning extraction
-        extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent).catch(err => {
-            logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
+        logVA('direct-chat-responded', {
+            agent: agent.agent,
+            to: fromAgent,
+            responseLength: response.length,
+            tool_calls: replyToolCalls.length,
         });
+
+        // Fire-and-forget learning extraction. Skip on tool-use turns —
+        // perceptions and tool results aren't meaningful learning material
+        // and would noisily clutter the agent's learnings/ folder.
+        if (!isToolUse) {
+            extractLearnings(agent, systemPrompt, userMessage, response, 'chat', fromAgent).catch(err => {
+                logVA('learning-extraction-failed', { agent: agent.agent, error: err.message });
+            });
+        }
 
         // Fire-and-forget transcript logging
         logTranscript(agent.agent, systemPrompt, userMessage, response, usage, 'chat', {
@@ -1712,6 +1793,10 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         }).catch(err => {
             logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
         });
+
+        // Return the reply so wait-mode HTTP callers can pick it up inline.
+        // Plain-text callers in fire-and-forget mode swallow the return.
+        return { text: response, tool_calls: replyToolCalls };
     } catch (err) {
         // Log the failed call
         const chatErrDuration = typeof chatCallStart !== 'undefined' ? Date.now() - chatCallStart : null;
@@ -1738,6 +1823,10 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
+        // Re-throw so wait-mode HTTP callers in chat.js can surface this as
+        // a 502 instead of polling for a sentinel reply. Legacy
+        // fire-and-forget callers in chatSend swallow the rejection.
+        throw err;
     }
 }
 
