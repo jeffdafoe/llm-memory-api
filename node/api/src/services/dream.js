@@ -522,13 +522,16 @@ async function runDream() {
     // Find dream agents by expertise tag
     const companionAgentName = await findDreamAgent('dream-companion');
     const technicalAgentName = await findDreamAgent('dream-technical');
+    const simAgentName = await findDreamAgent('dream-sim');
     const companionSoulAgentName = await findDreamAgent('dream-companion-soul');
     const technicalSoulAgentName = await findDreamAgent('dream-technical-soul');
+    const simSoulAgentName = await findDreamAgent('dream-sim-soul');
     const companionPeopleAgentName = await findDreamAgent('dream-companion-people');
+    const simPeopleAgentName = await findDreamAgent('dream-sim-people');
 
-    if (!companionAgentName && !technicalAgentName) {
-        logDream('abort', { reason: 'Neither dream agent found or valid' });
-        return { error: 'No valid dream agents found. Both dream-companion and dream-technical must exist and be created by a trusted creator.' };
+    if (!companionAgentName && !technicalAgentName && !simAgentName) {
+        logDream('abort', { reason: 'No dream agent found or valid' });
+        return { error: 'No valid dream agents found. At least one of dream-companion, dream-technical, or dream-sim must exist and be created by a trusted creator.' };
     }
 
     // Find agents with dream mode enabled
@@ -537,7 +540,7 @@ async function runDream() {
                 agc.startup_instructions
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
-         WHERE agc.dream_mode IN ('companion', 'technical')`
+         WHERE agc.dream_mode IN ('companion', 'technical', 'sim')`
     );
 
     if (agents.rows.length === 0) {
@@ -552,13 +555,25 @@ async function runDream() {
     for (const agent of agents.rows) {
         try {
             // Pick the right dream/soul/people agents for this dream_mode.
-            const dreamAgentName = agent.dream_mode === 'companion' ? companionAgentName : technicalAgentName;
+            let dreamAgentName = null;
+            let soulAgentName = null;
+            let peopleAgentName = null;
+            if (agent.dream_mode === 'companion') {
+                dreamAgentName = companionAgentName;
+                soulAgentName = companionSoulAgentName;
+                peopleAgentName = companionPeopleAgentName;
+            } else if (agent.dream_mode === 'technical') {
+                dreamAgentName = technicalAgentName;
+                soulAgentName = technicalSoulAgentName;
+            } else if (agent.dream_mode === 'sim') {
+                dreamAgentName = simAgentName;
+                soulAgentName = simSoulAgentName;
+                peopleAgentName = simPeopleAgentName;
+            }
             if (!dreamAgentName) {
                 results.push({ agent: agent.name, error: 'dream-' + agent.dream_mode + ' agent not available' });
                 continue;
             }
-            const soulAgentName = agent.dream_mode === 'companion' ? companionSoulAgentName : technicalSoulAgentName;
-            const peopleAgentName = agent.dream_mode === 'companion' ? companionPeopleAgentName : null;
             const agentNames = { dreamAgentName, soulAgentName, peopleAgentName };
 
             // Split the work since last_dream_at into per-UTC-day chunks so an

@@ -1679,7 +1679,7 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
              max_tokens != null ? parseInt(max_tokens) : null,
              temperature != null ? parseFloat(temperature) : null,
              configuration ? JSON.stringify(configuration) : null,
-             ['none', 'companion', 'technical'].includes(dream_mode) ? dream_mode : 'none']
+             ['none', 'companion', 'technical', 'sim'].includes(dream_mode) ? dream_mode : 'none']
         );
 
         // Grant all MCP permissions (full tool access) — non-virtual agents only
@@ -1945,9 +1945,9 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         updates.push(`storage_quota = $${idx++}`);
     }
     if (dream_mode !== undefined) {
-        if (!['none', 'companion', 'technical'].includes(dream_mode)) {
+        if (!['none', 'companion', 'technical', 'sim'].includes(dream_mode)) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'dream_mode must be none, companion, or technical' }
+                error: { code: 'BAD_REQUEST', message: 'dream_mode must be none, companion, technical, or sim' }
             });
         }
         params.push(dream_mode);
