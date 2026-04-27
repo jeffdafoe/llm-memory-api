@@ -831,6 +831,8 @@ const DIRECTIVE_OUTPUT = 'Reply with your own message content only — plain tex
 
 const DIRECTIVE_OUTPUT_CHAT = 'Respond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.';
 
+const DIRECTIVE_SIM_CONTEXT = 'You are a character inside a village simulation. The user messages are perception updates emitted by the simulation engine — what your character sees, hears, or experiences in the moment. They are not chat from a person; do not address the engine, the narrator, or "the user". Choose actions by calling the provided tools. Do not reply with ordinary prose. If you want your character to say something, use the speak tool. Speak only to characters confirmed present in your perception or by tool results. If you want to look around, use look_around. If you want to go somewhere, use move_to. If no action is appropriate this round, call done. Treat perception and tool results as authoritative — do not invent unseen characters, unavailable locations, or events not supported by the simulation state. Use your identity, memories, and impressions to decide what your character wants, but express every action through tools.';
+
 const DIRECTIVE_VOTE = 'A vote has been proposed. Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
 
 // wrapBlock returns a typed XML block around `content`, or an empty string
@@ -1069,6 +1071,39 @@ function buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext) {
         wrapBlock('Recall', 'relevant-memories', DIRECTIVE_RECALL, ragContext),
         wrapStandalone('ReplyPolicy', 'response-discretion', DIRECTIVE_REPLY_POLICY),
         wrapStandalone('OutputDirective', 'response-format', DIRECTIVE_OUTPUT_CHAT),
+    ].filter(Boolean);
+
+    return {
+        static: staticBlocks.join('\n\n'),
+        dynamic: dynamicBlocks.join('\n\n'),
+    };
+}
+
+// Build system prompt for sim-mode chat (engine-driven NPC tick via /chat/send
+// with tools_offered). The companion-mode blocks in buildDirectChatSystemPrompt
+// fight tool-use: DirectChat names the agent by its namespace identifier
+// ("zbbs-ezekiel-crane") rather than the in-game name (which the engine
+// already supplies in the perception); ReplyPolicy authorizes silence (which
+// makes "call done" feel like the path of least resistance); OutputDirective
+// instructs the model to emit prose in plain text, directly contradicting
+// tools_offered. None of those help an NPC making a decision.
+//
+// Sim mode keeps the contextual grounding (Self, Impressions, Recall, the
+// agent's own startup_instructions) and replaces the chat-shape directives
+// with a SimContext block that frames perceptions as world state and pushes
+// the model toward tool-call output. Dispatched on sender identity =
+// 'salem-engine' in handleDirectChat.
+function buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext) {
+    const staticBlocks = [
+        wrapBlock('Bootstrap', 'global-operating-directives', DIRECTIVE_BOOTSTRAP, config.get('global_bootstrap') || ''),
+        wrapBlock('Instructions', 'operating-rules', DIRECTIVE_INSTRUCTIONS, agent.startup_instructions),
+        wrapBlock('Self', 'voice-identity', DIRECTIVE_SELF, soul),
+        wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext),
+        wrapStandalone('SimContext', 'simulation-context', DIRECTIVE_SIM_CONTEXT),
+    ].filter(Boolean);
+
+    const dynamicBlocks = [
+        wrapBlock('Recall', 'relevant-memories', DIRECTIVE_RECALL, ragContext),
     ].filter(Boolean);
 
     return {
@@ -1721,9 +1756,36 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Build prompts. Tool-use path builds OpenAI-shape messages[] from
         // history (tool_calls + tool_call_id flow through assistant/tool
         // roles); plain-text path uses the legacy timestamp-prefixed wrap.
-        const systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
+        //
+        // Sim mode: when the sender is 'salem-engine' (the Salem village
+        // simulator's service actor driving NPC ticks), swap the chat-shape
+        // system prompt for a sim-shape one. The companion DirectChat /
+        // ReplyPolicy / OutputDirective blocks fight tool-use; SimContext
+        // frames perceptions as world state and pushes for tool-call output.
+        // See buildSimChatSystemPrompt above for the rationale.
+        const isSimChat = fromAgent === 'salem-engine';
+        let systemPrompt;
+        if (isSimChat) {
+            systemPrompt = buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext);
+        } else {
+            systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
+        }
         const toolUseMessages = isToolUse ? buildToolUseMessages(history, virtualAgentName) : null;
         const userMessage = isToolUse ? '' : buildDirectChatUserMessage(history, fromAgent, messageText);
+
+        // Audit-log payload: providers receive userMessage as a string (empty
+        // for tool-use, since the full conversational state flows through
+        // providerCallOpts.messages). Logging the empty string left
+        // virtual_agent_calls.user_message blank for every engine tick. For
+        // tool-use, capture the OpenAI-shape messages array so call_detail
+        // shows what the model actually saw; for plain-text, the wrapped
+        // userMessage already carries the conversation block.
+        let loggedUserMessage;
+        if (isToolUse) {
+            loggedUserMessage = JSON.stringify(toolUseMessages, null, 2);
+        } else {
+            loggedUserMessage = userMessage;
+        }
 
         // Rate limit check
         if (isRateLimited(agent.agent)) {
@@ -1771,7 +1833,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         logCall({
             actorId: agent.actor_id, agentName: agent.agent, context: 'chat',
             provider: agent.provider, model: agent.model,
-            systemPrompt, userMessage, response, usage, cost: chatCost,
+            systemPrompt, userMessage: loggedUserMessage, response, usage, cost: chatCost,
             durationMs: chatDurationMs, usageId: chatUsageId,
         }).catch(() => {});
 
@@ -1825,7 +1887,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             actorId: agent ? agent.actor_id : null, agentName: virtualAgentName, context: 'chat',
             provider: agent ? agent.provider : 'unknown', model: agent ? agent.model : 'unknown',
             systemPrompt: typeof systemPrompt !== 'undefined' ? systemPrompt : null,
-            userMessage: typeof userMessage !== 'undefined' ? userMessage : messageText,
+            userMessage: typeof loggedUserMessage !== 'undefined' ? loggedUserMessage : messageText,
             error: err, durationMs: chatErrDuration, usageId: chatFailUsageId,
         }).catch(() => {});
         logError('virtual-agent', 'direct-chat-error', {
