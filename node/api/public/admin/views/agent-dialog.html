@@ -41,8 +41,14 @@
             <div v-if="!agentProfileEditing" class="agent-properties">
                 <div v-if="selectedAgent.personality" style="font-style: italic; color: var(--text-secondary); margin-bottom: 4px;">{{ selectedAgent.personality }}</div>
                 <span>Dream Mode:
-                    <span v-if="selectedAgent.dream_mode && selectedAgent.dream_mode !== 'none'" class="badge" :style="{ background: selectedAgent.dream_mode === 'companion' ? '#7c3aed22' : '#0891b222', color: selectedAgent.dream_mode === 'companion' ? '#7c3aed' : '#0891b2' }">
-                        <i :class="selectedAgent.dream_mode === 'companion' ? 'icon-heart' : 'icon-code'" style="margin-right: 3px;"></i>{{ selectedAgent.dream_mode }}
+                    <span v-if="selectedAgent.dream_mode === 'companion'" class="badge" style="background: #7c3aed22; color: #7c3aed;">
+                        <i class="icon-heart" style="margin-right: 3px;"></i>companion
+                    </span>
+                    <span v-else-if="selectedAgent.dream_mode === 'technical'" class="badge" style="background: #0891b222; color: #0891b2;">
+                        <i class="icon-code" style="margin-right: 3px;"></i>technical
+                    </span>
+                    <span v-else-if="selectedAgent.dream_mode === 'sim'" class="badge" style="background: #65a30d22; color: #65a30d;">
+                        <i class="icon-users" style="margin-right: 3px;"></i>sim
                     </span>
                     <strong v-else>none</strong>
                 </span>
@@ -80,7 +86,7 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <label>Dream Mode
                         <custom-select v-model="agentProfileDreamMode"
-                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
+                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }, { value: 'sim', label: 'Sim' }]"
                             placeholder="None" />
                     </label>
                     <label>Storage Quota (MB)
