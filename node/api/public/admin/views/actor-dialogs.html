@@ -80,9 +80,9 @@
 
                     <label>Dream Mode
                         <custom-select v-model="editAgentDreamMode"
-                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }]"
+                            :options="[{ value: 'none', label: 'None' }, { value: 'companion', label: 'Companion' }, { value: 'technical', label: 'Technical' }, { value: 'sim', label: 'Sim' }]"
                             placeholder="None" />
-                        <small class="ts">Post-session log analysis: companion (emotional/personal) or technical (work/code-focused)</small>
+                        <small class="ts">Post-session log analysis: companion (emotional/personal), technical (work/code-focused), or sim (village simulation NPCs)</small>
                     </label>
 
                     <!-- Virtual agent fields — API key for create -->
