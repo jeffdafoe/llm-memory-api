@@ -302,10 +302,14 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     // make deleted documents look like raw ingests and incorrectly include them.
     const softDeleteFilter = 'AND (d.id IS NULL OR d.deleted_at IS NULL)';
 
-    let sql;
+    // Inner SELECT scores chunks through the full pipeline (vector + BM25 +
+    // filename + access + decay + kind weight). Outer SELECT collapses to one
+    // row per note: keep the highest-scoring chunk as the snippet, expose
+    // chunk_count so callers can see "this note matched in N places".
+    let innerSql;
 
     if (!namespace || namespace === '*') {
-        sql = `
+        innerSql = `
             SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
                    ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${bm25BoostExpr} + ${accessBoostExpression})
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
@@ -316,7 +320,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
             LIMIT $2
         `;
     } else {
-        sql = `
+        innerSql = `
             SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
                    ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${bm25BoostExpr} + ${accessBoostExpression})
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
@@ -328,17 +332,25 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         `;
     }
 
+    const finalLimitIdx = paramIdx;
+    params.push(maxResults);
+    paramIdx++;
+
+    const sql = `
+        SELECT source_file, heading, chunk_text, namespace, similarity, chunk_count
+        FROM (
+            SELECT source_file, heading, chunk_text, namespace, similarity,
+                   ROW_NUMBER() OVER (PARTITION BY namespace, source_file ORDER BY similarity DESC) AS rn,
+                   COUNT(*) OVER (PARTITION BY namespace, source_file) AS chunk_count
+            FROM (${innerSql}) candidates
+        ) ranked
+        WHERE rn = 1
+        ORDER BY similarity DESC
+        LIMIT $${finalLimitIdx}
+    `;
+
     const result = await pool.query(sql, params);
-    let rows = result.rows;
-
-    // Trim the candidate pool down to the requested result count.
-    // All boosts (BM25, filename, decay, access, kind weight) have been
-    // applied, so the final ordering reflects the full scoring pipeline.
-    if (rows.length > maxResults) {
-        rows = rows.slice(0, maxResults);
-    }
-
-    return { results: rows };
+    return { results: result.rows };
 }
 
 async function deleteMemory(namespace, sourceFile) {
