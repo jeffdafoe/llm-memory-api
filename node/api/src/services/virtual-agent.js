@@ -1733,6 +1733,44 @@ function buildToolUseMessages(history, npcAgentName) {
                         },
                     };
                 });
+                // Salience: prior speak/move_to/chore tool_calls carry
+                // semantically-meaningful payloads (the spoken text, the
+                // destination, the chore type). When this row was emitted
+                // the model had it as a fresh decision; when REPLAYED in
+                // history, the payload sits inside tool_calls.arguments
+                // JSON, which the language-modeling pass treats as "an
+                // action I took" rather than "speech I said" / "place I
+                // walked to". That makes it weak as a "do not repeat
+                // yourself" signal — observed empirically as NPC
+                // tavernkeepers re-greeting the same person across
+                // adjacent turns with near-identical phrasing.
+                //
+                // Mirror the payload into `content` as a brief
+                // first-person paraphrase. tool_calls structure is
+                // preserved (protocol-correct, paired with tool results
+                // by tool_call_id); content adds the natural-language
+                // copy so prior speeches/moves are salient as language
+                // alongside other agents' speech in the perception's
+                // "Recent:" block. Skip look_around (tool result IS the
+                // information) and done (no payload worth surfacing).
+                if (!msg.content) {
+                    const lines = [];
+                    for (const tc of raw) {
+                        const input = (typeof tc.input === 'string')
+                            ? safeParseJSON(tc.input)
+                            : (tc.input || {});
+                        if (tc.name === 'speak' && input && input.text) {
+                            lines.push('(I said aloud: "' + input.text + '")');
+                        } else if (tc.name === 'move_to' && input && input.destination) {
+                            lines.push('(I walked to ' + input.destination + ')');
+                        } else if (tc.name === 'chore' && input && input.type) {
+                            lines.push('(I ran a chore: ' + input.type + ')');
+                        }
+                    }
+                    if (lines.length > 0) {
+                        msg.content = lines.join('\n');
+                    }
+                }
             }
             messages.push(msg);
         } else if (row.tool_call_id) {
@@ -1746,6 +1784,18 @@ function buildToolUseMessages(history, npcAgentName) {
         }
     }
     return messages;
+}
+
+// Defensive JSON parse — tool_calls.arguments may have been stored as a
+// string by some providers and as parsed JSON by others. Returns {} on
+// any parse failure so the salience-mirroring code can fall through
+// without throwing.
+function safeParseJSON(s) {
+    try {
+        return JSON.parse(s);
+    } catch (e) {
+        return {};
+    }
 }
 
 // Handle a direct chat message sent to a virtual agent (no discussion).
