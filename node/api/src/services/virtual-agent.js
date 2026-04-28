@@ -1707,6 +1707,55 @@ async function handleVirtualAgent(payload) {
     }
 }
 
+// Prune consecutive engine→NPC perception rows in sim-mode chat history,
+// keeping only the latest in each consecutive run. Sim-mode multi-NPC
+// scenes generate progressive perceptions (each successive event-tick
+// adds new "Recent:" speech to the perception text), so the latest in
+// a consecutive run subsumes the earlier ones — they're redundant in
+// the model's context and waste input tokens.
+//
+// Tool-result rows (engine→NPC with tool_call_id set, e.g. "[OK] You
+// spoke. Continue your turn...") are NOT collapsed — they pair with
+// specific assistant tool_calls via tool_call_id and dropping them
+// breaks the OpenAI tool-use protocol.
+//
+// Only call this for sim-mode (fromAgent === 'salem-engine'). Companion
+// mode consecutive user-role messages are real distinct human messages,
+// not redundant perceptions, and must be preserved.
+//
+// The collapse predicate is the explicit shape of an engine perception:
+// from_agent === 'salem-engine' AND no tool_call_id. Anything else (this
+// NPC's own assistant rows, tool_result rows, future engine event rows
+// that aren't progressive perceptions, system/admin rows) flushes the
+// pending perception and passes through unchanged.
+function isEnginePerception(row) {
+    return (row.from_agent || '').toLowerCase() === 'salem-engine'
+        && !row.tool_call_id;
+}
+
+function pruneSimHistory(history) {
+    const out = [];
+    let pendingPerception = null;
+    const flush = () => {
+        if (pendingPerception !== null) {
+            out.push(pendingPerception);
+            pendingPerception = null;
+        }
+    };
+    for (const row of history) {
+        if (isEnginePerception(row)) {
+            // Overwrite pending so only the latest in a consecutive run
+            // lands in the output.
+            pendingPerception = row;
+            continue;
+        }
+        flush();
+        out.push(row);
+    }
+    flush();
+    return out;
+}
+
 // Build OpenAI-shape messages[] from chat history for the tool-use branch
 // (MEM-119). Each history row maps to one message:
 //   - row from this VA + has tool_calls → role=assistant with tool_calls
@@ -1748,6 +1797,50 @@ function buildToolUseMessages(history, npcAgentName) {
                         },
                     };
                 });
+                // Salience: prior speak/move_to/chore tool_calls carry
+                // semantically-meaningful payloads (the spoken text, the
+                // destination, the chore type). When this row was emitted
+                // the model had it as a fresh decision; when REPLAYED in
+                // history, the payload sits inside tool_calls.arguments
+                // JSON, which the language-modeling pass treats as "an
+                // action I took" rather than "speech I said" / "place I
+                // walked to". That makes it weak as a "do not repeat
+                // yourself" signal — observed empirically as NPC
+                // tavernkeepers re-greeting the same person across
+                // adjacent turns with near-identical phrasing.
+                //
+                // Mirror the payload into `content` as a brief
+                // first-person paraphrase. tool_calls structure is
+                // preserved (protocol-correct, paired with tool results
+                // by tool_call_id); content adds the natural-language
+                // copy so prior speeches/moves are salient as language
+                // alongside other agents' speech in the perception's
+                // "Recent:" block. Skip look_around (tool result IS the
+                // information) and done (no payload worth surfacing).
+                if (!msg.content) {
+                    const lines = [];
+                    for (const tc of raw) {
+                        const input = (typeof tc.input === 'string')
+                            ? safeParseJSON(tc.input)
+                            : (tc.input || {});
+                        if (tc.name === 'speak' && input && typeof input.text === 'string' && input.text) {
+                            // JSON.stringify so embedded quotes / newlines /
+                            // backslashes in the spoken text don't mangle
+                            // the paraphrase or terminate the quoted span.
+                            lines.push('(I said aloud: ' + JSON.stringify(input.text) + ')');
+                        } else if (tc.name === 'move_to' && input && typeof input.destination === 'string' && input.destination) {
+                            // typeof guard so we don't render `[object Object]`
+                            // if a future engine rev passes a structured
+                            // destination ({type, id}) instead of a string.
+                            lines.push('(I walked to ' + input.destination + ')');
+                        } else if (tc.name === 'chore' && input && typeof input.type === 'string' && input.type) {
+                            lines.push('(I ran a chore: ' + input.type + ')');
+                        }
+                    }
+                    if (lines.length > 0) {
+                        msg.content = lines.join('\n');
+                    }
+                }
             }
             messages.push(msg);
         } else if (row.tool_call_id) {
@@ -1761,6 +1854,18 @@ function buildToolUseMessages(history, npcAgentName) {
         }
     }
     return messages;
+}
+
+// Defensive JSON parse — tool_calls.arguments may have been stored as a
+// string by some providers and as parsed JSON by others. Returns {} on
+// any parse failure so the salience-mirroring code can fall through
+// without throwing.
+function safeParseJSON(s) {
+    try {
+        return JSON.parse(s);
+    } catch (e) {
+        return {};
+    }
 }
 
 // Handle a direct chat message sent to a virtual agent (no discussion).
@@ -1851,7 +1956,19 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         } else {
             systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
         }
-        const toolUseMessages = isToolUse ? buildToolUseMessages(history, virtualAgentName) : null;
+        // Sim mode: prune consecutive engine→NPC perception rows in the
+        // tool-use history so the latest perception in each run is the only
+        // one the model sees. Multi-NPC scenes generate progressive
+        // perceptions (Recent: grows on each event-tick) and the latest
+        // subsumes the earlier ones.
+        let toolUseMessages = null;
+        if (isToolUse) {
+            let toolUseHistory = history;
+            if (isSimChat) {
+                toolUseHistory = pruneSimHistory(history);
+            }
+            toolUseMessages = buildToolUseMessages(toolUseHistory, virtualAgentName);
+        }
         const userMessage = isToolUse ? '' : buildDirectChatUserMessage(history, fromAgent, messageText);
 
         // Audit-log payload: providers receive userMessage as a string (empty
