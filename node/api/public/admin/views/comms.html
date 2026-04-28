@@ -88,23 +88,60 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="msg in chatMessages" :key="msg.id" @click="selectedMessage = msg" class="clickable">
-                        <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
-                        <td>{{ msg.from_agent }}</td>
-                        <td>{{ msg.to_agent }}</td>
-                        <td>{{ msg.channel || '—' }}</td>
-                        <td class="message-cell">
-                            <template v-if="msg.message">{{ msg.message }}</template>
-                            <template v-else-if="msg.tool_calls && msg.tool_calls.length">
-                                <template v-for="(tc, i) in msg.tool_calls" :key="tc.id || i">
-                                    <em v-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ tc.input && tc.input.text }}&rdquo;</em>
-                                    <span v-else class="tool-chip">[{{ formatToolCall(tc) }}]</span>
-                                    <span v-if="i < msg.tool_calls.length - 1">&nbsp;</span>
+                    <template v-for="group in chatGroups" :key="group.type === 'scene' ? ('scene-' + group.scene_id) : ('msg-' + group.msg.id)">
+                        <!-- Companion-mode and pre-MEM-121 rows render unchanged. -->
+                        <tr v-if="group.type === 'msg'" @click="selectedMessage = group.msg" class="clickable">
+                            <td class="icon-cell"><i :class="group.msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                            <td>{{ group.msg.from_agent }}</td>
+                            <td>{{ group.msg.to_agent }}</td>
+                            <td>{{ group.msg.channel || '—' }}</td>
+                            <td class="message-cell">
+                                <template v-if="group.msg.message">{{ group.msg.message }}</template>
+                                <template v-else-if="group.msg.tool_calls && group.msg.tool_calls.length">
+                                    <template v-for="(tc, i) in group.msg.tool_calls" :key="tc.id || i">
+                                        <em v-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ tc.input && tc.input.text }}&rdquo;</em>
+                                        <span v-else class="tool-chip">[{{ formatToolCall(tc) }}]</span>
+                                        <span v-if="i < group.msg.tool_calls.length - 1">&nbsp;</span>
+                                    </template>
                                 </template>
-                            </template>
-                        </td>
-                        <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
-                    </tr>
+                            </td>
+                            <td class="time-cell">{{ formatDate(group.msg.sent_at) }}</td>
+                        </tr>
+                        <!-- Sim-mode scene group: collapsed header. The icon
+                             cell carries both the expand chevron and an unacked
+                             dot when any child row is unacked, so the admin
+                             doesn't lose the at-a-glance ack indicator they
+                             have on plain rows. -->
+                        <tr v-else @click="toggleScene(group.scene_id)" class="clickable scene-row">
+                            <td class="icon-cell">
+                                <i :class="isSceneExpanded(group.scene_id) ? 'icon-chevron-down' : 'icon-chevron-right'"></i>
+                                <i v-if="group.hasUnacked" class="icon-circle unacked-icon scene-ack-marker"></i>
+                            </td>
+                            <td colspan="3" class="scene-participants">{{ group.participants.join(', ') }}</td>
+                            <td class="message-cell"><span class="scene-summary">Scene · {{ group.messages.length }} messages</span></td>
+                            <td class="time-cell">{{ formatDate(group.latest_at) }}</td>
+                        </tr>
+                        <!-- Expanded scene: chronological sub-rows. -->
+                        <template v-if="group.type === 'scene' && isSceneExpanded(group.scene_id)">
+                            <tr v-for="msg in group.messages" :key="'scene-msg-' + msg.id" @click="selectedMessage = msg" class="clickable scene-child">
+                                <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                                <td>{{ msg.from_agent }}</td>
+                                <td>{{ msg.to_agent }}</td>
+                                <td>{{ msg.channel || '—' }}</td>
+                                <td class="message-cell">
+                                    <template v-if="msg.message">{{ msg.message }}</template>
+                                    <template v-else-if="msg.tool_calls && msg.tool_calls.length">
+                                        <template v-for="(tc, i) in msg.tool_calls" :key="tc.id || i">
+                                            <em v-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ tc.input && tc.input.text }}&rdquo;</em>
+                                            <span v-else class="tool-chip">[{{ formatToolCall(tc) }}]</span>
+                                            <span v-if="i < msg.tool_calls.length - 1">&nbsp;</span>
+                                        </template>
+                                    </template>
+                                </td>
+                                <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
+                            </tr>
+                        </template>
+                    </template>
                 </tbody>
             </table>
         </div>

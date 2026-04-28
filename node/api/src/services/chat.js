@@ -34,6 +34,11 @@ function resolveDiscussionId(discussionId, channel) {
 // `pendingReplyPromise` (or null) so wait-mode HTTP routes can await the
 // VA's reply inline; non-wait callers ignore it and the dispatch stays
 // fire-and-forget.
+//
+// sceneId (MEM-121) is the engine's per-cascade UUID. When present, it
+// rides through to the chat row, the call log, and the VA's reply chat
+// row so the admin UI can group all rows from one tavern conversation
+// (or whatever scene) together. NULL for companion-mode.
 async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     if (!fromAgent || message === undefined || message === null) {
         throw Object.assign(new Error('Required fields: from_agent, message'), { statusCode: 400 });
@@ -44,6 +49,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     const toolCalls = opts && opts.toolCalls !== undefined ? opts.toolCalls : null;
     const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
     const toolsOffered = opts && opts.toolsOffered !== undefined ? opts.toolsOffered : null;
+    const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
 
     // Resolve sender
     const fromActor = await requireByName(fromAgent);
@@ -100,8 +106,8 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // Insert one message text row
     const textResult = await pool.query(
         `INSERT INTO chat_message_texts
-            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered)
-         VALUES ($1, $2, $3, NOW(), $4, $5, $6)
+            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id)
+         VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7)
          RETURNING id, sent_at`,
         [
             message,
@@ -110,6 +116,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
             toolCalls !== null ? JSON.stringify(toolCalls) : null,
             toolCallId,
             toolsOffered !== null ? JSON.stringify(toolsOffered) : null,
+            sceneId,
         ]
     );
     const messageTextId = textResult.rows[0].id;
@@ -135,6 +142,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
             to_agents: results.map(function(r) { return r.agent; }),
             message: message,
             discussion_id: discussionId || null,
+            scene_id: sceneId,
             sent_at: sentAt
         });
     }
@@ -193,7 +201,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, toolCallId,
+                            toolsOffered, toolCallId, sceneId,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
@@ -201,7 +209,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     } else {
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, toolCallId,
+                                toolsOffered, toolCallId, sceneId,
                             }).catch(() => {});
                         }
                     }

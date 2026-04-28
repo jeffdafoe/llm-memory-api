@@ -798,6 +798,38 @@ tbody tr:last-child td { border-bottom: none; }
     color: var(--text-secondary);
 }
 
+/* Sim-mode scene grouping (MEM-121). The scene header row collapses one
+   cascade of perception/tool-call/tool-result chat rows into a single
+   line so the chat list stays readable when Salem is active. Click the
+   header to expand; sub-rows keep the existing row layout but get a
+   subtle background tint and left indent so they read as members of
+   the group above. */
+.scene-row {
+    background: rgba(113, 113, 122, 0.06);
+    font-weight: 500;
+}
+.scene-row .scene-participants {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+.scene-row .scene-summary {
+    font-style: italic;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+.scene-child td:first-child,
+.scene-child td:nth-child(2) {
+    padding-left: 18px;
+}
+.scene-child {
+    background: rgba(113, 113, 122, 0.03);
+}
+/* Spacing between the chevron and the unacked dot in the scene-row icon
+   cell. Without this they sit flush. */
+.scene-ack-marker {
+    margin-left: 6px;
+}
+
 /* ── Access view ── */
 .sub-tabs button {
     padding: 10px 16px;
