@@ -739,7 +739,7 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
     // For discussion channels, query distinct messages from chat_message_texts
     // to avoid showing duplicate delivery rows
     if (discussionId) {
-        let sql = `SELECT cmt.id, fa.name AS from_agent, cmt.message, cmt.sent_at, cmt.discussion_id
+        let sql = `SELECT cmt.id, fa.name AS from_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cmt.discussion_id
                    FROM chat_message_texts cmt
                    JOIN actors fa ON fa.id = cmt.from_actor_id`;
         const conditions = ['cmt.discussion_id = $1'];
@@ -756,7 +756,7 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
         res.json({ messages: result.rows });
     } else {
         // Non-discussion: query delivery rows as before
-        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at, cm.acked_at
+        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cm.acked_at
                    FROM chat_messages cm
                    JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
                    JOIN actors fa ON fa.id = cmt.from_actor_id
