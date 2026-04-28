@@ -1574,6 +1574,27 @@ function parseCostBudget(value, fieldName) {
     return parsed;
 }
 
+// Strip empty-string entries from the provider-level configuration JSON so
+// they don't reach the LLM provider as literal "" values. The admin UI
+// surfaces optional numeric fields (temperature, top_p, etc.) as empty
+// inputs when the user wants the provider default — Vue submits those as
+// "". OpenAI's gpt-5.5 with reasoning_effort=high then rejects the call
+// with "Unsupported value: 'temperature' does not support 0.2 with this
+// model" because the empty string is coerced by something upstream into a
+// non-1 value before validation. Treat empty-string as "omit this field"
+// so the provider sees its default.
+function sanitizeAgentConfiguration(config) {
+    if (!config || typeof config !== 'object') return config;
+    const cleaned = { ...config };
+    const numericKeys = ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'max_completion_tokens'];
+    for (const key of numericKeys) {
+        if (cleaned[key] === '') {
+            delete cleaned[key];
+        }
+    }
+    return cleaned;
+}
+
 // ---- Actor Creation ----
 
 // POST /admin/actors/create — create an actor (agent + optional UI user) with optional welcome mail
@@ -1678,7 +1699,7 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
              cache_prompts === true, learning_enabled !== false,
              max_tokens != null ? parseInt(max_tokens) : null,
              temperature != null ? parseFloat(temperature) : null,
-             configuration ? JSON.stringify(configuration) : null,
+             configuration ? JSON.stringify(sanitizeAgentConfiguration(configuration)) : null,
              ['none', 'companion', 'technical', 'sim'].includes(dream_mode) ? dream_mode : 'none']
         );
 
@@ -1905,7 +1926,7 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         updates.push(`api_key = $${idx++}`);
     }
     if (configuration !== undefined) {
-        params.push(configuration ? JSON.stringify(configuration) : null);
+        params.push(configuration ? JSON.stringify(sanitizeAgentConfiguration(configuration)) : null);
         updates.push(`configuration = $${idx++}`);
     }
     if (provider !== undefined) {
