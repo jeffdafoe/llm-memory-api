@@ -93,7 +93,16 @@
                         <td>{{ msg.from_agent }}</td>
                         <td>{{ msg.to_agent }}</td>
                         <td>{{ msg.channel || '—' }}</td>
-                        <td class="message-cell">{{ msg.message }}</td>
+                        <td class="message-cell">
+                            <template v-if="msg.message">{{ msg.message }}</template>
+                            <template v-else-if="msg.tool_calls && msg.tool_calls.length">
+                                <template v-for="(tc, i) in msg.tool_calls" :key="tc.id || i">
+                                    <em v-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ tc.input && tc.input.text }}&rdquo;</em>
+                                    <span v-else class="tool-chip">[{{ formatToolCall(tc) }}]</span>
+                                    <span v-if="i < msg.tool_calls.length - 1">&nbsp;</span>
+                                </template>
+                            </template>
+                        </td>
                         <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
                     </tr>
                 </tbody>
