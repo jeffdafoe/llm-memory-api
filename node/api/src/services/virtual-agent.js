@@ -767,13 +767,42 @@ async function loadSoul(agentName) {
     }
 }
 
+// Build a filesystem-safe slug for a person-context note. Display names
+// flow in from engine perceptions in sim mode, including future player
+// names — anything that isn't a fully trusted internal slug. So we
+// whitelist [a-z0-9-] and reject anything that empties out, instead of
+// just whitespace-to-hyphen which would let a name like "../secrets" or
+// "foo/bar" build a path that traverses out of `context/people/`.
+//
+// Diacritic stripping via NFKD normalize + combining-mark removal so
+// "Renée" reads as "renee" rather than getting silently flattened to
+// nothing. Non-Latin scripts still won't slug well; if/when those
+// matter, switch to an explicit stored slug field rather than deriving
+// filesystem paths from display names.
+//
+// Returns null if the input is unusable (empty, non-string, no surviving
+// characters), so callers can skip the read entirely.
+function personContextSlug(name) {
+    if (!name || typeof name !== 'string') return null;
+    const slug = name
+        .trim()
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    return slug || null;
+}
+
 // Load per-person relationship files for a virtual agent.
 // counterparts is an array of names the VA is interacting with — either
 // agent slugs (companion mode: "home", "wendy") or display names (sim
-// mode: "Josiah Thorne", "Jefferey"). Slug = lowercased name with
-// whitespace replaced by hyphens, so a display name like "Josiah Thorne"
-// is read from `context/people/josiah-thorne`. Companion-mode slugs
-// have no whitespace, so the transform is a no-op there.
+// mode: "Josiah Thorne", "Jefferey"). Slug derivation goes through
+// personContextSlug above, which is path-traversal safe. Companion-mode
+// slugs have no whitespace and are already lowercase ASCII, so the
+// transform is a no-op there.
 // Returns formatted string or empty. Never throws.
 async function loadPeopleContext(agentName, counterparts) {
     if (!counterparts || counterparts.length === 0) {
@@ -782,8 +811,12 @@ async function loadPeopleContext(agentName, counterparts) {
 
     const sections = [];
     for (const person of counterparts) {
+        const slug = personContextSlug(person);
+        if (!slug) {
+            logVA('people-context-invalid-name', { agent: agentName, person });
+            continue;
+        }
         try {
-            const slug = person.toLowerCase().replace(/\s+/g, '-');
             const note = await readNote(agentName, 'context/people/' + slug);
             if (note && note.content) {
                 sections.push('## Your impressions of ' + person + '\n\n' + note.content);
@@ -1788,7 +1821,11 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         let peopleContext;
         if (isSimChat) {
             ragContext = '';
-            const coLocated = extractCoLocatedNames(messageText);
+            // Dedupe in case the perception ever lists a name twice (e.g. a
+            // future engine rev that surfaces multiple roles for the same
+            // person). Without this, loadPeopleContext would emit duplicate
+            // "## Your impressions of X" sections.
+            const coLocated = [...new Set(extractCoLocatedNames(messageText))];
             if (coLocated.length > 0) {
                 peopleContext = await loadPeopleContext(agent.agent, coLocated);
             } else {
