@@ -43,10 +43,23 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_id must be a string' } });
     }
 
+    // Scene grouping (MEM-121) — optional UUID minted by salem-engine at the
+    // start of an event cascade (PC speak, NPC arrival, baseline tick) and
+    // threaded through every reactive tick in that scene. NULL for
+    // companion-mode chat. Validate the format here so a malformed
+    // engine payload fails fast instead of getting rejected at the
+    // Postgres UUID cast.
+    const sceneId = req.body.scene_id;
+    if (sceneId !== undefined && sceneId !== null) {
+        if (typeof sceneId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sceneId)) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'scene_id must be a UUID string' } });
+        }
+    }
+
     const wait = req.body.wait === true;
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered,
+        toolCalls, toolCallId, toolsOffered, sceneId,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.

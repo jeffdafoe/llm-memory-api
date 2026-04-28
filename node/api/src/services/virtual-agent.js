@@ -548,6 +548,7 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
 //   cost           — calculated cost (or 0 on failure)
 //   durationMs     — wall-clock time for the call
 //   error          — error object (if the call failed)
+//   sceneId        — engine cascade UUID (MEM-121); NULL outside sim-mode chat
 async function logCall(options) {
     try {
         // Extract the static portion of the system prompt (skip RAG context)
@@ -572,8 +573,8 @@ async function logCall(options) {
              (actor_id, context, context_id, provider, model, system_prompt, user_message,
               response, status, status_code, error_message,
               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-              cost, duration_ms, usage_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+              cost, duration_ms, usage_id, scene_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
             [
                 options.actorId,
                 options.context || null,
@@ -593,6 +594,7 @@ async function logCall(options) {
                 options.cost || 0,
                 options.durationMs || null,
                 options.usageId || null,
+                options.sceneId || null,
             ]
         );
     } catch (err) {
@@ -1723,6 +1725,7 @@ function buildToolUseMessages(history, npcAgentName) {
 // chatSend swallow the rejection; wait-mode awaiters surface it as 502).
 async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId, opts) {
     const toolsOffered = opts && opts.toolsOffered ? opts.toolsOffered : null;
+    const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
     const isToolUse = Array.isArray(toolsOffered) && toolsOffered.length > 0;
 
     const agent = await loadAgent(virtualAgentName);
@@ -1791,7 +1794,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (isRateLimited(agent.agent)) {
             logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
             await chatSend(virtualAgentName, [fromAgent], null,
-                '[Error] Rate limited — too many API calls. Please wait before trying again.', null);
+                '[Error] Rate limited — too many API calls. Please wait before trying again.', { sceneId });
             return null;
         }
 
@@ -1800,7 +1803,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (costCheck.limited) {
             logVA('direct-chat-over-cost-limit', { agent: virtualAgentName, from: fromAgent, reason: costCheck.reason });
             await chatSend(virtualAgentName, [fromAgent], null,
-                `[Error] ${costCheck.reason}`, null);
+                `[Error] ${costCheck.reason}`, { sceneId });
             return null;
         }
 
@@ -1819,7 +1822,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, providerCallOpts)),
             async (err, retryInfo) => {
                 await chatSend(virtualAgentName, [fromAgent], null,
-                    `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, null);
+                    `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, { sceneId });
             }
         );
         const response = providerResult.text || '';
@@ -1834,15 +1837,18 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             actorId: agent.actor_id, agentName: agent.agent, context: 'chat',
             provider: agent.provider, model: agent.model,
             systemPrompt, userMessage: loggedUserMessage, response, usage, cost: chatCost,
-            durationMs: chatDurationMs, usageId: chatUsageId,
+            durationMs: chatDurationMs, usageId: chatUsageId, sceneId,
         }).catch(() => {});
 
         // Send response as direct chat back to the sender. Tool-use replies
         // persist tool_calls on the reply row so the next turn (if the
         // sender re-enters with tool_results) sees the assistant's prior
-        // tool_call when buildToolUseMessages walks history.
-        await chatSend(agent.agent, [fromAgent], null, response,
-            replyToolCalls.length > 0 ? { toolCalls: replyToolCalls } : null);
+        // tool_call when buildToolUseMessages walks history. The reply row
+        // inherits sceneId so admin sees the perception, the VA reply, and
+        // any subsequent tool result rows grouped under the same scene.
+        const replyOpts = { sceneId };
+        if (replyToolCalls.length > 0) replyOpts.toolCalls = replyToolCalls;
+        await chatSend(agent.agent, [fromAgent], null, response, replyOpts);
 
         // Ack the incoming message (virtual agent "read" it)
         if (messageId) {
@@ -1888,7 +1894,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             provider: agent ? agent.provider : 'unknown', model: agent ? agent.model : 'unknown',
             systemPrompt: typeof systemPrompt !== 'undefined' ? systemPrompt : null,
             userMessage: typeof loggedUserMessage !== 'undefined' ? loggedUserMessage : messageText,
-            error: err, durationMs: chatErrDuration, usageId: chatFailUsageId,
+            error: err, durationMs: chatErrDuration, usageId: chatFailUsageId, sceneId,
         }).catch(() => {});
         logError('virtual-agent', 'direct-chat-error', {
             agent: virtualAgentName,
@@ -1900,7 +1906,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Send error feedback to the caller so they know it failed
         try {
             await chatSend(virtualAgentName, [fromAgent], null,
-                `[Error] ${virtualAgentName} is unavailable (${err.message}).`, null);
+                `[Error] ${virtualAgentName} is unavailable (${err.message}).`, { sceneId });
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }
