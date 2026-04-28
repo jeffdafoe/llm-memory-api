@@ -768,7 +768,12 @@ async function loadSoul(agentName) {
 }
 
 // Load per-person relationship files for a virtual agent.
-// counterparts is an array of agent names the VA is interacting with.
+// counterparts is an array of names the VA is interacting with — either
+// agent slugs (companion mode: "home", "wendy") or display names (sim
+// mode: "Josiah Thorne", "Jefferey"). Slug = lowercased name with
+// whitespace replaced by hyphens, so a display name like "Josiah Thorne"
+// is read from `context/people/josiah-thorne`. Companion-mode slugs
+// have no whitespace, so the transform is a no-op there.
 // Returns formatted string or empty. Never throws.
 async function loadPeopleContext(agentName, counterparts) {
     if (!counterparts || counterparts.length === 0) {
@@ -778,7 +783,8 @@ async function loadPeopleContext(agentName, counterparts) {
     const sections = [];
     for (const person of counterparts) {
         try {
-            const note = await readNote(agentName, 'context/people/' + person.toLowerCase());
+            const slug = person.toLowerCase().replace(/\s+/g, '-');
+            const note = await readNote(agentName, 'context/people/' + slug);
             if (note && note.content) {
                 sections.push('## Your impressions of ' + person + '\n\n' + note.content);
             }
@@ -792,6 +798,24 @@ async function loadPeopleContext(agentName, counterparts) {
     }
 
     return sections.join('\n\n');
+}
+
+// Parse co-located people from a Salem engine perception. The engine
+// includes a "Here:\n  Name1\n  Name2" block listing other people at
+// the NPC's current location (other NPCs by display name, players by
+// in-game name). Returns an array of display names, empty when alone.
+//
+// Used in sim mode to derive the Impressions counterpart list from the
+// world state instead of from `fromAgent` (which is always "salem-engine"
+// — not a person — and would otherwise cause Impressions to be empty).
+function extractCoLocatedNames(perceptionText) {
+    if (!perceptionText) return [];
+    const match = perceptionText.match(/^Here:\s*\n((?:  +.+\n?)+)/m);
+    if (!match) return [];
+    return match[1]
+        .split('\n')
+        .map(function (line) { return line.trim(); })
+        .filter(function (line) { return line.length > 0; });
 }
 
 // --- Typed prompt blocks ---
@@ -1742,21 +1766,6 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Load recent direct chat history between the two agents (time-windowed)
         const history = await loadDirectChatHistory(virtualAgentName, fromAgent);
 
-        // RAG context from the agent's namespace.
-        // If the latest message is very short, combine with previous message for better RAG.
-        let ragQuery = messageText;
-        if (messageText.trim().split(/\s+/).length < 5 && history.length >= 2) {
-            const prev = history[history.length - 2];
-            ragQuery = prev.message + ' ' + messageText;
-        }
-        const ragContext = await loadRAGContext(agent.agent, ragQuery);
-        const soul = await loadSoul(agent.agent);
-        const peopleContext = await loadPeopleContext(agent.agent, [fromAgent]);
-
-        // Build prompts. Tool-use path builds OpenAI-shape messages[] from
-        // history (tool_calls + tool_call_id flow through assistant/tool
-        // roles); plain-text path uses the legacy timestamp-prefixed wrap.
-        //
         // Sim mode: when the sender is 'salem-engine' (the Salem village
         // simulator's service actor driving NPC ticks), swap the chat-shape
         // system prompt for a sim-shape one. The companion DirectChat /
@@ -1764,6 +1773,41 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // frames perceptions as world state and pushes for tool-call output.
         // See buildSimChatSystemPrompt above for the rationale.
         const isSimChat = fromAgent === 'salem-engine';
+
+        // Context loading differs by mode.
+        //
+        // Companion mode: RAG-search the agent's notes by message content;
+        // counterpart for Impressions is the sender (one human agent).
+        //
+        // Sim mode: skip RAG (the 50+ message tool-use history is already
+        // the recall channel — RAG against the engine's perception text
+        // returns noise) and derive Impressions counterparts from the
+        // engine's "Here:" block (co-located people by display name)
+        // instead of fromAgent (which is "salem-engine" — not a person).
+        let ragContext;
+        let peopleContext;
+        if (isSimChat) {
+            ragContext = '';
+            const coLocated = extractCoLocatedNames(messageText);
+            if (coLocated.length > 0) {
+                peopleContext = await loadPeopleContext(agent.agent, coLocated);
+            } else {
+                peopleContext = '';
+            }
+        } else {
+            let ragQuery = messageText;
+            if (messageText.trim().split(/\s+/).length < 5 && history.length >= 2) {
+                const prev = history[history.length - 2];
+                ragQuery = prev.message + ' ' + messageText;
+            }
+            ragContext = await loadRAGContext(agent.agent, ragQuery);
+            peopleContext = await loadPeopleContext(agent.agent, [fromAgent]);
+        }
+        const soul = await loadSoul(agent.agent);
+
+        // Build prompts. Tool-use path builds OpenAI-shape messages[] from
+        // history (tool_calls + tool_call_id flow through assistant/tool
+        // roles); plain-text path uses the legacy timestamp-prefixed wrap.
         let systemPrompt;
         if (isSimChat) {
             systemPrompt = buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext);
