@@ -1665,30 +1665,37 @@ async function handleVirtualAgent(payload) {
 // Only call this for sim-mode (fromAgent === 'salem-engine'). Companion
 // mode consecutive user-role messages are real distinct human messages,
 // not redundant perceptions, and must be preserved.
-function pruneSimHistory(history, npcAgentName) {
-    const npcLower = npcAgentName.toLowerCase();
+//
+// The collapse predicate is the explicit shape of an engine perception:
+// from_agent === 'salem-engine' AND no tool_call_id. Anything else (this
+// NPC's own assistant rows, tool_result rows, future engine event rows
+// that aren't progressive perceptions, system/admin rows) flushes the
+// pending perception and passes through unchanged.
+function isEnginePerception(row) {
+    return (row.from_agent || '').toLowerCase() === 'salem-engine'
+        && !row.tool_call_id;
+}
+
+function pruneSimHistory(history) {
     const out = [];
     let pendingPerception = null;
+    const flush = () => {
+        if (pendingPerception !== null) {
+            out.push(pendingPerception);
+            pendingPerception = null;
+        }
+    };
     for (const row of history) {
-        const fromLower = (row.from_agent || '').toLowerCase();
-        const isFromNpc = fromLower === npcLower;
-        const isToolResult = !isFromNpc && row.tool_call_id;
-        if (isFromNpc || isToolResult) {
-            if (pendingPerception !== null) {
-                out.push(pendingPerception);
-                pendingPerception = null;
-            }
-            out.push(row);
-        } else {
-            // engine→NPC perception (user role, no tool_call_id) —
-            // overwrite pending so only the latest in a consecutive run
+        if (isEnginePerception(row)) {
+            // Overwrite pending so only the latest in a consecutive run
             // lands in the output.
             pendingPerception = row;
+            continue;
         }
+        flush();
+        out.push(row);
     }
-    if (pendingPerception !== null) {
-        out.push(pendingPerception);
-    }
+    flush();
     return out;
 }
 
@@ -1759,11 +1766,17 @@ function buildToolUseMessages(history, npcAgentName) {
                         const input = (typeof tc.input === 'string')
                             ? safeParseJSON(tc.input)
                             : (tc.input || {});
-                        if (tc.name === 'speak' && input && input.text) {
-                            lines.push('(I said aloud: "' + input.text + '")');
-                        } else if (tc.name === 'move_to' && input && input.destination) {
+                        if (tc.name === 'speak' && input && typeof input.text === 'string' && input.text) {
+                            // JSON.stringify so embedded quotes / newlines /
+                            // backslashes in the spoken text don't mangle
+                            // the paraphrase or terminate the quoted span.
+                            lines.push('(I said aloud: ' + JSON.stringify(input.text) + ')');
+                        } else if (tc.name === 'move_to' && input && typeof input.destination === 'string' && input.destination) {
+                            // typeof guard so we don't render `[object Object]`
+                            // if a future engine rev passes a structured
+                            // destination ({type, id}) instead of a string.
                             lines.push('(I walked to ' + input.destination + ')');
-                        } else if (tc.name === 'chore' && input && input.type) {
+                        } else if (tc.name === 'chore' && input && typeof input.type === 'string' && input.type) {
                             lines.push('(I ran a chore: ' + input.type + ')');
                         }
                     }
@@ -1871,7 +1884,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (isToolUse) {
             let toolUseHistory = history;
             if (isSimChat) {
-                toolUseHistory = pruneSimHistory(history, virtualAgentName);
+                toolUseHistory = pruneSimHistory(history);
             }
             toolUseMessages = buildToolUseMessages(toolUseHistory, virtualAgentName);
         }
