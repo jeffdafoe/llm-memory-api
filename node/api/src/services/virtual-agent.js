@@ -1650,6 +1650,48 @@ async function handleVirtualAgent(payload) {
     }
 }
 
+// Prune consecutive engine→NPC perception rows in sim-mode chat history,
+// keeping only the latest in each consecutive run. Sim-mode multi-NPC
+// scenes generate progressive perceptions (each successive event-tick
+// adds new "Recent:" speech to the perception text), so the latest in
+// a consecutive run subsumes the earlier ones — they're redundant in
+// the model's context and waste input tokens.
+//
+// Tool-result rows (engine→NPC with tool_call_id set, e.g. "[OK] You
+// spoke. Continue your turn...") are NOT collapsed — they pair with
+// specific assistant tool_calls via tool_call_id and dropping them
+// breaks the OpenAI tool-use protocol.
+//
+// Only call this for sim-mode (fromAgent === 'salem-engine'). Companion
+// mode consecutive user-role messages are real distinct human messages,
+// not redundant perceptions, and must be preserved.
+function pruneSimHistory(history, npcAgentName) {
+    const npcLower = npcAgentName.toLowerCase();
+    const out = [];
+    let pendingPerception = null;
+    for (const row of history) {
+        const fromLower = (row.from_agent || '').toLowerCase();
+        const isFromNpc = fromLower === npcLower;
+        const isToolResult = !isFromNpc && row.tool_call_id;
+        if (isFromNpc || isToolResult) {
+            if (pendingPerception !== null) {
+                out.push(pendingPerception);
+                pendingPerception = null;
+            }
+            out.push(row);
+        } else {
+            // engine→NPC perception (user role, no tool_call_id) —
+            // overwrite pending so only the latest in a consecutive run
+            // lands in the output.
+            pendingPerception = row;
+        }
+    }
+    if (pendingPerception !== null) {
+        out.push(pendingPerception);
+    }
+    return out;
+}
+
 // Build OpenAI-shape messages[] from chat history for the tool-use branch
 // (MEM-119). Each history row maps to one message:
 //   - row from this VA + has tool_calls → role=assistant with tool_calls
@@ -1770,7 +1812,19 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         } else {
             systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
         }
-        const toolUseMessages = isToolUse ? buildToolUseMessages(history, virtualAgentName) : null;
+        // Sim mode: prune consecutive engine→NPC perception rows in the
+        // tool-use history so the latest perception in each run is the only
+        // one the model sees. Multi-NPC scenes generate progressive
+        // perceptions (Recent: grows on each event-tick) and the latest
+        // subsumes the earlier ones.
+        let toolUseMessages = null;
+        if (isToolUse) {
+            let toolUseHistory = history;
+            if (isSimChat) {
+                toolUseHistory = pruneSimHistory(history, virtualAgentName);
+            }
+            toolUseMessages = buildToolUseMessages(toolUseHistory, virtualAgentName);
+        }
         const userMessage = isToolUse ? '' : buildDirectChatUserMessage(history, fromAgent, messageText);
 
         // Audit-log payload: providers receive userMessage as a string (empty
