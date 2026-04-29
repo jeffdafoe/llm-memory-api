@@ -701,11 +701,15 @@ async function loadDiscussion(discussionId) {
 
 // Get recent chat history for a discussion, excluding system messages.
 async function loadChatHistory(discussionId, limit) {
+    // is_error filter (MEM-122) keeps virtual-agent error breadcrumbs
+    // ([Retrying], [Error]) out of the discussion context replayed back
+    // to the model on subsequent calls.
     const result = await pool.query(
         `SELECT DISTINCT ON (cmt.id) cmt.id, fa.name AS from_agent, cmt.message, cmt.sent_at
          FROM chat_message_texts cmt
          JOIN actors fa ON fa.id = cmt.from_actor_id
          WHERE cmt.discussion_id = $1 AND NOT (fa.name = 'system')
+           AND NOT cmt.is_error
          ORDER BY cmt.id DESC LIMIT $2`,
         [discussionId, limit || 50]
     );
@@ -726,6 +730,11 @@ async function loadDirectChatHistory(agent1, agent2) {
     const actor1 = await requireByName(agent1);
     const actor2 = await requireByName(agent2);
 
+    // is_error filter (MEM-122): keep virtual-agent error breadcrumbs
+    // ([Retrying], [Error]) out of the history that gets replayed as
+    // tool-use messages back to the model. Without this, the chronicler
+    // (and any tool-using VA) reads its own error rows as if they were
+    // real conversation turns and treats the error text as input.
     const result = await pool.query(
         `SELECT fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
                 cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
@@ -734,6 +743,7 @@ async function loadDirectChatHistory(agent1, agent2) {
          JOIN actors fa ON fa.id = cmt.from_actor_id
          JOIN actors ta ON ta.id = cm.to_actor_id
          WHERE cmt.discussion_id IS NULL AND cm.deleted_at IS NULL
+           AND NOT cmt.is_error
          AND ((cmt.from_actor_id = $1 AND cm.to_actor_id = $2) OR (cmt.from_actor_id = $2 AND cm.to_actor_id = $1))
          AND cmt.sent_at >= NOW() - INTERVAL '1 hour' * $3
          ORDER BY cm.id DESC LIMIT $4`,
@@ -1255,7 +1265,7 @@ function buildMailUserMessage(mail) {
 // Post an error message to the discussion from the virtual agent.
 async function postError(agentName, discussionId, error) {
     try {
-        await chatSend(agentName, null, discussionId, `[Error: ${error}]`);
+        await chatSend(agentName, null, discussionId, `[Error: ${error}]`, { isError: true });
     } catch (err) {
         logVA('post-error-failed', { agent: agentName, error: err.message });
     }
@@ -1992,7 +2002,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (isRateLimited(agent.agent)) {
             logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
             await chatSend(virtualAgentName, [fromAgent], null,
-                '[Error] Rate limited — too many API calls. Please wait before trying again.', { sceneId });
+                '[Error] Rate limited — too many API calls. Please wait before trying again.', { sceneId, isError: true });
             return null;
         }
 
@@ -2001,7 +2011,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (costCheck.limited) {
             logVA('direct-chat-over-cost-limit', { agent: virtualAgentName, from: fromAgent, reason: costCheck.reason });
             await chatSend(virtualAgentName, [fromAgent], null,
-                `[Error] ${costCheck.reason}`, { sceneId });
+                `[Error] ${costCheck.reason}`, { sceneId, isError: true });
             return null;
         }
 
@@ -2020,7 +2030,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, providerCallOpts)),
             async (err, retryInfo) => {
                 await chatSend(virtualAgentName, [fromAgent], null,
-                    `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, { sceneId });
+                    `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, { sceneId, isError: true });
             }
         );
         const response = providerResult.text || '';
@@ -2104,7 +2114,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Send error feedback to the caller so they know it failed
         try {
             await chatSend(virtualAgentName, [fromAgent], null,
-                `[Error] ${virtualAgentName} is unavailable (${err.message}).`, { sceneId });
+                `[Error] ${virtualAgentName} is unavailable (${err.message}).`, { sceneId, isError: true });
         } catch (sendErr) {
             logVA('error-feedback-failed', { agent: virtualAgentName, error: sendErr.message });
         }

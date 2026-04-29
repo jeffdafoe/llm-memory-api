@@ -50,6 +50,11 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
     const toolsOffered = opts && opts.toolsOffered !== undefined ? opts.toolsOffered : null;
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
+    // is_error flag (MEM-122): set on retry/error breadcrumb rows so
+    // history readers (loadDirectChatHistory, loadChatHistory) filter
+    // them out of next-call context. Without this, virtual agents read
+    // their own error rows as if they were real conversation.
+    const isError = opts && opts.isError === true;
 
     // Resolve sender
     const fromActor = await requireByName(fromAgent);
@@ -106,8 +111,8 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // Insert one message text row
     const textResult = await pool.query(
         `INSERT INTO chat_message_texts
-            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id)
-         VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7)
+            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, is_error)
+         VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8)
          RETURNING id, sent_at`,
         [
             message,
@@ -117,6 +122,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
             toolCallId,
             toolsOffered !== null ? JSON.stringify(toolsOffered) : null,
             sceneId,
+            isError,
         ]
     );
     const messageTextId = textResult.rows[0].id;
