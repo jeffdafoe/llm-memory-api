@@ -481,7 +481,25 @@ function buildExtractionPrompt(interactionType, contextHint) {
 // Log the full interaction transcript as a note in the agent's namespace.
 // Fire-and-forget — call with .catch() from the handler.
 // Gives reviewable history of what VAs were asked and what they said.
+//
+// Skipped for agents with dream_mode='none' (overseers, utility VAs like
+// code_review / search-general / memory-enrichment, anything else with no
+// dream pipeline consumer). Their conversations/* notes were stored,
+// chunked, embedded, and indexed but read by nothing — and showed up as
+// noise in cross-namespace recall. The structured audit trail in
+// virtual_agent_calls (logCall) covers debug visibility with more fidelity
+// for the va_call_log_retention_days window.
 async function logTranscript(agentName, systemPrompt, userMessage, response, usage, triggerType, meta) {
+    const dreamModeRow = await pool.query(
+        `SELECT agc.dream_mode FROM agent_configuration agc
+         JOIN actors ac ON ac.id = agc.actor_id
+         WHERE ac.name = $1`,
+        [agentName]
+    );
+    if (dreamModeRow.rows.length > 0 && dreamModeRow.rows[0].dream_mode === 'none') {
+        return;
+    }
+
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const datePart = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;

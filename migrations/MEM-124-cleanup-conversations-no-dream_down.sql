@@ -1,0 +1,13 @@
+-- MEM-124: down — no-op.
+--
+-- Reversing this would require:
+--   1. Un-soft-deleting the documents (we can't tell which deleted_at
+--      values came from this migration vs from later legitimate
+--      decay/admin deletes).
+--   2. Re-chunking and re-embedding the content (the chunks were
+--      hard-deleted, mirroring the deleteNote() service path).
+--
+-- The restoreNote() service path handles re-chunking on individual
+-- restores by re-saving the document, but bulk re-chunking inside
+-- a SQL migration is not feasible (it requires the embedding service).
+-- Down migration is intentionally empty.
