@@ -1,0 +1,7 @@
+-- MEM-123: down — no-op.
+--
+-- Reversing the backfill would require un-acking the rows we set, but
+-- once new explicit acks land on top (from the wait=true ackOnInsert
+-- path), we can't tell which acked_at values came from this migration
+-- vs from real consumption. Un-acking everything would be destructive.
+-- The down migration is intentionally empty.

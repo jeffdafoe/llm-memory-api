@@ -2107,8 +2107,16 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // tool_call when buildToolUseMessages walks history. The reply row
         // inherits sceneId so admin sees the perception, the VA reply, and
         // any subsequent tool result rows grouped under the same scene.
+        //
+        // ackOnInsert: when the original /chat/send was wait=true, the
+        // caller is awaiting this reply inline and never makes a separate
+        // /chat/ack call. Mark the delivery row acked_at = NOW() at insert
+        // so the row doesn't sit unacked forever (which is what made the
+        // collapsed-scene unacked indicator permanently lit for every
+        // Salem scene — every NPC→engine reply was unacked).
         const replyOpts = { sceneId };
         if (replyToolCalls.length > 0) replyOpts.toolCalls = replyToolCalls;
+        if (opts && opts.ackReplyOnInsert) replyOpts.ackOnInsert = true;
         await chatSend(agent.agent, [fromAgent], null, response, replyOpts);
 
         // Ack the incoming message (virtual agent "read" it)

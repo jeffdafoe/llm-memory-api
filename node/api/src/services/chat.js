@@ -55,6 +55,16 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // them out of next-call context. Without this, virtual agents read
     // their own error rows as if they were real conversation.
     const isError = opts && opts.isError === true;
+    // wait flag: the route is awaiting the VA reply inline via wait=true.
+    // Used to forward ackReplyOnInsert into handleDirectChat below — the
+    // reply row is consumed inline, so it should be acked at insert
+    // rather than sitting unacked forever (no separate /chat/ack call).
+    const wait = opts && opts.wait === true;
+    // ackOnInsert: stamp acked_at = NOW() on the chat_messages delivery
+    // row(s) at insert time. Set by handleDirectChat for the reply chat
+    // it writes when the original /chat/send was wait=true — see comment
+    // on `wait` above.
+    const ackOnInsert = opts && opts.ackOnInsert === true;
 
     // Resolve sender
     const fromActor = await requireByName(fromAgent);
@@ -128,13 +138,19 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     const messageTextId = textResult.rows[0].id;
     const sentAt = textResult.rows[0].sent_at;
 
-    // Insert one delivery row per recipient
+    // Insert one delivery row per recipient. acked_at gets stamped at
+    // insert time when ackOnInsert is set — used for replies to wait=true
+    // callers, who consume the reply inline and have no path to ack it
+    // afterwards. Bound parameter for the boolean; CASE keeps it to one
+    // SQL string instead of branching the JS.
     const results = [];
     for (const recipient of recipients) {
         const toActor = recipientActors.get(recipient);
         const result = await pool.query(
-            'INSERT INTO chat_messages (message_text_id, to_actor_id) VALUES ($1, $2) RETURNING id',
-            [messageTextId, toActor.id]
+            `INSERT INTO chat_messages (message_text_id, to_actor_id, acked_at)
+             VALUES ($1, $2, CASE WHEN $3::boolean THEN NOW() ELSE NULL END)
+             RETURNING id`,
+            [messageTextId, toActor.id, ackOnInsert]
         );
         results.push({ id: result.rows[0].id, agent: recipient, sent_at: sentAt });
     }
@@ -207,12 +223,15 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, toolCallId, sceneId,
+                            toolsOffered, toolCallId, sceneId, ackReplyOnInsert: wait,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
                         pendingReplyPromise.catch(() => {});
                     } else {
+                        // Multi-recipient never coexists with wait=true (the
+                        // route rejects that combination), so ackReplyOnInsert
+                        // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
                                 toolsOffered, toolCallId, sceneId,

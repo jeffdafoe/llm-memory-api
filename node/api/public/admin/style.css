@@ -824,10 +824,17 @@ tbody tr:last-child td { border-bottom: none; }
 .scene-child {
     background: rgba(113, 113, 122, 0.03);
 }
-/* Spacing between the chevron and the unacked dot in the scene-row icon
-   cell. Without this they sit flush. */
+/* Unacked-status badge for the collapsed scene header. Positioned absolutely
+   so it sits on top of the chevron without inflating the inline width of the
+   icon-cell — the cell is fixed at 1.5em, and chevron + 6px margin + dot
+   overflowed into the FROM column with `text-align: center; white-space:
+   nowrap`. The cell is made `position: relative` so the badge anchors to it. */
+tr.scene-row .icon-cell { position: relative; }
 .scene-ack-marker {
-    margin-left: 6px;
+    position: absolute;
+    top: 50%;
+    right: 2px;
+    transform: translateY(-50%);
 }
 
 /* ── Access view ── */

@@ -59,7 +59,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     const wait = req.body.wait === true;
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, sceneId,
+        toolCalls, toolCallId, toolsOffered, sceneId, wait,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.
