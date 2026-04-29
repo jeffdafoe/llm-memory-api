@@ -6,7 +6,7 @@
 const pool = require('../db');
 const config = require('./config');
 const { log, logError } = require('./logger');
-const { saveNote, readNote } = require('./documents');
+const { saveNote, readNote, listNotes } = require('./documents');
 const { invokeAgent } = require('./virtual-agent');
 
 // Signal patterns that indicate memory-worthy content.
@@ -407,14 +407,54 @@ async function processDreamChunk(agent, agentNames, chunk) {
                 // No soul yet — first run for this agent.
             }
 
+            // When the soul is empty (deleted or first run), backload the N
+            // most recent dreams instead of just feeding the chunk we just
+            // saved. Lets a deleted soul rebuild from accumulated personality
+            // rather than starting flat and slowly filling in over many
+            // cycles. The just-saved chunk is included as the first entry
+            // since listNotes orders by updated_at DESC. After this call
+            // existingSoul will be non-empty so subsequent cycles resume the
+            // normal per-chunk update path. Cost guards on the soul agent
+            // call protect against runaway prompt sizes.
+            let backloadDreams = null;
+            const soulIsEmpty = existingSoul.trim() === '';
+            if (soulIsEmpty) {
+                let backloadCount = 0;
+                try {
+                    backloadCount = parseInt(config.get('dream_backload_count'), 10) || 0;
+                } catch (e) {
+                    // Config key missing (deploy ordering: service started before
+                    // migration ran). Treat as disabled rather than crash.
+                    backloadCount = 0;
+                }
+                // Hard cap at 20 regardless of config — sanity bound on the
+                // sequential read burst.
+                backloadCount = Math.max(0, Math.min(backloadCount, 20));
+                if (backloadCount > 0) {
+                    const list = await listNotes(agent.name, backloadCount, 0, 'dreams/');
+                    if (list.notes && list.notes.length > 0) {
+                        const dreamReads = await Promise.all(
+                            list.notes.map(n => readNote(agent.name, n.slug).catch(() => null))
+                        );
+                        backloadDreams = dreamReads
+                            .filter(d => d && d.content)
+                            .map(d => `### ${d.slug}\n\n${d.content}`)
+                            .join('\n\n---\n\n');
+                    }
+                }
+            }
+
             const soulUserMessage = '## Agent: ' + agent.name + '\n\n'
                 + (agent.startup_instructions
                     ? '## Character description\n\n' + agent.startup_instructions + '\n\n'
                     : '')
                 + '## Current soul document\n\n'
-                + (existingSoul || '(empty — first run)')
-                + '\n\n## Dream snapshot for ' + chunkDateStr + '\n\n'
-                + content;
+                + (soulIsEmpty ? '(empty — first run)' : existingSoul)
+                + (backloadDreams
+                    ? '\n\n## Dream snapshot for initial soul rebuild\n\n'
+                        + 'The current soul document is empty. Synthesize an initial soul from the recent dream history below; do not treat this as a single-day incremental update.\n\n'
+                        + backloadDreams
+                    : '\n\n## Dream snapshot for ' + chunkDateStr + '\n\n' + content);
 
             const { text: updatedSoul } = await invokeAgent(soulAgentName, {
                 userMessage: soulUserMessage,
