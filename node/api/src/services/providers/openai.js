@@ -404,6 +404,75 @@ function isReasoningModel(modelId) {
     return modelId.startsWith('o');
 }
 
+// ── Detect gpt-5.x family (uses /v1/responses) ──────────────────────────────
+// gpt-5.x models reject function tools on /v1/chat/completions with the error:
+//   "Function tools with reasoning_effort are not supported for gpt-5.5 in
+//    /v1/chat/completions. Please use /v1/responses instead."
+// Confirmed by direct probe (2026-04-29). The error mentions reasoning_effort
+// because gpt-5.x has implicit reasoning enabled by default — sending tools
+// triggers the constraint regardless of whether reasoning_effort is set in
+// the request body. Route gpt-5.x calls through /v1/responses unconditionally;
+// the endpoint accepts the same calls without tools too, so there's no need
+// to branch on tool presence per call.
+function usesResponsesEndpoint(modelId) {
+    return modelId.startsWith('gpt-5.');
+}
+
+// ── Convert chat-completions messages to /v1/responses input ────────────────
+// /v1/chat/completions uses messages: [{role, content, tool_calls?, tool_call_id?}]
+// /v1/responses uses input: a flat list mixing role-content messages with
+// {type:"function_call", call_id, name, arguments} and
+// {type:"function_call_output", call_id, output} entries.
+//
+// Translation:
+//   {role: "user", content: "..."}                      → as-is
+//   {role: "assistant", content: "..."}                 → as-is (when no tool_calls)
+//   {role: "assistant", content: "", tool_calls: [...]} → expand each tool_call
+//                                                          into a function_call entry,
+//                                                          dropping the assistant row
+//                                                          itself (responses input
+//                                                          doesn't carry an empty
+//                                                          assistant message).
+//   {role: "tool", content, tool_call_id}               → {type:"function_call_output",
+//                                                          call_id: tool_call_id,
+//                                                          output: content}
+function messagesToResponsesInput(messages) {
+    const input = [];
+    for (const msg of messages) {
+        if (msg.role === 'tool') {
+            input.push({
+                type: 'function_call_output',
+                call_id: msg.tool_call_id,
+                output: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+            });
+            continue;
+        }
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+            // Emit assistant text content first if non-empty, then expand
+            // each tool_call into a function_call entry. Most assistant
+            // tool-call messages from chat-completions have empty content
+            // ("" or null); skip the message row in that case to avoid
+            // sending a content-less assistant turn that the API may reject.
+            if (msg.content && typeof msg.content === 'string' && msg.content.trim() !== '') {
+                input.push({ role: 'assistant', content: msg.content });
+            }
+            for (const tc of msg.tool_calls) {
+                if (tc.type !== 'function' || !tc.function) continue;
+                input.push({
+                    type: 'function_call',
+                    call_id: tc.id,
+                    name: tc.function.name,
+                    arguments: tc.function.arguments || '{}',
+                });
+            }
+            continue;
+        }
+        // Plain role-content message (system/developer/user/assistant-text).
+        input.push({ role: msg.role, content: msg.content });
+    }
+    return input;
+}
+
 // ── Provider-side cost calculation ──────────────────────────────────────────
 // Accounts for service tier (flex = half price) and prompt caching
 // (cached input at 1/10th of standard input rate).
@@ -430,6 +499,131 @@ function computeCost(modelId, serviceTier, promptTokens, cachedTokens, completio
     return cost;
 }
 
+// ── /v1/responses call path ─────────────────────────────────────────────────
+// Used for gpt-5.x. Different request body (input vs messages, max_output_tokens
+// vs max_completion_tokens, reasoning.effort vs reasoning_effort, top-level tool
+// shape) and different response shape (output[] of typed items vs choices[]).
+//
+// Returns the same neutral { text, tool_calls, usage } the rest of the API
+// expects, so callers don't have to know which endpoint was used.
+
+async function callResponses(model, apiKey, conf, fullMessages, opts) {
+    const body = {
+        model: model,
+        input: messagesToResponsesInput(fullMessages),
+    };
+
+    // /v1/responses uses max_output_tokens. Accept either stored config key.
+    const maxTokens = conf.max_completion_tokens || conf.max_tokens;
+    if (maxTokens) {
+        body.max_output_tokens = maxTokens;
+    }
+
+    // reasoning.effort is the gpt-5.x equivalent of the o-series
+    // reasoning_effort top-level field. Send only when the operator
+    // explicitly opted in to a non-default level.
+    if (conf.reasoning_effort && conf.reasoning_effort !== 'none') {
+        body.reasoning = { effort: conf.reasoning_effort };
+    }
+
+    // Per-call tool definitions. /v1/responses uses a flat tool shape
+    // — name/description/parameters at the top level of the tool object,
+    // no nested "function" wrapper.
+    const useTools = opts && Array.isArray(opts.tools) && opts.tools.length > 0;
+    if (useTools) {
+        body.tools = opts.tools.map(tool => ({
+            type: 'function',
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters || { type: 'object', properties: {} },
+        }));
+    }
+
+    logProvider('api-call', { provider: 'openai', model, endpoint: 'responses', tools: useTools });
+
+    const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        logProvider('api-error', { provider: 'openai', model, endpoint: 'responses', status: response.status, error: errorText });
+        throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data.output)) {
+        throw new Error('OpenAI /v1/responses returned no output array');
+    }
+
+    // Aggregate text from "message" outputs and tool calls from "function_call"
+    // outputs. The output array can contain both — a model that emits a tool
+    // call AND a final-answer text gets two items. Tool calls in the neutral
+    // shape are { id, name, input } where input is the JSON-parsed arguments.
+    let text = '';
+    const tool_calls = [];
+    for (const item of data.output) {
+        if (item.type === 'message' && Array.isArray(item.content)) {
+            for (const part of item.content) {
+                if (part.type === 'output_text' && typeof part.text === 'string') {
+                    text += part.text;
+                }
+            }
+        } else if (item.type === 'function_call' && item.name) {
+            let input = {};
+            if (item.arguments) {
+                try {
+                    input = JSON.parse(item.arguments);
+                } catch (e) {
+                    logProvider('tool-args-parse-error', { provider: 'openai', model, error: e.message });
+                }
+            }
+            tool_calls.push({ id: item.call_id, name: item.name, input });
+        }
+    }
+
+    // Usage shape on /v1/responses uses input_tokens / output_tokens
+    // (not prompt_tokens / completion_tokens), and cached_tokens is nested
+    // under input_tokens_details. output_tokens already includes any
+    // reasoning_tokens — those are billed at the output rate, so the
+    // existing per-model pricing math gives the right cost without
+    // separate accounting.
+    const promptTokens = data.usage?.input_tokens ?? 0;
+    const completionTokens = data.usage?.output_tokens ?? 0;
+    const rawCachedTokens = data.usage?.input_tokens_details?.cached_tokens ?? 0;
+    const cachedTokens = Math.max(0, Math.min(rawCachedTokens, promptTokens));
+    const uncachedInput = Math.max(0, promptTokens - cachedTokens);
+
+    const appliedServiceTier = data.service_tier ?? 'default';
+
+    const usage = {
+        input_tokens: uncachedInput,
+        output_tokens: completionTokens,
+        cache_read_input_tokens: cachedTokens,
+    };
+
+    const cost = computeCost(model, appliedServiceTier, promptTokens, cachedTokens, completionTokens);
+    if (cost != null) {
+        usage.cost = cost;
+    }
+
+    logProvider('api-response', {
+        provider: 'openai', model,
+        endpoint: 'responses',
+        serviceTier: appliedServiceTier,
+        input: uncachedInput, cached: cachedTokens,
+        output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown',
+        tool_calls: tool_calls.length,
+    });
+
+    return { text, tool_calls, usage };
+}
+
 // ── API call factory ────────────────────────────────────────────────────────
 
 function createCall(model, apiKey, configuration) {
@@ -450,12 +644,20 @@ function createCall(model, apiKey, configuration) {
             ? opts.messages
             : [{ role: 'user', content: userMessage }];
 
+        const fullMessages = [
+            { role: systemRole, content: prompt },
+            ...userMessages,
+        ];
+
+        // gpt-5.x family routes through /v1/responses — see usesResponsesEndpoint
+        // comment for the rationale and the source error.
+        if (usesResponsesEndpoint(model)) {
+            return await callResponses(model, apiKey, conf, fullMessages, opts);
+        }
+
         const body = {
             model: model,
-            messages: [
-                { role: systemRole, content: prompt },
-                ...userMessages
-            ]
+            messages: fullMessages,
         };
 
         // All OpenAI models now use max_completion_tokens (max_tokens is deprecated).
