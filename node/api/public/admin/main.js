@@ -31,6 +31,7 @@ import MiscDialogs from './views/MiscDialogs.js';
 import AccessView from './views/AccessView.js';
 import HelpView from './views/HelpView.js';
 import CustomSelect from './components/CustomSelect.js';
+import ToolCallDisplay from './components/ToolCallDisplay.js';
 
 createApp({
     components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView, HelpView },
@@ -425,7 +426,7 @@ createApp({
 
         return appState;
     }
-}).component('custom-select', CustomSelect).directive('focus', {
+}).component('custom-select', CustomSelect).component('tool-call-display', ToolCallDisplay).directive('focus', {
     // Auto-focus an element when it's mounted (used by inline rename inputs)
     mounted(el) { el.focus(); el.select(); }
 }).mount('#app');

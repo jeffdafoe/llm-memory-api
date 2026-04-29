@@ -87,8 +87,7 @@
                 <template v-if="selectedMessage.message">{{ selectedMessage.message }}</template>
                 <template v-else-if="selectedMessage.tool_calls && selectedMessage.tool_calls.length">
                     <div v-for="(tc, i) in selectedMessage.tool_calls" :key="tc.id || i" style="margin-bottom: 8px;">
-                        <em v-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ tc.input && tc.input.text }}&rdquo;</em>
-                        <span v-else class="tool-chip">[{{ formatToolCall(tc) }}]</span>
+                        <tool-call-display :tc="tc"></tool-call-display>
                     </div>
                 </template>
                 <span v-else class="ts">(empty)</span>
