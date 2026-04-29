@@ -2110,12 +2110,25 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         const chatDurationMs = Date.now() - chatCallStart;
         const chatUsageId = await recordUsage(agent.agent, agent.provider, agent.model, usage, 'chat');
 
+        // Build loggedResponse once, used by both virtual_agent_calls (logCall)
+        // and conversations/* (logTranscript). On tool-use turns the provider's
+        // text is '' — without this, virtual_agent_calls.response was empty
+        // for every overseer/sim tick, defeating /admin/agents/call-detail as
+        // a debugging surface. Keep the debug/audit response shape identical
+        // between logCall and logTranscript.
+        const transcriptToolCalls = Array.isArray(replyToolCalls) ? replyToolCalls : [];
+        let loggedResponse = response || '';
+        if (transcriptToolCalls.length > 0) {
+            const toolCallText = 'tool_calls:\n' + JSON.stringify(transcriptToolCalls, null, 2);
+            loggedResponse = loggedResponse ? loggedResponse + '\n\n' + toolCallText : toolCallText;
+        }
+
         // Fire-and-forget call logging
         const chatCost = calculateCost(agent.provider, agent.model, usage);
         logCall({
             actorId: agent.actor_id, agentName: agent.agent, context: 'chat',
             provider: agent.provider, model: agent.model,
-            systemPrompt, userMessage: loggedUserMessage, response, usage, cost: chatCost,
+            systemPrompt, userMessage: loggedUserMessage, response: loggedResponse, usage, cost: chatCost,
             durationMs: chatDurationMs, usageId: chatUsageId, sceneId,
         }).catch(() => {});
 
@@ -2161,20 +2174,9 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             });
         }
 
-        // Fire-and-forget transcript logging.
-        //
-        // Tool-use mode: the raw `userMessage` passed to providerFn is '' (the
-        // real payload flows through providerCallOpts.messages), and `response`
-        // is '' when the assistant only emits tool_calls. Reuse the
-        // loggedUserMessage we built for logCall, and append a serialized form
-        // of replyToolCalls into the Response section so conversation/* notes
-        // capture both sides of every engine ↔ NPC/overseer tick.
-        const transcriptToolCalls = Array.isArray(replyToolCalls) ? replyToolCalls : [];
-        let loggedResponse = response || '';
-        if (transcriptToolCalls.length > 0) {
-            const toolCallText = 'tool_calls:\n' + JSON.stringify(transcriptToolCalls, null, 2);
-            loggedResponse = loggedResponse ? loggedResponse + '\n\n' + toolCallText : toolCallText;
-        }
+        // Fire-and-forget transcript logging. loggedResponse was built above
+        // (alongside logCall) so virtual_agent_calls and conversations/* see
+        // the same serialized tool_calls on tool-use turns.
         logTranscript(agent.agent, systemPrompt, loggedUserMessage, loggedResponse, usage, 'chat', {
             requestingAgent: fromAgent, model: agent.model
         }).catch(err => {
