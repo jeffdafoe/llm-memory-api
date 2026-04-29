@@ -437,6 +437,21 @@ function usesResponsesEndpoint(modelId) {
 //                                                          call_id: tool_call_id,
 //                                                          output: content}
 function messagesToResponsesInput(messages) {
+    // First pass: collect every tool_call_id that has a matching
+    // tool-result message. /v1/responses rejects input that contains
+    // a function_call without a paired function_call_output, so we
+    // must drop unpaired tool_calls before they reach the API.
+    // /v1/chat/completions tolerates the same mismatch silently;
+    // chat history reconstructed for chronicler-style multi-iteration
+    // harnesses can produce orphans when an earlier fire bailed
+    // mid-loop, so this guard is necessary even for healthy callers.
+    const pairedCallIds = new Set();
+    for (const msg of messages) {
+        if (msg.role === 'tool' && msg.tool_call_id) {
+            pairedCallIds.add(msg.tool_call_id);
+        }
+    }
+
     const input = [];
     for (const msg of messages) {
         if (msg.role === 'tool') {
@@ -458,6 +473,11 @@ function messagesToResponsesInput(messages) {
             }
             for (const tc of msg.tool_calls) {
                 if (tc.type !== 'function' || !tc.function) continue;
+                // Drop orphan function_calls — see the pairedCallIds
+                // comment above. Without a matching tool result later in
+                // the conversation, /v1/responses returns
+                // "No tool output found for function call <id>".
+                if (!pairedCallIds.has(tc.id)) continue;
                 input.push({
                     type: 'function_call',
                     call_id: tc.id,
