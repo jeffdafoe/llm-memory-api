@@ -668,6 +668,16 @@ async function withActivityIndicator(agentName, fn) {
     }
 }
 
+// Check whether an agent row has a given expertise tag. Defensive against
+// `expertise` coming back null or in some unexpected shape; case-insensitive
+// match. Keeps JSONB-shape knowledge out of call sites.
+function hasExpertise(agent, value) {
+    const expertise = Array.isArray(agent.expertise) ? agent.expertise : [];
+    return expertise.some(function (x) {
+        return String(x).toLowerCase() === value;
+    });
+}
+
 // Load an agent row with virtual-agent fields.
 async function loadAgent(agentName) {
     const result = await pool.query(
@@ -900,7 +910,9 @@ const DIRECTIVE_OUTPUT = 'Reply with your own message content only — plain tex
 
 const DIRECTIVE_OUTPUT_CHAT = 'Respond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.';
 
-const DIRECTIVE_SIM_CONTEXT = 'You are a character inside a village simulation. The user messages are perception updates emitted by the simulation engine — what your character sees, hears, or experiences in the moment. They are not chat from a person; do not address the engine, the narrator, or "the user". Choose actions by calling the provided tools. Do not reply with ordinary prose. If you want your character to say something, use the speak tool. Speak only to characters confirmed present in your perception or by tool results. If you want to look around, use look_around. If you want to go somewhere, use move_to. If no action is appropriate this round, call done. Treat perception and tool results as authoritative — do not invent unseen characters, unavailable locations, or events not supported by the simulation state. Use your identity, memories, and impressions to decide what your character wants, but express every action through tools.';
+const DIRECTIVE_SIM_CONTEXT = 'You are a character inside a village simulation. The user messages are perception updates emitted by the simulation engine — what your character sees, hears, or experiences in the moment. They are not chat from a person; do not address the engine, the narrator, or "the user". Choose actions by calling the provided tools. Do not reply with ordinary prose. If you want your character to say something, use the speak tool. Speak only to characters confirmed present in your perception or by tool results. If you want to go somewhere, use move_to. If no action is appropriate this round, call done. Treat perception and tool results as authoritative — do not invent unseen characters, unavailable locations, or events not supported by the simulation state. Use your identity, memories, and impressions to decide what your character wants, but express every action through tools.';
+
+const DIRECTIVE_OVERSEER_CONTEXT = 'You are an overseer of the village simulation, not a character within it. The user messages are tick triggers and world-state observations from the simulation engine — they are not chat from a person; do not address the engine, the narrator, or "the user". Express every action through the tools you are offered for this tick. You do not speak, move, or otherwise act as a villager. Treat perception and tool results as authoritative — do not invent unseen events, places, or people. If no overseer action is warranted this tick, call done.';
 
 const DIRECTIVE_VOTE = 'A vote has been proposed. Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
 
@@ -1169,6 +1181,31 @@ function buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext) {
         wrapBlock('Self', 'voice-identity', DIRECTIVE_SELF, soul),
         wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext),
         wrapStandalone('SimContext', 'simulation-context', DIRECTIVE_SIM_CONTEXT),
+    ].filter(Boolean);
+
+    const dynamicBlocks = [
+        wrapBlock('Recall', 'relevant-memories', DIRECTIVE_RECALL, ragContext),
+    ].filter(Boolean);
+
+    return {
+        static: staticBlocks.join('\n\n'),
+        dynamic: dynamicBlocks.join('\n\n'),
+    };
+}
+
+// Build system prompt for engine-driven overseer ticks (e.g. salem-chronicler).
+// Same engine entry path as sim-mode NPCs (fromAgent === 'salem-engine'), but
+// the overseer is not a villager — it has its own tool office (set_environment,
+// record_event, recall, done) and no persona-relationships with named NPCs.
+// Drops Impressions and swaps SimContext (which references speak/look_around/
+// move_to) for OverseerContext so the model isn't told it has tools it doesn't.
+// Dispatched on receiver expertise containing 'overseer'.
+function buildOverseerSystemPrompt(agent, ragContext, soul) {
+    const staticBlocks = [
+        wrapBlock('Bootstrap', 'global-operating-directives', DIRECTIVE_BOOTSTRAP, config.get('global_bootstrap') || ''),
+        wrapBlock('Instructions', 'operating-rules', DIRECTIVE_INSTRUCTIONS, agent.startup_instructions),
+        wrapBlock('Self', 'voice-identity', DIRECTIVE_SELF, soul),
+        wrapStandalone('OverseerContext', 'overseer-context', DIRECTIVE_OVERSEER_CONTEXT),
     ].filter(Boolean);
 
     const dynamicBlocks = [
@@ -1923,21 +1960,35 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // ReplyPolicy / OutputDirective blocks fight tool-use; SimContext
         // frames perceptions as world state and pushes for tool-call output.
         // See buildSimChatSystemPrompt above for the rationale.
-        const isSimChat = fromAgent === 'salem-engine';
+        //
+        // Overseer split: agents with expertise 'overseer' (e.g.
+        // salem-chronicler) are engine-driven but are not villagers. They
+        // have their own tool office and no persona-relationships, so they
+        // get buildOverseerSystemPrompt instead of the NPC SimContext path.
+        const isSimChat  = fromAgent === 'salem-engine';
+        const isOverseer = isSimChat && hasExpertise(agent, 'overseer');
+        const isSimNpc   = isSimChat && !isOverseer;
 
         // Context loading differs by mode.
         //
         // Companion mode: RAG-search the agent's notes by message content;
         // counterpart for Impressions is the sender (one human agent).
         //
-        // Sim mode: skip RAG (the 50+ message tool-use history is already
+        // Sim NPC: skip RAG (the 50+ message tool-use history is already
         // the recall channel — RAG against the engine's perception text
         // returns noise) and derive Impressions counterparts from the
         // engine's "Here:" block (co-located people by display name)
         // instead of fromAgent (which is "salem-engine" — not a person).
+        //
+        // Overseer: skip RAG (the overseer uses its own recall(query) tool
+        // for deliberate village-memory lookup) and skip Impressions (the
+        // overseer doesn't track relationships with villagers).
         let ragContext;
         let peopleContext;
-        if (isSimChat) {
+        if (isOverseer) {
+            ragContext = '';
+            peopleContext = '';
+        } else if (isSimNpc) {
             ragContext = '';
             // Dedupe in case the perception ever lists a name twice (e.g. a
             // future engine rev that surfaces multiple roles for the same
@@ -1964,7 +2015,9 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // history (tool_calls + tool_call_id flow through assistant/tool
         // roles); plain-text path uses the legacy timestamp-prefixed wrap.
         let systemPrompt;
-        if (isSimChat) {
+        if (isOverseer) {
+            systemPrompt = buildOverseerSystemPrompt(agent, ragContext, soul);
+        } else if (isSimNpc) {
             systemPrompt = buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext);
         } else {
             systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
@@ -2082,8 +2135,21 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             });
         }
 
-        // Fire-and-forget transcript logging
-        logTranscript(agent.agent, systemPrompt, userMessage, response, usage, 'chat', {
+        // Fire-and-forget transcript logging.
+        //
+        // Tool-use mode: the raw `userMessage` passed to providerFn is '' (the
+        // real payload flows through providerCallOpts.messages), and `response`
+        // is '' when the assistant only emits tool_calls. Reuse the
+        // loggedUserMessage we built for logCall, and append a serialized form
+        // of replyToolCalls into the Response section so conversation/* notes
+        // capture both sides of every engine ↔ NPC/overseer tick.
+        const transcriptToolCalls = Array.isArray(replyToolCalls) ? replyToolCalls : [];
+        let loggedResponse = response || '';
+        if (transcriptToolCalls.length > 0) {
+            const toolCallText = 'tool_calls:\n' + JSON.stringify(transcriptToolCalls, null, 2);
+            loggedResponse = loggedResponse ? loggedResponse + '\n\n' + toolCallText : toolCallText;
+        }
+        logTranscript(agent.agent, systemPrompt, loggedUserMessage, loggedResponse, usage, 'chat', {
             requestingAgent: fromAgent, model: agent.model
         }).catch(err => {
             logVA('transcript-log-failed', { agent: agent.agent, error: err.message });
