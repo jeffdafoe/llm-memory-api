@@ -778,11 +778,13 @@ tbody tr:last-child td { border-bottom: none; }
 .badge-type-agent { background: var(--success-subtle); color: var(--success); }
 .badge-type-system { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 
-/* Tool-call rendering in chat message rows. .tool-chip wraps structured
-   tool calls (look_around, move_to → "Smithy", chore: well, done) so they
-   read as actions rather than empty messages. .tool-speak styles the
-   speak-tool's input.text — italic + quote-color so it reads as actual
-   spoken dialogue rather than a system action. */
+/* Tool-call rendering in chat message rows. .tool-chip wraps the tool
+   name as a small monospace pill so it reads as an action label rather
+   than an empty message. .tool-speak styles the speak-tool's input.text
+   — italic + secondary color so it reads as actual spoken dialogue
+   rather than a system action. .tool-prose carries the chronicler / NPC
+   tools' meaningful text/query/destination/type argument inline after
+   the chip, in the same secondary color as regular message text. */
 .tool-chip {
     display: inline-block;
     padding: 1px 6px;
@@ -795,6 +797,10 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .tool-speak {
     font-style: italic;
+    color: var(--text-secondary);
+}
+.tool-prose {
+    margin-left: 6px;
     color: var(--text-secondary);
 }
 

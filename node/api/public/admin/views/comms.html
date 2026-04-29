@@ -99,8 +99,7 @@
                                 <template v-if="group.msg.message">{{ group.msg.message }}</template>
                                 <template v-else-if="group.msg.tool_calls && group.msg.tool_calls.length">
                                     <template v-for="(tc, i) in group.msg.tool_calls" :key="tc.id || i">
-                                        <em v-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ tc.input && tc.input.text }}&rdquo;</em>
-                                        <span v-else class="tool-chip">[{{ formatToolCall(tc) }}]</span>
+                                        <tool-call-display :tc="tc"></tool-call-display>
                                         <span v-if="i < group.msg.tool_calls.length - 1">&nbsp;</span>
                                     </template>
                                 </template>
@@ -132,8 +131,7 @@
                                     <template v-if="msg.message">{{ msg.message }}</template>
                                     <template v-else-if="msg.tool_calls && msg.tool_calls.length">
                                         <template v-for="(tc, i) in msg.tool_calls" :key="tc.id || i">
-                                            <em v-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ tc.input && tc.input.text }}&rdquo;</em>
-                                            <span v-else class="tool-chip">[{{ formatToolCall(tc) }}]</span>
+                                            <tool-call-display :tc="tc"></tool-call-display>
                                             <span v-if="i < msg.tool_calls.length - 1">&nbsp;</span>
                                         </template>
                                     </template>
