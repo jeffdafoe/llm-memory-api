@@ -18,6 +18,7 @@ const systemRoutes = require('./routes/system');
 const adminRoutes = require('./routes/admin');
 const registrationRoutes = require('./routes/registration');
 const authRoutes = require('./routes/auth');
+const simRoutes = require('./routes/sim');
 
 const app = express();
 const port = process.env.PORT || 3100;
@@ -55,6 +56,7 @@ app.use('/v1', memoryRoutes);
 app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
 app.use('/v1', adminRoutes);
+app.use('/v1', simRoutes);
 
 // Registration endpoints (public, no auth)
 app.use(registrationRoutes);
