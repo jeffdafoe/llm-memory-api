@@ -489,6 +489,17 @@ function buildExtractionPrompt(interactionType, contextHint) {
 // noise in cross-namespace recall. The structured audit trail in
 // virtual_agent_calls (logCall) covers debug visibility with more fidelity
 // for the va_call_log_retention_days window.
+//
+// Also skipped for dream_mode='sim'. Sim NPCs (Salem 1692 villagers) get
+// a per-call payload that's a JSON-stringified chat-completion request:
+// the full system prompt, every prior tick's perception/tool-call/result
+// concatenated as the user message, and the response. That shape isn't
+// usable by the dream prefilter (signal patterns are tuned for natural
+// conversation, not API JSON) and accumulates per-tick — John's most
+// recent ran 77K+ chars. The replacement is a daily distilled note built
+// by sim-conversation-distiller from the engine's agent_action_log push
+// plus chat_message_texts/discussions on this side, written as
+// conversations/YYYY-MM-DD-sim-day.
 async function logTranscript(agentName, systemPrompt, userMessage, response, usage, triggerType, meta) {
     const dreamModeRow = await pool.query(
         `SELECT agc.dream_mode FROM agent_configuration agc
@@ -496,7 +507,7 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
          WHERE ac.name = $1`,
         [agentName]
     );
-    if (dreamModeRow.rows.length > 0 && dreamModeRow.rows[0].dream_mode === 'none') {
+    if (dreamModeRow.rows.length > 0 && ['none', 'sim'].includes(dreamModeRow.rows[0].dream_mode)) {
         return;
     }
 
