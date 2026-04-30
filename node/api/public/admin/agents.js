@@ -471,9 +471,8 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         agentExpertise.value = [];
         // Fetch full agent detail (includes configuration) and instructions in parallel
         try {
-            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
             const [detail, instData] = await Promise.all([
-                api('/admin/agents/read', { agent: selectedName, timezone: tz }),
+                api('/admin/agents/read', { agent: selectedName }),
                 api('/admin/agents/instructions/read', { agent: selectedName })
             ]);
             // Guard against selection changing while requests were in flight
