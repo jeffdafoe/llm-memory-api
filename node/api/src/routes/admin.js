@@ -1813,10 +1813,8 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
 }));
 
 // POST /admin/agents/read — get full agent detail (includes configuration JSON)
-// Accepts optional `timezone` (IANA string, e.g. "America/New_York") for local day boundary.
 router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('agents-read', async (req, res) => {
     const agent = sanitize.agentName(req.body.agent);
-    const { timezone } = req.body;
     if (!agent) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: agent' } });
     }
@@ -1838,23 +1836,18 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
     }
     const row = result.rows[0];
 
-    // Validate client timezone — untrusted input, fall back to UTC
-    let tz = 'UTC';
-    if (typeof timezone === 'string' && timezone) {
-        try {
-            Intl.DateTimeFormat(undefined, { timeZone: timezone });
-            tz = timezone;
-        } catch (e) {
-            // Invalid timezone string, use UTC
-        }
-    }
+    // cost_today must use UTC to agree with the cost-limit gate in
+    // services/virtual-agent.js (also UTC). When this query used the
+    // client's local timezone, the UI showed a different "today" than
+    // the gate enforced — usage panels showed plenty of headroom while
+    // the agent had silently been cut off. One source of truth.
     const costResult = await pool.query(
         `SELECT
-            COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE $2) AT TIME ZONE $2 THEN cost ELSE 0 END), 0) AS cost_today,
+            COALESCE(SUM(CASE WHEN created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost ELSE 0 END), 0) AS cost_today,
             COALESCE(SUM(cost), 0) AS cost_monthly
          FROM virtual_agent_usage
          WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
-        [actor.id, tz]
+        [actor.id]
     );
     row.cost_today = parseFloat(costResult.rows[0].cost_today);
     row.cost_monthly = parseFloat(costResult.rows[0].cost_monthly);
