@@ -30,7 +30,7 @@
 // 'chore', 'pay', 'object_refresh', etc. Unknown kinds get a generic
 // narration so a new engine action_type doesn't silently drop frames.
 
-const pool = require('./db');
+const pool = require('../db');
 const { saveNote } = require('./documents');
 const { log, logError } = require('./logger');
 
