@@ -59,6 +59,38 @@ const SIGNAL_PATTERNS = [
 // How many context lines to include before and after a signal match
 const CONTEXT_LINES = 5;
 
+// Reasoning-preamble markers used by detectReasoningPreamble to guard
+// the soul-save path against chat models that emit chain-of-thought
+// when asked for plain output. See processDreamChunk's soul block for
+// usage. All entries are lowercase substrings; the input is lowercased
+// once before matching. Keep this list conservative — markers must be
+// distinct enough that legitimate first-person soul prose cannot
+// trigger them. Plain "analysis:" is intentionally excluded because a
+// soul could legitimately reference analysis as a topic.
+const REASONING_PREAMBLE_MARKERS = [
+    'thinking process',
+    '<thinking',
+    '<think',
+    '1. **analyze',
+    'step 1:',
+    'let me analyze',
+    'let me think',
+    "i'll analyze",
+    "first, i'll",
+    'first, let me',
+    '## analysis',
+];
+
+// Returns the first matched marker name, or null if the leading 200
+// characters look like clean output. Exported as a module-scope helper
+// so it's straightforward to add regression tests when new leakage
+// patterns surface.
+function detectReasoningPreamble(text) {
+    if (!text) return null;
+    const leadCheck = text.trim().substring(0, 200).toLowerCase();
+    return REASONING_PREAMBLE_MARKERS.find(m => leadCheck.includes(m)) || null;
+}
+
 // Cheap detection for the typed-context JSON array format. The whole
 // multi-turn discussion history sits on a single line as a JSON array
 // of {sender, content} objects (see virtual-agent.js's <Conversation>
@@ -465,8 +497,32 @@ async function processDreamChunk(agent, agentNames, chunk) {
             });
 
             if (updatedSoul && updatedSoul.trim()) {
-                await saveNote(agent.name, 'Soul', updatedSoul.trim(), 'context/soul', soulAgentName, null, null, { upsert: true });
-                logDream('chunk-soul-updated', { agent: agent.name, chunkDate: chunkDateStr, size: updatedSoul.length });
+                const trimmedSoul = updatedSoul.trim();
+                // Reject reasoning-preamble leakage. Some chat models
+                // (observed: qwen3.5-flash) ignore the "Output ONLY"
+                // instruction and emit their analytical chain-of-thought
+                // as plain text before the soul body. Saving that would
+                // poison every future tick's system prompt AND compound
+                // on the next dream cycle, since the soul-writer reads
+                // its own prior output as input. Detect via leading
+                // characters and skip the save so the existing soul
+                // stays intact rather than being overwritten with garbage.
+                // Soul content (including the preamble) is intentionally
+                // kept out of the error log to avoid leaking model
+                // reasoning or character state into operational logs.
+                const matchedMarker = detectReasoningPreamble(trimmedSoul);
+                if (matchedMarker) {
+                    logDream('chunk-soul-error', {
+                        agent: agent.name,
+                        chunkDate: chunkDateStr,
+                        reason: 'reasoning-preamble-detected',
+                        marker: matchedMarker,
+                        size: trimmedSoul.length,
+                    });
+                } else {
+                    await saveNote(agent.name, 'Soul', trimmedSoul, 'context/soul', soulAgentName, null, null, { upsert: true });
+                    logDream('chunk-soul-updated', { agent: agent.name, chunkDate: chunkDateStr, size: trimmedSoul.length });
+                }
             }
         } catch (soulErr) {
             // Soul failure doesn't block the chunk's dream/people output.
