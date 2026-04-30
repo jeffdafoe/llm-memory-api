@@ -55,8 +55,8 @@ app.use('/v1', mailRoutes);
 app.use('/v1', memoryRoutes);
 app.use('/v1', documentRoutes);
 app.use('/v1', systemRoutes);
-app.use('/v1', adminRoutes);
 app.use('/v1', simRoutes);
+app.use('/v1', adminRoutes);
 
 // Registration endpoints (public, no auth)
 app.use(registrationRoutes);
