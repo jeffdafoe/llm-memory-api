@@ -437,24 +437,40 @@ function usesResponsesEndpoint(modelId) {
 //                                                          call_id: tool_call_id,
 //                                                          output: content}
 function messagesToResponsesInput(messages) {
-    // First pass: collect every tool_call_id that has a matching
-    // tool-result message. /v1/responses rejects input that contains
-    // a function_call without a paired function_call_output, so we
-    // must drop unpaired tool_calls before they reach the API.
-    // /v1/chat/completions tolerates the same mismatch silently;
-    // chat history reconstructed for chronicler-style multi-iteration
-    // harnesses can produce orphans when an earlier fire bailed
-    // mid-loop, so this guard is necessary even for healthy callers.
-    const pairedCallIds = new Set();
+    // First pass: collect call_ids referenced by both sides of the
+    // tool-call/tool-result pairing. /v1/responses rejects input that
+    // contains a function_call without a paired function_call_output
+    // OR a function_call_output without a paired function_call —
+    // strict pairing in both directions. /v1/chat/completions tolerates
+    // either mismatch silently; chat history reconstructed for
+    // chronicler-style multi-iteration harnesses can produce orphans
+    // when an earlier fire bailed mid-loop or when truncation drops
+    // one side of a pair, so this guard is necessary even for healthy
+    // callers.
+    const pairedCallIds = new Set();         // call_ids that have a tool-result row
+    const assistantToolCallIds = new Set();  // call_ids that have an assistant tool_call row
     for (const msg of messages) {
         if (msg.role === 'tool' && msg.tool_call_id) {
             pairedCallIds.add(msg.tool_call_id);
+        }
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+            for (const tc of msg.tool_calls) {
+                if (tc && tc.id) assistantToolCallIds.add(tc.id);
+            }
         }
     }
 
     const input = [];
     for (const msg of messages) {
         if (msg.role === 'tool') {
+            // Drop orphan function_call_outputs — symmetric to the
+            // function_call drop below. Without a matching assistant
+            // tool_call earlier in the input, /v1/responses returns
+            // "No tool call found for function call output with call_id <id>".
+            // Also drops rows with missing/empty tool_call_id (malformed
+            // history): the set won't contain `undefined` either, but
+            // the explicit check makes the intent obvious.
+            if (!msg.tool_call_id || !assistantToolCallIds.has(msg.tool_call_id)) continue;
             input.push({
                 type: 'function_call_output',
                 call_id: msg.tool_call_id,
