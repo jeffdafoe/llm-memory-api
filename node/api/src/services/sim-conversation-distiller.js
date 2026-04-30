@@ -83,6 +83,27 @@ function sanitizeLabel(s) {
         .trim();
 }
 
+// Derive a human-readable display label from an actor slug. The api's
+// actors table only stores the slug (e.g. zbbs-john-ellis); the canonical
+// display_name lives on Salem's own actor table in the engine DB, which
+// we can't query from here. Inverts the convention loadPeopleContext
+// already uses going the other way ("Josiah Thorne" -> josiah-thorne):
+// strip the leading zbbs- prefix, split on hyphens, title-case each
+// segment, rejoin with spaces. Non-zbbs slugs (salem-chronicler, home,
+// the engine itself) get title-cased as-is so they still render
+// readably if they ever appear as a speaker.
+function slugToDisplay(name) {
+    if (!name) {
+        return '';
+    }
+    const stripped = String(name).replace(/^zbbs-/, '');
+    return stripped
+        .split('-')
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
 // Sanitize quoted speech text: collapse whitespace, escape backslash
 // and double-quote so the closing `"` of the speech wrapper isn't
 // pre-empted by content. Keeps each speech line on a single
@@ -219,7 +240,7 @@ async function fetchSpeech(actorId, start, end) {
     // honest when a message has multiple delivery rows.
     const speechResult = await pool.query(
         `SELECT cmt.id, cmt.message, cmt.sent_at, cmt.scene_id, cmt.discussion_id,
-                cmt.from_actor_id, ac.name AS from_actor_name, ac.display_name AS from_display_name
+                cmt.from_actor_id, ac.name AS from_actor_name
          FROM chat_message_texts cmt
          JOIN actors ac ON ac.id = cmt.from_actor_id
          WHERE cmt.sent_at >= $2 AND cmt.sent_at < $3
@@ -245,12 +266,12 @@ async function fetchSpeech(actorId, start, end) {
     return speechResult.rows;
 }
 
-// Resolve the agent name to (actor_id, display_name, dream_mode). The
+// Resolve the agent name to (actor_id, name, dream_mode). The
 // distiller is sim-only — return null if dream_mode != 'sim' so the
 // caller can reject without producing an empty note.
 async function resolveSimAgent(agentName) {
     const r = await pool.query(
-        `SELECT ac.id, ac.name, ac.display_name, agc.dream_mode
+        `SELECT ac.id, ac.name, agc.dream_mode
          FROM actors ac
          JOIN agent_configuration agc ON agc.actor_id = ac.id
          WHERE ac.name = $1`,
@@ -292,7 +313,7 @@ async function distillSimConversationDay(agentName, dayStr, events) {
     }
 
     const { start, end } = dayWindow(dayStr);
-    const actorName = sanitizeLabel(agent.display_name || agent.name);
+    const actorName = sanitizeLabel(slugToDisplay(agent.name));
 
     // Build the per-event narration lines first, then merge with speech
     // by timestamp. Skip events that fall outside the day window — the
@@ -320,10 +341,13 @@ async function distillSimConversationDay(agentName, dayStr, events) {
     // Pull speech. fetchSpeech handles scenes + discussions + 1-on-1.
     const speechRows = await fetchSpeech(agent.id, start, end);
     const speechLines = speechRows.map((row) => {
-        // Use display_name when set; fall back to actors.name. Both go
-        // through sanitizeLabel since DB-controlled values can carry
+        // Derive a friendly speaker label from the slug. The api side has
+        // no display_name column — Salem's display name lives on its own
+        // actor table in the engine DB, which we can't reach. Use the
+        // established slug convention (zbbs-john-ellis → "John Ellis")
+        // and sanitize since DB-controlled values can carry
         // brackets/newlines that would break the line shape.
-        const speaker = sanitizeLabel(row.from_display_name || row.from_actor_name);
+        const speaker = sanitizeLabel(slugToDisplay(row.from_actor_name));
         const text = sanitizeSpeech(row.message || '');
         if (!text) {
             return null;
