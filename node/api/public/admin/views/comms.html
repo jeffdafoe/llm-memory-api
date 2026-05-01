@@ -117,7 +117,7 @@
                                 <i v-if="group.hasUnacked" class="icon-circle unacked-icon scene-ack-marker"></i>
                             </td>
                             <td colspan="3" class="scene-participants">{{ group.participants.join(', ') }}</td>
-                            <td class="message-cell"><span class="scene-summary">Scene · {{ group.messages.length }} messages</span></td>
+                            <td class="message-cell"><span class="scene-summary">Scene · {{ group.messages.length }} messages · <code class="scene-id">{{ group.scene_id }}</code></span></td>
                             <td class="time-cell">{{ formatDate(group.latest_at) }}</td>
                         </tr>
                         <!-- Expanded scene: chronological sub-rows. -->
