@@ -823,6 +823,11 @@ tbody tr:last-child td { border-bottom: none; }
     color: var(--text-muted);
     font-size: 12px;
 }
+.scene-row .scene-summary .scene-id {
+    font-style: normal;
+    font-size: 11px;
+    user-select: all;
+}
 .scene-child td:first-child,
 .scene-child td:nth-child(2) {
     padding-left: 18px;
