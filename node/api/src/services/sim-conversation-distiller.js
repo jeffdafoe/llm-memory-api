@@ -1,10 +1,9 @@
 // Sim-conversation distiller — daily per-NPC narrative builder.
 //
 // Receives a typed event payload from salem-engine (one push per sim NPC
-// per just-completed in-sim day), joins it with this side's own
-// chat_message_texts (agent speech, multi-party scene chatter), and
-// produces a single conversations/YYYY-MM-DD-sim-day note in the agent's
-// namespace formatted as `[Day HH:MM Speaker] text` lines.
+// per just-completed in-sim day) and produces a single
+// conversations/YYYY-MM-DD-sim-day note in the agent's namespace,
+// formatted as `[Day HH:MM Speaker] text` lines.
 //
 // The replacement lives next to the dream pipeline rather than the per-
 // /chat/send transcript writer because:
@@ -20,15 +19,30 @@
 //     hit those signals, so the prefilter throws most of it away. Even
 //     when something matches, the ±5 context lines are JSON fragments.
 //
-// The logTranscript path now skips dream_mode='sim' agents entirely; this
+// The logTranscript path skips dream_mode='sim' agents entirely; this
 // distiller is the only thing writing conversations/* notes for them.
-// chat_message_texts is still written for audit/replay.
+// chat_message_texts is still written for audit/replay but is NOT joined
+// here — for sim NPCs that table holds only chat-completion plumbing
+// (system prompts the engine sent to the model, tool-result acks, JSON
+// tool_call responses), none of which is narrative speech. The engine
+// records every narrative action — including speak/act with the actual
+// text — into agent_action_log and forwards them in the daily push, so
+// that single payload is the sole source of truth here.
+//
+// Cross-actor speech: the engine push (post-ZBBS-094) includes other
+// actors' speak/act rows when those actors shared a scene_huddle with
+// the target NPC. The target's own note thereby contains "[19:00 John
+// Ellis] 'Another round?'" alongside "[19:01 Jefferey] 'Aye'", which is
+// what makes the day usable as dream input. Each event carries a
+// `speaker` field used directly for the line label.
 //
 // Engine event shape — caller sends an array of:
-//   { at: ISO timestamp, kind: action_type, payload: object }
-// Kinds correspond to agent_action_log.action_type values: 'move_to',
-// 'chore', 'pay', 'object_refresh', etc. Unknown kinds get a generic
-// narration so a new engine action_type doesn't silently drop frames.
+//   { at: ISO timestamp, kind: action_type, payload: object,
+//     speaker: display name }
+// Kinds correspond to agent_action_log.action_type values: 'speak',
+// 'act', 'move_to', 'chore', 'pay', 'object_refresh', etc. Unknown
+// kinds get a generic narration so a new engine action_type doesn't
+// silently drop frames.
 
 const pool = require('../db');
 const { saveNote } = require('./documents');
@@ -40,7 +54,7 @@ function logSim(event, payload) {
 
 // Format a YYYY-MM-DD day string into a UTC window [00:00, next 00:00).
 // Engine pushes the just-completed day; this is the boundary the
-// chat_message_texts query uses for sent_at.
+// per-event filter uses to drop any rows that arrived outside it.
 //
 // The round-trip check catches syntactically valid but non-existent
 // dates like 2026-02-31 — JS silently normalizes that to March 3 and
@@ -117,6 +131,18 @@ function sanitizeSpeech(s) {
         .trim();
 }
 
+// Sanitize narration prose for paren-wrapped action text ("poured ale
+// for Jefferey, Wendy, and Ezekiel Crane"). Collapses whitespace so a
+// multi-line verb_phrase stays on one transcript line. Unlike
+// sanitizeLabel, leaves brackets and quotes alone — they don't break
+// the line shape inside parens, and stripping them mangles natural
+// prose punctuation.
+function sanitizeNarration(s) {
+    return String(s || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 // Map an engine event to a narration line. Returns the (action) text
 // rendered in parens, or null when the event carries no narrative
 // signal (look_around, done with no state change). Keeping this in
@@ -172,6 +198,41 @@ function narrateEvent(event, actorName) {
             const verbText = verbs.length === 1 ? verbs[0] : verbs.slice(0, -1).join(', ') + ' and ' + verbs[verbs.length - 1];
             return '(' + verbText + ' at ' + objectName + ')';
         }
+        case 'speak': {
+            // payload.text is the spoken line, copied verbatim from the
+            // model's tool-call args at engine/agent_tick.go's "speak"
+            // case. Render as a quoted string (not parens) so dialogue
+            // and narration are visually distinct in the transcript —
+            // matches the work-agent distillation shape.
+            const text = sanitizeSpeech(p.text || '');
+            if (!text) {
+                return null;
+            }
+            return '"' + text + '"';
+        }
+        case 'act': {
+            // payload.verb_phrase is a short third-person physical
+            // action ("poured ale for Jefferey, Wendy, and Ezekiel
+            // Crane"), recorded so other co-located NPCs can perceive
+            // it next tick. Not dialogue — render in parens as
+            // narration alongside move_to, chore, pay. sanitizeNarration
+            // (rather than sanitizeLabel) preserves natural prose
+            // punctuation; brackets/quotes inside parens don't break
+            // the line shape.
+            const verb = sanitizeNarration(p.verb_phrase || '');
+            if (!verb) {
+                return null;
+            }
+            return '(' + verb + ')';
+        }
+        case 'enter_huddle':
+            // Membership marker (ZBBS-094). The engine writes one of
+            // these whenever an actor's current_huddle_id is updated,
+            // so loadDayEvents' my_huddles CTE can discover huddles
+            // even for actors who join silently and never speak. The
+            // row drives membership, not narration — return null so
+            // it doesn't produce a transcript line.
+            return null;
         case 'look_around':
         case 'done':
             // Pure-perception / pass-the-hour actions carry no narrative
@@ -185,85 +246,6 @@ function narrateEvent(event, actorName) {
             // that a new engine action_type needs a real mapping here.
             return '(' + actorName + ' ' + sanitizeLabel(event.kind) + ')';
     }
-}
-
-// Pull all speech the agent was party to in the day window: their own
-// speech (1-on-1 outbound), speech directed at them (1-on-1 inbound),
-// and every message in any scene or discussion the agent had day-window
-// activity in. Returns rows sorted by sent_at.
-//
-// Two-stage: first discover the scene/discussion IDs the agent had a
-// message touching during this window (sender or recipient), then
-// pull every message in those groupings plus standalone 1-on-1. The
-// day-window scope on the discovery query is important — pulling all
-// historical participants would over-include speech from rooms the
-// agent had already left or that re-opened later.
-//
-// EXISTS used instead of LEFT JOIN to avoid row duplication when one
-// chat_message_texts row has multiple chat_messages delivery rows
-// (multicast — addressed to several recipients).
-async function fetchSpeech(actorId, start, end) {
-    const sceneIdsResult = await pool.query(
-        `SELECT DISTINCT cmt.scene_id
-         FROM chat_message_texts cmt
-         WHERE cmt.sent_at >= $2 AND cmt.sent_at < $3
-           AND cmt.scene_id IS NOT NULL
-           AND (
-               cmt.from_actor_id = $1
-               OR EXISTS (
-                   SELECT 1 FROM chat_messages cm
-                   WHERE cm.message_text_id = cmt.id AND cm.to_actor_id = $1
-               )
-           )`,
-        [actorId, start, end]
-    );
-    const sceneIds = sceneIdsResult.rows.map((r) => r.scene_id);
-
-    const discIdsResult = await pool.query(
-        `SELECT DISTINCT cmt.discussion_id
-         FROM chat_message_texts cmt
-         WHERE cmt.sent_at >= $2 AND cmt.sent_at < $3
-           AND cmt.discussion_id IS NOT NULL
-           AND (
-               cmt.from_actor_id = $1
-               OR EXISTS (
-                   SELECT 1 FROM chat_messages cm
-                   WHERE cm.message_text_id = cmt.id AND cm.to_actor_id = $1
-               )
-           )`,
-        [actorId, start, end]
-    );
-    const discussionIds = discIdsResult.rows.map((r) => r.discussion_id);
-
-    // Now pull every message in those groupings plus 1-on-1 to/from
-    // the agent. EXISTS for the recipient leg keeps the row count
-    // honest when a message has multiple delivery rows.
-    const speechResult = await pool.query(
-        `SELECT cmt.id, cmt.message, cmt.sent_at, cmt.scene_id, cmt.discussion_id,
-                cmt.from_actor_id, ac.name AS from_actor_name
-         FROM chat_message_texts cmt
-         JOIN actors ac ON ac.id = cmt.from_actor_id
-         WHERE cmt.sent_at >= $2 AND cmt.sent_at < $3
-           AND (cmt.is_error IS NOT TRUE)
-           AND (
-               (cmt.scene_id = ANY($4::uuid[]))
-               OR (cmt.discussion_id = ANY($5::int[]))
-               OR (
-                   cmt.scene_id IS NULL
-                   AND cmt.discussion_id IS NULL
-                   AND (
-                       cmt.from_actor_id = $1
-                       OR EXISTS (
-                           SELECT 1 FROM chat_messages cm
-                           WHERE cm.message_text_id = cmt.id AND cm.to_actor_id = $1
-                       )
-                   )
-               )
-           )
-         ORDER BY cmt.sent_at ASC, cmt.id ASC`,
-        [actorId, start, end, sceneIds, discussionIds]
-    );
-    return speechResult.rows;
 }
 
 // Resolve the agent name to (actor_id, name, dream_mode). The
@@ -315,11 +297,26 @@ async function distillSimConversationDay(agentName, dayStr, events) {
     const { start, end } = dayWindow(dayStr);
     const actorName = sanitizeLabel(slugToDisplay(agent.name));
 
-    // Build the per-event narration lines first, then merge with speech
-    // by timestamp. Skip events that fall outside the day window — the
-    // engine should only push events for the requested day, but defend
-    // against off-by-one.
+    // Build per-event narration lines from the engine push. Skip events
+    // that fall outside the day window — the engine should only push
+    // events for the requested day, but defend against off-by-one.
+    //
+    // event.speaker is the agent_action_log.speaker_name on the engine
+    // side. Always populated post-ZBBS-094. For the target agent's own
+    // events it equals actorName; for cross-actor speak/act pulled via
+    // shared scene_huddle membership it's the OTHER speaker (Ezekiel,
+    // Jefferey, etc.) and using it as the line label is the whole point
+    // of the cross-actor pull. Sanitize since speaker_name is
+    // model/PC-supplied and could contain bracket-breaking characters.
+    //
+    // seq is a monotonically increasing index used as a stable
+    // tiebreak when sorting. Two rows can share occurred_at down to the
+    // millisecond when a cascade fans out to several actors near-
+    // simultaneously; the engine query orders by (occurred_at, id) for
+    // SQL determinism, and we preserve that ordering on the api side
+    // by carrying the push-array index alongside.
     const narrationLines = [];
+    let seq = 0;
     for (const event of events) {
         if (!event || typeof event.at !== 'string' || typeof event.kind !== 'string') {
             continue;
@@ -332,57 +329,39 @@ async function distillSimConversationDay(agentName, dayStr, events) {
         if (!text) {
             continue;
         }
+        const lineSpeaker = event.speaker ? sanitizeLabel(event.speaker) : actorName;
         narrationLines.push({
             at,
-            line: '[' + formatTimestamp(event.at) + ' ' + actorName + '] ' + text,
+            seq,
+            line: '[' + formatTimestamp(event.at) + ' ' + lineSpeaker + '] ' + text,
         });
+        seq += 1;
     }
 
-    // Pull speech. fetchSpeech handles scenes + discussions + 1-on-1.
-    const speechRows = await fetchSpeech(agent.id, start, end);
-    const speechLines = speechRows.map((row) => {
-        // Derive a friendly speaker label from the slug. The api side has
-        // no display_name column — Salem's display name lives on its own
-        // actor table in the engine DB, which we can't reach. Use the
-        // established slug convention (zbbs-john-ellis → "John Ellis")
-        // and sanitize since DB-controlled values can carry
-        // brackets/newlines that would break the line shape.
-        const speaker = sanitizeLabel(slugToDisplay(row.from_actor_name));
-        const text = sanitizeSpeech(row.message || '');
-        if (!text) {
-            return null;
-        }
-        return {
-            at: new Date(row.sent_at),
-            line: '[' + formatTimestamp(row.sent_at) + ' ' + speaker + '] "' + text + '"',
-        };
-    }).filter(Boolean);
-
-    // Merge and sort. Stable order for same-timestamp entries: actions
-    // before speech (engine commits then chat reflects them; reversing
-    // would imply the speech preceded the move which doesn't match
-    // engine semantics).
-    const all = [
-        ...narrationLines.map((x) => ({ ...x, kindOrder: 0 })),
-        ...speechLines.map((x) => ({ ...x, kindOrder: 1 })),
-    ];
-    all.sort((a, b) => {
+    // Sort defensively — the engine query already returns rows
+    // ORDER BY occurred_at ASC, al.id ASC, but a future change to the
+    // push payload shouldn't silently reorder the transcript. seq
+    // breaks ties so co-timestamped cascade rows keep the engine's
+    // deterministic order rather than shuffling between pushes.
+    narrationLines.sort((a, b) => {
         const tdiff = a.at - b.at;
         if (tdiff !== 0) {
             return tdiff;
         }
-        return a.kindOrder - b.kindOrder;
+        return a.seq - b.seq;
     });
+    const all = narrationLines;
 
     const slug = 'conversations/' + dayStr + '-sim-day';
     const title = 'Sim day — ' + actorName + ' — ' + dayStr;
 
     if (all.length === 0) {
-        // No events and no speech — nothing happened (or nothing was
-        // pushed). Skip writing rather than producing an empty note;
-        // the dream cron will simply not see this day for this agent.
+        // Nothing happened (or nothing narratable was pushed — a day of
+        // pure look_around/done collapses to zero lines). Skip writing
+        // rather than producing an empty note; the dream cron will
+        // simply not see this day for this agent.
         logSim('skip-empty', { agent: agentName, day: dayStr });
-        return { skipped: true, reason: 'no events or speech' };
+        return { skipped: true, reason: 'no narratable events' };
     }
 
     const headerLines = [
