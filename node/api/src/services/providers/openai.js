@@ -21,373 +21,120 @@ function logProvider(action, details) {
 // of the standard input rate (applied automatically by OpenAI when it
 // detects repeated prompt prefixes).
 
+// Reusable capability fragments — every gpt-5.x entry uses the same
+// temperature/reasoning_effort/max-tokens/service-tier shape. Defining
+// them once avoids the long copy-paste blocks that crept in across
+// previous additions.
+
+const TEMPERATURE_CAP = {
+    type: 'number',
+    label: 'Temperature',
+    description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
+    default: 1.0,
+    min: 0,
+    max: 2.0,
+    step: 0.1,
+    disabledWhen: {
+        field: 'reasoning_effort',
+        condition: 'notEquals',
+        value: 'none',
+        message: 'Not supported when reasoning is active'
+    }
+};
+
+const REASONING_EFFORT_CAP = {
+    type: 'select',
+    label: 'Reasoning Effort',
+    description: 'Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.',
+    default: 'none',
+    options: ['none', 'low', 'medium', 'high', 'xhigh']
+};
+
+const MAX_OUTPUT_TOKENS_CAP = {
+    type: 'number',
+    label: 'Max Output Tokens',
+    description: 'Maximum number of tokens the model will generate in its response.',
+    default: 8192,
+    min: 1,
+    max: 32768
+};
+
+const SERVICE_TIER_CAP = {
+    type: 'select',
+    label: 'Service Tier',
+    description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
+    default: 'auto',
+    options: ['auto', 'flex']
+};
+
+// Returns a fresh capabilities object per call. Caller-side normalizers
+// (admin UI defaults, option filtering, label localization, etc.) can
+// mutate fields without leaking the change across every model in the
+// registry. Nested arrays and the disabledWhen object are spread/cloned
+// for the same reason.
+function gpt5Capabilities() {
+    return {
+        temperature: {
+            ...TEMPERATURE_CAP,
+            disabledWhen: { ...TEMPERATURE_CAP.disabledWhen }
+        },
+        reasoning_effort: {
+            ...REASONING_EFFORT_CAP,
+            options: [...REASONING_EFFORT_CAP.options]
+        },
+        max_completion_tokens: { ...MAX_OUTPUT_TOKENS_CAP },
+        service_tier: {
+            ...SERVICE_TIER_CAP,
+            options: [...SERVICE_TIER_CAP.options]
+        }
+    };
+}
+
+// Lineup last reconciled against https://developers.openai.com/api/docs/pricing
+// on 2026-05-01. The gpt-4.x family and the o-series (o3, o3-mini, o4-mini)
+// were dropped in that pass — none were in active use and OpenAI no longer
+// lists them on the public pricing page; reasoning is now integrated into
+// the gpt-5.x family. cache_read for the *-pro tiers follows the standard
+// 1/10-of-input convention since the pricing page omits an explicit cached
+// rate for them — conservative for caching that does happen, and consistent
+// with the rest of the family.
+
 const models = {
-    'gpt-4o': {
-        label: 'GPT-4o',
-        configVersion: 2,
-        pricing: { input: 2.50, output: 10, cache_read: 0.625 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 4096,
-                min: 1,
-                max: 16384
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
-    'gpt-4o-mini': {
-        label: 'GPT-4o Mini',
-        configVersion: 2,
-        pricing: { input: 0.15, output: 0.60, cache_read: 0.075 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 4096,
-                min: 1,
-                max: 16384
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
-    'gpt-4.1': {
-        label: 'GPT-4.1',
-        configVersion: 2,
-        pricing: { input: 2, output: 8, cache_read: 0.50 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 8192,
-                min: 1,
-                max: 32768
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
-    'gpt-4.1-mini': {
-        label: 'GPT-4.1 Mini',
-        configVersion: 2,
-        pricing: { input: 0.40, output: 1.60, cache_read: 0.10 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 8192,
-                min: 1,
-                max: 32768
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
-    'gpt-4.1-nano': {
-        label: 'GPT-4.1 Nano',
-        configVersion: 2,
-        pricing: { input: 0.10, output: 0.40, cache_read: 0.025 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 4096,
-                min: 1,
-                max: 32768
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
     'gpt-5.5': {
         label: 'GPT-5.5',
         configVersion: 2,
         pricing: { input: 5.00, output: 30, cache_read: 0.50 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1,
-                disabledWhen: {
-                    field: 'reasoning_effort',
-                    condition: 'notEquals',
-                    value: 'none',
-                    message: 'Not supported when reasoning is active'
-                }
-            },
-            reasoning_effort: {
-                type: 'select',
-                label: 'Reasoning Effort',
-                description: 'Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.',
-                default: 'none',
-                options: ['none', 'low', 'medium', 'high', 'xhigh']
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 8192,
-                min: 1,
-                max: 32768
-            }
-        }
+        capabilities: gpt5Capabilities()
+    },
+    'gpt-5.5-pro': {
+        label: 'GPT-5.5 Pro',
+        configVersion: 2,
+        pricing: { input: 30, output: 180, cache_read: 3 },
+        capabilities: gpt5Capabilities()
     },
     'gpt-5.4': {
         label: 'GPT-5.4',
         configVersion: 2,
         pricing: { input: 2.50, output: 15, cache_read: 0.25 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1,
-                disabledWhen: {
-                    field: 'reasoning_effort',
-                    condition: 'notEquals',
-                    value: 'none',
-                    message: 'Not supported when reasoning is active'
-                }
-            },
-            reasoning_effort: {
-                type: 'select',
-                label: 'Reasoning Effort',
-                description: 'Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.',
-                default: 'none',
-                options: ['none', 'low', 'medium', 'high', 'xhigh']
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 8192,
-                min: 1,
-                max: 32768
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
+        capabilities: gpt5Capabilities()
+    },
+    'gpt-5.4-mini': {
+        label: 'GPT-5.4 Mini',
+        configVersion: 2,
+        pricing: { input: 0.75, output: 4.50, cache_read: 0.075 },
+        capabilities: gpt5Capabilities()
+    },
+    'gpt-5.4-nano': {
+        label: 'GPT-5.4 Nano',
+        configVersion: 2,
+        pricing: { input: 0.20, output: 1.25, cache_read: 0.02 },
+        capabilities: gpt5Capabilities()
     },
     'gpt-5.4-pro': {
         label: 'GPT-5.4 Pro',
         configVersion: 2,
         pricing: { input: 30, output: 180, cache_read: 3 },
-        capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative.',
-                default: 1.0,
-                min: 0,
-                max: 2.0,
-                step: 0.1,
-                disabledWhen: {
-                    field: 'reasoning_effort',
-                    condition: 'notEquals',
-                    value: 'none',
-                    message: 'Not supported when reasoning is active'
-                }
-            },
-            reasoning_effort: {
-                type: 'select',
-                label: 'Reasoning Effort',
-                description: 'Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.',
-                default: 'none',
-                options: ['none', 'low', 'medium', 'high', 'xhigh']
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Output Tokens',
-                description: 'Maximum number of tokens the model will generate in its response.',
-                default: 8192,
-                min: 1,
-                max: 32768
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
-    'o3': {
-        label: 'o3',
-        configVersion: 2,
-        pricing: { input: 10, output: 40, cache_read: 2.50 },
-        capabilities: {
-            reasoning_effort: {
-                type: 'select',
-                label: 'Reasoning Effort',
-                description: 'Controls how much time the model spends thinking. Higher effort produces better results on complex tasks but costs more tokens and takes longer.',
-                default: 'medium',
-                options: ['low', 'medium', 'high']
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Completion Tokens',
-                description: 'Maximum tokens for the response including reasoning. Use max_completion_tokens instead of max_tokens for reasoning models.',
-                default: 16384,
-                min: 1,
-                max: 100000
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
-    'o3-mini': {
-        label: 'o3 Mini',
-        configVersion: 2,
-        pricing: { input: 1.10, output: 4.40, cache_read: 0.275 },
-        capabilities: {
-            reasoning_effort: {
-                type: 'select',
-                label: 'Reasoning Effort',
-                description: 'Controls how much time the model spends thinking. Higher effort produces better results on complex tasks but costs more tokens and takes longer.',
-                default: 'medium',
-                options: ['low', 'medium', 'high']
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Completion Tokens',
-                description: 'Maximum tokens for the response including reasoning. Use max_completion_tokens instead of max_tokens for reasoning models.',
-                default: 8192,
-                min: 1,
-                max: 65536
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
-    },
-    'o4-mini': {
-        label: 'o4 Mini',
-        configVersion: 2,
-        pricing: { input: 1.10, output: 4.40, cache_read: 0.275 },
-        capabilities: {
-            reasoning_effort: {
-                type: 'select',
-                label: 'Reasoning Effort',
-                description: 'Controls how much time the model spends thinking. Higher effort produces better results on complex tasks but costs more tokens and takes longer.',
-                default: 'medium',
-                options: ['low', 'medium', 'high']
-            },
-            max_completion_tokens: {
-                type: 'number',
-                label: 'Max Completion Tokens',
-                description: 'Maximum tokens for the response including reasoning. Use max_completion_tokens instead of max_tokens for reasoning models.',
-                default: 8192,
-                min: 1,
-                max: 100000
-            },
-            service_tier: {
-                type: 'select',
-                label: 'Service Tier',
-                description: 'Processing tier. "auto" uses standard pricing. "flex" is half the cost but higher latency — good for background/batch work.',
-                default: 'auto',
-                options: ['auto', 'flex']
-            }
-        }
+        capabilities: gpt5Capabilities()
     }
 };
 
