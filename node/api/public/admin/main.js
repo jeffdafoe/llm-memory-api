@@ -12,6 +12,13 @@ import { useMail } from './mail.js';
 import { useNotes } from './notes.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+
+// Render single newlines as <br> so line-oriented content (sim-day
+// transcripts, pasted lists) doesn't collapse into a wall of text.
+// Authored markdown still flows correctly via blank-line paragraph
+// breaks; this only affects single-newline runs that CommonMark would
+// otherwise treat as whitespace.
+marked.setOptions({ breaks: true });
 import { useApiLog } from './apilog.js';
 import { useErrorLog } from './errorlog.js';
 import { useConfig } from './config.js';
