@@ -165,8 +165,14 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
         const provider = providerRegistry.value.find(p => p.name === providerName);
         if (!provider) return null;
         const model = provider.models[modelId];
-        if (!model) return null;
-        return model.configVersion || null;
+        if (model) return model.configVersion || null;
+        // Dynamic-registry providers (OpenRouter) have no static model entries.
+        // Mirror capabilitiesFor's fallback so save/create flows aren't blocked
+        // by the configVersion guard for legitimately-known dynamic models. The
+        // server-side stale-check naturally skips when getModelConfigVersion
+        // returns null, so the stamped value is informational only here.
+        if (providerName === 'openrouter') return 1;
+        return null;
     }
 
     // Get deprecation warning for a model, or null

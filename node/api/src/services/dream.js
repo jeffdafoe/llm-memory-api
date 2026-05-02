@@ -364,15 +364,15 @@ function computeDailyChunks(since, now) {
 }
 
 // Process one (from, to] chunk for one agent: dream → save note → soul →
-// people. Returns a summary object. Throws on dream-call failure (the
-// caller catches and decides whether to retry on the next cron). Soul
-// and people failures are caught here and logged but don't fail the
-// chunk — they're auxiliary to the dream note itself.
+// people → learnings. Returns a summary object. Throws on dream-call
+// failure (the caller catches and decides whether to retry on the next
+// cron). Soul, people, and learnings failures are caught here and logged
+// but don't fail the chunk — they're auxiliary to the dream note itself.
 //
-// agentNames: { dreamAgentName, soulAgentName, peopleAgentName }
+// agentNames: { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName }
 // chunk: { from: Date, to: Date }
 async function processDreamChunk(agent, agentNames, chunk) {
-    const { dreamAgentName, soulAgentName, peopleAgentName } = agentNames;
+    const { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName } = agentNames;
     const { from, to } = chunk;
     const chunkDateStr = from.toISOString().slice(0, 10);
 
@@ -530,10 +530,11 @@ async function processDreamChunk(agent, agentNames, chunk) {
         }
     }
 
-    // People synthesis — companion mode only. Runs per-chunk for the same
+    // People synthesis — runs whenever a people-agent is configured for the
+    // dream mode (currently companion and sim). Per-chunk for the same
     // reason soul does: per-day relationship updates compose better than
     // one massive end-of-run pass over weeks of conversation.
-    if (agent.dream_mode === 'companion' && peopleAgentName) {
+    if (peopleAgentName) {
         try {
             const speakers = extractSpeakers(filtered, agent.name);
             for (const [personName, personLines] of speakers) {
@@ -595,6 +596,64 @@ async function processDreamChunk(agent, agentNames, chunk) {
         }
     }
 
+    // Daily learnings synthesis. Replaces the per-turn extractLearnings path
+    // for sim agents, where every in-world tick is tool-use and the per-turn
+    // extractor is silenced by its !isToolUse gate. Distills the day's
+    // filtered conversation into a single learnings note keyed by date.
+    if (learningsAgentName) {
+        const learningsSlug = 'learnings/' + chunkDateStr + '-sim-day';
+        try {
+            let existingFile = '';
+            try {
+                const note = await readNote(agent.name, learningsSlug);
+                existingFile = note.content || '';
+            } catch (e) {
+                // No existing learnings file for this day — first pass.
+            }
+
+            const learningsUserMessage = '## Agent: ' + agent.name + '\n'
+                + '## Date: ' + chunkDateStr + '\n\n'
+                + (existingFile
+                    ? '## Existing learnings for today (refine, integrate; do not duplicate)\n\n' + existingFile + '\n\n'
+                    : '')
+                + '## Day\'s conversation excerpts\n\n'
+                + filtered;
+
+            const { text: extractionResult } = await invokeAgent(learningsAgentName, {
+                userMessage: learningsUserMessage,
+                context: 'learnings',
+                skipRateLimit: true,
+                skipCostLimit: true,
+                skipRetry: false,
+            });
+
+            const trimmed = extractionResult ? extractionResult.trim() : '';
+            if (trimmed && trimmed.toUpperCase() !== 'NONE') {
+                await saveNote(
+                    agent.name,
+                    'Learnings — ' + chunkDateStr,
+                    trimmed,
+                    learningsSlug,
+                    learningsAgentName,
+                    null, null, { upsert: true }
+                );
+                logDream('chunk-learnings-updated', {
+                    agent: agent.name,
+                    chunkDate: chunkDateStr,
+                    size: trimmed.length,
+                });
+            } else {
+                logDream('chunk-learnings-none', { agent: agent.name, chunkDate: chunkDateStr });
+            }
+        } catch (learningsErr) {
+            logDream('chunk-learnings-error', {
+                agent: agent.name,
+                chunkDate: chunkDateStr,
+                error: learningsErr.message,
+            });
+        }
+    }
+
     return {
         processed: true,
         chunkDate: chunkDateStr,
@@ -624,6 +683,7 @@ async function runDream() {
     const simSoulAgentName = await findDreamAgent('dream-sim-soul');
     const companionPeopleAgentName = await findDreamAgent('dream-companion-people');
     const simPeopleAgentName = await findDreamAgent('dream-sim-people');
+    const simLearningsAgentName = await findDreamAgent('dream-sim-learnings');
 
     if (!companionAgentName && !technicalAgentName && !simAgentName) {
         logDream('abort', { reason: 'No dream agent found or valid' });
@@ -650,10 +710,11 @@ async function runDream() {
 
     for (const agent of agents.rows) {
         try {
-            // Pick the right dream/soul/people agents for this dream_mode.
+            // Pick the right dream/soul/people/learnings agents for this dream_mode.
             let dreamAgentName = null;
             let soulAgentName = null;
             let peopleAgentName = null;
+            let learningsAgentName = null;
             if (agent.dream_mode === 'companion') {
                 dreamAgentName = companionAgentName;
                 soulAgentName = companionSoulAgentName;
@@ -665,12 +726,13 @@ async function runDream() {
                 dreamAgentName = simAgentName;
                 soulAgentName = simSoulAgentName;
                 peopleAgentName = simPeopleAgentName;
+                learningsAgentName = simLearningsAgentName;
             }
             if (!dreamAgentName) {
                 results.push({ agent: agent.name, error: 'dream-' + agent.dream_mode + ' agent not available' });
                 continue;
             }
-            const agentNames = { dreamAgentName, soulAgentName, peopleAgentName };
+            const agentNames = { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName };
 
             // Split the work since last_dream_at into per-UTC-day chunks so an
             // agent that's fallen behind doesn't try to fit weeks of logs into
