@@ -146,11 +146,66 @@ async function pingAgent(agentName) {
     }
 }
 
+// Per-agent rate-limit overrides cached for 60s. Read from
+// agent_configuration.configuration JSON; agents without overrides fall
+// back to the global virtual_agent_* config keys. Added 2026-05-02 so
+// the chronicler — which legitimately bursts ~10+ calls per shift
+// boundary (attend_to per villager + record_event + set_environment) —
+// stops getting slammed into a 5-minute cooldown by the default 10/60s
+// limit while regular chat agents keep their tighter cap.
+const _rateLimitOverrideCache = new Map();
+const _rateLimitOverrideCacheTtlMs = 60 * 1000;
+
+async function getRateLimitOverrides(agentName) {
+    const cached = _rateLimitOverrideCache.get(agentName);
+    if (cached && Date.now() - cached.at < _rateLimitOverrideCacheTtlMs) {
+        return cached.overrides;
+    }
+    let overrides = null;
+    try {
+        const r = await pool.query(
+            `SELECT ac.configuration FROM agent_configuration ac
+             JOIN actors a ON a.id = ac.actor_id
+             WHERE a.name = $1`,
+            [agentName]
+        );
+        const raw = r.rows[0] ? r.rows[0].configuration : null;
+        if (raw) {
+            const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            const limit = cfg.rate_limit;
+            const windowSec = cfg.rate_window_seconds;
+            const cooldownSec = cfg.cooldown_seconds;
+            if (limit != null || windowSec != null || cooldownSec != null) {
+                overrides = {
+                    limit: limit != null ? parseInt(limit) : null,
+                    windowMs: windowSec != null ? parseInt(windowSec) * 1000 : null,
+                    cooldownMs: cooldownSec != null ? parseInt(cooldownSec) * 1000 : null,
+                };
+            }
+        }
+    } catch (err) {
+        // Bad JSON or DB hiccup — fall back to globals. Cache the null
+        // so we don't re-hit the DB every isRateLimited call.
+        logVA('rate-limit-override-read-failed', { agent: agentName, error: err.message });
+    }
+    _rateLimitOverrideCache.set(agentName, { at: Date.now(), overrides });
+    return overrides;
+}
+
 // Check if an agent is rate-limited. Returns true if the call should be blocked.
-function isRateLimited(agentName) {
-    const limit = parseInt(config.get('virtual_agent_rate_limit'));
-    const windowMs = parseInt(config.get('virtual_agent_rate_window_seconds')) * 1000;
-    const cooldownMs = parseInt(config.get('virtual_agent_cooldown_seconds')) * 1000;
+async function isRateLimited(agentName) {
+    let limit = parseInt(config.get('virtual_agent_rate_limit'));
+    let windowMs = parseInt(config.get('virtual_agent_rate_window_seconds')) * 1000;
+    let cooldownMs = parseInt(config.get('virtual_agent_cooldown_seconds')) * 1000;
+
+    // Per-agent overrides win when present. Each field is independent —
+    // an agent can override just the limit and inherit the global window.
+    const overrides = await getRateLimitOverrides(agentName);
+    if (overrides) {
+        if (overrides.limit != null) limit = overrides.limit;
+        if (overrides.windowMs != null) windowMs = overrides.windowMs;
+        if (overrides.cooldownMs != null) cooldownMs = overrides.cooldownMs;
+    }
 
     const now = Date.now();
     if (!callHistory[agentName]) callHistory[agentName] = [];
@@ -310,7 +365,7 @@ async function invokeAgent(agentName, options) {
 
     // Rate limit check (unless skipped)
     if (!options.skipRateLimit) {
-        if (isRateLimited(agentName)) {
+        if (await isRateLimited(agentName)) {
             throw new Error('Agent ' + agentName + ' is rate-limited');
         }
     }
@@ -1584,7 +1639,7 @@ async function handleVirtualAgent(payload) {
             const userMessage = buildUserMessage(currentHistory, currentTrigger, voteQuestion);
 
             // Rate limit check
-            if (isRateLimited(agent.agent)) {
+            if (await isRateLimited(agent.agent)) {
                 await postError(agent.agent, discussionId, 'Rate limited — too many API calls. Cooling down.');
                 break;
             }
@@ -2081,7 +2136,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         }
 
         // Rate limit check
-        if (isRateLimited(agent.agent)) {
+        if (await isRateLimited(agent.agent)) {
             logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
             await chatSend(virtualAgentName, [fromAgent], null,
                 '[Error] Rate limited — too many API calls. Please wait before trying again.', { sceneId, isError: true });
@@ -2270,7 +2325,7 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
         const userMessage = buildMailUserMessage(mail);
 
         // Rate limit check
-        if (isRateLimited(agent.agent)) {
+        if (await isRateLimited(agent.agent)) {
             logVA('direct-mail-rate-limited', { agent: virtualAgentName, from: fromAgent, mailId });
             const { mailSend: mailSendErr } = require('./mail');
             const errSubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
