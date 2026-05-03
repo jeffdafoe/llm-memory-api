@@ -14,6 +14,7 @@ const { saveNote, readNote } = require('./documents');
 const config = require('./config');
 const { requireByName } = require('./actors');
 const { canonicalSpeakerId, renderSpeakerLabel, escapeRegExp } = require('./virtual-agent-labels');
+const { personContextSlug } = require('./people-slug');
 
 const MIN_ACTIVITY_MS = 3000;
 
@@ -871,35 +872,6 @@ async function loadSoul(agentName) {
     } catch (e) {
         return '';
     }
-}
-
-// Build a filesystem-safe slug for a person-context note. Display names
-// flow in from engine perceptions in sim mode, including future player
-// names — anything that isn't a fully trusted internal slug. So we
-// whitelist [a-z0-9-] and reject anything that empties out, instead of
-// just whitespace-to-hyphen which would let a name like "../secrets" or
-// "foo/bar" build a path that traverses out of `context/people/`.
-//
-// Diacritic stripping via NFKD normalize + combining-mark removal so
-// "Renée" reads as "renee" rather than getting silently flattened to
-// nothing. Non-Latin scripts still won't slug well; if/when those
-// matter, switch to an explicit stored slug field rather than deriving
-// filesystem paths from display names.
-//
-// Returns null if the input is unusable (empty, non-string, no surviving
-// characters), so callers can skip the read entirely.
-function personContextSlug(name) {
-    if (!name || typeof name !== 'string') return null;
-    const slug = name
-        .trim()
-        .normalize('NFKD')
-        .replace(/[̀-ͯ]/g, '')
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-]/g, '')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-    return slug || null;
 }
 
 // Load per-person relationship files for a virtual agent.

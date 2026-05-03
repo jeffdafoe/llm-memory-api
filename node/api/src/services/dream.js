@@ -8,6 +8,7 @@ const config = require('./config');
 const { log, logError } = require('./logger');
 const { saveNote, readNote, listNotes } = require('./documents');
 const { invokeAgent } = require('./virtual-agent');
+const { personContextSlug } = require('./people-slug');
 
 // Signal patterns that indicate memory-worthy content.
 // Used to pre-filter conversation logs before sending to the dream agent,
@@ -167,7 +168,7 @@ function prefilterLog(content) {
 }
 
 // Extract unique speakers from conversation logs and group lines by speaker.
-// Handles four formats:
+// Handles five formats:
 //   memory-sync uploads:    "[HH:MM speaker] message text"
 //   VA transcript metadata: "- **From:** speaker"
 //   discussion history:     "speaker: message text" or "[timestamp] speaker: message text"
@@ -177,12 +178,34 @@ function prefilterLog(content) {
 //     JSON array; we parse it and treat each entry as a discrete speaker
 //     line. Without this branch the salem NPCs' people-files freeze the
 //     moment their conversation traffic shifts to multi-agent discussions.
-// Returns a Map of speaker name → array of relevant lines.
+//   sim-day distiller:      "[Weekday HH:MM Display Name] text"
+//     — produced by sim-conversation-distiller.js for sim-mode NPCs.
+//     Display name is multi-word ("John Ellis"), so a separate pattern
+//     and slug step is needed.
+//
+// Returns a Map<slug, { display, lines }>:
+//   - slug is the filesystem-safe key used for context/people/{slug}.
+//     Built via personContextSlug from the display name; identical to
+//     the slug loadPeopleContext uses at read time.
+//   - display is the human-readable name to show in the people-update
+//     prompt (## Person: ...) and the saved note title.
+//   - lines is the per-speaker excerpt array fed to the dream-people
+//     agent.
+//
+// Self-skip: lines spoken by the agent itself are dropped so the
+// agent's namespace doesn't accumulate context/people/{self}. agentName
+// arrives as the actor slug (e.g. "home" in companion mode,
+// "zbbs-john-ellis" in sim mode); the salem zbbs- prefix is stripped
+// before slugifying so "zbbs-john-ellis" matches "John Ellis" lines.
 function extractSpeakers(content, agentName) {
     const lines = content.split('\n');
     const speakerLines = new Map();
-    const agentLower = agentName.toLowerCase();
+    const agentSlugSelf = personContextSlug(String(agentName || '').replace(/^zbbs-/, ''));
 
+    // Pattern for sim distiller format: [Weekday HH:MM Display Name]
+    // Captures the display name (group 1). Multi-word names land here;
+    // chatPattern's \S+ would only catch the first token.
+    const simPattern = /^\[\w+day\s+\d{2}:\d{2}\s+([^\]]+?)\]/;
     // Pattern for memory-sync format: [HH:MM speaker]
     const chatPattern = /^\[(\d{2}:\d{2})\s+(\S+)\]/;
     // Pattern for VA transcript metadata: - **From:** speaker
@@ -193,18 +216,18 @@ function extractSpeakers(content, agentName) {
 
     let currentSpeaker = null;
 
-    function addSpeaker(name, line) {
-        const lower = name.toLowerCase();
-        if (lower === agentLower) {
+    function addSpeaker(displayName, line) {
+        const slug = personContextSlug(displayName);
+        if (!slug || slug === agentSlugSelf) {
             currentSpeaker = null;
             return;
         }
-        currentSpeaker = lower;
-        if (!speakerLines.has(lower)) {
-            speakerLines.set(lower, []);
+        currentSpeaker = slug;
+        if (!speakerLines.has(slug)) {
+            speakerLines.set(slug, { display: displayName, lines: [] });
         }
         if (line) {
-            speakerLines.get(lower).push(line);
+            speakerLines.get(slug).lines.push(line);
         }
     }
 
@@ -226,19 +249,11 @@ function extractSpeakers(content, agentName) {
                         if (!msg || typeof msg.sender !== 'string') {
                             continue;
                         }
-                        const sender = msg.sender;
-                        const lower = sender.toLowerCase();
-                        if (lower === agentLower) {
-                            continue;
-                        }
-                        if (!speakerLines.has(lower)) {
-                            speakerLines.set(lower, []);
-                        }
                         const text = typeof msg.content === 'string' ? msg.content : '';
                         // Label each message with the speaker so the
-                        // dream-companion-people LLM can tell turns apart
-                        // when several get joined into one prompt.
-                        speakerLines.get(lower).push('[' + sender + '] ' + text);
+                        // dream-people LLM can tell turns apart when
+                        // several get joined into one prompt.
+                        addSpeaker(msg.sender, '[' + msg.sender + '] ' + text);
                     }
                     // Reset currentSpeaker — the JSON array is its own
                     // self-contained block; don't let stray lines after
@@ -249,6 +264,12 @@ function extractSpeakers(content, agentName) {
             } catch (err) {
                 // Not a parseable array — fall through to other patterns.
             }
+        }
+
+        const simMatch = line.match(simPattern);
+        if (simMatch) {
+            addSpeaker(simMatch[1].trim(), line);
+            continue;
         }
 
         const chatMatch = line.match(chatPattern);
@@ -272,7 +293,7 @@ function extractSpeakers(content, agentName) {
         // Continuation lines belong to the current speaker
         if (currentSpeaker && line.trim()) {
             if (speakerLines.has(currentSpeaker)) {
-                speakerLines.get(currentSpeaker).push(line);
+                speakerLines.get(currentSpeaker).lines.push(line);
             }
         }
     }
@@ -537,25 +558,26 @@ async function processDreamChunk(agent, agentNames, chunk) {
     if (peopleAgentName) {
         try {
             const speakers = extractSpeakers(filtered, agent.name);
-            for (const [personName, personLines] of speakers) {
+            for (const [slug, entry] of speakers) {
+                const { display, lines: personLines } = entry;
                 if (personLines.length === 0) {
                     continue;
                 }
                 try {
                     let existingFile = '';
                     try {
-                        const note = await readNote(agent.name, 'context/people/' + personName);
+                        const note = await readNote(agent.name, 'context/people/' + slug);
                         existingFile = note.content || '';
                     } catch (e) {
                         // No existing file — first encounter.
                     }
 
                     const peopleUserMessage = '## Agent: ' + agent.name + '\n'
-                        + '## Person: ' + personName + '\n'
+                        + '## Person: ' + display + '\n'
                         + '## Today\'s date: ' + chunkDateStr + '\n\n'
                         + '## Current relationship file\n\n'
                         + (existingFile || '(empty — first encounter)')
-                        + '\n\n## Recent conversation excerpts involving ' + personName + '\n\n'
+                        + '\n\n## Recent conversation excerpts involving ' + display + '\n\n'
                         + personLines.join('\n');
 
                     const { text: updatedFile } = await invokeAgent(peopleAgentName, {
@@ -569,16 +591,16 @@ async function processDreamChunk(agent, agentNames, chunk) {
                     if (updatedFile && updatedFile.trim()) {
                         await saveNote(
                             agent.name,
-                            'People — ' + personName,
+                            'People — ' + display,
                             updatedFile.trim(),
-                            'context/people/' + personName,
+                            'context/people/' + slug,
                             peopleAgentName,
                             null, null, { upsert: true }
                         );
                         logDream('chunk-people-updated', {
                             agent: agent.name,
                             chunkDate: chunkDateStr,
-                            person: personName,
+                            person: display,
                             size: updatedFile.length,
                         });
                     }
@@ -586,7 +608,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
                     logDream('chunk-people-error', {
                         agent: agent.name,
                         chunkDate: chunkDateStr,
-                        person: personName,
+                        person: display,
                         error: personErr.message,
                     });
                 }
