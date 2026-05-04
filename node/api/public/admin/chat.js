@@ -57,6 +57,17 @@ function useChat({ api, showToast, dashboard }) {
             // messages have `acked_at === undefined` and we treat them as
             // having no ack tracking — only an explicit NULL means unacked.
             g.hasUnacked = g.messages.some(m => m.acked_at === null);
+            // Scene location (ZBBS-118): every chat row in a scene carries
+            // the same scene_id and the same scenes-table join, so picking
+            // any message's structure_name yields the same string. First
+            // non-empty wins to defend against an unexpectedly-NULL row.
+            g.location = '';
+            for (const m of g.messages) {
+                if (m.structure_name) {
+                    g.location = m.structure_name;
+                    break;
+                }
+            }
             const seen = new Set();
             const order = [];
             for (const m of g.messages) {

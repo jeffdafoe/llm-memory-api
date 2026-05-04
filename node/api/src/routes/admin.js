@@ -737,12 +737,24 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
 
     const discussionId = safeInt(discussion_id);
 
+    // scenes / village_object / asset LEFT JOINs surface the cascade origin
+    // structure for sim-mode scenes (ZBBS-118). NULL ride-throughs cover
+    // companion-mode + pre-MEM-121 + chronicler-only / admin-trigger scenes.
+    // COALESCE(vo.display_name, a.name) matches how agent_tick.go labels
+    // structures elsewhere — per-instance display name when set, asset
+    // name as fallback.
+    const sceneJoin = `LEFT JOIN scenes sc ON sc.scene_id = cmt.scene_id
+                       LEFT JOIN village_object vo ON vo.id = sc.structure_id
+                       LEFT JOIN asset a ON a.id = vo.asset_id`;
+    const sceneSelect = `, sc.structure_id, COALESCE(vo.display_name, a.name) AS structure_name`;
+
     // For discussion channels, query distinct messages from chat_message_texts
     // to avoid showing duplicate delivery rows
     if (discussionId) {
-        let sql = `SELECT cmt.id, fa.name AS from_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cmt.discussion_id, cmt.scene_id
+        let sql = `SELECT cmt.id, fa.name AS from_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cmt.discussion_id, cmt.scene_id${sceneSelect}
                    FROM chat_message_texts cmt
-                   JOIN actors fa ON fa.id = cmt.from_actor_id`;
+                   JOIN actors fa ON fa.id = cmt.from_actor_id
+                   ${sceneJoin}`;
         const conditions = ['cmt.discussion_id = $1'];
         const params = [discussionId];
         if (hasFilter) {
@@ -757,11 +769,12 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
         res.json({ messages: result.rows });
     } else {
         // Non-discussion: query delivery rows as before
-        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cm.acked_at, cmt.scene_id
+        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cm.acked_at, cmt.scene_id${sceneSelect}
                    FROM chat_messages cm
                    JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
                    JOIN actors fa ON fa.id = cmt.from_actor_id
-                   JOIN actors ta ON ta.id = cm.to_actor_id`;
+                   JOIN actors ta ON ta.id = cm.to_actor_id
+                   ${sceneJoin}`;
         const conditions = ['cm.deleted_at IS NULL', 'cmt.discussion_id IS NULL'];
         const params = [];
         if (hasFilter) {
