@@ -32,10 +32,16 @@
   debug:
     msg: "Pending migrations: {{ pending_migrations }}"
 
+# ON_ERROR_STOP=1 makes psql exit non-zero on the first SQL error.
+# Without it, psql swallows errors inside BEGIN/COMMIT blocks and
+# exits 0 anyway, so the && chain still records the migration as
+# applied even when its SQL rolled back. Salem-engine ZBBS-119 hit
+# this when its description strings overflowed setting.description
+# varchar(255); fixing this side prophylactically.
 - name: Apply pending migrations
   shell: |
-    sudo -u postgres psql -d {{ database_name }} -f {{ project_root }}/migrations/{{ item }}_up.sql && \
-    sudo -u postgres psql -d {{ database_name }} -c "INSERT INTO migrations_applied (migration_id) VALUES ('{{ item }}');"
+    sudo -u postgres psql -d {{ database_name }} -v ON_ERROR_STOP=1 -f {{ project_root }}/migrations/{{ item }}_up.sql && \
+    sudo -u postgres psql -d {{ database_name }} -v ON_ERROR_STOP=1 -c "INSERT INTO migrations_applied (migration_id) VALUES ('{{ item }}');"
   loop: "{{ pending_migrations }}"
   when: pending_migrations | length > 0
 
