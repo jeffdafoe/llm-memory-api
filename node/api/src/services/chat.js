@@ -59,7 +59,10 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // history readers (loadDirectChatHistory, loadChatHistory) filter
     // them out of next-call context. Without this, virtual agents read
     // their own error rows as if they were real conversation.
-    const isError = opts && opts.isError === true;
+    // Coerce to a real boolean — `opts && opts.isError === true` returns
+    // the falsy left operand (undefined/null) when opts is missing, and
+    // pg sends those as NULL which violates is_error's NOT NULL constraint.
+    const isError = Boolean(opts && opts.isError === true);
     // wait flag: the route is awaiting the VA reply inline via wait=true.
     // Used to forward ackReplyOnInsert into handleDirectChat below — the
     // reply row is consumed inline, so it should be acked at insert
