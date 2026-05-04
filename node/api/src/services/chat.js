@@ -6,23 +6,28 @@ const { log } = require('./logger');
 const { broadcast } = require('./events');
 const systemHandler = require('./system-handler');
 const { resolveByName, resolveMultipleByName, requireByName, canAccessVirtualAgent } = require('./actors');
+const { safeInt } = require('../util');
 
 function logChat(action, details) {
     log('chat', action, details);
 }
 
 // Parse discussion_id from either an integer or a legacy 'discussion-{N}' channel string.
-// Returns null if neither is provided.
+// Returns a positive integer or null. Discussion IDs are pg SERIAL so 0 and
+// negatives are never valid identifiers; collapsing them to null here keeps
+// callers from having to redo the same range check.
 function resolveDiscussionId(discussionId, channel) {
-    if (discussionId) {
-        const parsed = parseInt(discussionId, 10);
-        if (isNaN(parsed)) return null;
-        return parsed;
+    if (discussionId !== undefined && discussionId !== null && discussionId !== '') {
+        const parsed = safeInt(discussionId);
+        return parsed !== null && parsed > 0 ? parsed : null;
     }
     // Legacy backward compat: extract from channel string
     if (channel) {
         const match = channel.match(/^discussion-(\d+)$/);
-        if (match) return parseInt(match[1], 10);
+        if (match) {
+            const parsed = safeInt(match[1]);
+            return parsed !== null && parsed > 0 ? parsed : null;
+        }
     }
     return null;
 }

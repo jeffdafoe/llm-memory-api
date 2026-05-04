@@ -1,6 +1,7 @@
 // agents.js — Agents list, detail, welcome templates, provider registry
 import { ref } from 'vue';
 import { useSortable } from './core.js';
+import { safeInt } from './util.js';
 
 function useAgents({ api, showToast, showConfirm, onEvent }) {
     const agents = ref([]);
@@ -321,7 +322,29 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
     async function saveProfile() {
         agentProfileSaving.value = true;
         try {
-            const quotaBytes = agentProfileStorageQuota.value !== '' ? parseInt(agentProfileStorageQuota.value) * 1024 * 1024 : null;
+            // Distinguish empty (= clear quota, fall back to system default)
+            // from malformed (= reject, surface a toast). safeInt of '' is
+            // already null, but conflating that with safeInt('abc') would
+            // turn typos into silent quota clears. The post-multiply
+            // isSafeInteger check catches an MB value that itself was safe
+            // but blew past Number.MAX_SAFE_INTEGER once converted to bytes.
+            const rawQuota = agentProfileStorageQuota.value;
+            let quotaBytes = null;
+            if (rawQuota !== '') {
+                const quotaMb = safeInt(rawQuota);
+                if (quotaMb === null || quotaMb < 0) {
+                    showToast('Storage quota must be a whole number of MB', 'error');
+                    agentProfileSaving.value = false;
+                    return;
+                }
+                const bytes = quotaMb * 1024 * 1024;
+                if (!Number.isSafeInteger(bytes)) {
+                    showToast('Storage quota is too large', 'error');
+                    agentProfileSaving.value = false;
+                    return;
+                }
+                quotaBytes = bytes;
+            }
             const body = {
                 agent: selectedAgent.value.agent,
                 provider: agentProfileProvider.value || null,

@@ -6,6 +6,7 @@ const { log } = require('../services/logger');
 const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote, moveNote, validateSlug, escapeLike } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
+const { safeInt } = require('../util');
 const { getEntries: getRequestLogEntries } = require('../middleware/request-log');
 const { getErrorLogEntries } = require('../services/logger');
 const generatePassphrase = require('eff-diceware-passphrase');
@@ -734,7 +735,7 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
     const visibleIds = await getVisibleActorIds(req.actorId);
     const hasFilter = visibleIds !== null;
 
-    const discussionId = discussion_id ? parseInt(discussion_id, 10) : null;
+    const discussionId = safeInt(discussion_id);
 
     // For discussion channels, query distinct messages from chat_message_texts
     // to avoid showing duplicate delivery rows
@@ -1623,8 +1624,8 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
 
     // Validate max_tokens and temperature if provided
     if (max_tokens != null) {
-        const parsed = parseInt(max_tokens);
-        if (isNaN(parsed) || parsed < 1) {
+        const parsed = safeInt(max_tokens);
+        if (parsed === null || parsed < 1) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'max_tokens must be a positive integer' }
             });
@@ -1697,7 +1698,7 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
              parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
              parseCostBudget(cost_budget_monthly, 'cost_budget_monthly'),
              cache_prompts === true, learning_enabled !== false,
-             max_tokens != null ? parseInt(max_tokens) : null,
+             max_tokens != null ? safeInt(max_tokens) : null,
              temperature != null ? parseFloat(temperature) : null,
              configuration ? JSON.stringify(sanitizeAgentConfiguration(configuration)) : null,
              ['none', 'companion', 'technical', 'sim'].includes(dream_mode) ? dream_mode : 'none']
@@ -1947,7 +1948,17 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         updates.push(`learning_enabled = $${idx++}`);
     }
     if (max_tokens !== undefined) {
-        params.push(max_tokens === null || max_tokens === '' ? null : parseInt(max_tokens));
+        if (max_tokens === null || max_tokens === '') {
+            params.push(null);
+        } else {
+            const parsed = safeInt(max_tokens);
+            if (parsed === null || parsed < 1) {
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'max_tokens must be a positive integer' }
+                });
+            }
+            params.push(parsed);
+        }
         updates.push(`max_tokens = $${idx++}`);
     }
     if (temperature !== undefined) {
@@ -1955,7 +1966,18 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         updates.push(`temperature = $${idx++}`);
     }
     if (storage_quota !== undefined) {
-        params.push(storage_quota === null || storage_quota === '' ? null : parseInt(storage_quota));
+        if (storage_quota === null || storage_quota === '') {
+            params.push(null);
+        } else {
+            const parsed = safeInt(storage_quota);
+            // 0 is valid (treats as "no quota") so the lower bound is >= 0.
+            if (parsed === null || parsed < 0) {
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'storage_quota must be a non-negative integer' }
+                });
+            }
+            params.push(parsed);
+        }
         updates.push(`storage_quota = $${idx++}`);
     }
     if (dream_mode !== undefined) {
@@ -2013,14 +2035,14 @@ router.post('/admin/agents/usage', requirePerm('agents', 'read'), adminRoute('ag
          WHERE u.actor_id = $1
          ORDER BY u.created_at DESC
          LIMIT $2`,
-        [actor.id, Math.min(parseInt(limit) || 50, 200)]
+        [actor.id, Math.min(Math.max(safeInt(limit) ?? 50, 1), 200)]
     );
     res.json({ usage: result.rows });
 }));
 
 // POST /admin/agents/call-detail — get full call detail by call ID
 router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRoute('agents-call-detail', async (req, res) => {
-    const callId = parseInt(req.body.call_id);
+    const callId = safeInt(req.body.call_id);
     if (!callId || callId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: call_id' } });
     }
@@ -2045,8 +2067,8 @@ router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRou
 
 // Helper: parse and validate actor_id from request body. Returns integer or sends 400.
 function parseActorId(raw, res) {
-    const id = parseInt(raw, 10);
-    if (!Number.isInteger(id) || id <= 0) {
+    const id = safeInt(raw);
+    if (id === null || id <= 0) {
         res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid actor_id' } });
         return null;
     }
@@ -2220,8 +2242,8 @@ router.post('/admin/actors/visibility/save', requirePerm('agents', 'write'), adm
     }
 
     // Normalize grant IDs to integers, dedupe, exclude self
-    const normalizedGrants = grants.map(g => parseInt(g, 10));
-    if (normalizedGrants.some(g => !Number.isInteger(g) || g <= 0)) {
+    const normalizedGrants = grants.map(g => safeInt(g));
+    if (normalizedGrants.some(g => g === null || g <= 0)) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid grant actor ID' } });
     }
     const deduped = [...new Set(normalizedGrants)].filter(g => g !== actorId);
@@ -2330,8 +2352,8 @@ function isValidAdminPerm(resource, action) {
 
 // POST /admin/actors/admin-permissions/read — get admin permissions for an actor
 router.post('/admin/actors/admin-permissions/read', requirePerm('agents', 'read'), adminRoute('actors-admin-permissions-read', async (req, res) => {
-    const actorId = parseInt(req.body.actor_id);
-    if (!Number.isInteger(actorId) || actorId <= 0) {
+    const actorId = safeInt(req.body.actor_id);
+    if (actorId === null || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
     }
     const result = await pool.query(
@@ -2343,9 +2365,9 @@ router.post('/admin/actors/admin-permissions/read', requirePerm('agents', 'read'
 
 // POST /admin/actors/admin-permissions/save — replace all admin permissions for an actor
 router.post('/admin/actors/admin-permissions/save', requirePerm('agents', 'write'), adminRoute('actors-admin-permissions-save', async (req, res) => {
-    const actorId = parseInt(req.body.actor_id);
+    const actorId = safeInt(req.body.actor_id);
     const { permissions } = req.body;
-    if (!Number.isInteger(actorId) || actorId <= 0 || !Array.isArray(permissions)) {
+    if (actorId === null || actorId <= 0 || !Array.isArray(permissions)) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required fields: actor_id (positive integer), permissions[]' } });
     }
 
@@ -2393,8 +2415,8 @@ router.post('/admin/actors/admin-permissions/save', requirePerm('agents', 'write
 
 // POST /admin/actors/delete — permanently delete an actor and all associated data
 router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('actors-delete', async (req, res) => {
-    const actorId = parseInt(req.body.actor_id);
-    if (!Number.isInteger(actorId) || actorId <= 0) {
+    const actorId = safeInt(req.body.actor_id);
+    if (actorId === null || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
     }
 
@@ -2637,7 +2659,27 @@ router.post('/admin/invite-codes', requirePerm('access', 'read'), adminRoute('in
 // POST /admin/invite-codes/generate — generate invite codes (batch)
 router.post('/admin/invite-codes/generate', requirePerm('access', 'write'), adminRoute('invite-codes-generate', async (req, res) => {
     const { count = 1, expires_days, realm } = req.body;
-    const num = Math.min(Math.max(parseInt(count) || 1, 1), 50);
+    const num = Math.min(Math.max(safeInt(count) ?? 1, 1), 50);
+
+    // expires_days: omitted/empty/null → no expiry (NULL in DB). Otherwise
+    // require a positive integer — already-expired codes (0 or negative
+    // days) are nonsense for an invite-code-generation endpoint. Bound as
+    // a parameter rather than interpolated; even though safeInt makes the
+    // old interpolation safe, the rule is no dynamic SQL from user input.
+    // Practical upper bound — pg int4 max is 2147483647 but anything past
+    // a few thousand days is operator error, not intent. The bound also
+    // means the SQL cast can't blow up with a 500 instead of returning a
+    // clean 400.
+    const MAX_EXPIRES_DAYS = 3650;
+    let expiresDaysInt = null;
+    if (expires_days !== undefined && expires_days !== null && expires_days !== '') {
+        expiresDaysInt = safeInt(expires_days);
+        if (expiresDaysInt === null || expiresDaysInt <= 0 || expiresDaysInt > MAX_EXPIRES_DAYS) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'expires_days must be a positive integer (max ' + MAX_EXPIRES_DAYS + ')' }
+            });
+        }
+    }
 
     // Determine realm: explicit param, or derive from creator's first realm
     let codeRealm = realm || null;
@@ -2653,10 +2695,16 @@ router.post('/admin/invite-codes/generate', requirePerm('access', 'write'), admi
     const codes = [];
     for (let i = 0; i < num; i++) {
         const code = crypto.randomBytes(16).toString('hex');
-        const expiresAt = expires_days ? `NOW() + INTERVAL '${parseInt(expires_days)} days'` : 'NULL';
+        // CASE on $3 because pg can't bind an INTERVAL multiplier directly;
+        // multiplying an integer parameter by a literal '1 day' interval
+        // is the standard idiom and keeps the value bound.
         await pool.query(
-            `INSERT INTO invite_codes (code, created_by, expires_at, realm) VALUES ($1, $2, ${expiresAt}, $3)`,
-            [code, req.authenticatedUser.username, codeRealm]
+            `INSERT INTO invite_codes (code, created_by, expires_at, realm)
+             VALUES ($1, $2,
+                     CASE WHEN $3::int IS NULL THEN NULL
+                          ELSE NOW() + ($3::int * INTERVAL '1 day') END,
+                     $4)`,
+            [code, req.authenticatedUser.username, expiresDaysInt, codeRealm]
         );
         codes.push(code);
     }

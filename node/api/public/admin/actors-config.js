@@ -1,6 +1,7 @@
 // actors-config.js — Actor permissions, visibility, and creation management (Configuration > Actors tab)
 import { ref, computed, watch } from 'vue';
 import { useSortable } from './core.js';
+import { safeInt } from './util.js';
 
 function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, permissions }) {
     const actorsConfigList = ref([]);
@@ -183,7 +184,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             actorHasWildcardVis.value = visData.wildcard;
             actorVisibilityGrants.value = visData.grants.map(g => ({
                 ...g,
-                target_actor_id: parseInt(g.target_actor_id)
+                target_actor_id: safeInt(g.target_actor_id)
             }));
 
             // Available namespaces
@@ -293,7 +294,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     // ─── Visibility ───
 
     function addVisibilityGrant() {
-        const targetId = parseInt(newVisibilityTarget.value);
+        const targetId = safeInt(newVisibilityTarget.value);
         if (!targetId) return;
         // Check for duplicate
         if (actorVisibilityGrants.value.some(g => g.target_actor_id === targetId)) {
@@ -700,7 +701,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
     }
 
     async function addVaAccessGrant() {
-        const targetId = parseInt(newVaAccessTarget.value);
+        const targetId = safeInt(newVaAccessTarget.value);
         if (!targetId || !selectedActorConfig.value) return;
         try {
             await api('/admin/virtual-agent-access/grant', {
