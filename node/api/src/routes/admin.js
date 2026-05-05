@@ -737,24 +737,22 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
 
     const discussionId = safeInt(discussion_id);
 
-    // scenes / village_object / asset LEFT JOINs surface the cascade origin
-    // structure for sim-mode scenes (ZBBS-118). NULL ride-throughs cover
-    // companion-mode + pre-MEM-121 + chronicler-only / admin-trigger scenes.
-    // COALESCE(vo.display_name, a.name) matches how agent_tick.go labels
-    // structures elsewhere — per-instance display name when set, asset
-    // name as fallback.
-    const sceneJoin = `LEFT JOIN scenes sc ON sc.scene_id = cmt.scene_id
-                       LEFT JOIN village_object vo ON vo.id = sc.structure_id
-                       LEFT JOIN asset a ON a.id = vo.asset_id`;
-    const sceneSelect = `, sc.structure_id, COALESCE(vo.display_name, a.name) AS structure_name`;
+    // scene_structure (MEM-127) is a denormalized stamp the engine writes
+    // at chat-send time, pre-resolved from the engine-side scenes /
+    // village_object / asset chain (which lives in the zbbs database and
+    // can't be JOINed from memory_api — the cross-database JOIN that
+    // ZBBS-118's e2ddc88 attempted is what this replaces). NULL covers
+    // companion-mode, pre-MEM-127 historical messages, and chronicler-
+    // only / admin-trigger / noticeboard cascades that have no
+    // originating structure.
+    const sceneSelect = `, cmt.scene_structure AS structure_name`;
 
     // For discussion channels, query distinct messages from chat_message_texts
     // to avoid showing duplicate delivery rows
     if (discussionId) {
         let sql = `SELECT cmt.id, fa.name AS from_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cmt.discussion_id, cmt.scene_id${sceneSelect}
                    FROM chat_message_texts cmt
-                   JOIN actors fa ON fa.id = cmt.from_actor_id
-                   ${sceneJoin}`;
+                   JOIN actors fa ON fa.id = cmt.from_actor_id`;
         const conditions = ['cmt.discussion_id = $1'];
         const params = [discussionId];
         if (hasFilter) {
@@ -773,8 +771,7 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
                    FROM chat_messages cm
                    JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
                    JOIN actors fa ON fa.id = cmt.from_actor_id
-                   JOIN actors ta ON ta.id = cm.to_actor_id
-                   ${sceneJoin}`;
+                   JOIN actors ta ON ta.id = cm.to_actor_id`;
         const conditions = ['cm.deleted_at IS NULL', 'cmt.discussion_id IS NULL'];
         const params = [];
         if (hasFilter) {

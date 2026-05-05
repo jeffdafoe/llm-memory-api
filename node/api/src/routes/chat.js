@@ -56,10 +56,23 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         }
     }
 
+    // Scene structure (MEM-127) — denormalized structure-name stamp the
+    // engine pre-resolves at chat-send time (via scene_id → village_object
+    // → asset in its own zbbs database) so the admin comms page can
+    // display the location chip without crossing databases. Optional;
+    // omitted from companion-mode and chronicler-only / admin-trigger
+    // scenes. Length-capped to match actor.display_name in zbbs (100).
+    const sceneStructure = req.body.scene_structure;
+    if (sceneStructure !== undefined && sceneStructure !== null) {
+        if (typeof sceneStructure !== 'string' || sceneStructure.length > 100) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'scene_structure must be a string up to 100 chars' } });
+        }
+    }
+
     const wait = req.body.wait === true;
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, sceneId, wait,
+        toolCalls, toolCallId, toolsOffered, sceneId, sceneStructure, wait,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.

@@ -1,0 +1,27 @@
+-- MEM-127: scene_structure column on chat_message_texts.
+--
+-- Denormalized structure-name stamp for sim-mode scenes. Engine
+-- pre-resolves the structure name at chat-send time (via scene_id →
+-- village_object → asset, which it can do because all three live in
+-- the engine's zbbs database) and passes the resolved string in the
+-- /v1/chat/send body. memory_api stores it on the message row.
+--
+-- Why a column on chat_message_texts instead of a separate scenes
+-- table here: the comms admin page is the only reader. It always
+-- wants the structure-name for a scene's messages. A separate scenes
+-- table would mean an extra JOIN at every read; the column is one
+-- byte per character per message, redundant within a scene but cheap.
+-- The redundancy is also self-healing under structure renames — old
+-- messages keep the name they were sent under, which matches what an
+-- audit-flavored UI should show.
+--
+-- Replaces the cross-database LEFT JOIN that ZBBS-118's e2ddc88
+-- attempted (LEFT JOIN scenes / village_object / asset from
+-- routes/admin.js's chat handler — which 500'd in production because
+-- those tables live in the engine's zbbs database, not memory_api).
+-- That JOIN is removed in this same change set; the engine will
+-- start populating scene_structure on subsequent chat sends. Old
+-- messages have NULL scene_structure and render no chip, same as
+-- companion-mode messages.
+
+ALTER TABLE chat_message_texts ADD COLUMN scene_structure VARCHAR(100);
