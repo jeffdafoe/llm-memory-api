@@ -61,11 +61,21 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     // → asset in its own zbbs database) so the admin comms page can
     // display the location chip without crossing databases. Optional;
     // omitted from companion-mode and chronicler-only / admin-trigger
-    // scenes. Length-capped to match actor.display_name in zbbs (100).
-    const sceneStructure = req.body.scene_structure;
+    // scenes. Length-capped to match village_object.display_name and
+    // asset.name in zbbs (both VARCHAR(100)).
+    //
+    // Whitespace-only or empty strings normalize to null — the engine
+    // omits via `omitempty` so won't hit this, but defensive against
+    // other clients that might send "" to mean "no structure" rather
+    // than omitting the field. Treating both as NULL keeps the comms
+    // page's "first non-empty structure_name wins" grouping consistent.
+    let sceneStructure = req.body.scene_structure;
     if (sceneStructure !== undefined && sceneStructure !== null) {
         if (typeof sceneStructure !== 'string' || sceneStructure.length > 100) {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'scene_structure must be a string up to 100 chars' } });
+        }
+        if (sceneStructure.trim() === '') {
+            sceneStructure = null;
         }
     }
 
