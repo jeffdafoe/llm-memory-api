@@ -55,6 +55,13 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
     const toolsOffered = opts && opts.toolsOffered !== undefined ? opts.toolsOffered : null;
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
+    // sceneStructure (MEM-127) — denormalized structure-name stamp from the
+    // engine. Pre-resolved engine-side because the village_object/asset
+    // tables that produce the name live in the engine's zbbs database,
+    // not memory_api. Optional; null for companion-mode chat and for
+    // engine messages that originated from a structure-less cascade
+    // (chronicler dispatch, admin trigger, noticeboard generation).
+    const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
     // is_error flag (MEM-122): set on retry/error breadcrumb rows so
     // history readers (loadDirectChatHistory, loadChatHistory) filter
     // them out of next-call context. Without this, virtual agents read
@@ -129,8 +136,8 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // Insert one message text row
     const textResult = await pool.query(
         `INSERT INTO chat_message_texts
-            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, is_error)
-         VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8)
+            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error)
+         VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9)
          RETURNING id, sent_at`,
         [
             message,
@@ -140,6 +147,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
             toolCallId,
             toolsOffered !== null ? JSON.stringify(toolsOffered) : null,
             sceneId,
+            sceneStructure,
             isError,
         ]
     );
