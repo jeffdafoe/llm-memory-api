@@ -32,6 +32,13 @@
 //                                consume_now / consumers fields are skipped
 //                                — meaningful mechanically but verbose for
 //                                a one-line chat-row chip.
+//   attend_to(villager)       -> [attend_to] + villager name. Without the
+//                                name it's impossible to tell at a glance
+//                                which dispatch is which when the
+//                                chronicler emits multiple attend_to calls
+//                                in the same assistant message (parallel
+//                                tool use), and that's the common case
+//                                during arrival or shift-boundary scenes.
 //   done() / unknown          -> [name] chip only
 //
 // Usage: <tool-call-display :tc="toolCall" />
@@ -71,6 +78,10 @@ const template = `
     <span class="tool-chip">[pay]</span>
     <span v-if="payLabel" class="tool-prose">{{ payLabel }}</span>
 </template>
+<template v-else-if="tc.name === 'attend_to'">
+    <span class="tool-chip">[attend_to]</span>
+    <span v-if="inputVillager" class="tool-prose">{{ inputVillager }}</span>
+</template>
 <span v-else class="tool-chip">[{{ tc.name }}]</span>
 `;
 
@@ -93,6 +104,7 @@ export default {
         const inputDestination = computed(() => input.value.destination || '');
         const inputType = computed(() => input.value.type || '');
         const inputScope = computed(() => input.value.scope || '');
+        const inputVillager = computed(() => input.value.villager || '');
         // 'village' is the chronicler's default scope; only surface a scope
         // chip when the tool call set something else (e.g. local/private).
         const nonDefaultScope = computed(() => {
@@ -152,7 +164,7 @@ export default {
 
         return {
             inputText, inputQuery, inputDestination, inputType,
-            inputScope, nonDefaultScope,
+            inputScope, nonDefaultScope, inputVillager,
             consumeLabel, gatherLabel, payLabel,
         };
     }
