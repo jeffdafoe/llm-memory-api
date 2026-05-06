@@ -39,6 +39,17 @@
 //                                in the same assistant message (parallel
 //                                tool use), and that's the common case
 //                                during arrival or shift-boundary scenes.
+//   accept_pay()              -> [accept_pay] chip only — no args, the
+//                                tool itself is the meaning ("recipient
+//                                accepted the held-tx pay deliberation").
+//   decline_pay(reason)       -> [decline_pay] + the reason in quotes.
+//                                The reason IS the recipient's spoken
+//                                refusal (engine emits it as a synthetic
+//                                npc_spoke for the room), so showing it
+//                                here gives the admin the exchange.
+//   counter_pay(new_amount,   -> [counter_pay] + "<amount>c — <message>"
+//               message)         where the message is the recipient's
+//                                spoken counter (also fed to npc_spoke).
 //   done() / unknown          -> [name] chip only
 //
 // Usage: <tool-call-display :tc="toolCall" />
@@ -82,6 +93,17 @@ const template = `
     <span class="tool-chip">[attend_to]</span>
     <span v-if="inputVillager" class="tool-prose">{{ inputVillager }}</span>
 </template>
+<template v-else-if="tc.name === 'accept_pay'">
+    <span class="tool-chip">[accept_pay]</span>
+</template>
+<template v-else-if="tc.name === 'decline_pay'">
+    <span class="tool-chip">[decline_pay]</span>
+    <span v-if="inputReason" class="tool-prose">&ldquo;{{ inputReason }}&rdquo;</span>
+</template>
+<template v-else-if="tc.name === 'counter_pay'">
+    <span class="tool-chip">[counter_pay]</span>
+    <span v-if="counterPayLabel" class="tool-prose">{{ counterPayLabel }}</span>
+</template>
 <span v-else class="tool-chip">[{{ tc.name }}]</span>
 `;
 
@@ -105,6 +127,7 @@ export default {
         const inputType = computed(() => input.value.type || '');
         const inputScope = computed(() => input.value.scope || '');
         const inputVillager = computed(() => input.value.villager || '');
+        const inputReason = computed(() => input.value.reason || '');
         // 'village' is the chronicler's default scope; only surface a scope
         // chip when the tool call set something else (e.g. local/private).
         const nonDefaultScope = computed(() => {
@@ -162,10 +185,25 @@ export default {
             return head || suffix;
         });
 
+        // counter_pay(new_amount, message) — the message is a synthetic
+        // speak the engine emits on the recipient's behalf, so it reads
+        // as the recipient's own quoted dialogue. Format mirrors pay's
+        // money-then-prose shape: "5c — 'Make it five and we have a
+        // deal.'" Drops the amount when it doesn't parse to a clean
+        // integer, same defensive pattern as payLabel.
+        const counterPayLabel = computed(() => {
+            const amt = safeInt(input.value.new_amount);
+            const message = stringOrEmpty(input.value.message);
+            const head = amt !== null ? amt + 'c' : '';
+            if (head && message) return head + ' — “' + message + '”';
+            if (message) return '“' + message + '”';
+            return head;
+        });
+
         return {
             inputText, inputQuery, inputDestination, inputType,
-            inputScope, nonDefaultScope, inputVillager,
-            consumeLabel, gatherLabel, payLabel,
+            inputScope, nonDefaultScope, inputVillager, inputReason,
+            consumeLabel, gatherLabel, payLabel, counterPayLabel,
         };
     }
 };
