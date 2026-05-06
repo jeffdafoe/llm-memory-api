@@ -929,6 +929,83 @@ function extractCoLocatedNames(perceptionText) {
         .filter(function (line) { return line.length > 0; });
 }
 
+// Per-scene co-located-names cache for sim-NPC ticks.
+//
+// The Salem engine emits a "Here:" block in the user message of fresh
+// perceptions (the chat/send that opens an NPC's tick). The isSimNpc
+// branch in handleDirectChat uses that block to inject "## Your
+// impressions of <name>" into the system prompt via loadPeopleContext.
+//
+// On follow-up tool-result chat/sends within the same scene (the model
+// called speak, the engine returned "[OK] You spoke. Continue your
+// turn..."), messageText is the tool result, not a fresh perception —
+// so extractCoLocatedNames returns [] and the rebuilt system prompt
+// loses the impressions block right when the model is generating its
+// next tool call (often the actual speech). Result: NPCs form opinions
+// on the perception tick, then speak the next tick without the
+// relationship context loaded. Verified from VA call logs 2026-05-06
+// (e.g. John Ellis at Tavern, calls 3604/3605/3608 — only 3604 had
+// impressions even though all three had Jefferey co-located).
+//
+// This cache pins co-located names to the scene_id when first observed
+// and lets follow-up calls in the same scene rebuild the system prompt
+// with the same impressions even when the perception text is absent.
+//
+// Eviction: idle TTL. Each lookup or write refreshes lastSeen; entries
+// past IDLE_MS are dropped on next access. The cap protects against
+// pathological scene-id churn — pruner runs on insert and drops the
+// oldest entries when size approaches the cap.
+const SCENE_CO_LOCATED_IDLE_MS = 10 * 60 * 1000;
+const SCENE_CO_LOCATED_MAX = 500;
+const sceneCoLocatedCache = new Map();
+
+function rememberSceneCoLocated(sceneId, names) {
+    if (!sceneId || !Array.isArray(names) || names.length === 0) return;
+    // Set first, prune after. Pruning before would unnecessarily evict an
+    // entry when this call is just refreshing an EXISTING sceneId at the
+    // cap (size doesn't actually grow on a refresh).
+    sceneCoLocatedCache.set(sceneId, { names: names.slice(), lastSeen: Date.now() });
+    pruneSceneCoLocatedCache();
+}
+
+function recallSceneCoLocated(sceneId) {
+    if (!sceneId) return [];
+    const entry = sceneCoLocatedCache.get(sceneId);
+    if (!entry) return [];
+    if (Date.now() - entry.lastSeen > SCENE_CO_LOCATED_IDLE_MS) {
+        sceneCoLocatedCache.delete(sceneId);
+        return [];
+    }
+    entry.lastSeen = Date.now();
+    // Defensive copy — callers shouldn't mutate the stored array.
+    return entry.names.slice();
+}
+
+function forgetSceneCoLocated(sceneId) {
+    if (!sceneId) return;
+    sceneCoLocatedCache.delete(sceneId);
+}
+
+// Drop expired entries first; if still over the cap, drop the oldest
+// by lastSeen until size matches the cap. Called from
+// rememberSceneCoLocated AFTER each insert so the cache size stays
+// bounded without evicting an entry that was just refreshed.
+function pruneSceneCoLocatedCache() {
+    const cutoff = Date.now() - SCENE_CO_LOCATED_IDLE_MS;
+    for (const [k, v] of sceneCoLocatedCache) {
+        if (v.lastSeen < cutoff) sceneCoLocatedCache.delete(k);
+    }
+    if (sceneCoLocatedCache.size > SCENE_CO_LOCATED_MAX) {
+        const sorted = [...sceneCoLocatedCache.entries()].sort(
+            function (a, b) { return a[1].lastSeen - b[1].lastSeen; }
+        );
+        const drop = sceneCoLocatedCache.size - SCENE_CO_LOCATED_MAX;
+        for (let i = 0; i < drop; i++) {
+            sceneCoLocatedCache.delete(sorted[i][0]);
+        }
+    }
+}
+
 // --- Typed prompt blocks ---
 //
 // Each dynamic chunk of context that lands in the system prompt is wrapped
@@ -1991,7 +2068,19 @@ function safeParseJSON(s) {
 async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId, opts) {
     const toolsOffered = opts && opts.toolsOffered ? opts.toolsOffered : null;
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
+    const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
     const isToolUse = Array.isArray(toolsOffered) && toolsOffered.length > 0;
+    // A non-empty string toolCallId means this chat/send is the model's
+    // response to a tool result the engine just sent back (e.g. "[OK]
+    // You spoke."). Fresh perceptions arrive without one. Used by the
+    // sim-NPC branch to tell "fresh perception, update cache" from
+    // "tool-result follow-up, reuse cached names" — a more reliable
+    // discriminator than looking for a Here block in messageText (the
+    // engine omits Here entirely when the NPC is alone, so an empty
+    // messageText could be either case otherwise). The strict
+    // type+length check guards against a malformed empty-string opt
+    // being treated as a tool result and silently keeping stale cache.
+    const isToolResultCall = typeof toolCallId === 'string' && toolCallId.length > 0;
 
     const agent = await loadAgent(virtualAgentName);
     if (!agent || !agent.virtual) return null;
@@ -2050,7 +2139,27 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             // future engine rev that surfaces multiple roles for the same
             // person). Without this, loadPeopleContext would emit duplicate
             // "## Your impressions of X" sections.
-            const coLocated = [...new Set(extractCoLocatedNames(messageText))];
+            let coLocated = [...new Set(extractCoLocatedNames(messageText))];
+            if (isToolResultCall) {
+                // Tool-result follow-up — messageText is "[OK] You spoke..."
+                // or similar, never a fresh perception. Fall back to whatever
+                // co-located names we cached the last time the engine sent a
+                // real perception in this scene. Keeps the impressions block
+                // loaded for the duration of a multi-tool-call turn instead
+                // of dropping it on every follow-up.
+                coLocated = recallSceneCoLocated(sceneId);
+            } else {
+                // Fresh perception. Update the cache to match what the
+                // engine just told us — including the "now alone" case
+                // (Here block omitted, coLocated is empty), which must
+                // CLEAR any stale entry from earlier in the scene rather
+                // than letting it linger.
+                if (coLocated.length > 0) {
+                    rememberSceneCoLocated(sceneId, coLocated);
+                } else {
+                    forgetSceneCoLocated(sceneId);
+                }
+            }
             if (coLocated.length > 0) {
                 peopleContext = await loadPeopleContext(agent.agent, coLocated);
             } else {
