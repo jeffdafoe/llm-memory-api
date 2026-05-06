@@ -15,9 +15,34 @@ function useChat({ api, showToast, dashboard }) {
     // scene_id collapse into one expandable scene row.
     //
     // Ordering: a scene group occupies the slot of its most recent message,
-    // so a fresh tavern conversation lands at the top. Inside the group the
-    // messages render chronologically (oldest first) so the conversation
-    // reads naturally when expanded.
+    // so a fresh tavern conversation lands at the top. Inside the group
+    // messages are sub-grouped by participant thread (chronicler ↔ engine,
+    // each villager ↔ engine), with each thread rendered chronologically.
+    // Without this sub-grouping, a chronicler-dispatched cascade interleaves
+    // chronicler turns with multiple villagers' turns by sub-second
+    // timestamps and reads as a jumble — flagged 2026-05-06.
+    //
+    // Threading: a "thread" within a scene is identified by the non-engine
+    // participant. Engine→X and X→engine messages both belong to thread X.
+    // For Salem the engine drives every interaction so every message has
+    // salem-engine as one endpoint; the rare exception (PC→NPC speech with
+    // no engine in the pair) falls back to "from ↔ to" as the key so the
+    // row still groups deterministically.
+    const ENGINE_AGENT = 'salem-engine';
+    function threadKeyFor(msg) {
+        if (msg.from_agent === ENGINE_AGENT && msg.to_agent) {
+            return msg.to_agent;
+        }
+        if (msg.to_agent === ENGINE_AGENT && msg.from_agent) {
+            return msg.from_agent;
+        }
+        // Neither side is the engine — keep the pair grouped together
+        // regardless of direction by sorting the names.
+        const a = msg.from_agent || '';
+        const b = msg.to_agent || '';
+        const pair = a < b ? a + ' ↔ ' + b : b + ' ↔ ' + a;
+        return pair || '(unknown)';
+    }
     const chatGroups = computed(() => {
         const sceneIndex = new Map(); // scene_id -> group ref
         const groups = [];
@@ -50,6 +75,31 @@ function useChat({ api, showToast, dashboard }) {
             g.messages.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
             g.earliest_at = g.messages[0].sent_at;
             g.latest_at = g.messages[g.messages.length - 1].sent_at;
+            // Build per-thread sub-groups so the expanded scene shows the
+            // chronicler's turn together, then each villager's turn
+            // together — instead of interleaved by sub-second timestamps.
+            // Threads are ordered by their first message's timestamp so
+            // the chronicler's perception (which always opens a cascade)
+            // appears first, then each villager in the order they were
+            // attended.
+            const threadIndex = new Map();
+            for (const m of g.messages) {
+                const key = threadKeyFor(m);
+                let t = threadIndex.get(key);
+                if (!t) {
+                    t = { participant: key, messages: [] };
+                    threadIndex.set(key, t);
+                }
+                t.messages.push(m);
+            }
+            const threads = Array.from(threadIndex.values());
+            for (const t of threads) {
+                t.earliest_at = t.messages[0].sent_at;
+                t.latest_at = t.messages[t.messages.length - 1].sent_at;
+                t.hasUnacked = t.messages.some(m => m.acked_at === null);
+            }
+            threads.sort((a, b) => new Date(a.earliest_at) - new Date(b.earliest_at));
+            g.threads = threads;
             // Surface unacked status on the collapsed header so the admin
             // doesn't lose the ack indicator that single rows show. The
             // discussion-id branch of /admin/chat doesn't select acked_at
