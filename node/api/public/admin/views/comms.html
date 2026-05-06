@@ -120,24 +120,39 @@
                             <td class="message-cell"><span class="scene-summary">Scene<template v-if="group.location"> · {{ group.location }}</template> · {{ group.messages.length }} messages · <code class="scene-id">{{ group.scene_id }}</code></span></td>
                             <td class="time-cell">{{ formatDate(group.latest_at) }}</td>
                         </tr>
-                        <!-- Expanded scene: chronological sub-rows. -->
+                        <!-- Expanded scene: per-thread sub-groups. Each
+                             thread's messages render chronologically under
+                             a header row that names the non-engine
+                             participant. Without this, chronicler turns
+                             interleave with multiple villager turns by
+                             sub-second timestamps and the log reads as a
+                             jumble. -->
                         <template v-if="group.type === 'scene' && isSceneExpanded(group.scene_id)">
-                            <tr v-for="msg in group.messages" :key="'scene-msg-' + msg.id" @click="selectedMessage = msg" class="clickable scene-child">
-                                <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
-                                <td>{{ msg.from_agent }}</td>
-                                <td>{{ msg.to_agent }}</td>
-                                <td>{{ msg.channel || '—' }}</td>
-                                <td class="message-cell">
-                                    <template v-if="msg.message">{{ msg.message }}</template>
-                                    <template v-else-if="msg.tool_calls && msg.tool_calls.length">
-                                        <template v-for="(tc, i) in msg.tool_calls" :key="tc.id || i">
-                                            <tool-call-display :tc="tc"></tool-call-display>
-                                            <span v-if="i < msg.tool_calls.length - 1">&nbsp;</span>
+                            <template v-for="thread in group.threads" :key="'thread-' + group.scene_id + '-' + thread.participant">
+                                <tr class="scene-thread-header">
+                                    <td class="icon-cell">
+                                        <i v-if="thread.hasUnacked" class="icon-circle unacked-icon"></i>
+                                    </td>
+                                    <td colspan="4" class="scene-thread-label">{{ thread.participant }} <span class="scene-thread-count">· {{ thread.messages.length }}</span></td>
+                                    <td class="time-cell">{{ formatDate(thread.earliest_at) }}</td>
+                                </tr>
+                                <tr v-for="msg in thread.messages" :key="'scene-msg-' + msg.id" @click="selectedMessage = msg" class="clickable scene-child">
+                                    <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                                    <td>{{ msg.from_agent }}</td>
+                                    <td>{{ msg.to_agent }}</td>
+                                    <td>{{ msg.channel || '—' }}</td>
+                                    <td class="message-cell">
+                                        <template v-if="msg.message">{{ msg.message }}</template>
+                                        <template v-else-if="msg.tool_calls && msg.tool_calls.length">
+                                            <template v-for="(tc, i) in msg.tool_calls" :key="tc.id || i">
+                                                <tool-call-display :tc="tc"></tool-call-display>
+                                                <span v-if="i < msg.tool_calls.length - 1">&nbsp;</span>
+                                            </template>
                                         </template>
-                                    </template>
-                                </td>
-                                <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
-                            </tr>
+                                    </td>
+                                    <td class="time-cell">{{ formatDate(msg.sent_at) }}</td>
+                                </tr>
+                            </template>
                         </template>
                     </template>
                 </tbody>

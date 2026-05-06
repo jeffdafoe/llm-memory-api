@@ -848,6 +848,30 @@ tr.scene-row .icon-cell { position: relative; }
     transform: translateY(-50%);
 }
 
+/* Per-thread header inside an expanded scene. Sits above each
+   chronicler/villager subgroup so the cascade reads as
+   "chronicler turn, then Prudence's turn, then Josiah's turn"
+   instead of one timestamp-interleaved blob. */
+.scene-thread-header {
+    background: rgba(113, 113, 122, 0.10);
+}
+.scene-thread-header td {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+.scene-thread-label {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding-left: 18px;
+}
+.scene-thread-count {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-left: 4px;
+}
+
 /* ── Access view ── */
 .sub-tabs button {
     padding: 10px 16px;
