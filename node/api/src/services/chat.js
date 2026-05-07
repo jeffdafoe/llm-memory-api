@@ -133,11 +133,37 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
         }
     }
 
-    // Insert one message text row
+    // Insert one message text row.
+    //
+    // scene_structure inheritance (MEM-128): when scene_id is set but
+    // scene_structure isn't passed, inherit it from the FIRST row in
+    // the same scene that DID carry a non-null scene_structure. The
+    // engine populates scene_structure on the first message of a
+    // scene (chronicler perception, NPC perception build) but
+    // follow-up tool-call rows in the same scene typically don't
+    // carry it. Without inheritance the admin chat UI groups by
+    // scene_id and renders most scenes as `Scene · N messages · uuid`
+    // without the structure label, since the grouper picks the first
+    // row's value and that's often the bare tool-result row.
+    //
+    // COALESCE($8, ...) keeps the explicit-pass path zero-cost: when
+    // the caller did pass a scene_structure, the subquery doesn't
+    // run. The LIMIT-1 lookup is cheap given idx_cmt_scene.
     const textResult = await pool.query(
         `INSERT INTO chat_message_texts
             (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error)
-         VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9)
+         VALUES (
+            $1, $2, $3, NOW(), $4, $5, $6, $7,
+            COALESCE($8, CASE
+                WHEN $7::uuid IS NULL THEN NULL
+                ELSE (
+                    SELECT scene_structure FROM chat_message_texts
+                     WHERE scene_id = $7::uuid AND scene_structure IS NOT NULL
+                     ORDER BY id ASC LIMIT 1
+                )
+            END),
+            $9
+         )
          RETURNING id, sent_at`,
         [
             message,
