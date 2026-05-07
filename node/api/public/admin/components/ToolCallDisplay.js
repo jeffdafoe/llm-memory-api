@@ -50,6 +50,15 @@
 //   counter_pay(new_amount,   -> [counter_pay] + "<amount>c — <message>"
 //               message)         where the message is the recipient's
 //                                spoken counter (also fed to npc_spoke).
+//   take_break(until_hour?,   -> [take_break] + optional pieces joined
+//              reason?)          by " — ": "until HH:00" when until_hour
+//                                is a valid 0-23 integer, then the
+//                                reason in curly quotes when present.
+//                                Bare [take_break] when neither is
+//                                supplied. Renders the LLM's emitted
+//                                reason verbatim — sub-threshold
+//                                strings still surface so ZBBS-139's
+//                                generic-fallback gate is visible.
 //   done() / unknown          -> [name] chip only
 //
 // Usage: <tool-call-display :tc="toolCall" />
@@ -103,6 +112,10 @@ const template = `
 <template v-else-if="tc.name === 'counter_pay'">
     <span class="tool-chip">[counter_pay]</span>
     <span v-if="counterPayLabel" class="tool-prose">{{ counterPayLabel }}</span>
+</template>
+<template v-else-if="tc.name === 'take_break'">
+    <span class="tool-chip">[take_break]</span>
+    <span v-if="takeBreakLabel" class="tool-prose">{{ takeBreakLabel }}</span>
 </template>
 <span v-else class="tool-chip">[{{ tc.name }}]</span>
 `;
@@ -200,10 +213,32 @@ export default {
             return head;
         });
 
+        // take_break(until_hour?, reason?) — surface params per the
+        // engine tool spec at agent_tick.go:911. until_hour as
+        // "until HH:00" zero-padded; reason in curly quotes. Both
+        // optional so empty pieces drop. Defensive same as
+        // payLabel/counterPayLabel — out-of-range hours skip rather
+        // than render "until NaN:00". Renders sub-threshold reasons
+        // verbatim (e.g. "I") on purpose: ZBBS-139's length gate
+        // composes a generic fallback for the BROADCAST, but the
+        // tool_call's audit chip should reflect what the model
+        // emitted — useful diagnostic for the model output quality.
+        const takeBreakLabel = computed(() => {
+            const hour = safeInt(input.value.until_hour);
+            const reason = stringOrEmpty(input.value.reason);
+            const parts = [];
+            if (hour !== null && hour >= 0 && hour < 24) {
+                parts.push('until ' + String(hour).padStart(2, '0') + ':00');
+            }
+            if (reason) parts.push('“' + reason + '”');
+            return parts.join(' — ');
+        });
+
         return {
             inputText, inputQuery, inputDestination, inputType,
             inputScope, nonDefaultScope, inputVillager, inputReason,
             consumeLabel, gatherLabel, payLabel, counterPayLabel,
+            takeBreakLabel,
         };
     }
 };
