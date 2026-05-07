@@ -265,7 +265,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, toolCallId, sceneId, ackReplyOnInsert: wait,
+                            toolsOffered, toolCallId, sceneId, sceneStructure, ackReplyOnInsert: wait,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
@@ -276,7 +276,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, toolCallId, sceneId,
+                                toolsOffered, toolCallId, sceneId, sceneStructure,
                             }).catch(() => {});
                         }
                     }

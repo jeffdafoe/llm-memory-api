@@ -2068,6 +2068,12 @@ function safeParseJSON(s) {
 async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId, opts) {
     const toolsOffered = opts && opts.toolsOffered ? opts.toolsOffered : null;
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
+    // sceneStructure (MEM-130): forwarded from the original /chat/send so
+    // the VA's reply row inherits the same structure label as the
+    // perception that prompted it. Without this the agent-reply row
+    // lands with NULL scene_structure and the admin chat UI's scene
+    // grouping renders the label inconsistently within a scene.
+    const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
     const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
     const isToolUse = Array.isArray(toolsOffered) && toolsOffered.length > 0;
     // A non-empty string toolCallId means this chat/send is the model's
@@ -2292,7 +2298,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // so the row doesn't sit unacked forever (which is what made the
         // collapsed-scene unacked indicator permanently lit for every
         // Salem scene — every NPC→engine reply was unacked).
-        const replyOpts = { sceneId };
+        const replyOpts = { sceneId, sceneStructure };
         if (replyToolCalls.length > 0) replyOpts.toolCalls = replyToolCalls;
         if (opts && opts.ackReplyOnInsert) replyOpts.ackOnInsert = true;
         await chatSend(agent.agent, [fromAgent], null, response, replyOpts);
