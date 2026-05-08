@@ -34,6 +34,20 @@
     state: present
     update_cache: yes
 
+- name: Ensure PostgreSQL conf.d directory exists
+  # postgresql.conf includes `include_dir = 'conf.d'` by default on
+  # Debian. If the directory is missing on cold start, PG fails with
+  # "could not open configuration directory" + a FATAL config error
+  # that systemd doesn't recover from (Restart=on-failure is commented
+  # out in the upstream unit by design). Idempotent: empty directory
+  # is the default Debian state.
+  file:
+    path: /etc/postgresql/{{ postgresql_version }}/main/conf.d
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
 - name: Ensure PostgreSQL is running
   service:
     name: postgresql
