@@ -45,15 +45,6 @@ function resolveDiscussionId(discussionId, channel) {
 // row so the admin UI can group all rows from one tavern conversation
 // (or whatever scene) together. NULL for companion-mode.
 async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
-    if (!fromAgent || message === undefined || message === null) {
-        throw Object.assign(new Error('Required fields: from_agent, message'), { statusCode: 400 });
-    }
-    if (!toAgents && !discussionId) {
-        throw Object.assign(new Error('Required: to_agents (array) or discussion_id'), { statusCode: 400 });
-    }
-    const toolCalls = opts && opts.toolCalls !== undefined ? opts.toolCalls : null;
-    const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
-    const toolsOffered = opts && opts.toolsOffered !== undefined ? opts.toolsOffered : null;
     // toolCallResults (parallel-tool-call path): an array of { id, content }
     // pairs, one per tool the model emitted in its prior assistant reply.
     // When non-empty, persists N tool-result rows in one request instead of
@@ -69,6 +60,21 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     const toolCallResults = opts && Array.isArray(opts.toolCallResults) && opts.toolCallResults.length > 0
         ? opts.toolCallResults : null;
     const persistOnly = Boolean(opts && opts.persistOnly === true);
+    if (!fromAgent) {
+        throw Object.assign(new Error('Required field: from_agent'), { statusCode: 400 });
+    }
+    // toolCallResults substitutes for `message` — N tool-result rows in
+    // lieu of one user-text row. The route enforces mutual exclusivity, so
+    // require `message` only on the singular path.
+    if (!toolCallResults && (message === undefined || message === null)) {
+        throw Object.assign(new Error('Required field: message'), { statusCode: 400 });
+    }
+    if (!toAgents && !discussionId) {
+        throw Object.assign(new Error('Required: to_agents (array) or discussion_id'), { statusCode: 400 });
+    }
+    const toolCalls = opts && opts.toolCalls !== undefined ? opts.toolCalls : null;
+    const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
+    const toolsOffered = opts && opts.toolsOffered !== undefined ? opts.toolsOffered : null;
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
     // sceneStructure (MEM-127) — denormalized structure-name stamp from the
     // engine. Pre-resolved engine-side because the village_object/asset
