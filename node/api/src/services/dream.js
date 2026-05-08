@@ -10,6 +10,19 @@ const { saveNote, readNote, listNotes } = require('./documents');
 const { invokeAgent } = require('./virtual-agent');
 const { personContextSlug } = require('./people-slug');
 
+// validatePersonSlug — defense for runPersonContextUpdate now that it's
+// exported. Pass the input back through the same slugify the dream cron
+// uses; if the result differs from the input, the input was not already
+// a clean slug (could carry path traversal, whitespace, or unsafe
+// characters). Returns the canonical slug or null. Reuses people-slug.js
+// rather than duplicating the regex so both paths stay in sync.
+function validatePersonSlug(slug) {
+    if (typeof slug !== 'string') return null;
+    const canonical = personContextSlug(slug);
+    if (!canonical || canonical !== slug) return null;
+    return canonical;
+}
+
 // Signal patterns that indicate memory-worthy content.
 // Used to pre-filter conversation logs before sending to the dream agent,
 // keeping only passages around these signals + surrounding context.
@@ -392,6 +405,102 @@ function computeDailyChunks(since, now) {
 //
 // agentNames: { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName }
 // chunk: { from: Date, to: Date }
+// runPersonContextUpdate — single (agent, person) people-VA invocation,
+// reads the existing context/people/{slug} note, runs the appropriate
+// people VA, optionally writes the result back. Used by:
+//   1. processDreamChunk (per-day dream chunk) — `excerpts` is today's
+//      conversation lines for this person.
+//   2. /admin/dream/consolidate-people endpoint — `excerpts` is empty
+//      so the VA acts as a consolidate-only pass against bloated files.
+//
+// opts.dryRun = true skips the write and returns the proposed updated
+// file in the result so the caller can inspect.
+//
+// Returns { existingFile, updatedFile, written, changed }. updatedFile
+// is the trimmed VA output (or null if the VA returned empty).
+async function runPersonContextUpdate(agentName, peopleAgentName, slug, display, excerpts, today, opts) {
+    opts = opts || {};
+    const dryRun = !!opts.dryRun;
+
+    // Defend the path input now that this helper is exported. Reject
+    // anything that doesn't slug-roundtrip cleanly (path traversal,
+    // whitespace, mixed case, etc.). Same regex that the cron's natural
+    // slug-creation path uses, so input from the cron continues to pass.
+    const safeSlug = validatePersonSlug(slug);
+    if (!safeSlug) {
+        throw new Error('runPersonContextUpdate: invalid person slug: ' + slug);
+    }
+    slug = safeSlug;
+
+    // Sanitize display name before it's interpolated into the user
+    // message. Note titles are operator-editable in admin UI, so a
+    // multi-line display name could inject extra "## section" markers
+    // into the prompt and confuse the VA. Collapse whitespace, trim.
+    const safeDisplay = String(display || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || slug;
+    display = safeDisplay;
+
+    // Read the current relationship file (empty string if first encounter).
+    let existingFile = '';
+    try {
+        const note = await readNote(agentName, 'context/people/' + slug);
+        existingFile = note.content || '';
+    } catch (e) {
+        // No existing file — first encounter.
+    }
+
+    // Empty excerpts trigger consolidation-only mode. The new prompt
+    // recognizes this signal and either consolidates redundant bullets
+    // or returns the file unchanged if it's already tight.
+    const excerptsBlock = (excerpts && excerpts.trim())
+        ? excerpts
+        : '(no new excerpts since last update — please consolidate any redundant bullets if present, or return file unchanged if already tight)';
+
+    const peopleUserMessage = '## Agent: ' + agentName + '\n'
+        + '## Person: ' + display + '\n'
+        + '## Today\'s date: ' + today + '\n\n'
+        + '## Current relationship file\n\n'
+        + (existingFile || '(empty — first encounter)')
+        + '\n\n## Recent conversation excerpts involving ' + display + '\n\n'
+        + excerptsBlock;
+
+    const { text: rawUpdatedFile } = await invokeAgent(peopleAgentName, {
+        userMessage: peopleUserMessage,
+        context: 'people',
+        skipRateLimit: true,
+        skipCostLimit: true,
+        skipRetry: false,
+    });
+
+    const updatedFile = rawUpdatedFile && rawUpdatedFile.trim();
+    const changed = !!(updatedFile && updatedFile !== existingFile.trim());
+    const emptyResponse = !updatedFile;
+    let written = false;
+    if (emptyResponse) {
+        // Empty VA response is unusual — log it so it's visible in the
+        // dream journal alongside chunk-people-updated/error events.
+        // The cron's chunk-people-error catch wraps the call, so an
+        // explicit log here keeps the empty case from being silently
+        // swallowed by the trim-no-op path below.
+        logDream('person-context-empty-response', {
+            agent: agentName, person: display, slug, today,
+        });
+    }
+
+    if (changed && !dryRun) {
+        await saveNote(
+            agentName,
+            'People — ' + display,
+            updatedFile,
+            'context/people/' + slug,
+            peopleAgentName,
+            null, null, { upsert: true }
+        );
+        written = true;
+    }
+
+    return { existingFile, updatedFile, written, changed, emptyResponse };
+}
+
 async function processDreamChunk(agent, agentNames, chunk) {
     const { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName } = agentNames;
     const { from, to } = chunk;
@@ -564,44 +673,16 @@ async function processDreamChunk(agent, agentNames, chunk) {
                     continue;
                 }
                 try {
-                    let existingFile = '';
-                    try {
-                        const note = await readNote(agent.name, 'context/people/' + slug);
-                        existingFile = note.content || '';
-                    } catch (e) {
-                        // No existing file — first encounter.
-                    }
-
-                    const peopleUserMessage = '## Agent: ' + agent.name + '\n'
-                        + '## Person: ' + display + '\n'
-                        + '## Today\'s date: ' + chunkDateStr + '\n\n'
-                        + '## Current relationship file\n\n'
-                        + (existingFile || '(empty — first encounter)')
-                        + '\n\n## Recent conversation excerpts involving ' + display + '\n\n'
-                        + personLines.join('\n');
-
-                    const { text: updatedFile } = await invokeAgent(peopleAgentName, {
-                        userMessage: peopleUserMessage,
-                        context: 'people',
-                        skipRateLimit: true,
-                        skipCostLimit: true,
-                        skipRetry: false,
-                    });
-
-                    if (updatedFile && updatedFile.trim()) {
-                        await saveNote(
-                            agent.name,
-                            'People — ' + display,
-                            updatedFile.trim(),
-                            'context/people/' + slug,
-                            peopleAgentName,
-                            null, null, { upsert: true }
-                        );
+                    const result = await runPersonContextUpdate(
+                        agent.name, peopleAgentName, slug, display,
+                        personLines.join('\n'), chunkDateStr
+                    );
+                    if (result.written) {
                         logDream('chunk-people-updated', {
                             agent: agent.name,
                             chunkDate: chunkDateStr,
                             person: display,
-                            size: updatedFile.length,
+                            size: result.updatedFile.length,
                         });
                     }
                 } catch (personErr) {
@@ -886,4 +967,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, startDreamScheduler };
+module.exports = { runDream, prefilterLog, extractSpeakers, startDreamScheduler, runPersonContextUpdate, findDreamAgent };
