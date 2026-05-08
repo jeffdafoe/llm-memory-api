@@ -16,6 +16,8 @@ const { chatSend } = require('../services/chat');
 const { discussionCreate, discussionConclude } = require('../services/discussion');
 const { formatPricing } = require('../services/provider');
 const { resolveEffectiveLimits } = require('../services/virtual-agent');
+const { runPersonContextUpdate, findDreamAgent } = require('../services/dream');
+const { personContextSlug } = require('../services/people-slug');
 const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName, clearCache: clearActorCache } = require('../services/actors');
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
@@ -2071,6 +2073,153 @@ router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRou
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Call detail not found (may have been purged)' } });
     }
     res.json({ call: result.rows[0] });
+}));
+
+// POST /admin/dream/consolidate-people — fire dream-{sim,companion}-people
+// against existing context/people/{slug} notes to consolidate redundant
+// bullets and apply the latest people-VA prompt to existing files.
+//
+// Why this exists as a permanent ops tool: the dream cron's people-update
+// step only fires for (agent, person) pairs with NEW activity in the
+// chunk window. Any historic file that's bloated with redundant bullets
+// stays bloated until that person becomes active again. When we revise
+// the dream-sim-people / dream-companion-people prompts, we want to be
+// able to retroactively heal existing files in one pass — not wait
+// weeks for natural healing.
+//
+// Body fields (all optional):
+//   agent      — limit to one agent's namespace (e.g. "zbbs-josiah-thorne")
+//   person_slug — limit to one person within that agent (the bare slug,
+//                 not the full "context/people/" path)
+//   dry_run    — if truthy, return the proposed updated files without
+//                writing. The result includes `proposed` for changed
+//                entries so a human can spot-check.
+//
+// Default (no filters, dry_run=false): processes every (agent, person)
+// pair across all agents in dream_mode IN ('sim', 'companion').
+router.post('/admin/dream/consolidate-people', requirePerm('agents', 'write'), adminRoute('dream-consolidate-people', async (req, res) => {
+    const agentFilterRaw = req.body.agent;
+    const personFilterRaw = req.body.person_slug;
+    const dryRun = !!req.body.dry_run;
+
+    // Validate agent filter — must be a string if supplied. The DB
+    // query is parameterized so this isn't an injection risk, but
+    // typing/format errors should fail loudly rather than silently
+    // returning an empty result set.
+    let agentFilter = null;
+    if (agentFilterRaw !== undefined && agentFilterRaw !== null && agentFilterRaw !== '') {
+        if (typeof agentFilterRaw !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'agent must be a string' } });
+        }
+        agentFilter = agentFilterRaw;
+    }
+
+    // Validate person_slug filter — round-trip through the canonical
+    // slugifier and require equality. Anything containing '/', '..',
+    // whitespace, mixed case, etc. fails to round-trip and is rejected.
+    let personFilter = null;
+    if (personFilterRaw !== undefined && personFilterRaw !== null && personFilterRaw !== '') {
+        if (typeof personFilterRaw !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'person_slug must be a string' } });
+        }
+        const canonical = personContextSlug(personFilterRaw);
+        if (!canonical || canonical !== personFilterRaw) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'invalid person_slug — must match [a-z0-9-]+ with no leading/trailing hyphen' } });
+        }
+        personFilter = canonical;
+    }
+
+    // Pick agents in sim or companion mode (these are the dream modes
+    // that maintain context/people/* files).
+    let agents;
+    if (agentFilter) {
+        agents = await pool.query(
+            `SELECT a.name, agc.dream_mode FROM actors a
+              JOIN agent_configuration agc ON agc.actor_id = a.id
+              WHERE a.name = $1 AND agc.dream_mode IN ('sim', 'companion')`,
+            [agentFilter]
+        );
+        if (agents.rows.length === 0) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'agent "' + agentFilter + '" not found or not in sim/companion mode' } });
+        }
+    } else {
+        agents = await pool.query(
+            `SELECT a.name, agc.dream_mode FROM actors a
+              JOIN agent_configuration agc ON agc.actor_id = a.id
+              WHERE agc.dream_mode IN ('sim', 'companion')
+              ORDER BY a.name`
+        );
+    }
+
+    // Resolve the people-VA names for each mode. Cached locally so we
+    // don't re-lookup per agent.
+    const simPeopleAgent = await findDreamAgent('dream-sim-people');
+    const companionPeopleAgent = await findDreamAgent('dream-companion-people');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const results = [];
+
+    // Page through context/people/* notes for an agent. listNotes has
+    // a per-call cap; iterate until a short page lands so an agent
+    // with >1000 people files doesn't get silently truncated. Hot
+    // path is the cron, not this; dropping the silent-truncate hazard
+    // is worth the extra round-trips.
+    async function listAllPeopleNotes(agentName) {
+        const limit = 1000;
+        let offset = 0;
+        const all = [];
+        while (true) {
+            const page = await listNotes(agentName, limit, offset, 'context/people/');
+            all.push(...page);
+            if (page.length < limit) break;
+            offset += limit;
+        }
+        return all;
+    }
+
+    for (const a of agents.rows) {
+        const peopleAgentName = a.dream_mode === 'sim' ? simPeopleAgent : companionPeopleAgent;
+        if (!peopleAgentName) {
+            results.push({ agent: a.name, error: 'dream-' + a.dream_mode + '-people not available' });
+            continue;
+        }
+
+        const notesList = await listAllPeopleNotes(a.name);
+        const targetNotes = personFilter
+            ? notesList.filter(n => n.slug === 'context/people/' + personFilter)
+            : notesList;
+
+        for (const note of targetNotes) {
+            const slug = note.slug.replace(/^context\/people\//, '');
+            // Display sanitize: collapse newlines/extra whitespace so a
+            // hand-edited note title can't inject "## section" markers
+            // into the prompt. runPersonContextUpdate also re-sanitizes
+            // for defense in depth.
+            const display = ((note.title || '').replace(/^People — /, '') || slug)
+                .replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+            try {
+                const r = await runPersonContextUpdate(
+                    a.name, peopleAgentName, slug, display, '', today,
+                    { dryRun }
+                );
+                results.push({
+                    agent: a.name,
+                    person: display,
+                    slug,
+                    changed: r.changed,
+                    written: r.written,
+                    before_size: r.existingFile.length,
+                    after_size: r.updatedFile ? r.updatedFile.length : null,
+                    ...(r.emptyResponse ? { empty_response: true } : {}),
+                    ...(dryRun && r.changed ? { proposed: r.updatedFile } : {})
+                });
+            } catch (e) {
+                results.push({ agent: a.name, person: display, slug, error: e.message });
+            }
+        }
+    }
+
+    res.json({ dry_run: dryRun, count: results.length, results });
 }));
 
 // ─── Actor permissions & visibility management ───
