@@ -54,6 +54,21 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     const toolCalls = opts && opts.toolCalls !== undefined ? opts.toolCalls : null;
     const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
     const toolsOffered = opts && opts.toolsOffered !== undefined ? opts.toolsOffered : null;
+    // toolCallResults (parallel-tool-call path): an array of { id, content }
+    // pairs, one per tool the model emitted in its prior assistant reply.
+    // When non-empty, persists N tool-result rows in one request instead of
+    // forcing the engine to re-emit dropped calls across multiple
+    // round-trips. Mutually exclusive with the singular toolCallId/message
+    // shape (route enforces).
+    //
+    // persistOnly skips the VA dispatch entirely. Used by the engine when
+    // the prior reply included a terminal tool (done() / unknown) — the
+    // tool results still need to be persisted so the assistant's
+    // tool_calls aren't orphaned in history, but no follow-up LLM call
+    // is needed.
+    const toolCallResults = opts && Array.isArray(opts.toolCallResults) && opts.toolCallResults.length > 0
+        ? opts.toolCallResults : null;
+    const persistOnly = Boolean(opts && opts.persistOnly === true);
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
     // sceneStructure (MEM-127) — denormalized structure-name stamp from the
     // engine. Pre-resolved engine-side because the village_object/asset
@@ -133,7 +148,25 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
         }
     }
 
-    // Insert one message text row.
+    // Build the list of (message, toolCallId) pairs to insert. Default
+    // path is one pair from the singular (message, toolCallId) opts.
+    // toolCallResults path is N pairs — each entry becomes its own
+    // chat_message_texts row, with the next assistant turn seeing all of
+    // them at once instead of having to re-emit dropped tool calls
+    // across multiple round-trips.
+    const rowSpecs = toolCallResults
+        ? toolCallResults.map(r => ({ message: r.content, toolCallId: r.id }))
+        : [{ message, toolCallId }];
+
+    // Insert text rows + delivery rows in one transaction. Atomicity
+    // matters: a partial multi-row write would leave half-orphan tool
+    // results that openai.js can paper over with orphan-drop, but this
+    // path is explicitly trying to PRESERVE protocol completeness.
+    // Delivery rows reference text ids, so they must commit together.
+    //
+    // Broadcast and VA dispatch happen AFTER commit — they read state
+    // the world should already see, and rolling back a broadcast or a
+    // half-fired VA call isn't possible anyway.
     //
     // scene_structure inheritance (MEM-128): when scene_id is set but
     // scene_structure isn't passed, inherit it from the FIRST row in
@@ -149,69 +182,140 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // COALESCE($8, ...) keeps the explicit-pass path zero-cost: when
     // the caller did pass a scene_structure, the subquery doesn't
     // run. The LIMIT-1 lookup is cheap given idx_cmt_scene.
-    const textResult = await pool.query(
-        `INSERT INTO chat_message_texts
-            (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error)
-         VALUES (
-            $1, $2, $3, NOW(), $4, $5, $6, $7,
-            COALESCE($8, CASE
-                WHEN $7::uuid IS NULL THEN NULL
-                ELSE (
-                    SELECT scene_structure FROM chat_message_texts
-                     WHERE scene_id = $7::uuid AND scene_structure IS NOT NULL
-                     ORDER BY id ASC LIMIT 1
-                )
-            END),
-            $9
-         )
-         RETURNING id, sent_at`,
-        [
-            message,
-            fromActor.id,
-            discussionId || null,
-            toolCalls !== null ? JSON.stringify(toolCalls) : null,
-            toolCallId,
-            toolsOffered !== null ? JSON.stringify(toolsOffered) : null,
-            sceneId,
-            sceneStructure,
-            isError,
-        ]
-    );
-    const messageTextId = textResult.rows[0].id;
-    const sentAt = textResult.rows[0].sent_at;
-
-    // Insert one delivery row per recipient. acked_at gets stamped at
-    // insert time when ackOnInsert is set — used for replies to wait=true
-    // callers, who consume the reply inline and have no path to ack it
-    // afterwards. Bound parameter for the boolean; CASE keeps it to one
-    // SQL string instead of branching the JS.
+    const insertedTexts = [];
+    // Per-text delivery id map: when broadcasting one event per text
+    // row, we need the matching delivery id (not just the LAST one
+    // across all texts, which would alias N broadcasts onto one id and
+    // confuse any admin reader keying by delivery).
+    const deliveryIdByTextId = new Map();
     const results = [];
-    for (const recipient of recipients) {
-        const toActor = recipientActors.get(recipient);
-        const result = await pool.query(
-            `INSERT INTO chat_messages (message_text_id, to_actor_id, acked_at)
-             VALUES ($1, $2, CASE WHEN $3::boolean THEN NOW() ELSE NULL END)
-             RETURNING id`,
-            [messageTextId, toActor.id, ackOnInsert]
-        );
-        results.push({ id: result.rows[0].id, agent: recipient, sent_at: sentAt });
+    const allDeliveryIds = [];
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        for (const [idx, spec] of rowSpecs.entries()) {
+            const textResult = await client.query(
+                `INSERT INTO chat_message_texts
+                    (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error)
+                 VALUES (
+                    $1, $2, $3, NOW(), $4, $5, $6, $7,
+                    COALESCE($8, CASE
+                        WHEN $7::uuid IS NULL THEN NULL
+                        ELSE (
+                            SELECT scene_structure FROM chat_message_texts
+                             WHERE scene_id = $7::uuid AND scene_structure IS NOT NULL
+                             ORDER BY id ASC LIMIT 1
+                        )
+                    END),
+                    $9
+                 )
+                 RETURNING id, sent_at`,
+                [
+                    spec.message,
+                    fromActor.id,
+                    discussionId || null,
+                    // tool_calls (assistant-side tool_calls metadata) is only
+                    // meaningful on the first row of the batch; subsequent
+                    // rows are pure tool-result rows. Keep the existing field
+                    // on row 0 for back-compat with single-row callers; null
+                    // it on follow-up rows.
+                    idx === 0 && toolCalls !== null ? JSON.stringify(toolCalls) : null,
+                    spec.toolCallId,
+                    // tools_offered likewise belongs to the first row only
+                    // (it's a property of the assistant turn that elicited
+                    // these tool results, not of each result individually).
+                    idx === 0 && toolsOffered !== null ? JSON.stringify(toolsOffered) : null,
+                    sceneId,
+                    sceneStructure,
+                    isError,
+                ]
+            );
+            insertedTexts.push({
+                id: textResult.rows[0].id,
+                sent_at: textResult.rows[0].sent_at,
+                message: spec.message,
+            });
+        }
+
+        // Insert one delivery row per (text row × recipient). acked_at
+        // gets stamped at insert time when ackOnInsert is set — used
+        // for replies to wait=true callers, who consume the reply
+        // inline and have no path to ack it afterwards. Bound parameter
+        // for the boolean; CASE keeps it to one SQL string instead of
+        // branching the JS.
+        //
+        // For the toolCallResults path, this produces N delivery rows
+        // per recipient — one per tool result. The admin chat UI's
+        // scene grouping collapses them under one scene heading.
+        for (const recipient of recipients) {
+            const toActor = recipientActors.get(recipient);
+            let lastDeliveryId = null;
+            for (const t of insertedTexts) {
+                const result = await client.query(
+                    `INSERT INTO chat_messages (message_text_id, to_actor_id, acked_at)
+                     VALUES ($1, $2, CASE WHEN $3::boolean THEN NOW() ELSE NULL END)
+                     RETURNING id`,
+                    [t.id, toActor.id, ackOnInsert]
+                );
+                lastDeliveryId = result.rows[0].id;
+                allDeliveryIds.push(lastDeliveryId);
+                // Track first-recipient delivery per text for the
+                // broadcast loop (the broadcast event is logically
+                // per-text, with to_agents naming all recipients —
+                // pick one delivery id to identify the row).
+                if (!deliveryIdByTextId.has(t.id)) {
+                    deliveryIdByTextId.set(t.id, lastDeliveryId);
+                }
+            }
+            // Surface the LAST delivery id for this recipient — same
+            // shape as the original single-row path (one entry per
+            // recipient), and the most relevant id for VA dispatch /
+            // wait-mode (the dispatch keys off the most-recent thing
+            // the recipient saw).
+            results.push({ id: lastDeliveryId, agent: recipient, sent_at: insertedTexts[insertedTexts.length - 1].sent_at });
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* best-effort */ }
+        throw err;
+    } finally {
+        client.release();
     }
 
-    // Broadcast to admin WebSocket clients for live updates (once per logical message)
+    // The "primary" row for downstream broadcast/dispatch is the LAST
+    // inserted — that's the most recent thing the recipient should see.
+    // For the singular path this is the one and only row; for the
+    // toolCallResults path it's the last tool result, which is what the
+    // VA dispatch (if any) will most naturally key off.
+    const lastText = insertedTexts[insertedTexts.length - 1];
+    const messageTextId = lastText.id;
+    const sentAt = lastText.sent_at;
+
+    // Broadcast to admin WebSocket clients for live updates. One event
+    // per inserted text row so the admin chat list shows each tool
+    // result as its own row (matches the persistence model and how
+    // single-result rows are broadcast today). Each broadcast uses the
+    // FIRST-recipient delivery id for that text row, so admin readers
+    // keying by delivery don't see the same id repeated across rows.
     if (results.length > 0) {
-        broadcast('chat_message', {
-            id: results[0].id,
-            message_text_id: messageTextId,
-            from_agent: fromAgent,
-            to_agents: results.map(function(r) { return r.agent; }),
-            message: message,
-            discussion_id: discussionId || null,
-            scene_id: sceneId,
-            sent_at: sentAt
-        });
+        for (const t of insertedTexts) {
+            broadcast('chat_message', {
+                id: deliveryIdByTextId.get(t.id),
+                message_text_id: t.id,
+                from_agent: fromAgent,
+                to_agents: results.map(function(r) { return r.agent; }),
+                message: t.message,
+                discussion_id: discussionId || null,
+                scene_id: sceneId,
+                sent_at: t.sent_at
+            });
+        }
     }
 
-    logChat('send', { from_agent: fromAgent, to_agents: recipients, message_text_id: messageTextId, delivery_ids: results.map(r => r.id), discussion_id: discussionId || null });
+    logChat('send', { from_agent: fromAgent, to_agents: recipients, message_text_id: messageTextId, delivery_ids: allDeliveryIds, discussion_id: discussionId || null, tool_results_count: toolCallResults ? toolCallResults.length : 0, persist_only: persistOnly });
 
     // Fire-and-forget: if any recipient is 'system', dispatch to system handler
     for (const r of results) {
@@ -230,8 +334,14 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // VA eligibility check is hoisted out of the prior fire-and-forget IIFE
     // so wait-mode callers can know whether a reply is coming. Fast — two
     // small queries — and the same work the IIFE was doing async anyway.
+    //
+    // persist_only short-circuits the dispatch entirely: the engine has
+    // already seen the assistant's terminal tool call (done() / unknown)
+    // and is just persisting the matching tool result rows so the
+    // assistant's tool_calls aren't orphaned in conversation history.
+    // No follow-up VA call is needed.
     let pendingReplyPromise = null;
-    if (!discussionId && fromAgent !== 'system') {
+    if (!persistOnly && !discussionId && fromAgent !== 'system') {
         try {
             const senderRow = await pool.query(
                 'SELECT agc.virtual FROM agent_configuration agc WHERE agc.actor_id = $1',
@@ -258,6 +368,21 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         const msgRow = results.find(r => r.agent === row.agent);
                         dispatches.push({ agent: row.agent, msgId: msgRow ? msgRow.id : null });
                     }
+                    // The discriminator for handleDirectChat's
+                    // tool-result-follow-up branch is an explicit
+                    // boolean — it triggers when the model is responding
+                    // to tool results rather than a fresh perception.
+                    // True for both the legacy singular toolCallId path
+                    // and the new toolCallResults array path. Forwarding
+                    // a specific id (e.g. "the last entry's id")
+                    // pretends one tool result is the active one, which
+                    // is misleading; the VA reads ALL N results from
+                    // persisted history.
+                    const isToolResultCall = Boolean(
+                        (typeof toolCallId === 'string' && toolCallId.length > 0)
+                        || (toolCallResults && toolCallResults.length > 0)
+                    );
+
                     // Single-recipient: expose the promise so wait-mode can
                     // await it. Multi-recipient: no clean way to surface
                     // multiple replies in one HTTP response; stay
@@ -265,7 +390,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, toolCallId, sceneId, sceneStructure, ackReplyOnInsert: wait,
+                            toolsOffered, isToolResultCall, sceneId, sceneStructure, ackReplyOnInsert: wait,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
@@ -276,7 +401,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, toolCallId, sceneId, sceneStructure,
+                                toolsOffered, isToolResultCall, sceneId, sceneStructure,
                             }).catch(() => {});
                         }
                     }
