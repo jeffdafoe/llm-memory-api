@@ -30,9 +30,26 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     // handleDirectChat populates this on the reply row internally).
     // tool_call_id is set when this message is a tool result keyed to a
     // prior assistant tool_call.
+    //
+    // tool_call_results is the parallel-tool-call extension: an array of
+    // { id, content } pairs, one per tool the model emitted in its prior
+    // assistant reply. The engine sends N pairs in one request when the
+    // model emitted N parallel tool_calls; the API persists N tool-result
+    // rows so the next assistant turn sees all of them in history.
+    // Mutually exclusive with the singular (message + tool_call_id) shape
+    // — pick one.
+    //
+    // persist_only is the "close out the conversation without firing
+    // another LLM call" flag. The engine sets it when the model's prior
+    // reply included a terminal tool (done() or unknown). The tool
+    // results still get persisted so the assistant's tool_calls aren't
+    // orphaned in history, but no follow-up VA dispatch happens.
+    // Incompatible with wait=true (nothing to wait for).
     const toolCalls = req.body.tool_calls;
     const toolCallId = req.body.tool_call_id;
     const toolsOffered = req.body.tools_offered;
+    const toolCallResults = req.body.tool_call_results;
+    const persistOnly = req.body.persist_only === true;
     if (toolCalls !== undefined && toolCalls !== null && !Array.isArray(toolCalls)) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_calls must be an array' } });
     }
@@ -41,6 +58,33 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     }
     if (toolCallId !== undefined && toolCallId !== null && typeof toolCallId !== 'string') {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_id must be a string' } });
+    }
+    if (toolCallResults !== undefined && toolCallResults !== null) {
+        if (!Array.isArray(toolCallResults)) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_results must be an array' } });
+        }
+        if (toolCallResults.length === 0) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_results must be non-empty when present' } });
+        }
+        for (const r of toolCallResults) {
+            if (!r || typeof r !== 'object' || typeof r.id !== 'string' || r.id.length === 0 || typeof r.content !== 'string') {
+                return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_results entries must be { id: non-empty string, content: string }' } });
+            }
+        }
+        // Mutually exclusive with the singular shape — the engine should
+        // be using exactly one path per request, not mixing them. The
+        // service layer would silently ignore `message` (because rowSpecs
+        // is built from toolCallResults), so reject it explicitly to
+        // surface caller bugs.
+        if (toolCallId !== undefined && toolCallId !== null && toolCallId !== '') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_results and tool_call_id are mutually exclusive' } });
+        }
+        if (typeof message === 'string' && message.length > 0) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_call_results is mutually exclusive with message' } });
+        }
+    }
+    if (persistOnly && (toolCallResults === undefined || toolCallResults === null)) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'persist_only requires tool_call_results' } });
     }
 
     // Scene grouping (MEM-121) — optional UUID minted by salem-engine at the
@@ -81,8 +125,12 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
 
     const wait = req.body.wait === true;
 
+    if (persistOnly && wait) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'persist_only is incompatible with wait=true (nothing to wait for)' } });
+    }
+
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, sceneId, sceneStructure, wait,
+        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, wait,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.

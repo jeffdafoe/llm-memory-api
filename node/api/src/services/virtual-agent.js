@@ -2074,19 +2074,22 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
     // lands with NULL scene_structure and the admin chat UI's scene
     // grouping renders the label inconsistently within a scene.
     const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
-    const toolCallId = opts && opts.toolCallId !== undefined ? opts.toolCallId : null;
     const isToolUse = Array.isArray(toolsOffered) && toolsOffered.length > 0;
-    // A non-empty string toolCallId means this chat/send is the model's
-    // response to a tool result the engine just sent back (e.g. "[OK]
-    // You spoke."). Fresh perceptions arrive without one. Used by the
-    // sim-NPC branch to tell "fresh perception, update cache" from
-    // "tool-result follow-up, reuse cached names" — a more reliable
-    // discriminator than looking for a Here block in messageText (the
-    // engine omits Here entirely when the NPC is alone, so an empty
-    // messageText could be either case otherwise). The strict
-    // type+length check guards against a malformed empty-string opt
-    // being treated as a tool result and silently keeping stale cache.
-    const isToolResultCall = typeof toolCallId === 'string' && toolCallId.length > 0;
+    // isToolResultCall=true means this chat/send is the model's response
+    // to a tool result the engine just sent back (e.g. "[OK] You spoke.").
+    // Fresh perceptions arrive with this false. Used by the sim-NPC
+    // branch to tell "fresh perception, update cache" from "tool-result
+    // follow-up, reuse cached names" — a more reliable discriminator
+    // than looking for a Here block in messageText (the engine omits
+    // Here entirely when the NPC is alone, so an empty messageText
+    // could be either case otherwise).
+    //
+    // Caller passes the boolean explicitly. Back-compat for the legacy
+    // singular `toolCallId` opt: a non-empty string is treated as
+    // truthy here (predates the parallel-tool-call protocol fix that
+    // moved this discriminator out of the request payload).
+    const legacyToolCallId = opts && typeof opts.toolCallId === 'string' && opts.toolCallId.length > 0;
+    const isToolResultCall = (opts && opts.isToolResultCall === true) || legacyToolCallId;
 
     const agent = await loadAgent(virtualAgentName);
     if (!agent || !agent.virtual) return null;
