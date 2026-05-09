@@ -1810,6 +1810,12 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
     logAdmin('actor_create', { name: actorName, virtual: isVirtual === true, ui_access: !!ui_access, welcome_mail: welcomeMailSent, welcome_note: welcomeNoteSaved, user_id: req.authenticatedUser.id });
 
     const response = {
+        // actor_id surfaces the integer PK so callers (e.g. the salem
+        // engine spawning visitor agents) can subsequently call
+        // /admin/actors/delete by id without needing a separate
+        // name-to-id lookup. Reading from the closure variable populated
+        // by the INSERT ... RETURNING id above (line ~1702).
+        actor_id: actorId,
         name: actorName,
         passphrase,
         virtual: isVirtual === true,
