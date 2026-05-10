@@ -7,6 +7,7 @@
 // formula in index.js can't account for these without becoming OpenAI-aware.
 
 const { log } = require('../logger');
+const { asNumber } = require('./coerce');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -297,8 +298,8 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
     };
 
     // /v1/responses uses max_output_tokens. Accept either stored config key.
-    const maxTokens = conf.max_completion_tokens || conf.max_tokens;
-    if (maxTokens) {
+    const maxTokens = asNumber(conf.max_completion_tokens) ?? asNumber(conf.max_tokens);
+    if (maxTokens !== undefined) {
         body.max_output_tokens = maxTokens;
     }
 
@@ -445,8 +446,8 @@ function createCall(model, apiKey, configuration) {
 
         // All OpenAI models now use max_completion_tokens (max_tokens is deprecated).
         // Accept either key from stored config for backwards compatibility.
-        const maxTokens = conf.max_completion_tokens || conf.max_tokens;
-        if (maxTokens) {
+        const maxTokens = asNumber(conf.max_completion_tokens) ?? asNumber(conf.max_tokens);
+        if (maxTokens !== undefined) {
             body.max_completion_tokens = maxTokens;
         }
 
@@ -461,8 +462,11 @@ function createCall(model, apiKey, configuration) {
             var activeReasoning = conf.reasoning_effort && conf.reasoning_effort !== 'none';
             if (activeReasoning) {
                 body.reasoning_effort = conf.reasoning_effort;
-            } else if (conf.temperature !== undefined) {
-                body.temperature = conf.temperature;
+            } else {
+                const t = asNumber(conf.temperature);
+                if (t !== undefined) {
+                    body.temperature = t;
+                }
             }
         }
 

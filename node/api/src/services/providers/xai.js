@@ -9,6 +9,7 @@
 // Each search invocation costs $5/1K calls on top of token costs.
 
 const { log } = require('../logger');
+const { asNumber } = require('./coerce');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -201,13 +202,15 @@ function createCall(model, apiKey, configuration) {
         };
 
         // Max output tokens
-        if (conf.max_output_tokens) {
-            body.max_output_tokens = conf.max_output_tokens;
+        const maxOutputTokens = asNumber(conf.max_output_tokens);
+        if (maxOutputTokens !== undefined) {
+            body.max_output_tokens = maxOutputTokens;
         }
 
         // Temperature — only for non-reasoning models
-        if (conf.temperature !== undefined) {
-            body.temperature = conf.temperature;
+        const temperature = asNumber(conf.temperature);
+        if (temperature !== undefined) {
+            body.temperature = temperature;
         }
 
         // Per-call stop sequences. xAI Responses API accepts `stop` like
