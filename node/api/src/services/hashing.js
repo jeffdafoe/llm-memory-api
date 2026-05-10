@@ -26,4 +26,19 @@ function generateKey() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-module.exports = { generateSalt, hash, verify, generateKey };
+// Deterministic SHA-256 hex of a token, used as an indexed lookup key
+// for session validation. The slow PBKDF2 hash above is for at-rest
+// protection (DB exfiltration → can't recover tokens); the fast lookup
+// hash is for finding the candidate row without iterating PBKDF2 over
+// every session. After the indexed SELECT returns a row, callers still
+// run the PBKDF2 verify on it as the authoritative check.
+//
+// Plain SHA-256 (no salt) is intentional: tokens are 48 bytes of CSPRNG
+// output, so they have ~384 bits of entropy and don't need a salt to
+// resist precomputation. Any salt would defeat the indexed-lookup
+// purpose since it would be per-row.
+function tokenLookupHash(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+module.exports = { generateSalt, hash, verify, generateKey, tokenLookupHash };

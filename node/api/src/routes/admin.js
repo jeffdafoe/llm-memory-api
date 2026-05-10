@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
 const { log } = require('../services/logger');
-const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
+const { hash: hashToken, generateSalt, verify, tokenLookupHash } = require('../services/hashing');
 const { listNotes, readNote, saveNote, deleteNote, moveNote, validateSlug, escapeLike } = require('../services/documents');
 const { searchMemory, ingestContent } = require('../services/memory');
 const { safeInt } = require('../util');
@@ -138,11 +138,12 @@ router.post('/admin/login', async (req, res) => {
         const sessionToken = generateSessionToken();
         const salt = generateSalt();
         const tokenHash = hashToken(sessionToken, salt);
+        const lookupHash = tokenLookupHash(sessionToken);
         const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
         await pool.query(
-            "INSERT INTO sessions (actor_id, token_hash, token_salt, kind, expires_at) VALUES ($1, $2, $3, $4, $5)",
-            [row.id, tokenHash, salt, SESSION_KIND.WEB, expiresAt]
+            "INSERT INTO sessions (actor_id, token_hash, token_salt, token_lookup_hash, kind, expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
+            [row.id, tokenHash, salt, lookupHash, SESSION_KIND.WEB, expiresAt]
         );
 
         await pool.query(

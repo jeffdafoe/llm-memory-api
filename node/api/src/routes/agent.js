@@ -4,7 +4,7 @@ const generatePassphrase = require('eff-diceware-passphrase');
 const pool = require('../db');
 const { log, logError } = require('../services/logger');
 const auth = require('../middleware/auth');
-const { hash: hashToken, generateSalt, verify } = require('../services/hashing');
+const { hash: hashToken, generateSalt, verify, tokenLookupHash } = require('../services/hashing');
 const { SESSION_KIND } = require('../constants');
 const { broadcast } = require('../services/events');
 const { listNotes, readNote, saveNote } = require('../services/documents');
@@ -90,15 +90,19 @@ router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
         });
     }
 
-    // Generate session token and store hashed in database
+    // Generate session token and store hashed in database. The PBKDF2
+    // hash protects at-rest; the SHA-256 lookup hash gives validateSession-
+    // Token an indexed single-row lookup so verify is O(1) instead of
+    // PBKDF2'ing every active session.
     const sessionToken = generateSessionToken();
     const sessionSalt = generateSalt();
     const sessionHash = hashToken(sessionToken, sessionSalt);
+    const lookupHash = tokenLookupHash(sessionToken);
     const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
     await pool.query(
-        'INSERT INTO sessions (actor_id, token_hash, token_salt, kind, expires_at, subsystem) VALUES ($1, $2, $3, $4, $5, $6)',
-        [row.actor_id, sessionHash, sessionSalt, SESSION_KIND.API, expiresAt, subsystem || null]
+        'INSERT INTO sessions (actor_id, token_hash, token_salt, token_lookup_hash, kind, expires_at, subsystem) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [row.actor_id, sessionHash, sessionSalt, lookupHash, SESSION_KIND.API, expiresAt, subsystem || null]
     );
 
     // Update last_seen
