@@ -2095,8 +2095,15 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
     if (!agent || !agent.virtual) return null;
 
     if (!agent.api_key || !agent.provider || !agent.model) {
+        // Throw rather than return null: wait=true callers (the salem engine
+        // is the canonical one) await this promise via the chat/send route,
+        // which catches and maps to 502 REPLY_FAILED. Returning null silently
+        // resolves with reply=null and the caller can't tell a misconfigured
+        // VA from a quiet one — a visitor with no api_key would freeze on
+        // arrival, sit forever, no error surfaced. Non-wait callers in
+        // chat.js already swallow rejections with .catch(() => {}).
         logVA('direct-chat-skip', { agent: virtualAgentName, reason: 'missing config' });
-        return null;
+        throw new Error('Agent ' + virtualAgentName + ' missing provider/model/api_key');
     }
 
     logVA('direct-chat-processing', { agent: virtualAgentName, from: fromAgent, tool_use: isToolUse });
