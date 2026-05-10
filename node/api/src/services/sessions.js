@@ -1,9 +1,10 @@
 // Shared session token validation — resolves a bearer token to an actor
-// by iterating hashed sessions of the given kind. Used by auth middleware
-// and WebSocket auth to avoid duplicating the hash-check loop.
+// by looking up the session row keyed on the token's deterministic
+// SHA-256 hash. Used by auth middleware, /v1/auth/verify, and WebSocket
+// auth to avoid duplicating the verification logic.
 
 const pool = require('../db');
-const { verify } = require('./hashing');
+const { verify, tokenLookupHash } = require('./hashing');
 const { SESSION_KIND } = require('../constants');
 
 // Sliding session expiry — active sessions get pushed back to 24h from now
@@ -13,24 +14,59 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const SLIDING_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
 // Validate a session token against the sessions table.
-// Returns the matching row ({ id, actor_id, name, expires_at }) or null.
-// Extends expires_at when within SLIDING_THRESHOLD of expiry.
+//
+// Fast path (post-MEM-131): SELECT WHERE token_lookup_hash = sha256(token)
+// returns at most one candidate row, then PBKDF2-verify confirms. O(1)
+// indexed lookup + 1 PBKDF2 call.
+//
+// Fallback (legacy): for sessions inserted before MEM-131 (token_lookup_hash
+// IS NULL), iterate all rows of the kind and PBKDF2-verify each. The
+// fallback is bounded by the count of pre-migration sessions still alive;
+// after 24h every legacy session has expired and the fallback can be
+// removed in a follow-up.
+//
+// Returns the matching row ({ id, actor_id, name, expires_at, ... }) or
+// null. Extends expires_at when within SLIDING_THRESHOLD of expiry.
 async function validateSessionToken(token, kind) {
-    const result = await pool.query(
+    const lookupHash = tokenLookupHash(token);
+    const fast = await pool.query(
         `SELECT s.id, s.actor_id, s.token_hash, s.token_salt, s.expires_at, ac.name, ac.realms
          FROM sessions s
          JOIN actors ac ON ac.id = s.actor_id
-         WHERE s.kind = $1 AND s.expires_at > NOW()`,
+         WHERE s.kind = $1
+           AND s.token_lookup_hash = $2
+           AND s.expires_at > NOW()
+         LIMIT 1`,
+        [kind, lookupHash]
+    );
+    if (fast.rows.length > 0) {
+        const row = fast.rows[0];
+        if (verify(token, row.token_salt, row.token_hash)) {
+            await maybeExtendExpiry(row);
+            return row;
+        }
+        // Lookup-hash collision (vanishingly unlikely with 256-bit SHA)
+        // or a token that hashed the same prefix but differs — fail
+        // closed rather than fall through to the legacy scan.
+        return null;
+    }
+
+    // Legacy fallback for sessions inserted before MEM-131.
+    const legacy = await pool.query(
+        `SELECT s.id, s.actor_id, s.token_hash, s.token_salt, s.expires_at, ac.name, ac.realms
+         FROM sessions s
+         JOIN actors ac ON ac.id = s.actor_id
+         WHERE s.kind = $1
+           AND s.token_lookup_hash IS NULL
+           AND s.expires_at > NOW()`,
         [kind]
     );
-
-    for (const row of result.rows) {
+    for (const row of legacy.rows) {
         if (verify(token, row.token_salt, row.token_hash)) {
             await maybeExtendExpiry(row);
             return row;
         }
     }
-
     return null;
 }
 
