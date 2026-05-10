@@ -818,7 +818,16 @@ async function loadChatHistory(discussionId, limit) {
 // MEM-119: now also returns tool_calls / tool_call_id / tools_offered so
 // the tool-use branch in handleDirectChat can rebuild OpenAI-shape messages[]
 // honoring assistant/tool roles. Plain-text callers ignore them.
-async function loadDirectChatHistory(agent1, agent2) {
+//
+// sceneId (optional): when non-null, restricts history to rows in that
+// scene. Used by shared-VA callers (salem-visitor, salem-vendor) where
+// one actor row backs multiple personas — without this, Caleb's tick
+// would see Elias's earlier tool_call rows because both sit on actor 54.
+// Cross-tick continuity for shared VAs comes from the engine's continuity
+// layer (actor_narrative_state, actor_relationship), not from chat
+// history. Persistent-VA callers pass null here and keep the agent-wide
+// time-windowed history they had pre-fix.
+async function loadDirectChatHistory(agent1, agent2, sceneId) {
     const hours = parseInt(config.get('virtual_agent_chat_history_hours')) || 4;
     const maxMessages = 50;
 
@@ -830,6 +839,10 @@ async function loadDirectChatHistory(agent1, agent2) {
     // tool-use messages back to the model. Without this, the chronicler
     // (and any tool-using VA) reads its own error rows as if they were
     // real conversation turns and treats the error text as input.
+    //
+    // scene_id filter is appended via $5 only when the caller passes it.
+    // The COALESCE keeps the cost zero when sceneId is null (still index-
+    // assisted on the actor-pair predicate).
     const result = await pool.query(
         `SELECT fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
                 cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
@@ -841,8 +854,9 @@ async function loadDirectChatHistory(agent1, agent2) {
            AND NOT cmt.is_error
          AND ((cmt.from_actor_id = $1 AND cm.to_actor_id = $2) OR (cmt.from_actor_id = $2 AND cm.to_actor_id = $1))
          AND cmt.sent_at >= NOW() - INTERVAL '1 hour' * $3
+         AND ($5::uuid IS NULL OR cmt.scene_id = $5::uuid)
          ORDER BY cm.id DESC LIMIT $4`,
-        [actor1.id, actor2.id, hours, maxMessages]
+        [actor1.id, actor2.id, hours, maxMessages, sceneId || null]
     );
     return result.rows.reverse();
 }
@@ -2050,6 +2064,29 @@ function safeParseJSON(s) {
     }
 }
 
+// Trim leading non-user messages from the OpenAI-shape history.
+//
+// loadDirectChatHistory caps results at 50 rows within a time window; when
+// the conversation overruns that window, the oldest rows get sliced off.
+// If the slice lands mid-pair, the head can be a tool_result whose matching
+// tool_use was cut, or an assistant turn whose preceding user message was
+// cut. Anthropic 400s either way — for tool_result orphans with "unexpected
+// `tool_use_id` found in `tool_result` blocks", and for leading-assistant
+// because conversations must start with a user message.
+//
+// The fix walks the head, dropping rows until the first message is
+// role: user (a perception/text from engine→VA, never a tool_result —
+// tool_results are role: tool in OpenAI shape). Tool-use protocol
+// completeness inside the kept window is preserved by buildToolUseMessages
+// itself (each row maps 1:1, no slicing); this only handles the boundary.
+function trimHeadToUserMessage(messages) {
+    let firstUser = 0;
+    while (firstUser < messages.length && messages[firstUser].role !== 'user') {
+        firstUser++;
+    }
+    return firstUser === 0 ? messages : messages.slice(firstUser);
+}
+
 // Handle a direct chat message sent to a virtual agent (no discussion).
 // Called from chatSend when a non-virtual agent messages a virtual one.
 // messageId is the chat_messages.id of the incoming message (for acking after response).
@@ -2112,8 +2149,39 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         const apiKey = decryptApiKey(agent.api_key);
         const conf = buildProviderConf(agent);
 
-        // Load recent direct chat history between the two agents (time-windowed)
-        const history = await loadDirectChatHistory(virtualAgentName, fromAgent);
+        // Load recent direct chat history between the two agents (time-windowed).
+        //
+        // Shared-VA actors (salem-visitor, salem-vendor) back multiple
+        // personas on a single actor row — Caleb the wool-buyer and Elias
+        // the messenger both sit on salem-visitor. Without scene scoping,
+        // Caleb's tick reads Elias's tool_call rows from earlier scenes
+        // and the assembled history mixes personas (and slices mid-pair
+        // when the LIMIT-50 cap kicks in, surfacing as "unexpected
+        // tool_use_id found in tool_result blocks" 400s from Anthropic).
+        // Cross-tick continuity for shared VAs comes from the engine's
+        // continuity layer (actor_narrative_state, actor_relationship)
+        // baked into the perception, not from chat history.
+        //
+        // Persistent VAs (zbbs-prudence-ward, zbbs-john-ellis, etc.) have
+        // their own actor row per persona, so the actor1↔actor2 filter
+        // already scopes correctly — pass null and keep the time-windowed
+        // history they had pre-fix.
+        //
+        // Defensive: if a shared-VA call arrives with no sceneId, do NOT
+        // fall through to unscoped history (that's the cross-persona
+        // contamination bug we're fixing). Use empty history instead;
+        // handleDirectChat will still send the inbound messageText as the
+        // user message, the model just gets no prior context. The engine
+        // always passes a sceneId for sim ticks, so this branch only fires
+        // for misconfigured callers and is intentionally fail-closed.
+        const isSharedVA = agent.agent === 'salem-visitor' || agent.agent === 'salem-vendor';
+        let history;
+        if (isSharedVA && !sceneId) {
+            history = [];
+        } else {
+            const historyScene = isSharedVA ? sceneId : null;
+            history = await loadDirectChatHistory(virtualAgentName, fromAgent, historyScene);
+        }
 
         // Sim mode: when the sender is 'salem-engine' (the Salem village
         // simulator's service actor driving NPC ticks), swap the chat-shape
@@ -2215,6 +2283,21 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
                 toolUseHistory = pruneSimHistory(history);
             }
             toolUseMessages = buildToolUseMessages(toolUseHistory, virtualAgentName);
+            toolUseMessages = trimHeadToUserMessage(toolUseMessages);
+            // Empty array post-trim means the entire history was non-user
+            // (or there was no history to start with — e.g. shared-VA
+            // first-tick of a fresh scene). Anthropic 400s on empty
+            // messages, so seed with the inbound messageText. For
+            // tool-result follow-ups messageText is "[OK] You spoke" or
+            // similar — the model can read it as the previous turn's
+            // outcome and decide; for fresh perceptions it's the
+            // perception itself, which is the natural conversation seed.
+            if (toolUseMessages.length === 0) {
+                toolUseMessages = [{
+                    role: 'user',
+                    content: messageText || 'Continue.'
+                }];
+            }
         }
         const userMessage = isToolUse ? '' : buildDirectChatUserMessage(history, fromAgent, messageText);
 
