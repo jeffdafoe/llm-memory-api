@@ -2,6 +2,7 @@
 // Handles structured system prompts with optional cache_control markers.
 
 const { log } = require('../logger');
+const { asNumber } = require('./coerce');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -282,7 +283,7 @@ function createCall(model, apiKey, configuration) {
 
         const body = {
             model: model,
-            max_tokens: conf.max_tokens || 4096,
+            max_tokens: asNumber(conf.max_tokens) || 4096,
             system: system,
             messages: messages
         };
@@ -293,8 +294,11 @@ function createCall(model, apiKey, configuration) {
                 type: 'adaptive',
                 effort: conf.thinking_effort
             };
-        } else if (conf.temperature !== undefined) {
-            body.temperature = conf.temperature;
+        } else {
+            const t = asNumber(conf.temperature);
+            if (t !== undefined) {
+                body.temperature = t;
+            }
         }
 
         // Per-call stop sequences. Anthropic allows up to 4.

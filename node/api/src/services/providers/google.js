@@ -2,6 +2,7 @@
 // Uses the Generative Language API (generativelanguage.googleapis.com).
 
 const { log } = require('../logger');
+const { asNumber } = require('./coerce');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -274,24 +275,29 @@ function createCall(model, apiKey, configuration) {
             generationConfig: {}
         };
 
-        if (conf.max_tokens) {
-            body.generationConfig.maxOutputTokens = conf.max_tokens;
+        const maxTokens = asNumber(conf.max_tokens);
+        if (maxTokens !== undefined) {
+            body.generationConfig.maxOutputTokens = maxTokens;
         }
-        if (conf.temperature !== undefined) {
-            body.generationConfig.temperature = conf.temperature;
+        const temperature = asNumber(conf.temperature);
+        if (temperature !== undefined) {
+            body.generationConfig.temperature = temperature;
         }
-        if (conf.top_p !== undefined) {
-            body.generationConfig.topP = conf.top_p;
+        const topP = asNumber(conf.top_p);
+        if (topP !== undefined) {
+            body.generationConfig.topP = topP;
         }
-        if (conf.top_k !== undefined) {
-            body.generationConfig.topK = conf.top_k;
+        const topK = asNumber(conf.top_k);
+        if (topK !== undefined) {
+            body.generationConfig.topK = topK;
         }
 
         // Thinking budget: 0 = disabled, >0 = enabled with cap.
         // When omitted, model uses its own default thinking behavior.
-        if (conf.thinking_budget !== undefined) {
+        const thinkingBudget = asNumber(conf.thinking_budget);
+        if (thinkingBudget !== undefined) {
             body.generationConfig.thinkingConfig = {
-                thinkingBudget: conf.thinking_budget
+                thinkingBudget: thinkingBudget
             };
         }
 

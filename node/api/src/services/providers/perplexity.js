@@ -3,6 +3,7 @@
 // OpenAI-compatible format with additional response fields (citations, search_results).
 
 const { log } = require('../logger');
+const { asNumber } = require('./coerce');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -141,11 +142,13 @@ function createCall(model, apiKey, configuration) {
             ]
         };
 
-        if (conf.max_tokens) {
-            body.max_tokens = conf.max_tokens;
+        const maxTokens = asNumber(conf.max_tokens);
+        if (maxTokens !== undefined) {
+            body.max_tokens = maxTokens;
         }
-        if (conf.temperature !== undefined) {
-            body.temperature = conf.temperature;
+        const temperature = asNumber(conf.temperature);
+        if (temperature !== undefined) {
+            body.temperature = temperature;
         }
         if (conf.search_recency_filter) {
             body.search_recency_filter = conf.search_recency_filter;

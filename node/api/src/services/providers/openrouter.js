@@ -11,6 +11,7 @@
 // using catalog pricing, so index.js calculateCost always gets usage.cost.
 
 const { log } = require('../logger');
+const { asNumber } = require('./coerce');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -159,12 +160,14 @@ function createCall(model, apiKey, configuration) {
             ].concat(userMessages)
         };
 
-        if (conf.max_tokens) {
-            body.max_tokens = conf.max_tokens;
+        const maxTokens = asNumber(conf.max_tokens);
+        if (maxTokens !== undefined) {
+            body.max_tokens = maxTokens;
         }
 
-        if (conf.temperature !== undefined) {
-            body.temperature = conf.temperature;
+        const temperature = asNumber(conf.temperature);
+        if (temperature !== undefined) {
+            body.temperature = temperature;
         }
 
         // Per-call stop sequences. OpenRouter proxies to many upstreams;
