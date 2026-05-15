@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict IulCA3QBrzNlB8bK2coJjfNPFfQoqKd899t2pdElKhXtXdKsxyxKh9N1Xi4Lb5M
+\restrict Qrl71iMVl3JnwahdP0ejuxkHZ3Q0S7oBXWl5nJrryEPRA6z1yzsazMBaj4yA2wO
 
--- Dumped from database version 17.8 (Debian 17.8-0+deb13u1)
--- Dumped by pg_dump version 17.8 (Debian 17.8-0+deb13u1)
+-- Dumped from database version 17.10 (Debian 17.10-0+deb13u1)
+-- Dumped by pg_dump version 17.10 (Debian 17.10-0+deb13u1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -33,9 +33,70 @@ CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
 
 
+--
+-- Name: dream_mode_t; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.dream_mode_t AS ENUM (
+    'none',
+    'companion',
+    'technical',
+    'sim'
+);
+
+
+--
+-- Name: memory_chunks_tsv_trigger(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.memory_chunks_tsv_trigger() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.tsv := to_tsvector('english', NEW.chunk_text);
+    RETURN NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: access_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.access_requests (
+    id integer NOT NULL,
+    email character varying(255) NOT NULL,
+    usage_description text NOT NULL,
+    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    reviewed_at timestamp with time zone,
+    reviewer_notes text
+);
+
+
+--
+-- Name: access_requests_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.access_requests_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: access_requests_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.access_requests_id_seq OWNED BY public.access_requests.id;
+
 
 --
 -- Name: actor_visibility_configuration; Type: TABLE; Schema: public; Owner: -
@@ -85,8 +146,11 @@ CREATE TABLE public.actors (
     status character varying(20) DEFAULT 'active'::character varying NOT NULL,
     last_seen timestamp with time zone,
     active_since timestamp with time zone,
-    expertise text DEFAULT '[]'::text NOT NULL,
-    CONSTRAINT chk_actors_status CHECK (((status)::text = 'active'::text))
+    expertise jsonb DEFAULT '[]'::jsonb NOT NULL,
+    visible_to_others boolean DEFAULT false NOT NULL,
+    created_by integer,
+    realms text[] DEFAULT '{}'::text[] NOT NULL,
+    CONSTRAINT chk_actors_status CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'available'::character varying, 'degraded'::character varying, 'error'::character varying])::text[])))
 );
 
 
@@ -108,6 +172,39 @@ CREATE SEQUENCE public.actors_id_seq
 --
 
 ALTER SEQUENCE public.actors_id_seq OWNED BY public.actors.id;
+
+
+--
+-- Name: admin_permissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.admin_permissions (
+    id integer NOT NULL,
+    actor_id integer NOT NULL,
+    resource character varying(50) NOT NULL,
+    action character varying(50) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: admin_permissions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.admin_permissions_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: admin_permissions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.admin_permissions_id_seq OWNED BY public.admin_permissions.id;
 
 
 --
@@ -165,7 +262,9 @@ CREATE TABLE public.agent_configuration (
     cost_budget_daily numeric(10,2),
     cost_budget_monthly numeric(10,2),
     actor_id integer NOT NULL,
-    CONSTRAINT chk_agent_configuration_provider CHECK (((provider IS NULL) OR ((provider)::text = ANY ((ARRAY['anthropic'::character varying, 'google'::character varying, 'openai'::character varying, 'perplexity'::character varying])::text[]))))
+    dream_mode public.dream_mode_t DEFAULT 'none'::public.dream_mode_t NOT NULL,
+    last_dream_at timestamp with time zone,
+    storage_quota bigint
 );
 
 
@@ -188,10 +287,11 @@ CREATE VIEW public.agent_status AS
  SELECT ac.id AS actor_id,
     ac.name AS agent,
         CASE
-            WHEN (agc.virtual = true) THEN 'available'::text
-            WHEN (ac.last_seen > (now() - '00:15:00'::interval)) THEN 'online'::text
-            WHEN (ac.last_seen IS NOT NULL) THEN 'offline'::text
-            ELSE 'unknown'::text
+            WHEN ((agc.virtual = true) AND ((ac.status)::text = ANY ((ARRAY['available'::character varying, 'degraded'::character varying, 'error'::character varying])::text[]))) THEN ac.status
+            WHEN (agc.virtual = true) THEN 'available'::character varying
+            WHEN (ac.last_seen > (now() - '00:15:00'::interval)) THEN 'online'::character varying
+            WHEN (ac.last_seen IS NOT NULL) THEN 'offline'::character varying
+            ELSE 'unknown'::character varying
         END AS status,
     ac.last_seen,
     ac.passphrase_rotated_at,
@@ -210,9 +310,50 @@ CREATE VIEW public.agent_status AS
     agc.cache_prompts,
     agc.learning_enabled,
     agc.max_tokens,
-    agc.temperature
+    agc.temperature,
+    agc.dream_mode,
+    agc.storage_quota
    FROM (public.actors ac
      JOIN public.agent_configuration agc ON ((agc.actor_id = ac.id)));
+
+
+--
+-- Name: chat_message_texts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_message_texts (
+    id integer NOT NULL,
+    message text NOT NULL,
+    from_actor_id integer NOT NULL,
+    discussion_id integer,
+    sent_at timestamp with time zone DEFAULT now() NOT NULL,
+    tool_calls jsonb,
+    tool_call_id text,
+    tools_offered jsonb,
+    scene_id uuid,
+    is_error boolean DEFAULT false NOT NULL,
+    scene_structure character varying(100)
+);
+
+
+--
+-- Name: chat_message_texts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.chat_message_texts_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: chat_message_texts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.chat_message_texts_id_seq OWNED BY public.chat_message_texts.id;
 
 
 --
@@ -221,12 +362,10 @@ CREATE VIEW public.agent_status AS
 
 CREATE TABLE public.chat_messages (
     id integer NOT NULL,
-    message text NOT NULL,
-    sent_at timestamp with time zone DEFAULT now() NOT NULL,
     acked_at timestamp with time zone,
-    channel character varying(50) DEFAULT NULL::character varying,
-    from_actor_id integer NOT NULL,
-    to_actor_id integer
+    to_actor_id integer,
+    deleted_at timestamp with time zone,
+    message_text_id integer NOT NULL
 );
 
 
@@ -261,7 +400,8 @@ CREATE TABLE public.memory_chunks (
     heading character varying(500),
     chunk_text text NOT NULL,
     embedding public.vector(1536),
-    ingested_at timestamp with time zone DEFAULT now() NOT NULL
+    ingested_at timestamp with time zone DEFAULT now() NOT NULL,
+    tsv tsvector
 );
 
 
@@ -425,7 +565,11 @@ CREATE TABLE public.documents (
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     deleted_at timestamp with time zone,
-    created_by_actor_id integer
+    created_by_actor_id integer,
+    kind character varying(20) DEFAULT 'note'::character varying NOT NULL,
+    last_accessed timestamp with time zone,
+    metadata jsonb,
+    extension character varying(20) DEFAULT NULL::character varying
 );
 
 
@@ -462,7 +606,8 @@ CREATE TABLE public.error_log (
     context_id text,
     error_message text NOT NULL,
     error_detail text,
-    actor_id integer
+    actor_id integer,
+    status_code integer
 );
 
 
@@ -487,6 +632,43 @@ ALTER SEQUENCE public.error_log_id_seq OWNED BY public.error_log.id;
 
 
 --
+-- Name: invite_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invite_codes (
+    id integer NOT NULL,
+    code character varying(32) NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    created_by character varying(255),
+    access_request_id integer,
+    used_by character varying(255),
+    used_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    realm text DEFAULT 'llm-memory'::text NOT NULL
+);
+
+
+--
+-- Name: invite_codes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.invite_codes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: invite_codes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.invite_codes_id_seq OWNED BY public.invite_codes.id;
+
+
+--
 -- Name: mail; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -498,7 +680,8 @@ CREATE TABLE public.mail (
     acked_at timestamp with time zone,
     deleted_at timestamp with time zone,
     from_actor_id integer,
-    to_actor_id integer NOT NULL
+    to_actor_id integer NOT NULL,
+    in_reply_to uuid
 );
 
 
@@ -557,6 +740,90 @@ CREATE SEQUENCE public.namespace_permissions_id_seq
 --
 
 ALTER SEQUENCE public.namespace_permissions_id_seq OWNED BY public.namespace_permissions.id;
+
+
+--
+-- Name: namespace_usage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.namespace_usage (
+    namespace character varying(64) NOT NULL,
+    note_count integer DEFAULT 0 NOT NULL,
+    total_bytes bigint DEFAULT 0 NOT NULL,
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: note_permissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.note_permissions (
+    id integer NOT NULL,
+    owner_namespace text NOT NULL,
+    slug_pattern text NOT NULL,
+    grantee_actor_id integer,
+    can_read boolean DEFAULT false NOT NULL,
+    can_write boolean DEFAULT false NOT NULL,
+    can_delete boolean DEFAULT false NOT NULL,
+    granted_by integer NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    revoked_at timestamp with time zone
+);
+
+
+--
+-- Name: note_permissions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.note_permissions_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: note_permissions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.note_permissions_id_seq OWNED BY public.note_permissions.id;
+
+
+--
+-- Name: note_synchronization; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.note_synchronization (
+    id integer NOT NULL,
+    actor_id integer NOT NULL,
+    namespace character varying(64) NOT NULL,
+    slug character varying(255) NOT NULL,
+    local_path character varying(500) NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: note_synchronization_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.note_synchronization_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: note_synchronization_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.note_synchronization_id_seq OWNED BY public.note_synchronization.id;
 
 
 --
@@ -641,6 +908,7 @@ CREATE TABLE public.sessions (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     expires_at timestamp with time zone NOT NULL,
     subsystem text,
+    token_lookup_hash text,
     CONSTRAINT sessions_kind_check CHECK (((kind)::text = ANY ((ARRAY['web'::character varying, 'api'::character varying])::text[])))
 );
 
@@ -694,8 +962,88 @@ CREATE TABLE public.templates (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     kind character varying(50) DEFAULT 'welcome'::character varying NOT NULL,
-    CONSTRAINT templates_kind_check CHECK (((kind)::text = 'welcome'::text))
+    CONSTRAINT templates_kind_check CHECK (((kind)::text = ANY ((ARRAY['welcome'::character varying, 'welcome-note'::character varying])::text[])))
 );
+
+
+--
+-- Name: virtual_agent_access; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.virtual_agent_access (
+    id integer NOT NULL,
+    virtual_agent_id integer NOT NULL,
+    grantee_actor_id integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: virtual_agent_access_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.virtual_agent_access_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: virtual_agent_access_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.virtual_agent_access_id_seq OWNED BY public.virtual_agent_access.id;
+
+
+--
+-- Name: virtual_agent_calls; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.virtual_agent_calls (
+    id bigint NOT NULL,
+    actor_id integer NOT NULL,
+    context text,
+    context_id text,
+    provider text NOT NULL,
+    model text NOT NULL,
+    system_prompt text,
+    user_message text,
+    response text,
+    status text DEFAULT 'success'::text NOT NULL,
+    status_code integer,
+    error_message text,
+    input_tokens integer DEFAULT 0,
+    output_tokens integer DEFAULT 0,
+    cache_read_tokens integer DEFAULT 0,
+    cache_write_tokens integer DEFAULT 0,
+    cost numeric(10,6) DEFAULT 0,
+    duration_ms integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    usage_id bigint,
+    scene_id uuid
+);
+
+
+--
+-- Name: virtual_agent_calls_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.virtual_agent_calls_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: virtual_agent_calls_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.virtual_agent_calls_id_seq OWNED BY public.virtual_agent_calls.id;
 
 
 --
@@ -713,7 +1061,9 @@ CREATE TABLE public.virtual_agent_usage (
     cost numeric(10,6) DEFAULT 0 NOT NULL,
     context character varying(50),
     created_at timestamp with time zone DEFAULT now(),
-    actor_id integer NOT NULL
+    actor_id integer NOT NULL,
+    status text DEFAULT 'success'::text NOT NULL,
+    error_message text
 );
 
 
@@ -758,6 +1108,13 @@ ALTER SEQUENCE public.welcome_templates_id_seq OWNED BY public.templates.id;
 
 
 --
+-- Name: access_requests id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.access_requests ALTER COLUMN id SET DEFAULT nextval('public.access_requests_id_seq'::regclass);
+
+
+--
 -- Name: actor_visibility_configuration id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -772,10 +1129,24 @@ ALTER TABLE ONLY public.actors ALTER COLUMN id SET DEFAULT nextval('public.actor
 
 
 --
+-- Name: admin_permissions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.admin_permissions ALTER COLUMN id SET DEFAULT nextval('public.admin_permissions_id_seq'::regclass);
+
+
+--
 -- Name: agent_api_keys id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_api_keys ALTER COLUMN id SET DEFAULT nextval('public.agent_api_keys_id_seq'::regclass);
+
+
+--
+-- Name: chat_message_texts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_message_texts ALTER COLUMN id SET DEFAULT nextval('public.chat_message_texts_id_seq'::regclass);
 
 
 --
@@ -814,6 +1185,13 @@ ALTER TABLE ONLY public.error_log ALTER COLUMN id SET DEFAULT nextval('public.er
 
 
 --
+-- Name: invite_codes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invite_codes ALTER COLUMN id SET DEFAULT nextval('public.invite_codes_id_seq'::regclass);
+
+
+--
 -- Name: memory_chunks id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -825,6 +1203,20 @@ ALTER TABLE ONLY public.memory_chunks ALTER COLUMN id SET DEFAULT nextval('publi
 --
 
 ALTER TABLE ONLY public.namespace_permissions ALTER COLUMN id SET DEFAULT nextval('public.namespace_permissions_id_seq'::regclass);
+
+
+--
+-- Name: note_permissions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_permissions ALTER COLUMN id SET DEFAULT nextval('public.note_permissions_id_seq'::regclass);
+
+
+--
+-- Name: note_synchronization id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_synchronization ALTER COLUMN id SET DEFAULT nextval('public.note_synchronization_id_seq'::regclass);
 
 
 --
@@ -856,10 +1248,32 @@ ALTER TABLE ONLY public.templates ALTER COLUMN id SET DEFAULT nextval('public.we
 
 
 --
+-- Name: virtual_agent_access id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.virtual_agent_access ALTER COLUMN id SET DEFAULT nextval('public.virtual_agent_access_id_seq'::regclass);
+
+
+--
+-- Name: virtual_agent_calls id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.virtual_agent_calls ALTER COLUMN id SET DEFAULT nextval('public.virtual_agent_calls_id_seq'::regclass);
+
+
+--
 -- Name: virtual_agent_usage id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.virtual_agent_usage ALTER COLUMN id SET DEFAULT nextval('public.virtual_agent_usage_id_seq'::regclass);
+
+
+--
+-- Name: access_requests access_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.access_requests
+    ADD CONSTRAINT access_requests_pkey PRIMARY KEY (id);
 
 
 --
@@ -895,6 +1309,22 @@ ALTER TABLE ONLY public.actors
 
 
 --
+-- Name: admin_permissions admin_permissions_actor_id_resource_action_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.admin_permissions
+    ADD CONSTRAINT admin_permissions_actor_id_resource_action_key UNIQUE (actor_id, resource, action);
+
+
+--
+-- Name: admin_permissions admin_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.admin_permissions
+    ADD CONSTRAINT admin_permissions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: agent_api_keys agent_api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -916,6 +1346,14 @@ ALTER TABLE ONLY public.agent_configuration
 
 ALTER TABLE ONLY public.agent_permissions
     ADD CONSTRAINT agent_permissions_pkey PRIMARY KEY (actor_id, permission_id);
+
+
+--
+-- Name: chat_message_texts chat_message_texts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_message_texts
+    ADD CONSTRAINT chat_message_texts_pkey PRIMARY KEY (id);
 
 
 --
@@ -975,14 +1413,6 @@ ALTER TABLE ONLY public.discussions
 
 
 --
--- Name: documents documents_namespace_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.documents
-    ADD CONSTRAINT documents_namespace_slug_key UNIQUE (namespace, slug);
-
-
---
 -- Name: documents documents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -996,6 +1426,22 @@ ALTER TABLE ONLY public.documents
 
 ALTER TABLE ONLY public.error_log
     ADD CONSTRAINT error_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: invite_codes invite_codes_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invite_codes
+    ADD CONSTRAINT invite_codes_code_key UNIQUE (code);
+
+
+--
+-- Name: invite_codes invite_codes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invite_codes
+    ADD CONSTRAINT invite_codes_pkey PRIMARY KEY (id);
 
 
 --
@@ -1039,6 +1485,38 @@ ALTER TABLE ONLY public.namespace_permissions
 
 
 --
+-- Name: namespace_usage namespace_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.namespace_usage
+    ADD CONSTRAINT namespace_usage_pkey PRIMARY KEY (namespace);
+
+
+--
+-- Name: note_permissions note_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_permissions
+    ADD CONSTRAINT note_permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: note_synchronization note_synchronization_actor_id_namespace_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_synchronization
+    ADD CONSTRAINT note_synchronization_actor_id_namespace_slug_key UNIQUE (actor_id, namespace, slug);
+
+
+--
+-- Name: note_synchronization note_synchronization_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_synchronization
+    ADD CONSTRAINT note_synchronization_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: permissions permissions_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1079,11 +1557,35 @@ ALTER TABLE ONLY public.system_errors
 
 
 --
+-- Name: templates templates_name_kind_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.templates
+    ADD CONSTRAINT templates_name_kind_key UNIQUE (name, kind);
+
+
+--
 -- Name: agent_configuration uq_agent_configuration_actor_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_configuration
     ADD CONSTRAINT uq_agent_configuration_actor_id UNIQUE (actor_id);
+
+
+--
+-- Name: virtual_agent_access virtual_agent_access_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.virtual_agent_access
+    ADD CONSTRAINT virtual_agent_access_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: virtual_agent_calls virtual_agent_calls_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.virtual_agent_calls
+    ADD CONSTRAINT virtual_agent_calls_pkey PRIMARY KEY (id);
 
 
 --
@@ -1095,19 +1597,46 @@ ALTER TABLE ONLY public.virtual_agent_usage
 
 
 --
--- Name: templates welcome_templates_name_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.templates
-    ADD CONSTRAINT welcome_templates_name_key UNIQUE (name);
-
-
---
 -- Name: templates welcome_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.templates
     ADD CONSTRAINT welcome_templates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: documents_namespace_lower_slug_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX documents_namespace_lower_slug_idx ON public.documents USING btree (namespace, lower((slug)::text));
+
+
+--
+-- Name: documents_namespace_slug_active_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX documents_namespace_slug_active_key ON public.documents USING btree (namespace, slug) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: idx_access_requests_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_access_requests_created ON public.access_requests USING btree (created_at DESC);
+
+
+--
+-- Name: idx_access_requests_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_access_requests_status ON public.access_requests USING btree (status);
+
+
+--
+-- Name: idx_actors_realms; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_actors_realms ON public.actors USING gin (realms);
 
 
 --
@@ -1146,13 +1675,6 @@ CREATE INDEX idx_chat_messages_to_actor ON public.chat_messages USING btree (to_
 
 
 --
--- Name: idx_chat_messages_unacked; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_chat_messages_unacked ON public.chat_messages USING btree (to_actor_id, channel) WHERE (acked_at IS NULL);
-
-
---
 -- Name: idx_chunks_embedding; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1164,6 +1686,55 @@ CREATE INDEX idx_chunks_embedding ON public.memory_chunks USING ivfflat (embeddi
 --
 
 CREATE INDEX idx_chunks_namespace_source ON public.memory_chunks USING btree (namespace, source_file);
+
+
+--
+-- Name: idx_chunks_tsv; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chunks_tsv ON public.memory_chunks USING gin (tsv);
+
+
+--
+-- Name: idx_cm_message_text; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cm_message_text ON public.chat_messages USING btree (message_text_id);
+
+
+--
+-- Name: idx_cmt_discussion; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cmt_discussion ON public.chat_message_texts USING btree (discussion_id) WHERE (discussion_id IS NOT NULL);
+
+
+--
+-- Name: idx_cmt_from_actor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cmt_from_actor ON public.chat_message_texts USING btree (from_actor_id);
+
+
+--
+-- Name: idx_cmt_not_error; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cmt_not_error ON public.chat_message_texts USING btree (sent_at) WHERE (NOT is_error);
+
+
+--
+-- Name: idx_cmt_scene; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cmt_scene ON public.chat_message_texts USING btree (scene_id) WHERE (scene_id IS NOT NULL);
+
+
+--
+-- Name: idx_cmt_sent_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cmt_sent_at ON public.chat_message_texts USING btree (sent_at);
 
 
 --
@@ -1216,6 +1787,20 @@ CREATE INDEX idx_error_log_subsystem ON public.error_log USING btree (subsystem)
 
 
 --
+-- Name: idx_invite_codes_access_request; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_invite_codes_access_request ON public.invite_codes USING btree (access_request_id);
+
+
+--
+-- Name: idx_invite_codes_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_invite_codes_code ON public.invite_codes USING btree (code);
+
+
+--
 -- Name: idx_mail_to_actor_acked; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1227,6 +1812,34 @@ CREATE INDEX idx_mail_to_actor_acked ON public.mail USING btree (to_actor_id, ac
 --
 
 CREATE INDEX idx_mcp_sessions_actor ON public.mcp_sessions USING btree (actor_id);
+
+
+--
+-- Name: idx_note_permissions_grantee; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_note_permissions_grantee ON public.note_permissions USING btree (grantee_actor_id) WHERE (revoked_at IS NULL);
+
+
+--
+-- Name: idx_note_permissions_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_note_permissions_owner ON public.note_permissions USING btree (owner_namespace) WHERE (revoked_at IS NULL);
+
+
+--
+-- Name: idx_note_permissions_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_note_permissions_slug ON public.note_permissions USING btree (owner_namespace, slug_pattern) WHERE (revoked_at IS NULL);
+
+
+--
+-- Name: idx_note_sync_actor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_note_sync_actor ON public.note_synchronization USING btree (actor_id);
 
 
 --
@@ -1265,6 +1878,13 @@ CREATE INDEX idx_sessions_expires ON public.sessions USING btree (expires_at);
 
 
 --
+-- Name: idx_sessions_token_lookup_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sessions_token_lookup_hash ON public.sessions USING btree (token_lookup_hash) WHERE (token_lookup_hash IS NOT NULL);
+
+
+--
 -- Name: idx_system_errors_actor; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1286,10 +1906,59 @@ CREATE INDEX idx_system_errors_status ON public.system_errors USING btree (statu
 
 
 --
+-- Name: idx_va_calls_actor_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_va_calls_actor_created ON public.virtual_agent_calls USING btree (actor_id, created_at DESC);
+
+
+--
+-- Name: idx_va_calls_context; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_va_calls_context ON public.virtual_agent_calls USING btree (context);
+
+
+--
+-- Name: idx_va_calls_scene; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_va_calls_scene ON public.virtual_agent_calls USING btree (scene_id) WHERE (scene_id IS NOT NULL);
+
+
+--
+-- Name: idx_va_calls_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_va_calls_status ON public.virtual_agent_calls USING btree (status) WHERE (status <> 'success'::text);
+
+
+--
 -- Name: idx_va_usage_actor_date; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_va_usage_actor_date ON public.virtual_agent_usage USING btree (actor_id, created_at);
+
+
+--
+-- Name: uq_vaa_agent_grantee; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_vaa_agent_grantee ON public.virtual_agent_access USING btree (virtual_agent_id, grantee_actor_id) WHERE (grantee_actor_id IS NOT NULL);
+
+
+--
+-- Name: uq_vaa_agent_public; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_vaa_agent_public ON public.virtual_agent_access USING btree (virtual_agent_id) WHERE (grantee_actor_id IS NULL);
+
+
+--
+-- Name: memory_chunks trg_memory_chunks_tsv; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_memory_chunks_tsv BEFORE INSERT OR UPDATE OF chunk_text ON public.memory_chunks FOR EACH ROW EXECUTE FUNCTION public.memory_chunks_tsv_trigger();
 
 
 --
@@ -1309,11 +1978,51 @@ ALTER TABLE ONLY public.actor_visibility_configuration
 
 
 --
+-- Name: actors actors_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.actors
+    ADD CONSTRAINT actors_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.actors(id);
+
+
+--
+-- Name: admin_permissions admin_permissions_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.admin_permissions
+    ADD CONSTRAINT admin_permissions_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.actors(id) ON DELETE CASCADE;
+
+
+--
 -- Name: agent_permissions agent_permissions_permission_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_permissions
     ADD CONSTRAINT agent_permissions_permission_id_fkey FOREIGN KEY (permission_id) REFERENCES public.permissions(id);
+
+
+--
+-- Name: chat_message_texts chat_message_texts_discussion_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_message_texts
+    ADD CONSTRAINT chat_message_texts_discussion_id_fkey FOREIGN KEY (discussion_id) REFERENCES public.discussions(id);
+
+
+--
+-- Name: chat_message_texts chat_message_texts_from_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_message_texts
+    ADD CONSTRAINT chat_message_texts_from_actor_id_fkey FOREIGN KEY (from_actor_id) REFERENCES public.actors(id);
+
+
+--
+-- Name: chat_messages chat_messages_message_text_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_messages
+    ADD CONSTRAINT chat_messages_message_text_id_fkey FOREIGN KEY (message_text_id) REFERENCES public.chat_message_texts(id);
 
 
 --
@@ -1362,14 +2071,6 @@ ALTER TABLE ONLY public.agent_configuration
 
 ALTER TABLE ONLY public.agent_permissions
     ADD CONSTRAINT fk_ap_actor FOREIGN KEY (actor_id) REFERENCES public.actors(id);
-
-
---
--- Name: chat_messages fk_chat_from_actor; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chat_messages
-    ADD CONSTRAINT fk_chat_from_actor FOREIGN KEY (from_actor_id) REFERENCES public.actors(id);
 
 
 --
@@ -1453,11 +2154,51 @@ ALTER TABLE ONLY public.virtual_agent_usage
 
 
 --
+-- Name: invite_codes invite_codes_access_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invite_codes
+    ADD CONSTRAINT invite_codes_access_request_id_fkey FOREIGN KEY (access_request_id) REFERENCES public.access_requests(id);
+
+
+--
+-- Name: mail mail_in_reply_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.mail
+    ADD CONSTRAINT mail_in_reply_to_fkey FOREIGN KEY (in_reply_to) REFERENCES public.mail(id);
+
+
+--
 -- Name: namespace_permissions namespace_permissions_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.namespace_permissions
     ADD CONSTRAINT namespace_permissions_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.actors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: note_permissions note_permissions_granted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_permissions
+    ADD CONSTRAINT note_permissions_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.actors(id);
+
+
+--
+-- Name: note_permissions note_permissions_grantee_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_permissions
+    ADD CONSTRAINT note_permissions_grantee_actor_id_fkey FOREIGN KEY (grantee_actor_id) REFERENCES public.actors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: note_synchronization note_synchronization_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.note_synchronization
+    ADD CONSTRAINT note_synchronization_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.actors(id);
 
 
 --
@@ -1469,8 +2210,509 @@ ALTER TABLE ONLY public.sessions
 
 
 --
+-- Name: virtual_agent_access virtual_agent_access_grantee_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.virtual_agent_access
+    ADD CONSTRAINT virtual_agent_access_grantee_actor_id_fkey FOREIGN KEY (grantee_actor_id) REFERENCES public.actors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: virtual_agent_access virtual_agent_access_virtual_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.virtual_agent_access
+    ADD CONSTRAINT virtual_agent_access_virtual_agent_id_fkey FOREIGN KEY (virtual_agent_id) REFERENCES public.actors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: virtual_agent_calls virtual_agent_calls_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.virtual_agent_calls
+    ADD CONSTRAINT virtual_agent_calls_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.actors(id);
+
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: -
+--
+
+GRANT USAGE ON SCHEMA public TO claude;
+
+
+--
+-- Name: TABLE access_requests; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.access_requests TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.access_requests TO claude;
+
+
+--
+-- Name: SEQUENCE access_requests_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.access_requests_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.access_requests_id_seq TO claude;
+
+
+--
+-- Name: TABLE actor_visibility_configuration; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.actor_visibility_configuration TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.actor_visibility_configuration TO claude;
+
+
+--
+-- Name: SEQUENCE actor_visibility_configuration_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.actor_visibility_configuration_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.actor_visibility_configuration_id_seq TO claude;
+
+
+--
+-- Name: TABLE actors; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.actors TO claude;
+
+
+--
+-- Name: SEQUENCE actors_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT SELECT,USAGE ON SEQUENCE public.actors_id_seq TO claude;
+
+
+--
+-- Name: TABLE admin_permissions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.admin_permissions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.admin_permissions TO claude;
+
+
+--
+-- Name: SEQUENCE admin_permissions_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.admin_permissions_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.admin_permissions_id_seq TO claude;
+
+
+--
+-- Name: TABLE agent_api_keys; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.agent_api_keys TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.agent_api_keys TO claude;
+
+
+--
+-- Name: SEQUENCE agent_api_keys_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.agent_api_keys_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.agent_api_keys_id_seq TO claude;
+
+
+--
+-- Name: TABLE agent_configuration; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.agent_configuration TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.agent_configuration TO claude;
+
+
+--
+-- Name: TABLE agent_permissions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.agent_permissions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.agent_permissions TO claude;
+
+
+--
+-- Name: TABLE agent_status; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.agent_status TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.agent_status TO claude;
+
+
+--
+-- Name: TABLE chat_message_texts; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.chat_message_texts TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.chat_message_texts TO claude;
+
+
+--
+-- Name: SEQUENCE chat_message_texts_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.chat_message_texts_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.chat_message_texts_id_seq TO claude;
+
+
+--
+-- Name: TABLE chat_messages; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.chat_messages TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.chat_messages TO claude;
+
+
+--
+-- Name: SEQUENCE chat_messages_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.chat_messages_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.chat_messages_id_seq TO claude;
+
+
+--
+-- Name: TABLE memory_chunks; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.memory_chunks TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.memory_chunks TO claude;
+
+
+--
+-- Name: SEQUENCE chunks_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.chunks_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.chunks_id_seq TO claude;
+
+
+--
+-- Name: TABLE config; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.config TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.config TO claude;
+
+
+--
+-- Name: TABLE discussion_ballots; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.discussion_ballots TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.discussion_ballots TO claude;
+
+
+--
+-- Name: TABLE discussion_participants; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.discussion_participants TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.discussion_participants TO claude;
+
+
+--
+-- Name: TABLE discussion_votes; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.discussion_votes TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.discussion_votes TO claude;
+
+
+--
+-- Name: SEQUENCE discussion_votes_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.discussion_votes_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.discussion_votes_id_seq TO claude;
+
+
+--
+-- Name: TABLE discussions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.discussions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.discussions TO claude;
+
+
+--
+-- Name: SEQUENCE discussions_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.discussions_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.discussions_id_seq TO claude;
+
+
+--
+-- Name: TABLE documents; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.documents TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.documents TO claude;
+
+
+--
+-- Name: SEQUENCE documents_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.documents_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.documents_id_seq TO claude;
+
+
+--
+-- Name: TABLE error_log; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.error_log TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.error_log TO claude;
+
+
+--
+-- Name: SEQUENCE error_log_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.error_log_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.error_log_id_seq TO claude;
+
+
+--
+-- Name: TABLE invite_codes; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.invite_codes TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.invite_codes TO claude;
+
+
+--
+-- Name: SEQUENCE invite_codes_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.invite_codes_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.invite_codes_id_seq TO claude;
+
+
+--
+-- Name: TABLE mail; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.mail TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.mail TO claude;
+
+
+--
+-- Name: TABLE mcp_sessions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.mcp_sessions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.mcp_sessions TO claude;
+
+
+--
+-- Name: TABLE migrations_applied; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.migrations_applied TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.migrations_applied TO claude;
+
+
+--
+-- Name: TABLE namespace_permissions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.namespace_permissions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.namespace_permissions TO claude;
+
+
+--
+-- Name: SEQUENCE namespace_permissions_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.namespace_permissions_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.namespace_permissions_id_seq TO claude;
+
+
+--
+-- Name: TABLE namespace_usage; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.namespace_usage TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.namespace_usage TO claude;
+
+
+--
+-- Name: TABLE note_permissions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.note_permissions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.note_permissions TO claude;
+
+
+--
+-- Name: SEQUENCE note_permissions_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.note_permissions_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.note_permissions_id_seq TO claude;
+
+
+--
+-- Name: TABLE note_synchronization; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.note_synchronization TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.note_synchronization TO claude;
+
+
+--
+-- Name: SEQUENCE note_synchronization_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.note_synchronization_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.note_synchronization_id_seq TO claude;
+
+
+--
+-- Name: TABLE permissions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.permissions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.permissions TO claude;
+
+
+--
+-- Name: SEQUENCE permissions_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.permissions_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.permissions_id_seq TO claude;
+
+
+--
+-- Name: TABLE request_log; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.request_log TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.request_log TO claude;
+
+
+--
+-- Name: SEQUENCE request_log_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.request_log_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.request_log_id_seq TO claude;
+
+
+--
+-- Name: TABLE sessions; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.sessions TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.sessions TO claude;
+
+
+--
+-- Name: TABLE system_errors; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.system_errors TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.system_errors TO claude;
+
+
+--
+-- Name: SEQUENCE system_errors_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.system_errors_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.system_errors_id_seq TO claude;
+
+
+--
+-- Name: TABLE templates; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.templates TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.templates TO claude;
+
+
+--
+-- Name: TABLE virtual_agent_access; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.virtual_agent_access TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.virtual_agent_access TO claude;
+
+
+--
+-- Name: SEQUENCE virtual_agent_access_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.virtual_agent_access_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.virtual_agent_access_id_seq TO claude;
+
+
+--
+-- Name: TABLE virtual_agent_calls; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.virtual_agent_calls TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.virtual_agent_calls TO claude;
+
+
+--
+-- Name: SEQUENCE virtual_agent_calls_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.virtual_agent_calls_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.virtual_agent_calls_id_seq TO claude;
+
+
+--
+-- Name: TABLE virtual_agent_usage; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.virtual_agent_usage TO memory_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.virtual_agent_usage TO claude;
+
+
+--
+-- Name: SEQUENCE virtual_agent_usage_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.virtual_agent_usage_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.virtual_agent_usage_id_seq TO claude;
+
+
+--
+-- Name: SEQUENCE welcome_templates_id_seq; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON SEQUENCE public.welcome_templates_id_seq TO memory_api;
+GRANT SELECT,USAGE ON SEQUENCE public.welcome_templates_id_seq TO claude;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR SEQUENCES; Type: DEFAULT ACL; Schema: public; Owner: -
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO memory_api;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT,USAGE ON SEQUENCES TO claude;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: -
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO memory_api;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT,INSERT,DELETE,UPDATE ON TABLES TO claude;
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict IulCA3QBrzNlB8bK2coJjfNPFfQoqKd899t2pdElKhXtXdKsxyxKh9N1Xi4Lb5M
+\unrestrict Qrl71iMVl3JnwahdP0ejuxkHZ3Q0S7oBXWl5nJrryEPRA6z1yzsazMBaj4yA2wO
 
