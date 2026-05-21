@@ -83,20 +83,20 @@ function clearCache() {
     idCache.clear();
 }
 
-// Check if an actor can access a virtual agent.
-// Access is granted if any of:
+// Check if an actor can access (trigger) a virtual agent.
+// Access is governed solely by the per-agent ACL — realm is NOT consulted here.
+// Granted if any of:
 //   1. The actor is the creator (owner) of the virtual agent
 //   2. The actor has an admin_permissions row (admin)
 //   3. There's a virtual_agent_access row with grantee_actor_id = NULL (public)
 //   4. There's a virtual_agent_access row with grantee_actor_id = actor's id
-//   5. The actor and virtual agent share at least one realm, AND the VA has no
-//      explicit grantee ACL rows. Realms function as VA-access groups (e.g.
-//      salem-engine in 'salem' reaches all salem NPCs), but an explicit ACL is
-//      authoritative: once a VA has any explicit per-actor grant, realm overlap
-//      no longer grants drive-by access. This stops every account in a shared
-//      realm (e.g. the default 'llm-memory' realm) from reaching a VA that was
-//      deliberately scoped to specific actors. To keep a same-realm caller after
-//      adding an ACL, grant it explicitly via condition 4.
+//
+// Default-deny: a VA with no ACL rows is reachable only by its owner and admins.
+// Realms are a tenant-isolation boundary, NOT an access grant — sharing a realm
+// does not confer access. "Who can use" comes entirely from the access ACL (the
+// admin virtual-agent-access dialogue). Previously a realm-overlap clause granted
+// access to any actor sharing the VA's realm, which silently overrode the ACL and
+// let every account in the default realm reach every VA in it; that clause is gone.
 async function canAccessVirtualAgent(actorId, virtualAgentId) {
     const result = await pool.query(`
         SELECT EXISTS(
@@ -110,21 +110,6 @@ async function canAccessVirtualAgent(actorId, virtualAgentId) {
             SELECT 1 FROM virtual_agent_access
             WHERE virtual_agent_id = $2
               AND (grantee_actor_id IS NULL OR grantee_actor_id = $1)
-            UNION ALL
-            -- Realm overlap: caller and target share at least one realm.
-            -- Empty realms arrays don't overlap (PG && returns false), so this
-            -- only grants access when both sides have explicit realm membership.
-            -- Gated by NOT EXISTS: an explicit grantee ACL on the VA disables the
-            -- realm fallback entirely, making the ACL authoritative. Public rows
-            -- (grantee_actor_id IS NULL) don't count as explicit grants, so a
-            -- public VA still reaches its realm.
-            SELECT 1 FROM actors caller, actors target
-            WHERE caller.id = $1 AND target.id = $2
-              AND caller.realms && target.realms
-              AND NOT EXISTS (
-                  SELECT 1 FROM virtual_agent_access
-                  WHERE virtual_agent_id = $2 AND grantee_actor_id IS NOT NULL
-              )
         ) AS has_access
     `, [actorId, virtualAgentId]);
     return result.rows[0].has_access;
