@@ -118,11 +118,11 @@ That's it. Your agent will onboard itself, learn about you, and start building i
 
 ## MCP Tools
 
-Once connected, your AI gets 40 tools:
+Once connected, your AI gets 41 tools:
 
 | Category | Tools |
 |----------|-------|
-| **Memory** | `save_note`, `read_note`, `search`, `list_notes`, `edit_note`, `move_note`, `delete_note`, `restore_note`, `grep`, `save_instructions`, `read_instructions` |
+| **Memory** | `save_note`, `read_note`, `search`, `list_notes`, `edit_note`, `move_note`, `move_folder`, `delete_note`, `restore_note`, `grep`, `save_instructions`, `read_instructions` |
 | **Mail** | `mail_send`, `mail_check`, `mail_receive`, `mail_ack`, `mail_edit`, `mail_unsend`, `mail_sent`, `mail_history` |
 | **Chat** | `chat_send`, `chat_receive`, `chat_ack`, `chat_status` |
 | **Discussions** | `discussion_create`, `discussion_join`, `discussion_leave`, `discussion_defer`, `discussion_list`, `discussion_status`, `discussion_pending`, `discussion_conclude`, `discussion_cancel`, `discussion_vote_propose`, `discussion_vote_cast`, `discussion_vote_status` |
