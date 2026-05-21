@@ -14,7 +14,7 @@ const config = require('../services/config');
 
 // Services
 const { searchMemory } = require('../services/memory');
-const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, paginateContent } = require('../services/documents');
+const { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, movePrefix, paginateContent } = require('../services/documents');
 const { chatSend, chatReceive, chatAck, chatStatus } = require('../services/chat');
 const { mailSend, mailReceive, mailCheck, mailAck, mailEdit, mailUnsend, mailSent, mailHistory } = require('../services/mail');
 const {
@@ -146,6 +146,21 @@ const TOOLS = [
                 new_namespace: { type: 'string', description: 'Target namespace (optional, defaults to current namespace)' }
             },
             required: ['slug', 'new_slug']
+        }
+    },
+    {
+        name: 'move_folder',
+        description: 'Bulk-move notes by slug prefix: every note whose slug starts with from_prefix is rewritten to to_prefix (e.g. "tasks/x/" → "tasks/done/x/"). Bulk alternative to move_note. Prefix match is literal, not path-aware — end prefixes with "/" so you don\'t catch siblings like "tasks/x-other". Refuses on a destination collision unless overwrite_slugs is set; dry_run previews.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                from_prefix: { type: 'string', description: 'Source slug prefix to move from (e.g. "tasks/dev-2337/")' },
+                to_prefix: { type: 'string', description: 'Destination slug prefix to move to (e.g. "tasks/done/dev-2337/"). May be empty string to move notes to the namespace root.' },
+                namespace: { type: 'string', description: 'Namespace (default: agent namespace)' },
+                dry_run: { type: 'boolean', description: 'Preview only: report how many notes would move and which destination slugs conflict, without changing anything (default: false)' },
+                overwrite_slugs: { type: 'array', items: { type: 'string' }, description: 'Destination slugs to soft-delete before moving, to resolve conflicts. Any conflict not listed here is skipped (its source note stays put). Omit to refuse the move when conflicts exist.' }
+            },
+            required: ['from_prefix', 'to_prefix']
         }
     },
     {
@@ -543,6 +558,7 @@ const TOOL_PERMISSIONS = {
     restore_note: 'mcp_delete_note',
     edit_note: 'mcp_save_note',
     move_note: 'mcp_save_note',
+    move_folder: 'mcp_save_note',
     grep: 'mcp_search',
     read_instructions: 'mcp_read_note',
     save_instructions: 'mcp_save_note',
@@ -919,6 +935,47 @@ const TOOL_HANDLERS = {
         }
         const doc = await moveNote(sourceNs, sanitize.identifier(args.slug), sanitize.identifier(args.new_slug), args.new_namespace);
         return `Moved: ${sourceNs}/${args.slug} → ${doc.namespace}/${doc.slug}`;
+    },
+
+    async move_folder(args, agent, namespace, actorId) {
+        const targetNs = args.namespace || namespace;
+        validateNamespace(targetNs);
+        // Moving notes is a write on the namespace (rewrites slugs in place).
+        await requireAccess(actorId, agent, 'agent', targetNs, 'write');
+
+        // Preview mode: report what would move and which destinations collide, change nothing.
+        if (args.dry_run) {
+            const preview = await movePrefix(targetNs, args.from_prefix, args.to_prefix, { dryRun: true });
+            let out = `Dry run: ${preview.would_move} note(s) would move ${targetNs}/${args.from_prefix}* → ${targetNs}/${args.to_prefix}*`;
+            if (preview.conflicts.length > 0) {
+                out += '\nConflicts (destination already exists):\n' + preview.conflicts.map(c => `  - ${c.slug}`).join('\n');
+            } else {
+                out += '\nNo conflicts.';
+            }
+            return out;
+        }
+
+        const overwriteSlugs = args.overwrite_slugs || [];
+
+        // When the caller hasn't opted to overwrite anything, refuse if conflicts exist rather
+        // than silently skipping the colliding source notes (which would half-move the folder).
+        // This mirrors move_note / save_note, which 409 on a destination collision.
+        if (overwriteSlugs.length === 0) {
+            const preview = await movePrefix(targetNs, args.from_prefix, args.to_prefix, { dryRun: true });
+            if (preview.conflicts.length > 0) {
+                const list = preview.conflicts.map(c => c.slug).join(', ');
+                throw Object.assign(
+                    new Error(`Refusing to move: ${preview.conflicts.length} destination slug(s) already exist: ${list}. Re-run with dry_run to inspect, pass overwrite_slugs to replace them, or choose a different to_prefix.`),
+                    { statusCode: 409 }
+                );
+            }
+        }
+
+        const result = await movePrefix(targetNs, args.from_prefix, args.to_prefix, { overwriteSlugs });
+        let summary = `Moved ${result.moved} note(s): ${targetNs}/${args.from_prefix}* → ${targetNs}/${args.to_prefix}*`;
+        if (result.overwritten > 0) summary += `; overwrote ${result.overwritten}`;
+        if (result.skipped > 0) summary += `; skipped ${result.skipped} (unresolved conflict)`;
+        return summary;
     },
 
     async grep(args, agent, namespace, actorId) {
