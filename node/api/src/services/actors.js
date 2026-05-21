@@ -89,8 +89,14 @@ function clearCache() {
 //   2. The actor has an admin_permissions row (admin)
 //   3. There's a virtual_agent_access row with grantee_actor_id = NULL (public)
 //   4. There's a virtual_agent_access row with grantee_actor_id = actor's id
-//   5. The actor and virtual agent share at least one realm (realms function as
-//      VA-access groups — e.g. salem-engine in 'salem' reaches all salem NPCs)
+//   5. The actor and virtual agent share at least one realm, AND the VA has no
+//      explicit grantee ACL rows. Realms function as VA-access groups (e.g.
+//      salem-engine in 'salem' reaches all salem NPCs), but an explicit ACL is
+//      authoritative: once a VA has any explicit per-actor grant, realm overlap
+//      no longer grants drive-by access. This stops every account in a shared
+//      realm (e.g. the default 'llm-memory' realm) from reaching a VA that was
+//      deliberately scoped to specific actors. To keep a same-realm caller after
+//      adding an ACL, grant it explicitly via condition 4.
 async function canAccessVirtualAgent(actorId, virtualAgentId) {
     const result = await pool.query(`
         SELECT EXISTS(
@@ -108,9 +114,17 @@ async function canAccessVirtualAgent(actorId, virtualAgentId) {
             -- Realm overlap: caller and target share at least one realm.
             -- Empty realms arrays don't overlap (PG && returns false), so this
             -- only grants access when both sides have explicit realm membership.
+            -- Gated by NOT EXISTS: an explicit grantee ACL on the VA disables the
+            -- realm fallback entirely, making the ACL authoritative. Public rows
+            -- (grantee_actor_id IS NULL) don't count as explicit grants, so a
+            -- public VA still reaches its realm.
             SELECT 1 FROM actors caller, actors target
             WHERE caller.id = $1 AND target.id = $2
               AND caller.realms && target.realms
+              AND NOT EXISTS (
+                  SELECT 1 FROM virtual_agent_access
+                  WHERE virtual_agent_id = $2 AND grantee_actor_id IS NOT NULL
+              )
         ) AS has_access
     `, [actorId, virtualAgentId]);
     return result.rows[0].has_access;
