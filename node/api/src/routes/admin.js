@@ -2303,6 +2303,11 @@ router.post('/admin/actors/permissions/read', requirePerm('agents', 'read'), adm
 // POST /admin/actors/permissions/save — full replace of namespace permissions for one actor
 // Body: { actor_id, permissions: [{ namespace, can_read, can_write, can_delete }] }
 router.post('/admin/actors/permissions/save', requirePerm('agents', 'write'), adminRoute('actors-permissions-save', async (req, res) => {
+    // Granting cross-actor namespace permissions (incl. the '/' wildcard) is an
+    // admin operation, not a per-owned-resource one — superadmin only.
+    if (!await hasPermission(req.actorId, '*', '*')) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Managing namespace permissions requires superadmin' } });
+    }
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
     const { permissions } = req.body;
@@ -2407,6 +2412,9 @@ router.post('/admin/actors/visibility/save', requirePerm('agents', 'write'), adm
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
 
+    // Can only edit visibility for yourself or an agent you created.
+    if (!await requireOwnership(req, res, actorId)) return;
+
     // Normalize grant IDs to integers, dedupe, exclude self
     const normalizedGrants = grants.map(g => safeInt(g));
     if (normalizedGrants.some(g => g === null || g <= 0)) {
@@ -2463,6 +2471,9 @@ router.post('/admin/actors/password', requirePerm('agents', 'write'), adminRoute
     if (!actor) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
+
+    // Can only set the password for yourself or an agent you created.
+    if (!await requireOwnership(req, res, actorId)) return;
 
     if (password === null || password === undefined) {
         // Clear password — remove UI access
@@ -2531,6 +2542,12 @@ router.post('/admin/actors/admin-permissions/read', requirePerm('agents', 'read'
 
 // POST /admin/actors/admin-permissions/save — replace all admin permissions for an actor
 router.post('/admin/actors/admin-permissions/save', requirePerm('agents', 'write'), adminRoute('actors-admin-permissions-save', async (req, res) => {
+    // Granting admin capabilities (including *:*) must never be a regular-user
+    // power — superadmin only. Otherwise any account with agents:write could
+    // grant itself *:* and escalate to full control.
+    if (!await hasPermission(req.actorId, '*', '*')) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Managing admin permissions requires superadmin' } });
+    }
     const actorId = safeInt(req.body.actor_id);
     const { permissions } = req.body;
     if (actorId === null || actorId <= 0 || !Array.isArray(permissions)) {
@@ -2597,6 +2614,9 @@ router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
     const actor = actorResult.rows[0];
+
+    // Can only delete an agent you created (superadmins bypass).
+    if (!await requireOwnership(req, res, actorId)) return;
 
     // Find virtual agents owned by this actor (created_by = actorId, virtual = true)
     const ownedVAs = await pool.query(
@@ -3046,6 +3066,9 @@ router.post('/admin/virtual-agent-access/grant', requirePerm('agents', 'write'),
     const vc = await pool.query('SELECT virtual FROM agent_configuration WHERE actor_id = $1', [virtual_agent_id]);
     if (!vc.rows[0]?.virtual) return res.status(400).json({ error: 'Not a virtual agent' });
 
+    // Only the VA's creator (or a superadmin) may manage its access list.
+    if (!await requireOwnership(req, res, virtual_agent_id)) return;
+
     const result = await pool.query(
         'INSERT INTO virtual_agent_access (virtual_agent_id, grantee_actor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id',
         [virtual_agent_id, grantee_actor_id || null]
@@ -3058,6 +3081,11 @@ router.post('/admin/virtual-agent-access/grant', requirePerm('agents', 'write'),
 router.post('/admin/virtual-agent-access/revoke', requirePerm('agents', 'write'), adminRoute('va-access-revoke', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
+
+    // Resolve the VA this access row belongs to and enforce ownership before deleting.
+    const accessRow = await pool.query('SELECT virtual_agent_id FROM virtual_agent_access WHERE id = $1', [id]);
+    if (accessRow.rows.length === 0) return res.json({ revoked: true });
+    if (!await requireOwnership(req, res, accessRow.rows[0].virtual_agent_id)) return;
 
     await pool.query('DELETE FROM virtual_agent_access WHERE id = $1', [id]);
     logAdmin('va_access_revoke', { access_id: id, user_id: req.authenticatedUser.id });
