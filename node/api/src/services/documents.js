@@ -987,12 +987,27 @@ async function movePrefix(namespace, oldPrefix, newPrefix, options = {}) {
             `, [namespace, oldPrefix, newPrefix, oldLike]);
         }
 
-        // Update sync mappings that point at the old prefix.
-        await client.query(`
-            UPDATE note_synchronization
-            SET slug = $3 || substring(slug FROM length($2) + 1)
-            WHERE namespace = $1 AND slug LIKE $4 || '%'
-        `, [namespace, oldPrefix, newPrefix, oldLike]);
+        // Update sync mappings that point at the old prefix. This MUST exclude the
+        // skipped source slugs exactly like the documents + memory_chunks rewrites
+        // above: a skipped note keeps its document at the old slug, so rewriting its
+        // sync mapping to the (never-created) new slug would leave note_synchronization
+        // pointing at a slug with no document behind it — a silent persistent-state
+        // inconsistency. (Bug fix: the skip exclusion was missing here while present
+        // on the other two rewrites.)
+        if (skipSlugs.length > 0) {
+            await client.query(`
+                UPDATE note_synchronization
+                SET slug = $3 || substring(slug FROM length($2) + 1)
+                WHERE namespace = $1 AND slug LIKE $4 || '%'
+                  AND slug != ALL($5)
+            `, [namespace, oldPrefix, newPrefix, oldLike, skipSlugs]);
+        } else {
+            await client.query(`
+                UPDATE note_synchronization
+                SET slug = $3 || substring(slug FROM length($2) + 1)
+                WHERE namespace = $1 AND slug LIKE $4 || '%'
+            `, [namespace, oldPrefix, newPrefix, oldLike]);
+        }
 
         await client.query('COMMIT');
     } catch (err) {
