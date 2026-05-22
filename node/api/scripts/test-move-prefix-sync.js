@@ -107,7 +107,57 @@ async function run() {
         assert('no-conflict: note_sync UPDATE has no skip exclusion',
             !/!=\s*ALL/i.test(u2.sql),
             `unexpected skip exclusion when nothing was skipped: ${u2.sql.replace(/\s+/g, ' ').trim()}`);
+        assert('no-conflict: note_sync UPDATE still carries the overwrite collision guard',
+            /NOT\s+EXISTS/i.test(u2.sql),
+            `sync UPDATE lacks the NOT EXISTS collision guard: ${u2.sql.replace(/\s+/g, ' ').trim()}`);
     }
+
+    // --- Scenario 3: an overwritten conflict (HOME-287) ---------------------
+    // Source notes under tasks/z/ : A and B. Destination tasks/done/z/B already
+    // exists and the caller chooses to overwrite it. B's source row is rewritten
+    // onto the dest slug — if the same actor synced both the source and the
+    // pre-existing dest, that rewrite would violate UNIQUE(actor_id, namespace,
+    // slug). The sync UPDATE must carry a NOT EXISTS guard that leaves a colliding
+    // source row at its old slug instead of erroring the whole move.
+    clientQueries = [];
+    sourceRows = [{ slug: 'tasks/z/A', title: 'A' }, { slug: 'tasks/z/B', title: 'B' }];
+    conflictRows = [{ slug: 'tasks/done/z/B', title: 'B (existing)' }];
+    await movePrefix('home', 'tasks/z/', 'tasks/done/z/', { overwriteSlugs: ['tasks/done/z/B'] });
+
+    const u3 = syncUpdate();
+    assert('overwrite: note_sync UPDATE issued', !!u3, 'no note_synchronization UPDATE was issued');
+    if (u3) {
+        assert('overwrite: note_sync UPDATE carries the NOT EXISTS collision guard',
+            /NOT\s+EXISTS/i.test(u3.sql),
+            `sync UPDATE lacks the NOT EXISTS collision guard: ${u3.sql.replace(/\s+/g, ' ').trim()}`);
+        // The guard's correlated subquery must key on the same actor and the
+        // rewritten dest slug — not a blanket exclusion that would also strip an
+        // uninvolved actor's dest mapping.
+        assert('overwrite: collision guard correlates on actor_id',
+            /dst\.actor_id\s*=\s*src\.actor_id/i.test(u3.sql),
+            `collision guard does not correlate on actor_id: ${u3.sql.replace(/\s+/g, ' ').trim()}`);
+    }
+
+    // --- Scenario 4: nested-prefix move is rejected up front (HOME-287) -----
+    // Moving "a/" -> "a/sub/" double-moves source rows and would make the sync
+    // collision guard silently skip rows. movePrefix must reject it before any
+    // write, with a 400.
+    clientQueries = [];
+    sourceRows = [{ slug: 'a/x', title: 'X' }];
+    conflictRows = [];
+    let rejected = false;
+    let rejectedStatus = undefined;
+    try {
+        await movePrefix('home', 'a/', 'a/sub/', { overwriteSlugs: [] });
+    } catch (err) {
+        rejected = true;
+        rejectedStatus = err.statusCode;
+    }
+    assert('nested: move under self is rejected', rejected, 'nested prefix move was not rejected');
+    assert('nested: rejection is a 400', rejectedStatus === 400, `expected statusCode 400, got ${rejectedStatus}`);
+    assert('nested: no transaction queries issued before reject',
+        clientQueries.length === 0,
+        `expected no client queries, got ${clientQueries.length}`);
 
     console.log(`\n${passed} passed, ${failed} failed`);
     if (failed > 0) {
