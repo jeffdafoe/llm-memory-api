@@ -894,6 +894,19 @@ async function movePrefix(namespace, oldPrefix, newPrefix, options = {}) {
         validateSlug(newPrefix, { allowTrailingSlash: true });
     }
 
+    // Reject moving a prefix to itself or under itself (e.g. "a/" -> "a/sub/"). Such a
+    // move is ill-defined: a source note "a/x" would be rewritten to "a/sub/x", which
+    // is itself within the source range and gets rewritten again — the documents and
+    // memory_chunks rewrites double-move, and the sync collision guard below would
+    // silently leave rows behind. Reject up front rather than commit a partial,
+    // inconsistent move. (newPrefix === '' is a move to root, which is never nested.)
+    if (newPrefix !== '' && newPrefix.startsWith(oldPrefix)) {
+        throw Object.assign(
+            new Error(`Cannot move prefix "${oldPrefix}" to "${newPrefix}": the destination is the same as, or nested under, the source.`),
+            { statusCode: 400 }
+        );
+    }
+
     // Escape the source prefix for use in LIKE patterns (backslash, %, _ are special)
     const oldLike = escapeLike(oldPrefix);
 
@@ -987,25 +1000,48 @@ async function movePrefix(namespace, oldPrefix, newPrefix, options = {}) {
             `, [namespace, oldPrefix, newPrefix, oldLike]);
         }
 
-        // Update sync mappings that point at the old prefix. This MUST exclude the
-        // skipped source slugs exactly like the documents + memory_chunks rewrites
-        // above: a skipped note keeps its document at the old slug, so rewriting its
-        // sync mapping to the (never-created) new slug would leave note_synchronization
-        // pointing at a slug with no document behind it — a silent persistent-state
-        // inconsistency. (Bug fix: the skip exclusion was missing here while present
-        // on the other two rewrites.)
+        // Update sync mappings that point at the old prefix. Two guards apply:
+        //
+        // 1. Skip exclusion (!= ALL($5)): a skipped note keeps its document at the old
+        //    slug, so rewriting its sync mapping to the (never-created) new slug would
+        //    leave note_synchronization pointing at a slug with no document behind it —
+        //    a silent persistent-state inconsistency. (HOME-286: this exclusion was
+        //    missing here while present on the documents + memory_chunks rewrites.)
+        //
+        // 2. Overwrite collision guard (NOT EXISTS ...): note_synchronization is unique
+        //    per (actor_id, namespace, slug). When an overwrite-move rewrites a source
+        //    row onto a dest slug that the SAME actor already has a sync row for (they
+        //    sync both the source note and the pre-existing dest note), the UPDATE would
+        //    violate that constraint and roll back the whole move. We leave such a
+        //    colliding source row at its old slug; the source document moved to the dest
+        //    slug, so the next sync sees the old source slug has no live document and
+        //    deletes the local file, while the actor's existing dest mapping pulls the
+        //    moved content. An actor who synced only the dest is untouched (their row
+        //    isn't a source row), so their mapping survives and pulls the new content.
         if (skipSlugs.length > 0) {
             await client.query(`
-                UPDATE note_synchronization
-                SET slug = $3 || substring(slug FROM length($2) + 1)
-                WHERE namespace = $1 AND slug LIKE $4 || '%'
-                  AND slug != ALL($5)
+                UPDATE note_synchronization src
+                SET slug = $3 || substring(src.slug FROM length($2) + 1)
+                WHERE src.namespace = $1 AND src.slug LIKE $4 || '%'
+                  AND src.slug != ALL($5)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM note_synchronization dst
+                      WHERE dst.actor_id = src.actor_id
+                        AND dst.namespace = src.namespace
+                        AND dst.slug = $3 || substring(src.slug FROM length($2) + 1)
+                  )
             `, [namespace, oldPrefix, newPrefix, oldLike, skipSlugs]);
         } else {
             await client.query(`
-                UPDATE note_synchronization
-                SET slug = $3 || substring(slug FROM length($2) + 1)
-                WHERE namespace = $1 AND slug LIKE $4 || '%'
+                UPDATE note_synchronization src
+                SET slug = $3 || substring(src.slug FROM length($2) + 1)
+                WHERE src.namespace = $1 AND src.slug LIKE $4 || '%'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM note_synchronization dst
+                      WHERE dst.actor_id = src.actor_id
+                        AND dst.namespace = src.namespace
+                        AND dst.slug = $3 || substring(src.slug FROM length($2) + 1)
+                  )
             `, [namespace, oldPrefix, newPrefix, oldLike]);
         }
 
