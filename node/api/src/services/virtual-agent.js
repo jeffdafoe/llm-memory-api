@@ -953,7 +953,15 @@ function extractCoLocatedNames(perceptionText) {
     // and correctly short-circuit. Pre-WORK-348 the engine also rendered an
     // opaque huddle id (`huddle: h1 with ...`); that id has been dropped
     // because the LLM never used it.
-    const match = perceptionText.match(/^huddle:\s+with\s+(.+)$/m);
+    //
+    // Literal single-space anchor on purpose (ZBBS-WORK-350). The engine
+    // emits `huddle: with %s\n` — exactly one space between every token —
+    // so `\s+` was over-defensive and tripped CodeQL js/polynomial-redos
+    // (overlap between `\s+` and `(.+)`, both consuming whitespace, could
+    // pathologically backtrack on adversarial input). The character classes
+    // here are now disjoint: only `(.+)` is unbounded, no other repetition
+    // can overlap it.
+    const match = perceptionText.match(/^huddle: with (.+)$/m);
     if (!match) return [];
     return match[1]
         .split(',')
