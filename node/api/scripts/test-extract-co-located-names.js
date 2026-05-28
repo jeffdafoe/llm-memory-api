@@ -55,14 +55,14 @@ function assertEqual(label, got, want) {
     }
 }
 
-// ---------- v2 happy paths ----------
+// ---------- v2 happy paths (post-WORK-348: no debug ids in lines) ----------
 
 assertEqual(
     'two acquainted peers',
     extractCoLocatedNames(
         '## Around you\n' +
-        'inside: Tavern [tavern]\n' +
-        'huddle: h1 with Prudence Ward, Josiah Thorne\n' +
+        'inside: Tavern\n' +
+        'huddle: with Prudence Ward, Josiah Thorne\n' +
         'atmosphere: quiet\n'
     ),
     ['Prudence Ward', 'Josiah Thorne']
@@ -72,15 +72,15 @@ assertEqual(
     'single acquainted peer',
     extractCoLocatedNames(
         '## Around you\n' +
-        'inside: Apothecary [pw_apothecary]\n' +
-        'huddle: h2 with Prudence Ward\n'
+        'inside: Apothecary\n' +
+        'huddle: with Prudence Ward\n'
     ),
     ['Prudence Ward']
 );
 
 assertEqual(
     'name with apostrophe + hyphen survives intact',
-    extractCoLocatedNames('huddle: h1 with Mary O\'Brien, Jean-Luc Picard\n'),
+    extractCoLocatedNames('huddle: with Mary O\'Brien, Jean-Luc Picard\n'),
     ["Mary O'Brien", 'Jean-Luc Picard']
 );
 
@@ -88,19 +88,19 @@ assertEqual(
 
 assertEqual(
     'mixed acquainted + role + stranger drops descriptors',
-    extractCoLocatedNames('huddle: h1 with Prudence Ward, the keeper, a stranger\n'),
+    extractCoLocatedNames('huddle: with Prudence Ward, the keeper, a stranger\n'),
     ['Prudence Ward']
 );
 
 assertEqual(
     'all unacquainted yields empty',
-    extractCoLocatedNames('huddle: h1 with the keeper, the blacksmith, a stranger\n'),
+    extractCoLocatedNames('huddle: with the keeper, the blacksmith, a stranger\n'),
     []
 );
 
 assertEqual(
     'capitalized "The X" player name is NOT filtered',
-    extractCoLocatedNames('huddle: h1 with The Mountain, Sansa Stark\n'),
+    extractCoLocatedNames('huddle: with The Mountain, Sansa Stark\n'),
     ['The Mountain', 'Sansa Stark']
 );
 
@@ -110,8 +110,8 @@ assertEqual(
     'alone in huddle (you are the only member)',
     extractCoLocatedNames(
         '## Around you\n' +
-        'inside: Tavern [tavern]\n' +
-        'huddle: h1 (you are the only member)\n'
+        'inside: Tavern\n' +
+        'huddle: (you are the only member)\n'
     ),
     []
 );
@@ -123,6 +123,16 @@ assertEqual(
         'inside: outdoors\n' +
         'huddle: not in a huddle\n'
     ),
+    []
+);
+
+// Regression guard: the pre-WORK-348 format with a leading huddle id
+// MUST NOT match — the new parser is anchored on `huddle: with` exactly.
+// If the engine ever re-introduced a huddle id between the label and
+// "with", this would silently break, and this test pins that contract.
+assertEqual(
+    'pre-WORK-348 "huddle: h1 with ..." does NOT match (id-anchored parser is gone)',
+    extractCoLocatedNames('huddle: h1 with Prudence Ward, Josiah Thorne\n'),
     []
 );
 

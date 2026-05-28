@@ -928,7 +928,7 @@ async function loadPeopleContext(agentName, counterparts) {
 // Parse co-located people from a Salem engine perception (v2 format).
 //
 // The v2 engine's "## Around you" block lists co-huddle peers inline on a
-// single "huddle:" line: `huddle: <id> with Name1, Name2, the keeper, a stranger`.
+// single "huddle:" line: `huddle: with Name1, Name2, the keeper, a stranger`.
 // Solo / not-in-huddle states have fixed suffixes ("(you are the only
 // member)", "not in a huddle") that don't match the `with <names>` pattern
 // and short-circuit to an empty list.
@@ -947,10 +947,13 @@ async function loadPeopleContext(agentName, counterparts) {
 // — not a person — and would otherwise cause Impressions to be empty).
 function extractCoLocatedNames(perceptionText) {
     if (!perceptionText) return [];
-    // Anchor on the huddle line specifically (not the broader "## Around
-    // you" header) so the "(you are the only member)" / "not in a huddle"
-    // suffixes don't accidentally match — those don't carry "with <names>".
-    const match = perceptionText.match(/^huddle:\s+\S+\s+with\s+(.+)$/m);
+    // Anchor on `huddle: with <names>` — the "with" keyword is the engine's
+    // structural marker that names follow. Solo (`huddle: (you are the only
+    // member)`) and no-huddle (`huddle: not in a huddle`) don't carry "with"
+    // and correctly short-circuit. Pre-WORK-348 the engine also rendered an
+    // opaque huddle id (`huddle: h1 with ...`); that id has been dropped
+    // because the LLM never used it.
+    const match = perceptionText.match(/^huddle:\s+with\s+(.+)$/m);
     if (!match) return [];
     return match[1]
         .split(',')
