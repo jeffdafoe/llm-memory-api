@@ -925,30 +925,50 @@ async function loadPeopleContext(agentName, counterparts) {
     return sections.join('\n\n');
 }
 
-// Parse co-located people from a Salem engine perception. The engine
-// includes a "Here:\n  Name1\n  Name2" block listing other people at
-// the NPC's current location (other NPCs by display name, players by
-// in-game name). Returns an array of display names, empty when alone.
+// Parse co-located people from a Salem engine perception (v2 format).
+//
+// The v2 engine's "## Around you" block lists co-huddle peers inline on a
+// single "huddle:" line: `huddle: <id> with Name1, Name2, the keeper, a stranger`.
+// Solo / not-in-huddle states have fixed suffixes ("(you are the only
+// member)", "not in a huddle") that don't match the `with <names>` pattern
+// and short-circuit to an empty list.
+//
+// Returns an array of display names for ACQUAINTED peers only — the
+// engine acquaintance-gates names at render time (engine/sim/perception/
+// render.go:renderHuddleMember), so unacquainted peers arrive as
+// descriptors like "the keeper" or "a stranger" that have no
+// `context/people/<slug>` to load and are filtered out here. False
+// positive on a player named "The Mountain" is dodged by leaving the
+// regex case-sensitive: only lowercase "the X" matches the descriptor
+// shape that the engine actually emits.
 //
 // Used in sim mode to derive the Impressions counterpart list from the
 // world state instead of from `fromAgent` (which is always "salem-engine"
 // — not a person — and would otherwise cause Impressions to be empty).
 function extractCoLocatedNames(perceptionText) {
     if (!perceptionText) return [];
-    const match = perceptionText.match(/^Here:\s*\n((?:  +.+\n?)+)/m);
+    // Anchor on the huddle line specifically (not the broader "## Around
+    // you" header) so the "(you are the only member)" / "not in a huddle"
+    // suffixes don't accidentally match — those don't carry "with <names>".
+    const match = perceptionText.match(/^huddle:\s+\S+\s+with\s+(.+)$/m);
     if (!match) return [];
     return match[1]
-        .split('\n')
-        .map(function (line) { return line.trim(); })
-        .filter(function (line) { return line.length > 0; });
+        .split(',')
+        .map(function (s) { return s.trim(); })
+        .filter(function (s) { return s.length > 0; })
+        // Acquaintance descriptors: "the <role>" (always lowercased role
+        // per engine) and the literal "a stranger". Case-sensitive on
+        // purpose — a player display name like "The Mountain" stays.
+        .filter(function (s) { return !/^the\s+/.test(s) && s !== 'a stranger'; });
 }
 
 // Per-scene co-located-names cache for sim-NPC ticks.
 //
-// The Salem engine emits a "Here:" block in the user message of fresh
-// perceptions (the chat/send that opens an NPC's tick). The isSimNpc
-// branch in handleDirectChat uses that block to inject "## Your
-// impressions of <name>" into the system prompt via loadPeopleContext.
+// The Salem engine emits a "## Around you" / "huddle: <id> with ..." line
+// in the user message of fresh perceptions (the chat/send that opens an
+// NPC's tick). The isSimNpc branch in handleDirectChat uses that line to
+// inject "## Your impressions of <name>" into the system prompt via
+// loadPeopleContext.
 //
 // On follow-up tool-result chat/sends within the same scene (the model
 // called speak, the engine returned "[OK] You spoke. Continue your
@@ -2624,4 +2644,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent, loadAgent };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames };
