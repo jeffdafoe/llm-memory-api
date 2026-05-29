@@ -19,4 +19,112 @@ function asNumber(v) {
     return Number.isFinite(n) ? n : undefined;
 }
 
-module.exports = { asNumber };
+// coerceToSchema walks a parsed tool-call argument value and converts
+// string-encoded scalars to the JSON-Schema-declared type. LLM function
+// calling is unreliable about argument types — Llama 3.x (and other models
+// routed via OpenRouter) routinely emit every scalar as a JSON string
+// ({"qty":"1","consume_now":"true"}) regardless of the schema's
+// `type: integer/boolean`. Downstream consumers (notably the Salem engine)
+// decode tool args into strictly typed structs and hard-reject a string where
+// they expect an int/bool, so the call fails as malformed_args even though the
+// model's intent was correct.
+//
+// Coercion is conservative: a value is converted only when it cleanly matches
+// the declared type. Anything that doesn't (a non-numeric string for an integer
+// field, garbage for a boolean) is returned untouched so downstream validation
+// still rejects it with a precise error rather than this layer masking a real
+// problem. Only the observed failure direction (model stringifies numbers/bools)
+// is handled; string fields are left alone.
+//
+// Recurses through declared object properties and array items so nested
+// argument shapes coerce too. `value` is a freshly parsed throwaway object, so
+// in-place mutation of objects/arrays is safe.
+
+// singleNonNullType resolves a JSON Schema `type` to a single coercible type
+// name. A plain string type passes through; a union array resolves only when it
+// names exactly one non-"null" type — the common nullable case, e.g.
+// ["integer","null"]. Genuinely ambiguous unions (two real types) return null
+// and are left untouched.
+function singleNonNullType(type) {
+    if (typeof type === 'string') return type;
+    if (Array.isArray(type)) {
+        const nonNull = type.filter(function (t) { return t !== 'null'; });
+        if (nonNull.length === 1 && typeof nonNull[0] === 'string') return nonNull[0];
+    }
+    return null;
+}
+
+function coerceToSchema(value, schema) {
+    if (!schema || typeof schema !== 'object') return value;
+    const type = singleNonNullType(schema.type);
+    if (type === null) return value;
+
+    if (type === 'integer') {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        // Whole number only — no fractional/exponent noise. And only within JS's
+        // exact-integer range: Number("9007199254740993") silently rounds, so an
+        // out-of-range id/amount is left for downstream validation rather than
+        // corrupted here.
+        if (!/^[+-]?\d+$/.test(trimmed)) return value;
+        const n = Number(trimmed);
+        return Number.isSafeInteger(n) ? n : value;
+    }
+
+    if (type === 'number') {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        if (trimmed === '') return value;
+        // Number() (not parseFloat) so junk suffixes fail cleanly: "1abc" -> NaN.
+        const n = Number(trimmed);
+        return Number.isFinite(n) ? n : value;
+    }
+
+    if (type === 'boolean') {
+        if (typeof value !== 'string') return value;
+        const lowered = value.trim().toLowerCase();
+        if (lowered === 'true') return true;
+        if (lowered === 'false') return false;
+        return value;
+    }
+
+    if (type === 'object' && value && typeof value === 'object' && !Array.isArray(value)
+        && schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
+        for (const key of Object.keys(value)) {
+            // Own-property check only — never read through to Object.prototype for
+            // a model-supplied key like "__proto__".
+            if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) continue;
+            value[key] = coerceToSchema(value[key], schema.properties[key]);
+        }
+        return value;
+    }
+
+    if (type === 'array' && Array.isArray(value) && schema.items) {
+        for (let i = 0; i < value.length; i++) {
+            value[i] = coerceToSchema(value[i], schema.items);
+        }
+        return value;
+    }
+
+    return value;
+}
+
+// coerceToolArgs is the entry point for a tool call's top-level arguments. The
+// `parameters` argument is the tool's offered JSON Schema (itself a
+// `type: object` schema); it may arrive as an object or, defensively, as a JSON
+// string. Returns the input unchanged when there is no usable schema to coerce
+// against.
+function coerceToolArgs(input, parameters) {
+    let schema = parameters;
+    if (typeof schema === 'string') {
+        try {
+            schema = JSON.parse(schema);
+        } catch (e) {
+            return input;
+        }
+    }
+    if (!schema || typeof schema !== 'object') return input;
+    return coerceToSchema(input, schema);
+}
+
+module.exports = { asNumber, coerceToSchema, coerceToolArgs };
