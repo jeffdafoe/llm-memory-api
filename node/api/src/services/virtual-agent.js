@@ -31,6 +31,45 @@ function formatDuration(totalSeconds) {
 // In-memory rate limiter: agent -> array of call timestamps
 const callHistory = {};
 
+// Per-agent set of sim-tick scene IDs already counted toward the rate limit,
+// each mapped to the ms timestamp it was first counted: agent -> Map(sceneId -> firstCountedMs).
+//
+// A single salem reactor tick makes 3-5 provider calls that all share one
+// sceneId (the engine harness mints one sceneId per tick and reuses it across
+// the tool-use iterations). Counting each call made the 10-calls/60s limit
+// bound ITERATIONS, so an ordinary NPC ticking only 2-3 times a minute tripped
+// the limit, fell into a 5-minute cooldown, and went silent — every tick during
+// the cooldown then came back as an "[Error] Rate limited" reply the engine
+// could not parse into tool calls, surfacing as the village-wide "malformed"
+// cascade (ZBBS-HOME-332; root cause of reactor-liveness finding #13).
+//
+// Tracking sceneId lets the limit bound TICKS instead: only the first call of a
+// new sceneId counts, and the continuation calls of that same tick bypass both
+// the limit and the cooldown (see isRateLimited) so a mid-tick tool-use
+// conversation is never severed — severing it would orphan a tool_use in the VA
+// transcript. Human / non-sim chat passes no sceneId and is unaffected: it is
+// still counted per call, preserving the original abuse guard.
+const countedScenes = {};
+
+// pruneCountedScenes drops sceneIds first counted before cutoffMs so the per-
+// agent Map can't grow without bound. A tick completes in seconds, so a sceneId
+// only needs to be remembered for the rate-limit window.
+function pruneCountedScenes(agentName, cutoffMs) {
+    const scenes = countedScenes[agentName];
+    if (!scenes) {
+        return;
+    }
+    for (const [sceneId, firstCountedMs] of scenes) {
+        if (firstCountedMs < cutoffMs) {
+            scenes.delete(sceneId);
+        }
+    }
+    // Drop the agent's map once empty so it can't accumulate for churned agents.
+    if (scenes.size === 0) {
+        delete countedScenes[agentName];
+    }
+}
+
 // Coalescing guard for discussion virtual-agent generations.
 // Key: `${discussionId}:${agentName}` → { rerunPending: boolean }
 //
@@ -194,7 +233,14 @@ async function getRateLimitOverrides(agentName) {
 }
 
 // Check if an agent is rate-limited. Returns true if the call should be blocked.
-async function isRateLimited(agentName) {
+//
+// sceneId (optional): the salem per-tick scene id. When this call continues a
+// tick whose sceneId was already counted, it is part of one already-admitted
+// deliberation, so it bypasses both the limit and the cooldown — the limit
+// counts ticks, not the 3-5 iterations within a tick (ZBBS-HOME-332). Callers
+// outside sim (human chat, discussions) pass no sceneId and keep per-call
+// counting.
+async function isRateLimited(agentName, sceneId = null) {
     let limit = parseInt(config.get('virtual_agent_rate_limit'));
     let windowMs = parseInt(config.get('virtual_agent_rate_window_seconds')) * 1000;
     let cooldownMs = parseInt(config.get('virtual_agent_cooldown_seconds')) * 1000;
@@ -209,9 +255,29 @@ async function isRateLimited(agentName) {
     }
 
     const now = Date.now();
+    const cutoffMs = now - windowMs;
     if (!callHistory[agentName]) callHistory[agentName] = [];
 
     const history = callHistory[agentName];
+
+    // Prune stale entries FIRST, so neither the continuation bypass nor the
+    // limit check below can be fooled by entries that have fallen out of the
+    // window (a reused or replayed sceneId, a long-idle agent's old calls).
+    while (history.length > 0 && history[0] < cutoffMs) {
+        history.shift();
+    }
+    pruneCountedScenes(agentName, cutoffMs);
+
+    // A continuation call of an already-counted, still-in-window sim tick (same
+    // sceneId) is part of one deliberation the limiter already admitted — let
+    // it through without re-checking the limit OR the cooldown, so a
+    // multi-iteration tool-use exchange is never cut off mid-tick (which would
+    // orphan a tool_use in the VA transcript). The prune above guarantees a
+    // present sceneId is still within the window, so a stale one can't bypass.
+    // Callers gate this to trusted sim ticks (see handleDirectChat).
+    if (sceneId && countedScenes[agentName] && countedScenes[agentName].has(sceneId)) {
+        return false;
+    }
 
     // Check cooldown: if the most recent call triggered a rate limit, check if cooldown has passed
     if (history._cooldownUntil && now < history._cooldownUntil) {
@@ -221,11 +287,6 @@ async function isRateLimited(agentName) {
     // Clear expired cooldown
     if (history._cooldownUntil && now >= history._cooldownUntil) {
         delete history._cooldownUntil;
-    }
-
-    // Prune old entries outside the window
-    while (history.length > 0 && history[0] < now - windowMs) {
-        history.shift();
     }
 
     // Check if at limit
@@ -239,9 +300,29 @@ async function isRateLimited(agentName) {
 }
 
 // Record a provider call for rate limiting.
-function recordCall(agentName) {
+//
+// sceneId (optional): the salem per-tick scene id. Only the FIRST call of a new
+// sceneId counts toward the limit; later iterations of the same tick (sceneId
+// already counted) are skipped, so the limit bounds ticks rather than the 3-5
+// iterations within one tick (ZBBS-HOME-332). Callers with no sceneId (human
+// chat, discussions) record every call, as before.
+function recordCall(agentName, sceneId = null) {
+    const now = Date.now();
     if (!callHistory[agentName]) callHistory[agentName] = [];
-    callHistory[agentName].push(Date.now());
+    if (sceneId) {
+        // Prune before the dedupe check so a stale/reused sceneId isn't treated
+        // as an already-counted continuation forever (recordCall is the write-
+        // side guard, so it can't rely on isRateLimited having pruned first).
+        const windowMs = parseInt(config.get('virtual_agent_rate_window_seconds')) * 1000;
+        pruneCountedScenes(agentName, now - windowMs);
+        if (!countedScenes[agentName]) countedScenes[agentName] = new Map();
+        // Continuation of an already-counted (in-window) tick — don't recount.
+        if (countedScenes[agentName].has(sceneId)) {
+            return;
+        }
+        countedScenes[agentName].set(sceneId, now);
+    }
+    callHistory[agentName].push(now);
 }
 
 // Resolve effective cost limits for an agent.
@@ -2346,8 +2427,15 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             loggedUserMessage = userMessage;
         }
 
-        // Rate limit check
-        if (await isRateLimited(agent.agent)) {
+        // Rate limit check. Pass sceneId so a multi-iteration sim tick counts
+        // once and its continuation calls bypass the limit/cooldown (ZBBS-HOME-
+        // 332). Gate that bypass to the trusted engine sender: scene_id arrives
+        // from the client in /chat/send (req.body.scene_id), so honoring it for
+        // an arbitrary caller would let them replay an active sceneId to skirt
+        // the limiter. Only salem-engine ticks (isSimChat) get tick-counting;
+        // every other sender keeps per-call counting (rateLimitSceneId = null).
+        const rateLimitSceneId = isSimChat ? sceneId : null;
+        if (await isRateLimited(agent.agent, rateLimitSceneId)) {
             logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
             await chatSend(virtualAgentName, [fromAgent], null,
                 '[Error] Rate limited — too many API calls. Please wait before trying again.', { sceneId, isError: true });
@@ -2367,7 +2455,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // Pass cache flag — direct chat implies back-and-forth.
         // On first failure, send an immediate chat message so the sender knows retries are in progress.
         const providerFn = createProvider(agent.provider, agent.model, apiKey, conf);
-        recordCall(agent.agent);
+        recordCall(agent.agent, rateLimitSceneId);
         const chatCallStart = Date.now();
         const providerCallOpts = { cache: true };
         if (isToolUse) {
