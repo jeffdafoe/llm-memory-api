@@ -19,4 +19,87 @@ function asNumber(v) {
     return Number.isFinite(n) ? n : undefined;
 }
 
-module.exports = { asNumber };
+// coerceToSchema walks a parsed tool-call argument value and converts
+// string-encoded scalars to the JSON-Schema-declared type. LLM function
+// calling is unreliable about argument types — Llama 3.x (and other models
+// routed via OpenRouter) routinely emit every scalar as a JSON string
+// ({"qty":"1","consume_now":"true"}) regardless of the schema's
+// `type: integer/boolean`. Downstream consumers (notably the Salem engine)
+// decode tool args into strictly typed structs and hard-reject a string where
+// they expect an int/bool, so the call fails as malformed_args even though the
+// model's intent was correct.
+//
+// Coercion is conservative: a value is converted only when it cleanly matches
+// the declared type. Anything that doesn't (a non-numeric string for an integer
+// field, garbage for a boolean) is returned untouched so downstream validation
+// still rejects it with a precise error rather than this layer masking a real
+// problem. Only the observed failure direction (model stringifies numbers/bools)
+// is handled; string fields are left alone.
+//
+// Recurses through declared object properties and array items so nested
+// argument shapes coerce too. `value` is a freshly parsed throwaway object, so
+// in-place mutation of objects/arrays is safe.
+function coerceToSchema(value, schema) {
+    if (!schema || typeof schema !== 'object') return value;
+    // JSON Schema permits `type` to be an array (a union); a union is ambiguous
+    // to coerce toward, so only single string types are handled.
+    const type = typeof schema.type === 'string' ? schema.type : null;
+
+    if (type === 'integer' || type === 'number') {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        // An integer field must receive a whole number — no fractional or
+        // exponent noise. Leave anything else for downstream validation.
+        if (type === 'integer' && !/^[+-]?\d+$/.test(trimmed)) return value;
+        const n = asNumber(trimmed);
+        return n === undefined ? value : n;
+    }
+
+    if (type === 'boolean') {
+        if (typeof value !== 'string') return value;
+        const lowered = value.trim().toLowerCase();
+        if (lowered === 'true') return true;
+        if (lowered === 'false') return false;
+        return value;
+    }
+
+    if (type === 'object' && value && typeof value === 'object'
+        && !Array.isArray(value) && schema.properties) {
+        for (const key of Object.keys(value)) {
+            const propSchema = schema.properties[key];
+            if (propSchema) {
+                value[key] = coerceToSchema(value[key], propSchema);
+            }
+        }
+        return value;
+    }
+
+    if (type === 'array' && Array.isArray(value) && schema.items) {
+        for (let i = 0; i < value.length; i++) {
+            value[i] = coerceToSchema(value[i], schema.items);
+        }
+        return value;
+    }
+
+    return value;
+}
+
+// coerceToolArgs is the entry point for a tool call's top-level arguments. The
+// `parameters` argument is the tool's offered JSON Schema (itself a
+// `type: object` schema); it may arrive as an object or, defensively, as a JSON
+// string. Returns the input unchanged when there is no usable schema to coerce
+// against.
+function coerceToolArgs(input, parameters) {
+    let schema = parameters;
+    if (typeof schema === 'string') {
+        try {
+            schema = JSON.parse(schema);
+        } catch (e) {
+            return input;
+        }
+    }
+    if (!schema || typeof schema !== 'object') return input;
+    return coerceToSchema(input, schema);
+}
+
+module.exports = { asNumber, coerceToSchema, coerceToolArgs };
