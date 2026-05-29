@@ -267,7 +267,7 @@ function createCall(model, apiKey, configuration) {
                 // the schema's declared type; strictly typed downstream decoders
                 // (the Salem engine) reject those as malformed. The schema travels
                 // on opts.tools[].parameters, the same defs sent to the wire above.
-                if (useTools) {
+                if (Array.isArray(opts.tools)) {
                     var spec = opts.tools.find(function (t) { return t.name === tc.function.name; });
                     if (spec) {
                         input = coerceToolArgs(input, spec.parameters);

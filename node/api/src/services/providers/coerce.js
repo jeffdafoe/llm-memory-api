@@ -39,20 +39,45 @@ function asNumber(v) {
 // Recurses through declared object properties and array items so nested
 // argument shapes coerce too. `value` is a freshly parsed throwaway object, so
 // in-place mutation of objects/arrays is safe.
+
+// singleNonNullType resolves a JSON Schema `type` to a single coercible type
+// name. A plain string type passes through; a union array resolves only when it
+// names exactly one non-"null" type — the common nullable case, e.g.
+// ["integer","null"]. Genuinely ambiguous unions (two real types) return null
+// and are left untouched.
+function singleNonNullType(type) {
+    if (typeof type === 'string') return type;
+    if (Array.isArray(type)) {
+        const nonNull = type.filter(function (t) { return t !== 'null'; });
+        if (nonNull.length === 1 && typeof nonNull[0] === 'string') return nonNull[0];
+    }
+    return null;
+}
+
 function coerceToSchema(value, schema) {
     if (!schema || typeof schema !== 'object') return value;
-    // JSON Schema permits `type` to be an array (a union); a union is ambiguous
-    // to coerce toward, so only single string types are handled.
-    const type = typeof schema.type === 'string' ? schema.type : null;
+    const type = singleNonNullType(schema.type);
+    if (type === null) return value;
 
-    if (type === 'integer' || type === 'number') {
+    if (type === 'integer') {
         if (typeof value !== 'string') return value;
         const trimmed = value.trim();
-        // An integer field must receive a whole number — no fractional or
-        // exponent noise. Leave anything else for downstream validation.
-        if (type === 'integer' && !/^[+-]?\d+$/.test(trimmed)) return value;
-        const n = asNumber(trimmed);
-        return n === undefined ? value : n;
+        // Whole number only — no fractional/exponent noise. And only within JS's
+        // exact-integer range: Number("9007199254740993") silently rounds, so an
+        // out-of-range id/amount is left for downstream validation rather than
+        // corrupted here.
+        if (!/^[+-]?\d+$/.test(trimmed)) return value;
+        const n = Number(trimmed);
+        return Number.isSafeInteger(n) ? n : value;
+    }
+
+    if (type === 'number') {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        if (trimmed === '') return value;
+        // Number() (not parseFloat) so junk suffixes fail cleanly: "1abc" -> NaN.
+        const n = Number(trimmed);
+        return Number.isFinite(n) ? n : value;
     }
 
     if (type === 'boolean') {
@@ -63,13 +88,13 @@ function coerceToSchema(value, schema) {
         return value;
     }
 
-    if (type === 'object' && value && typeof value === 'object'
-        && !Array.isArray(value) && schema.properties) {
+    if (type === 'object' && value && typeof value === 'object' && !Array.isArray(value)
+        && schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
         for (const key of Object.keys(value)) {
-            const propSchema = schema.properties[key];
-            if (propSchema) {
-                value[key] = coerceToSchema(value[key], propSchema);
-            }
+            // Own-property check only — never read through to Object.prototype for
+            // a model-supplied key like "__proto__".
+            if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) continue;
+            value[key] = coerceToSchema(value[key], schema.properties[key]);
         }
         return value;
     }
