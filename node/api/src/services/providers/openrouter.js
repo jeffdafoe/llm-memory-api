@@ -11,7 +11,7 @@
 // using catalog pricing, so index.js calculateCost always gets usage.cost.
 
 const { log } = require('../logger');
-const { asNumber } = require('./coerce');
+const { asNumber, coerceToolArgs } = require('./coerce');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -259,6 +259,18 @@ function createCall(model, apiKey, configuration) {
                         input = JSON.parse(tc.function.arguments);
                     } catch (e) {
                         logProvider('tool-args-parse-error', { provider: 'openrouter', model, error: e.message });
+                    }
+                }
+                // Coerce string-encoded scalars against the offered tool schema.
+                // OpenRouter fronts many models (Llama 3.x especially) that emit
+                // numeric/boolean tool args as JSON strings ({"qty":"1"}) despite
+                // the schema's declared type; strictly typed downstream decoders
+                // (the Salem engine) reject those as malformed. The schema travels
+                // on opts.tools[].parameters, the same defs sent to the wire above.
+                if (useTools) {
+                    var spec = opts.tools.find(function (t) { return t.name === tc.function.name; });
+                    if (spec) {
+                        input = coerceToolArgs(input, spec.parameters);
                     }
                 }
                 return { id: tc.id, name: tc.function.name, input: input };
