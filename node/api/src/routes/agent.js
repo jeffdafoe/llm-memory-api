@@ -78,14 +78,14 @@ router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
 
     // Compute hash even when row is missing (timing-safe rejection)
     if (!row) {
-        hashToken(passphrase, DUMMY_SALT);
+        await hashToken(passphrase, DUMMY_SALT);
         logAgent('login-failed', { agent });
         return res.status(403).json({
             error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
         });
     }
 
-    if (!verify(passphrase, row.token_salt, row.token_hash)) {
+    if (!(await verify(passphrase, row.token_salt, row.token_hash))) {
         logAgent('login-failed', { agent });
         return res.status(403).json({
             error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
@@ -98,7 +98,7 @@ router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
     // PBKDF2'ing every active session.
     const sessionToken = generateSessionToken();
     const sessionSalt = generateSalt();
-    const sessionHash = hashToken(sessionToken, sessionSalt);
+    const sessionHash = await hashToken(sessionToken, sessionSalt);
     const lookupHash = tokenLookupHash(sessionToken);
     const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
@@ -175,7 +175,7 @@ router.post('/agent/rotate', apiRoute('agent', 'rotate', async (req, res) => {
         'SELECT token_hash, token_salt FROM actors WHERE id = $1',
         [req.actorId]
     );
-    if (!verify(current_passphrase, actorRow.rows[0].token_salt, actorRow.rows[0].token_hash)) {
+    if (!(await verify(current_passphrase, actorRow.rows[0].token_salt, actorRow.rows[0].token_hash))) {
         return res.status(403).json({
             error: { code: 'INVALID_PASSPHRASE', message: 'Current passphrase does not match' }
         });
@@ -184,7 +184,7 @@ router.post('/agent/rotate', apiRoute('agent', 'rotate', async (req, res) => {
     // Generate new passphrase
     const passphrase = generatePassphraseToken();
     const salt = generateSalt();
-    const hash = hashToken(passphrase, salt);
+    const hash = await hashToken(passphrase, salt);
 
     await pool.query(
         'UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3',
