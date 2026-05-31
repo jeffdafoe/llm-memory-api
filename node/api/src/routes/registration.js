@@ -132,11 +132,11 @@ router.post('/api/register', async (req, res) => {
         const words = generatePassphrase(3);
         const passphrase = words.join('-');
         const salt = generateSalt();
-        const passphraseHash = hashToken(passphrase, salt);
+        const passphraseHash = await hashToken(passphrase, salt);
 
         // Hash the dashboard password
         const passwordSalt = generateSalt();
-        const passwordHash = hashToken(password, passwordSalt);
+        const passwordHash = await hashToken(password, passwordSalt);
 
         // Create actor with realm
         await client.query(
@@ -193,7 +193,7 @@ router.post('/api/register', async (req, res) => {
         // Generate API key for MCP/OAuth authentication
         const apiKey = generateKey();
         const apiKeySalt = generateSalt();
-        const apiKeyHash = hashToken(apiKey, apiKeySalt);
+        const apiKeyHash = await hashToken(apiKey, apiKeySalt);
         await client.query(
             `INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, label) VALUES ($1, $2, $3, 'default')`,
             [actorId, apiKeyHash, apiKeySalt]

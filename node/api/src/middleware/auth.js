@@ -25,7 +25,7 @@ async function tryApiKeyAuth(token) {
          WHERE ak.revoked_at IS NULL`
     );
     for (const row of keys.rows) {
-        if (verify(token, row.key_salt, row.key_hash)) {
+        if (await verify(token, row.key_salt, row.key_hash)) {
             pool.query(
                 'UPDATE agent_api_keys SET last_used_at = NOW() WHERE actor_id = $1 AND key_salt = $2',
                 [row.actor_id, row.key_salt]

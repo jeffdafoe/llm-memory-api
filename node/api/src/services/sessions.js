@@ -41,7 +41,7 @@ async function validateSessionToken(token, kind) {
     );
     if (fast.rows.length > 0) {
         const row = fast.rows[0];
-        if (verify(token, row.token_salt, row.token_hash)) {
+        if (await verify(token, row.token_salt, row.token_hash)) {
             await maybeExtendExpiry(row);
             return row;
         }
@@ -62,7 +62,7 @@ async function validateSessionToken(token, kind) {
         [kind]
     );
     for (const row of legacy.rows) {
-        if (verify(token, row.token_salt, row.token_hash)) {
+        if (await verify(token, row.token_salt, row.token_hash)) {
             await maybeExtendExpiry(row);
             return row;
         }
@@ -93,7 +93,7 @@ async function deleteSessionByToken(token, kind, actorId) {
     );
     if (fast.rows.length > 0) {
         const row = fast.rows[0];
-        if (verify(token, row.token_salt, row.token_hash)) {
+        if (await verify(token, row.token_salt, row.token_hash)) {
             await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
             return true;
         }
@@ -117,7 +117,7 @@ async function deleteSessionByToken(token, kind, actorId) {
         [actorId, kind]
     );
     for (const row of legacy.rows) {
-        if (verify(token, row.token_salt, row.token_hash)) {
+        if (await verify(token, row.token_salt, row.token_hash)) {
             await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
             return true;
         }
