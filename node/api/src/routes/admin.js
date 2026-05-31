@@ -11,6 +11,7 @@ const { getEntries: getRequestLogEntries } = require('../middleware/request-log'
 const { getErrorLogEntries } = require('../services/logger');
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
+const { deleteSessionByToken } = require('../services/sessions');
 const { mailSend } = require('../services/mail');
 const { chatSend } = require('../services/chat');
 const { discussionCreate, discussionConclude } = require('../services/discussion');
@@ -121,14 +122,14 @@ router.post('/admin/login', async (req, res) => {
 
         // Compute hash even when row is missing (timing-safe rejection)
         if (!row) {
-            hashToken(password, DUMMY_SALT);
+            await hashToken(password, DUMMY_SALT);
             logAdmin('login_failed', { username });
             return res.status(401).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password' }
             });
         }
 
-        if (!verify(password, row.password_salt, row.password_hash)) {
+        if (!(await verify(password, row.password_salt, row.password_hash))) {
             logAdmin('login_failed', { username });
             return res.status(401).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password' }
@@ -137,7 +138,7 @@ router.post('/admin/login', async (req, res) => {
 
         const sessionToken = generateSessionToken();
         const salt = generateSalt();
-        const tokenHash = hashToken(sessionToken, salt);
+        const tokenHash = await hashToken(sessionToken, salt);
         const lookupHash = tokenLookupHash(sessionToken);
         const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
@@ -174,20 +175,11 @@ router.post('/admin/logout', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
 
-        // Find and delete only the session matching this token (not all web sessions)
+        // Find and delete only the session matching this token (not all web
+        // sessions) via an indexed lookup rather than a PBKDF2 scan of every
+        // web session this user owns — see deleteSessionByToken.
         if (token) {
-            const sessions = await pool.query(
-                "SELECT id, token_hash, token_salt FROM sessions WHERE actor_id = $1 AND kind = $2",
-                [req.authenticatedUser.id, SESSION_KIND.WEB]
-            );
-
-            for (const row of sessions.rows) {
-                if (verify(token, row.token_salt, row.token_hash)) {
-                    await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
-                    break;
-                }
-            }
-
+            await deleteSessionByToken(token, SESSION_KIND.WEB, req.authenticatedUser.id);
             auth.sessionCache.delete(token);
         }
 
@@ -225,14 +217,14 @@ router.post('/admin/change-password', async (req, res) => {
         );
         const row = result.rows[0];
 
-        if (!row || !row.password_hash || !verify(current_password, row.password_salt, row.password_hash)) {
+        if (!row || !row.password_hash || !(await verify(current_password, row.password_salt, row.password_hash))) {
             return res.status(401).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect' }
             });
         }
 
         const salt = generateSalt();
-        const hash = hashToken(new_password, salt);
+        const hash = await hashToken(new_password, salt);
         await pool.query(
             'UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3',
             [hash, salt, req.authenticatedUser.id]
@@ -541,7 +533,7 @@ router.post('/admin/agents/reset-passphrase', requirePerm('agents', 'write'), ad
     const words = generatePassphrase(3);
     const passphrase = words.join('-');
     const salt = generateSalt();
-    const hash = hashToken(passphrase, salt);
+    const hash = await hashToken(passphrase, salt);
 
     const actor = await requireVisibility(req, res, agent);
     if (!actor) return;
@@ -1575,14 +1567,14 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
     const words = generatePassphrase(3);
     const passphrase = words.join('-');
     const passphraseSalt = generateSalt();
-    const passphraseHash = hashToken(passphrase, passphraseSalt);
+    const passphraseHash = await hashToken(passphrase, passphraseSalt);
 
     // Optionally hash the UI password
     let passwordHash = null;
     let passwordSalt = null;
     if (ui_access && password) {
         passwordSalt = generateSalt();
-        passwordHash = hashToken(password, passwordSalt);
+        passwordHash = await hashToken(password, passwordSalt);
     }
 
     const client = await pool.connect();
@@ -2393,7 +2385,7 @@ router.post('/admin/actors/password', requirePerm('agents', 'write'), adminRoute
             });
         }
         const salt = generateSalt();
-        const hash = hashToken(password, salt);
+        const hash = await hashToken(password, salt);
         await pool.query(
             'UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3',
             [hash, salt, actorId]

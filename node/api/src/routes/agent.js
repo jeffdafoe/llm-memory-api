@@ -13,6 +13,7 @@ const { requireAccess, validateNamespace } = require('../services/namespace-perm
 const config = require('../services/config');
 const { apiRoute } = require('../middleware/route-wrapper');
 const { invokeAgent } = require('../services/virtual-agent');
+const { deleteSessionByToken } = require('../services/sessions');
 // actors service no longer needed — all routes use req.actorId from auth middleware
 
 const router = Router();
@@ -49,7 +50,8 @@ function generateSessionToken() {
 
 // POST /agent/login — verify passphrase, create session, return session token.
 // No auth required — the passphrase in the body is the credential.
-// Also cleans up expired sessions lazily on each call.
+// Expired sessions are reaped table-wide by the daily db-cleanup cron
+// (scripts/db-cleanup.sh), not on this path.
 router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
     const { passphrase } = req.body;
     const subsystem = sanitize.identifier(req.body.subsystem);
@@ -76,14 +78,14 @@ router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
 
     // Compute hash even when row is missing (timing-safe rejection)
     if (!row) {
-        hashToken(passphrase, DUMMY_SALT);
+        await hashToken(passphrase, DUMMY_SALT);
         logAgent('login-failed', { agent });
         return res.status(403).json({
             error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
         });
     }
 
-    if (!verify(passphrase, row.token_salt, row.token_hash)) {
+    if (!(await verify(passphrase, row.token_salt, row.token_hash))) {
         logAgent('login-failed', { agent });
         return res.status(403).json({
             error: { code: 'INVALID_CREDENTIALS', message: 'Invalid agent or passphrase' }
@@ -96,7 +98,7 @@ router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
     // PBKDF2'ing every active session.
     const sessionToken = generateSessionToken();
     const sessionSalt = generateSalt();
-    const sessionHash = hashToken(sessionToken, sessionSalt);
+    const sessionHash = await hashToken(sessionToken, sessionSalt);
     const lookupHash = tokenLookupHash(sessionToken);
     const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
 
@@ -139,20 +141,10 @@ router.post('/agent/logout', apiRoute('agent', 'logout', async (req, res) => {
     const agent = req.authenticatedAgent;
     const token = req.headers.authorization.replace('Bearer ', '');
 
-    // Find and delete the session matching this token
-    const sessions = await pool.query(
-        'SELECT id, token_hash, token_salt FROM sessions WHERE actor_id = $1 AND kind = $2',
-        [req.actorId, SESSION_KIND.API]
-    );
-
-    let deleted = false;
-    for (const row of sessions.rows) {
-        if (verify(token, row.token_salt, row.token_hash)) {
-            await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
-            deleted = true;
-            break;
-        }
-    }
+    // Find and delete the session matching this token via an indexed lookup
+    // (not a PBKDF2 scan of every session this actor owns — see
+    // deleteSessionByToken).
+    const deleted = await deleteSessionByToken(token, SESSION_KIND.API, req.actorId);
 
     // Clear from session cache
     auth.sessionCache.delete(token);
@@ -183,7 +175,7 @@ router.post('/agent/rotate', apiRoute('agent', 'rotate', async (req, res) => {
         'SELECT token_hash, token_salt FROM actors WHERE id = $1',
         [req.actorId]
     );
-    if (!verify(current_passphrase, actorRow.rows[0].token_salt, actorRow.rows[0].token_hash)) {
+    if (!(await verify(current_passphrase, actorRow.rows[0].token_salt, actorRow.rows[0].token_hash))) {
         return res.status(403).json({
             error: { code: 'INVALID_PASSPHRASE', message: 'Current passphrase does not match' }
         });
@@ -192,7 +184,7 @@ router.post('/agent/rotate', apiRoute('agent', 'rotate', async (req, res) => {
     // Generate new passphrase
     const passphrase = generatePassphraseToken();
     const salt = generateSalt();
-    const hash = hashToken(passphrase, salt);
+    const hash = await hashToken(passphrase, salt);
 
     await pool.query(
         'UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3',
