@@ -41,7 +41,7 @@ async function validateSessionToken(token, kind) {
     );
     if (fast.rows.length > 0) {
         const row = fast.rows[0];
-        if (verify(token, row.token_salt, row.token_hash)) {
+        if (await verify(token, row.token_salt, row.token_hash)) {
             await maybeExtendExpiry(row);
             return row;
         }
@@ -62,12 +62,67 @@ async function validateSessionToken(token, kind) {
         [kind]
     );
     for (const row of legacy.rows) {
-        if (verify(token, row.token_salt, row.token_hash)) {
+        if (await verify(token, row.token_salt, row.token_hash)) {
             await maybeExtendExpiry(row);
             return row;
         }
     }
     return null;
+}
+
+// Find and delete the single session matching this bearer token, scoped to
+// one actor and session kind. Mirrors validateSessionToken's indexed lookup:
+// SELECT WHERE token_lookup_hash = sha256(token) returns at most one candidate,
+// then a single PBKDF2 verify confirms it — O(1) instead of PBKDF2-verifying
+// every session row the actor owns.
+//
+// The unbounded scan this replaces was an event-loop DoS: PBKDF2 is a
+// deliberately slow synchronous hash (~30ms each), so an actor that
+// accumulated thousands of sessions (e.g. a client that logs in repeatedly
+// without ever logging out) froze the single-threaded process for minutes on
+// each logout, hanging every other request behind it.
+//
+// Returns true if a session was deleted, false if no session matched.
+async function deleteSessionByToken(token, kind, actorId) {
+    const lookupHash = tokenLookupHash(token);
+    const fast = await pool.query(
+        `SELECT id, token_hash, token_salt FROM sessions
+         WHERE actor_id = $1 AND kind = $2 AND token_lookup_hash = $3
+         LIMIT 1`,
+        [actorId, kind, lookupHash]
+    );
+    if (fast.rows.length > 0) {
+        const row = fast.rows[0];
+        if (await verify(token, row.token_salt, row.token_hash)) {
+            await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
+            return true;
+        }
+        // Lookup-hash matched but PBKDF2 verify failed — fail closed rather
+        // than fall through to the legacy scan.
+        return false;
+    }
+
+    // Legacy fallback for sessions inserted before MEM-131 (token_lookup_hash
+    // IS NULL). Unlike the fast path, this one keeps the `expires_at > NOW()`
+    // bound: the fast path is a single indexed row (deleting an expired-but-
+    // present row is cheap and desirable), but this fallback is a row scan with
+    // a PBKDF2 verify per row — exactly the unbounded synchronous hash that
+    // wedged the event loop. Bounding it to live rows caps the scan; abandoning
+    // an ancient expired pre-MEM-131 row (the daily db-cleanup cron reaps it
+    // anyway) is a fine trade against re-opening that DoS vector.
+    const legacy = await pool.query(
+        `SELECT id, token_hash, token_salt FROM sessions
+         WHERE actor_id = $1 AND kind = $2 AND token_lookup_hash IS NULL
+           AND expires_at > NOW()`,
+        [actorId, kind]
+    );
+    for (const row of legacy.rows) {
+        if (await verify(token, row.token_salt, row.token_hash)) {
+            await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
+            return true;
+        }
+    }
+    return false;
 }
 
 // If the session's expires_at is within SLIDING_THRESHOLD of now, push it
@@ -86,4 +141,4 @@ async function maybeExtendExpiry(row) {
     row.expires_at = newExpiry;
 }
 
-module.exports = { validateSessionToken };
+module.exports = { validateSessionToken, deleteSessionByToken };

@@ -2,6 +2,15 @@
 // Wraps the algorithm so it can be swapped without touching callsites.
 
 const crypto = require('crypto');
+const { promisify } = require('util');
+
+// Async (threadpool) PBKDF2. The sync variant (pbkdf2Sync) runs the whole
+// ~30ms key derivation ON the single event-loop thread, so any burst of auth
+// calls — or one pathological per-row scan — freezes every other request for
+// the duration. crypto.pbkdf2 runs on libuv's threadpool instead, keeping the
+// loop free. Consequence: hash() and verify() are now async and EVERY caller
+// must `await` them (a missing await yields a truthy Promise — an auth bypass).
+const pbkdf2Async = promisify(crypto.pbkdf2);
 
 const ALGORITHM = 'pbkdf2';
 const PBKDF2_ITERATIONS = 100000;
@@ -13,13 +22,22 @@ function generateSalt() {
     return crypto.randomBytes(SALT_BYTES).toString('hex');
 }
 
-function hash(plaintext, salt) {
-    return crypto.pbkdf2Sync(plaintext, salt, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH, PBKDF2_DIGEST).toString('hex');
+async function hash(plaintext, salt) {
+    const derived = await pbkdf2Async(plaintext, salt, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH, PBKDF2_DIGEST);
+    return derived.toString('hex');
 }
 
-function verify(plaintext, salt, expectedHash) {
-    const computed = hash(plaintext, salt);
-    return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(expectedHash, 'hex'));
+async function verify(plaintext, salt, expectedHash) {
+    const computed = await hash(plaintext, salt);
+    const computedBuf = Buffer.from(computed, 'hex');
+    const expectedBuf = Buffer.from(expectedHash || '', 'hex');
+    // timingSafeEqual throws on differing buffer lengths, so a corrupted or
+    // truncated stored hash would turn every auth/session check into a 500.
+    // A length mismatch can't be a valid match anyway — fail closed.
+    if (computedBuf.length !== expectedBuf.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(computedBuf, expectedBuf);
 }
 
 function generateKey() {

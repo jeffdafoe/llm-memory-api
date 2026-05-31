@@ -57,7 +57,7 @@ async function validateClientCredentials(clientId, clientSecret) {
     );
 
     for (const row of result.rows) {
-        if (verify(clientSecret, row.key_salt, row.key_hash)) {
+        if (await verify(clientSecret, row.key_salt, row.key_hash)) {
             // Track usage
             pool.query('UPDATE agent_api_keys SET last_used_at = NOW() WHERE id = $1', [row.id]).catch(() => {});
             return clientId;

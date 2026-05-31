@@ -14,6 +14,14 @@ EnvironmentFile=/etc/memory-api/env
 ExecStart=/usr/bin/node src/server.js
 Restart=on-failure
 RestartSec=5
+# Liveness watchdog: the app sends "WATCHDOG=1" via systemd-notify on a timer
+# that lives on the event loop (see services/watchdog.js). If the loop blocks,
+# the pings stop and systemd restarts the service within WatchdogSec instead of
+# leaving it wedged at 100% CPU. NotifyAccess=all is required because the ping
+# comes from a short-lived systemd-notify child in the service cgroup, not the
+# main PID. Restart=on-failure (above) covers the watchdog SIGABRT.
+WatchdogSec=60
+NotifyAccess=all
 
 [Install]
 WantedBy=multi-user.target

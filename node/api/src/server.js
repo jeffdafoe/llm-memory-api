@@ -177,6 +177,10 @@ pool.init().then(() => config.init()).then(() => {
     const { startCleanupScheduler } = require('./services/cleanup');
     startCleanupScheduler();
 
+    // Event-loop liveness: systemd watchdog heartbeat + lag observability.
+    const { startWatchdog } = require('./services/watchdog');
+    startWatchdog();
+
     const server = app.listen(port, () => {
         console.log(`Memory API listening on port ${port}`);
     });

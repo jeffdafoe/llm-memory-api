@@ -78,7 +78,7 @@ async function tryApiKeyAuth(token) {
     );
 
     for (const row of keys.rows) {
-        if (verify(token, row.key_salt, row.key_hash)) {
+        if (await verify(token, row.key_salt, row.key_hash)) {
             // Update last_used_at
             pool.query(
                 'UPDATE agent_api_keys SET last_used_at = NOW() WHERE actor_id = $1 AND key_salt = $2',
