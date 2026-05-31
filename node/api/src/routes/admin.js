@@ -11,6 +11,7 @@ const { getEntries: getRequestLogEntries } = require('../middleware/request-log'
 const { getErrorLogEntries } = require('../services/logger');
 const generatePassphrase = require('eff-diceware-passphrase');
 const auth = require('../middleware/auth');
+const { deleteSessionByToken } = require('../services/sessions');
 const { mailSend } = require('../services/mail');
 const { chatSend } = require('../services/chat');
 const { discussionCreate, discussionConclude } = require('../services/discussion');
@@ -174,20 +175,11 @@ router.post('/admin/logout', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
 
-        // Find and delete only the session matching this token (not all web sessions)
+        // Find and delete only the session matching this token (not all web
+        // sessions) via an indexed lookup rather than a PBKDF2 scan of every
+        // web session this user owns — see deleteSessionByToken.
         if (token) {
-            const sessions = await pool.query(
-                "SELECT id, token_hash, token_salt FROM sessions WHERE actor_id = $1 AND kind = $2",
-                [req.authenticatedUser.id, SESSION_KIND.WEB]
-            );
-
-            for (const row of sessions.rows) {
-                if (verify(token, row.token_salt, row.token_hash)) {
-                    await pool.query('DELETE FROM sessions WHERE id = $1', [row.id]);
-                    break;
-                }
-            }
-
+            await deleteSessionByToken(token, SESSION_KIND.WEB, req.authenticatedUser.id);
             auth.sessionCache.delete(token);
         }
 
