@@ -30,8 +30,10 @@ const LAG_SAMPLE_MS = 10000;
 const LAG_WARN_MS = 1000;
 
 function startSystemdHeartbeat() {
-    const watchdogUsec = parseInt(process.env.WATCHDOG_USEC, 10);
-    if (!process.env.NOTIFY_SOCKET || !watchdogUsec || watchdogUsec <= 0) {
+    // Number() (not parseInt) so a malformed value like "60000000abc" is
+    // rejected outright rather than partially parsed.
+    const watchdogUsec = Number(process.env.WATCHDOG_USEC);
+    if (!process.env.NOTIFY_SOCKET || !Number.isFinite(watchdogUsec) || watchdogUsec <= 0) {
         // No systemd watchdog configured (dev, or a unit without WatchdogSec).
         return;
     }
@@ -39,10 +41,22 @@ function startSystemdHeartbeat() {
     // missed beat doesn't trip the watchdog.
     const intervalMs = Math.max(1000, Math.floor(watchdogUsec / 1000 / 2));
 
+    let pingInFlight = false;
     function ping() {
+        // Never stack systemd-notify children. A genuinely blocked event loop
+        // stops calling ping() entirely (that's what triggers the restart),
+        // but a hung/slow systemd-notify must not leave one child per beat
+        // accumulating forever — so skip the beat if the prior one is still
+        // running and bound each child with a timeout.
+        if (pingInFlight) {
+            logError('watchdog', 'systemd-notify-still-running', { message: 'previous ping has not returned' });
+            return;
+        }
+        pingInFlight = true;
         // Best-effort: a failed ping is just a missed beat. Accepted because
         // the unit sets NotifyAccess=all and this child runs in the cgroup.
-        execFile('systemd-notify', ['WATCHDOG=1'], (err) => {
+        execFile('systemd-notify', ['WATCHDOG=1'], { timeout: 5000 }, (err) => {
+            pingInFlight = false;
             if (err) {
                 logError('watchdog', 'systemd-notify failed', { message: err.message });
             }

@@ -29,7 +29,15 @@ async function hash(plaintext, salt) {
 
 async function verify(plaintext, salt, expectedHash) {
     const computed = await hash(plaintext, salt);
-    return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(expectedHash, 'hex'));
+    const computedBuf = Buffer.from(computed, 'hex');
+    const expectedBuf = Buffer.from(expectedHash || '', 'hex');
+    // timingSafeEqual throws on differing buffer lengths, so a corrupted or
+    // truncated stored hash would turn every auth/session check into a 500.
+    // A length mismatch can't be a valid match anyway — fail closed.
+    if (computedBuf.length !== expectedBuf.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(computedBuf, expectedBuf);
 }
 
 function generateKey() {
