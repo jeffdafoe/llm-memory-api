@@ -103,11 +103,17 @@ async function deleteSessionByToken(token, kind, actorId) {
     }
 
     // Legacy fallback for sessions inserted before MEM-131 (token_lookup_hash
-    // IS NULL). Bounded by the count of such rows still alive for this actor;
-    // ~0 now that the 24h TTL has long elapsed since that migration.
+    // IS NULL). Unlike the fast path, this one keeps the `expires_at > NOW()`
+    // bound: the fast path is a single indexed row (deleting an expired-but-
+    // present row is cheap and desirable), but this fallback is a row scan with
+    // a PBKDF2 verify per row — exactly the unbounded synchronous hash that
+    // wedged the event loop. Bounding it to live rows caps the scan; abandoning
+    // an ancient expired pre-MEM-131 row (the daily db-cleanup cron reaps it
+    // anyway) is a fine trade against re-opening that DoS vector.
     const legacy = await pool.query(
         `SELECT id, token_hash, token_salt FROM sessions
-         WHERE actor_id = $1 AND kind = $2 AND token_lookup_hash IS NULL`,
+         WHERE actor_id = $1 AND kind = $2 AND token_lookup_hash IS NULL
+           AND expires_at > NOW()`,
         [actorId, kind]
     );
     for (const row of legacy.rows) {
