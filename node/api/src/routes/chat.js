@@ -50,6 +50,22 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     const toolsOffered = req.body.tools_offered;
     const toolCallResults = req.body.tool_call_results;
     const persistOnly = req.body.persist_only === true;
+
+    // ephemeral_context (lean sim-history): optional per-tick scratch context —
+    // current affordances / world-state the engine wants the model to see on
+    // THIS call only. handleDirectChat attaches it to the current turn; it is
+    // never written to chat_message_texts, so it can't accumulate across the
+    // replayed conversation. Absent = unchanged behavior. Length-capped as a
+    // guard against an absurd payload (the engine's furniture block is a few KB).
+    const ephemeralContext = req.body.ephemeral_context;
+    if (ephemeralContext !== undefined && ephemeralContext !== null) {
+        if (typeof ephemeralContext !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ephemeral_context must be a string' } });
+        }
+        if (ephemeralContext.length > 65536) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ephemeral_context exceeds 65536 chars' } });
+        }
+    }
     if (toolCalls !== undefined && toolCalls !== null && !Array.isArray(toolCalls)) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_calls must be an array' } });
     }
@@ -130,7 +146,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     }
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, wait,
+        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, wait, ephemeralContext,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.
