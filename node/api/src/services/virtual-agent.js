@@ -2153,6 +2153,15 @@ function paraphraseToolCall(name, input) {
 function buildToolUseMessages(history, npcAgentName) {
     const messages = [];
     const npcLower = npcAgentName.toLowerCase();
+    // Relative-time grounding for the replayed sim history: prefix each engine
+    // perception with its age ([3h], [now], ...) and mark big inter-tick gaps,
+    // so the model knows WHEN each turn happened — a busy scene vs. one spread
+    // over hours read very differently, and the tool-use path otherwise carries
+    // no time at all. Mirrors the companion buildDirectChatUserMessage path
+    // (which the sim path had dropped). Replay-time annotation computed from
+    // sent_at — NEVER persisted.
+    const GAP_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2h, matching buildDirectChatUserMessage
+    let prevSentAt = null;
     for (const row of history) {
         const fromLower = (row.from_agent || '').toLowerCase();
         if (fromLower === npcLower) {
@@ -2220,7 +2229,26 @@ function buildToolUseMessages(history, npcAgentName) {
                 content: row.message || '',
             });
         } else {
-            messages.push({ role: 'user', content: row.message || '' });
+            // Engine perception (user turn). Prefix with a relative-time marker
+            // and, when there's a long pause since the previous row, a gap line.
+            // Only the perception turns are stamped — the assistant/tool rows of
+            // a tick are the same moment as their perception.
+            let content = row.message || '';
+            if (row.sent_at) {
+                const prefix = [];
+                if (prevSentAt) {
+                    const gap = new Date(row.sent_at).getTime() - new Date(prevSentAt).getTime();
+                    if (gap >= GAP_THRESHOLD_MS) {
+                        prefix.push('--- gap: ' + Math.round(gap / (60 * 60 * 1000)) + 'h ---');
+                    }
+                }
+                prefix.push(formatRelativeTime(row.sent_at));
+                content = prefix.join('\n') + '\n' + content;
+            }
+            messages.push({ role: 'user', content });
+        }
+        if (row.sent_at) {
+            prevSentAt = row.sent_at;
         }
     }
     return messages;
@@ -2838,4 +2866,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages };
