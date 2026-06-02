@@ -2396,7 +2396,16 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             // future engine rev that surfaces multiple roles for the same
             // person). Without this, loadPeopleContext would emit duplicate
             // "## Your impressions of X" sections.
-            let coLocated = [...new Set(extractCoLocatedNames(messageText))];
+            // Co-located peers live in the "## Around you / huddle:" block.
+            // The engine renders that block into ephemeral_context post-split
+            // (lean sim-history, ZBBS-WORK-364) but into the message pre-split,
+            // so parse both — the durable message no longer carries surroundings
+            // once the engine half lands. ephemeralContext is null for non-sim
+            // callers and pre-split ticks, so this is a no-op there.
+            const coLocatedSource = ephemeralContext
+                ? messageText + '\n' + ephemeralContext
+                : messageText;
+            let coLocated = [...new Set(extractCoLocatedNames(coLocatedSource))];
             if (isToolResultCall) {
                 // Tool-result follow-up — messageText is "[OK] You spoke..."
                 // or similar, never a fresh perception. Fall back to whatever
