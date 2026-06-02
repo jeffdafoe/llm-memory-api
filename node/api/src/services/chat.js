@@ -83,6 +83,11 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // engine messages that originated from a structure-less cascade
     // (chronicler dispatch, admin trigger, noticeboard generation).
     const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
+    // ephemeralContext (lean sim-history): per-tick scratch context (current
+    // affordances / world-state) forwarded to handleDirectChat to attach to
+    // the model's current turn. NOT persisted — it never enters rowSpecs, so
+    // only `message` (the durable narrative) hits chat_message_texts.
+    const ephemeralContext = opts && opts.ephemeralContext !== undefined ? opts.ephemeralContext : null;
     // is_error flag (MEM-122): set on retry/error breadcrumb rows so
     // history readers (loadDirectChatHistory, loadChatHistory) filter
     // them out of next-call context. Without this, virtual agents read
@@ -396,7 +401,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, isToolResultCall, sceneId, sceneStructure, ackReplyOnInsert: wait,
+                            toolsOffered, isToolResultCall, sceneId, sceneStructure, ackReplyOnInsert: wait, ephemeralContext,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
@@ -407,7 +412,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, isToolResultCall, sceneId, sceneStructure,
+                                toolsOffered, isToolResultCall, sceneId, sceneStructure, ephemeralContext,
                             }).catch(() => {});
                         }
                     }

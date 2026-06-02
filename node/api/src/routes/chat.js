@@ -50,6 +50,33 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     const toolsOffered = req.body.tools_offered;
     const toolCallResults = req.body.tool_call_results;
     const persistOnly = req.body.persist_only === true;
+
+    // ephemeral_context (lean sim-history): optional per-tick scratch context —
+    // current affordances / world-state the engine wants the model to see on
+    // THIS call only. handleDirectChat attaches it to the current turn; it is
+    // never written to chat_message_texts, so it can't accumulate across the
+    // replayed conversation. Absent = unchanged behavior. Length-capped as a
+    // guard against an absurd payload (the engine's furniture block is a few KB).
+    const ephemeralContext = req.body.ephemeral_context;
+    if (ephemeralContext !== undefined && ephemeralContext !== null) {
+        // SECURITY: ephemeral_context is forwarded to the model but NEVER
+        // persisted to chat_message_texts — an unaudited prompt channel. It MUST
+        // be gated to the Salem sim engine (the only legitimate sim-tick caller).
+        // Otherwise any /chat/send caller could smuggle hidden instructions to a
+        // VA behind a benign `message`, invisible to history/audit surfaces.
+        // from_agent is the authenticated principal here (forced to
+        // req.authenticatedAgent above for non-admin sessions), so a normal agent
+        // can't spoof 'salem-engine'. Matches handleDirectChat's isSimChat gate.
+        if (from_agent !== 'salem-engine') {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'ephemeral_context is only supported for sim engine chat' } });
+        }
+        if (typeof ephemeralContext !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ephemeral_context must be a string' } });
+        }
+        if (ephemeralContext.length > 65536) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ephemeral_context exceeds 65536 chars' } });
+        }
+    }
     if (toolCalls !== undefined && toolCalls !== null && !Array.isArray(toolCalls)) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'tool_calls must be an array' } });
     }
@@ -130,7 +157,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     }
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, wait,
+        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, wait, ephemeralContext,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.

@@ -2079,9 +2079,89 @@ function pruneSimHistory(history) {
 // function-tool wrapper here: {id, type: 'function', function: {name,
 // arguments: <JSON string>}}. Anthropic's provider does its own translation
 // upstream, so it's safe to send the same OpenAI shape through invokeAgent.
+// paraphraseToolCall renders a prior assistant tool_call as a brief first-person
+// line for the assistant message `content`, so the action is salient as LANGUAGE
+// when replayed in history rather than buried in tool_calls.arguments JSON. The
+// model (Llama-3.3) can't carry narration alongside a tool call — it emits empty
+// content + a tool_call — so the language-modeling pass treats a replayed action
+// weakly ("a thing in my args") rather than "a thing I did / said". Without this,
+// the NPC has no legible record of its own recent moves and repeats itself (e.g.
+// re-buying the same food turn after turn). Returns '' for tools with no payload
+// worth surfacing (done — no content; look_around — the tool RESULT carries it).
+//
+// Field names mirror the engine's tool arg schemas, verified against live salem
+// tool calls: pay_with_item {item, seller, consume_now}, consume {item},
+// move_to {structure_name | structure_id}, take_break {reason}, speak {text}.
+// (The prior version checked move_to.destination — a field the engine never
+// sends — so move/pay/break all replayed as blank content.)
+function paraphraseToolCall(name, input) {
+    const inp = input || {};
+    switch (name) {
+        case 'speak':
+            // JSON.stringify so embedded quotes / newlines / backslashes in the
+            // spoken text don't mangle the line or terminate the quoted span.
+            if (typeof inp.text === 'string' && inp.text) {
+                return '(I said aloud: ' + JSON.stringify(inp.text) + ')';
+            }
+            return '';
+        case 'pay_with_item': {
+            if (typeof inp.item !== 'string' || !inp.item) return '';
+            const seller = (typeof inp.seller === 'string' && inp.seller) ? ' from ' + inp.seller : '';
+            // pay_with_item places an OFFER the seller must accept — the [ok]
+            // tool result means "offer placed", NOT "purchase completed" (the
+            // offer can later "fall through" if the seller never fulfils it).
+            // Paraphrase the attempt, not a success the history may contradict:
+            // "I bought and consumed cheese" while the NPC stays starving (and a
+            // later perception says the offer fell through) is exactly the
+            // incoherent self-history that degrades the model. Llama stringifies
+            // bools, so consume_now may be true or 'true'.
+            const eatNow = (inp.consume_now === true || inp.consume_now === 'true') ? ' to eat now' : '';
+            return '(I offered to buy ' + inp.item + seller + eatNow + ')';
+        }
+        case 'consume':
+            if (typeof inp.item === 'string' && inp.item) {
+                return '(I consumed ' + inp.item + ')';
+            }
+            return '';
+        case 'move_to':
+            // structure_id is an opaque UUID — no human-readable name to render,
+            // so surface only that the actor set off (still a useful "I'm en
+            // route" signal). structure_name carries the place name.
+            if (typeof inp.structure_name === 'string' && inp.structure_name) {
+                return '(I set off toward ' + inp.structure_name + ')';
+            }
+            if (typeof inp.structure_id === 'string' && inp.structure_id) {
+                return '(I set off walking to a place I could see)';
+            }
+            return '';
+        case 'take_break': {
+            const reason = (typeof inp.reason === 'string' && inp.reason) ? ': ' + inp.reason : '';
+            return '(I stopped to take a break' + reason + ')';
+        }
+        case 'stop':
+            return '(I stopped where I was)';
+        case 'chore':
+            if (typeof inp.type === 'string' && inp.type) {
+                return '(I ran a chore: ' + inp.type + ')';
+            }
+            return '';
+        default:
+            return '';
+    }
+}
+
 function buildToolUseMessages(history, npcAgentName) {
     const messages = [];
     const npcLower = npcAgentName.toLowerCase();
+    // Relative-time grounding for the replayed sim history: prefix each engine
+    // perception with its age ([3h], [now], ...) and mark big inter-tick gaps,
+    // so the model knows WHEN each turn happened — a busy scene vs. one spread
+    // over hours read very differently, and the tool-use path otherwise carries
+    // no time at all. Mirrors the companion buildDirectChatUserMessage path
+    // (which the sim path had dropped). Replay-time annotation computed from
+    // sent_at — NEVER persisted.
+    const GAP_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2h, matching buildDirectChatUserMessage
+    let prevSentAt = null;
     for (const row of history) {
         const fromLower = (row.from_agent || '').toLowerCase();
         if (fromLower === npcLower) {
@@ -2131,18 +2211,9 @@ function buildToolUseMessages(history, npcAgentName) {
                         const input = (typeof tc.input === 'string')
                             ? safeParseJSON(tc.input)
                             : (tc.input || {});
-                        if (tc.name === 'speak' && input && typeof input.text === 'string' && input.text) {
-                            // JSON.stringify so embedded quotes / newlines /
-                            // backslashes in the spoken text don't mangle
-                            // the paraphrase or terminate the quoted span.
-                            lines.push('(I said aloud: ' + JSON.stringify(input.text) + ')');
-                        } else if (tc.name === 'move_to' && input && typeof input.destination === 'string' && input.destination) {
-                            // typeof guard so we don't render `[object Object]`
-                            // if a future engine rev passes a structured
-                            // destination ({type, id}) instead of a string.
-                            lines.push('(I walked to ' + input.destination + ')');
-                        } else if (tc.name === 'chore' && input && typeof input.type === 'string' && input.type) {
-                            lines.push('(I ran a chore: ' + input.type + ')');
+                        const paraphrase = paraphraseToolCall(tc.name, input);
+                        if (paraphrase) {
+                            lines.push(paraphrase);
                         }
                     }
                     if (lines.length > 0) {
@@ -2158,7 +2229,26 @@ function buildToolUseMessages(history, npcAgentName) {
                 content: row.message || '',
             });
         } else {
-            messages.push({ role: 'user', content: row.message || '' });
+            // Engine perception (user turn). Prefix with a relative-time marker
+            // and, when there's a long pause since the previous row, a gap line.
+            // Only the perception turns are stamped — the assistant/tool rows of
+            // a tick are the same moment as their perception.
+            let content = row.message || '';
+            if (row.sent_at) {
+                const prefix = [];
+                if (prevSentAt) {
+                    const gap = new Date(row.sent_at).getTime() - new Date(prevSentAt).getTime();
+                    if (gap >= GAP_THRESHOLD_MS) {
+                        prefix.push('--- gap: ' + Math.round(gap / (60 * 60 * 1000)) + 'h ---');
+                    }
+                }
+                prefix.push(formatRelativeTime(row.sent_at));
+                content = prefix.join('\n') + '\n' + content;
+            }
+            messages.push({ role: 'user', content });
+        }
+        if (row.sent_at) {
+            prevSentAt = row.sent_at;
         }
     }
     return messages;
@@ -2223,6 +2313,12 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
     // lands with NULL scene_structure and the admin chat UI's scene
     // grouping renders the label inconsistently within a scene.
     const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
+    // ephemeralContext (lean sim-history): per-tick scratch context (current
+    // affordances / world-state) attached to the model's CURRENT turn below.
+    // Never persisted — it only shapes this one provider call, so it can't
+    // accumulate across the replayed conversation. Empty/absent → no-op.
+    const ephemeralContext = (opts && typeof opts.ephemeralContext === 'string' && opts.ephemeralContext.length > 0)
+        ? opts.ephemeralContext : null;
     const isToolUse = Array.isArray(toolsOffered) && toolsOffered.length > 0;
     // isToolResultCall=true means this chat/send is the model's response
     // to a tool result the engine just sent back (e.g. "[OK] You spoke.").
@@ -2335,7 +2431,16 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             // future engine rev that surfaces multiple roles for the same
             // person). Without this, loadPeopleContext would emit duplicate
             // "## Your impressions of X" sections.
-            let coLocated = [...new Set(extractCoLocatedNames(messageText))];
+            // Co-located peers live in the "## Around you / huddle:" block.
+            // The engine renders that block into ephemeral_context post-split
+            // (lean sim-history, ZBBS-WORK-364) but into the message pre-split,
+            // so parse both — the durable message no longer carries surroundings
+            // once the engine half lands. ephemeralContext is null for non-sim
+            // callers and pre-split ticks, so this is a no-op there.
+            const coLocatedSource = ephemeralContext
+                ? messageText + '\n' + ephemeralContext
+                : messageText;
+            let coLocated = [...new Set(extractCoLocatedNames(coLocatedSource))];
             if (isToolResultCall) {
                 // Tool-result follow-up — messageText is "[OK] You spoke..."
                 // or similar, never a fresh perception. Fall back to whatever
@@ -2409,6 +2514,24 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
                     role: 'user',
                     content: messageText || 'Continue.'
                 }];
+            }
+
+            // Attach ephemeral_context (lean sim-history) to the CURRENT turn,
+            // AFTER history assembly so it never becomes part of the persisted /
+            // replayed conversation — it carries the per-tick affordances /
+            // world-state the model needs to decide NOW. Append to the last user
+            // message when the latest turn is a fresh perception; for a
+            // tool-result follow-up (latest messages are tool results) push it as
+            // a trailing user turn so the model still sees its current options.
+            if (ephemeralContext) {
+                const lastMsg = toolUseMessages[toolUseMessages.length - 1];
+                if (lastMsg && lastMsg.role === 'user') {
+                    lastMsg.content = lastMsg.content
+                        ? lastMsg.content + '\n\n' + ephemeralContext
+                        : ephemeralContext;
+                } else {
+                    toolUseMessages.push({ role: 'user', content: ephemeralContext });
+                }
             }
         }
         const userMessage = isToolUse ? '' : buildDirectChatUserMessage(history, fromAgent, messageText);
@@ -2743,4 +2866,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages };
