@@ -2107,9 +2107,16 @@ function paraphraseToolCall(name, input) {
         case 'pay_with_item': {
             if (typeof inp.item !== 'string' || !inp.item) return '';
             const seller = (typeof inp.seller === 'string' && inp.seller) ? ' from ' + inp.seller : '';
-            // Llama stringifies bools, so consume_now may be true or 'true'.
-            const consumed = (inp.consume_now === true || inp.consume_now === 'true') ? ' and consumed it' : '';
-            return '(I bought ' + inp.item + seller + consumed + ')';
+            // pay_with_item places an OFFER the seller must accept — the [ok]
+            // tool result means "offer placed", NOT "purchase completed" (the
+            // offer can later "fall through" if the seller never fulfils it).
+            // Paraphrase the attempt, not a success the history may contradict:
+            // "I bought and consumed cheese" while the NPC stays starving (and a
+            // later perception says the offer fell through) is exactly the
+            // incoherent self-history that degrades the model. Llama stringifies
+            // bools, so consume_now may be true or 'true'.
+            const eatNow = (inp.consume_now === true || inp.consume_now === 'true') ? ' to eat now' : '';
+            return '(I offered to buy ' + inp.item + seller + eatNow + ')';
         }
         case 'consume':
             if (typeof inp.item === 'string' && inp.item) {

@@ -49,22 +49,24 @@ function assertEqual(label, got, want) {
 
 // ---------- pay_with_item (the repeat-buying case) ----------
 
+// pay_with_item places an offer ([ok] = offer placed, not completed sale), so
+// the paraphrase reflects the attempt — "offered to buy", not "bought".
 assertEqual(
-    'pay_with_item consume_now=true (bool) → bought + consumed',
+    'pay_with_item consume_now=true (bool) → offer + eat-now',
     paraphraseToolCall('pay_with_item', { qty: 1, item: 'Cheese', amount: 4, seller: 'John Ellis', consume_now: true }),
-    '(I bought Cheese from John Ellis and consumed it)'
+    '(I offered to buy Cheese from John Ellis to eat now)'
 );
 
 assertEqual(
-    'pay_with_item consume_now="true" (Llama-stringified bool) → bought + consumed',
+    'pay_with_item consume_now="true" (Llama-stringified bool) → offer + eat-now',
     paraphraseToolCall('pay_with_item', { item: 'Bread', seller: 'John Ellis', consume_now: 'true' }),
-    '(I bought Bread from John Ellis and consumed it)'
+    '(I offered to buy Bread from John Ellis to eat now)'
 );
 
 assertEqual(
-    'pay_with_item consume_now absent → bought only',
+    'pay_with_item consume_now absent → plain offer',
     paraphraseToolCall('pay_with_item', { item: 'Water', seller: 'Hannah Boggs' }),
-    '(I bought Water from Hannah Boggs)'
+    '(I offered to buy Water from Hannah Boggs)'
 );
 
 assertEqual(
