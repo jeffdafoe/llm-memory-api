@@ -59,6 +59,17 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     // guard against an absurd payload (the engine's furniture block is a few KB).
     const ephemeralContext = req.body.ephemeral_context;
     if (ephemeralContext !== undefined && ephemeralContext !== null) {
+        // SECURITY: ephemeral_context is forwarded to the model but NEVER
+        // persisted to chat_message_texts — an unaudited prompt channel. It MUST
+        // be gated to the Salem sim engine (the only legitimate sim-tick caller).
+        // Otherwise any /chat/send caller could smuggle hidden instructions to a
+        // VA behind a benign `message`, invisible to history/audit surfaces.
+        // from_agent is the authenticated principal here (forced to
+        // req.authenticatedAgent above for non-admin sessions), so a normal agent
+        // can't spoof 'salem-engine'. Matches handleDirectChat's isSimChat gate.
+        if (from_agent !== 'salem-engine') {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'ephemeral_context is only supported for sim engine chat' } });
+        }
         if (typeof ephemeralContext !== 'string') {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ephemeral_context must be a string' } });
         }
