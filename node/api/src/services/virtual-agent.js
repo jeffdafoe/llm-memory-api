@@ -1173,6 +1173,8 @@ const DIRECTIVE_SIM_CONTEXT = 'You are a character inside a village simulation. 
 
 const DIRECTIVE_OVERSEER_CONTEXT = 'You are an overseer of the village simulation, not a character within it. The user messages are tick triggers and world-state observations from the simulation engine — they are not chat from a person; do not address the engine, the narrator, or "the user". Express every action through the tools you are offered for this tick. You do not speak, move, or otherwise act as a villager. Treat perception and tool results as authoritative — do not invent unseen events, places, or people. If no overseer action is warranted this tick, call done.';
 
+const DIRECTIVE_SIM_REFLECTION = 'You are a character inside a village simulation. This turn is a private reflection, not a scene or an action tick — the user message says what to reflect on. No tools are available this turn: respond with prose only, written in your own voice as the character. Do not call tools, and do not address the engine, the narrator, or "the user". Treat the material you are given as authoritative — do not invent people, places, or events it does not support.';
+
 const DIRECTIVE_VOTE = 'A vote has been proposed. Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
 
 // wrapBlock returns a typed XML block around `content`, or an empty string
@@ -1440,6 +1442,49 @@ function buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext) {
         wrapBlock('Self', 'voice-identity', DIRECTIVE_SELF, soul),
         wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext),
         wrapStandalone('SimContext', 'simulation-context', DIRECTIVE_SIM_CONTEXT),
+    ].filter(Boolean);
+
+    const dynamicBlocks = [
+        wrapBlock('Recall', 'relevant-memories', DIRECTIVE_RECALL, ragContext),
+    ].filter(Boolean);
+
+    return {
+        static: staticBlocks.join('\n\n'),
+        dynamic: dynamicBlocks.join('\n\n'),
+    };
+}
+
+// Strip the action-mode tool tail some sim agents carry in their
+// startup_instructions ("Use only the tools offered. When you have nothing more
+// to add, say done.") so it can't contradict a prose reflection. Targets the
+// known shared-VA tail (salem-vendor / salem-visitor); a no-op for personas
+// whose instructions carry no tool directive (e.g. zbbs-ezekiel-crane) and for
+// the blank salem-generic.
+function stripSimToolInstructions(text) {
+    if (!text) return text;
+    return text
+        .replace(/Use only the tools offered\.\s*/gi, '')
+        .replace(/When you have nothing more to add,\s*say done\.\s*/gi, '')
+        .trim();
+}
+
+// Build system prompt for an engine-driven prose-only reflection (consolidation,
+// narrative consolidation, atmosphere, noticeboard — all send Tools: nil). Keeps
+// the same voice/identity grounding as buildSimChatSystemPrompt (Instructions,
+// Self, Impressions, the agent's own startup_instructions) but swaps the action
+// SimContext — whose "express every action through tools / do not reply with
+// prose / call done" directive directly contradicts a prose reflection — for a
+// reflection-framed context. Dispatched on fromAgent === 'salem-engine' with no
+// tools_offered. Feeding the action SimContext here is what let a 70B reflection
+// emit a tool call (or an empty turn) instead of prose, corrupting the actor's
+// consolidated evolving self-narrative.
+function buildSimReflectionSystemPrompt(agent, ragContext, soul, peopleContext) {
+    const staticBlocks = [
+        wrapBlock('Bootstrap', 'global-operating-directives', DIRECTIVE_BOOTSTRAP, config.get('global_bootstrap') || ''),
+        wrapBlock('Instructions', 'operating-rules', DIRECTIVE_INSTRUCTIONS, stripSimToolInstructions(agent.startup_instructions)),
+        wrapBlock('Self', 'voice-identity', DIRECTIVE_SELF, soul),
+        wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext),
+        wrapStandalone('SimContext', 'simulation-reflection', DIRECTIVE_SIM_REFLECTION),
     ].filter(Boolean);
 
     const dynamicBlocks = [
@@ -2483,8 +2528,16 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         let systemPrompt;
         if (isOverseer) {
             systemPrompt = buildOverseerSystemPrompt(agent, ragContext, soul);
-        } else if (isSimNpc) {
+        } else if (isSimNpc && isToolUse) {
+            // Action tick: tools_offered is non-empty, so SimContext's push toward
+            // tool-call output is correct.
             systemPrompt = buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext);
+        } else if (isSimNpc) {
+            // Engine-driven call with no tools = a prose-only reflection
+            // (consolidation / narrative / atmosphere / noticeboard). The action
+            // SimContext contradicts it ("use tools, do not reply with prose, call
+            // done"), so use the reflection-framed system prompt instead.
+            systemPrompt = buildSimReflectionSystemPrompt(agent, ragContext, soul, peopleContext);
         } else {
             systemPrompt = buildDirectChatSystemPrompt(agent, ragContext, soul, peopleContext);
         }
