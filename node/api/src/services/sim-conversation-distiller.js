@@ -30,8 +30,8 @@
 // that single payload is the sole source of truth here.
 //
 // Cross-actor speech: the engine push (post-ZBBS-094) includes other
-// actors' speak/act rows when those actors shared a scene_huddle with
-// the target NPC. The target's own note thereby contains "[19:00 John
+// actors' speak (v1) / spoke (v2) rows when those actors shared a
+// scene_huddle with the target NPC. The target's own note thereby contains "[19:00 John
 // Ellis] 'Another round?'" alongside "[19:01 Jefferey] 'Aye'", which is
 // what makes the day usable as dream input. Each event carries a
 // `speaker` field used directly for the line label.
@@ -39,10 +39,12 @@
 // Engine event shape — caller sends an array of:
 //   { at: ISO timestamp, kind: action_type, payload: object,
 //     speaker: display name }
-// Kinds correspond to agent_action_log.action_type values: 'speak',
-// 'act', 'move_to', 'chore', 'pay', 'object_refresh', etc. Unknown
-// kinds get a generic narration so a new engine action_type doesn't
-// silently drop frames.
+// Kinds correspond to agent_action_log.action_type values. The v1 engine
+// emitted 'speak' / 'pay' / 'move_to' / 'act' / 'chore' / 'object_refresh';
+// the v2 rewrite renamed the verbs and added a few, so narrateEvent also
+// handles 'spoke' / 'paid' / 'walked' / 'delivered' / 'consumed' /
+// 'took_break' (ZBBS-WORK-376). Unknown kinds get a generic narration so a
+// new engine action_type doesn't silently drop frames.
 
 const pool = require('../db');
 const { saveNote } = require('./documents');
@@ -143,6 +145,28 @@ function sanitizeNarration(s) {
         .trim();
 }
 
+// Format a coin amount as "N coins" (or "1 coin"). Coerces to a
+// non-negative integer first — a string-shaped amount in the engine payload
+// could otherwise inject bracket/newline characters into the transcript line.
+// Shared by the pay/paid and delivered cases.
+function formatCoins(amount) {
+    const raw = Number(amount);
+    const n = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+    return n === 1 ? '1 coin' : n + ' coins';
+}
+
+// Format an item kind + quantity as "ale" (qty <= 1) or "3x bread" (qty > 1),
+// mirroring the engine-side digest shape. Shared by the delivered and consumed
+// cases.
+function formatItemQty(item, qty) {
+    const name = sanitizeLabel(item || 'something');
+    const n = Number(qty);
+    if (Number.isFinite(n) && n > 1) {
+        return Math.floor(n) + 'x ' + name;
+    }
+    return name;
+}
+
 // Map an engine event to a narration line. Returns the (action) text
 // rendered in parens, or null when the event carries no narrative
 // signal (look_around, done with no state change). Keeping this in
@@ -151,7 +175,11 @@ function sanitizeNarration(s) {
 function narrateEvent(event, actorName) {
     const p = event.payload || {};
     switch (event.kind) {
-        case 'move_to': {
+        // v1 'move_to' and v2 'walked' are the same action under two
+        // action_type names (the v2 rewrite renamed the verbs). Both carry the
+        // destination in payload.destination, so they share a case.
+        case 'move_to':
+        case 'walked': {
             const dest = sanitizeLabel(p.destination || p.structure_name || 'somewhere');
             return '(walked to ' + dest + ')';
         }
@@ -166,18 +194,13 @@ function narrateEvent(event, actorName) {
             };
             return '(' + (phrasing[type] || ('ran an errand: ' + type)) + ')';
         }
-        case 'pay': {
+        // v1 'pay' and v2 'paid' — same buyer-side action, two names.
+        case 'pay':
+        case 'paid': {
             const recipient = sanitizeLabel(p.recipient || p.recipient_name || 'someone');
-            // Coerce to a non-negative integer before rendering. A
-            // string-shaped amount in the engine payload (rare, but
-            // possible if a future caller stringifies) could otherwise
-            // inject brackets/newlines into the transcript shape.
-            const rawAmount = Number(p.amount);
-            const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? Math.floor(rawAmount) : 0;
             const forText = sanitizeLabel(p.for || p.for_text || '');
-            const coins = amount === 1 ? '1 coin' : amount + ' coins';
             const reason = forText ? ' for ' + forText : '';
-            return '(paid ' + recipient + ' ' + coins + reason + ')';
+            return '(paid ' + recipient + ' ' + formatCoins(p.amount) + reason + ')';
         }
         case 'object_refresh': {
             const refreshes = Array.isArray(p.refreshes) ? p.refreshes : [];
@@ -198,12 +221,14 @@ function narrateEvent(event, actorName) {
             const verbText = verbs.length === 1 ? verbs[0] : verbs.slice(0, -1).join(', ') + ' and ' + verbs[verbs.length - 1];
             return '(' + verbText + ' at ' + objectName + ')';
         }
-        case 'speak': {
-            // payload.text is the spoken line, copied verbatim from the
-            // model's tool-call args at engine/agent_tick.go's "speak"
-            // case. Render as a quoted string (not parens) so dialogue
-            // and narration are visually distinct in the transcript —
-            // matches the work-agent distillation shape.
+        // v1 'speak' and v2 'spoke' — same action, two names. payload.text is
+        // the spoken line, copied verbatim from the model's speak tool-call.
+        // Rendered as a quoted string (not parens) so dialogue and narration
+        // are visually distinct in the transcript — matches the work-agent
+        // distillation shape. This is also the only cross-actor kind the v2
+        // push forwards (a huddle-mate's overheard speech).
+        case 'speak':
+        case 'spoke': {
             const text = sanitizeSpeech(p.text || '');
             if (!text) {
                 return null;
@@ -224,6 +249,33 @@ function narrateEvent(event, actorName) {
                 return null;
             }
             return '(' + verb + ')';
+        }
+        // v2-only action_types (ZBBS-WORK-376) — no v1 narrateEvent equivalent.
+        // The v2 engine records these committed actions in agent_action_log and
+        // the daily push forwards them here.
+        case 'delivered': {
+            // Seller side of a fulfilled order (deliver_order tool). The buyer
+            // logs their own 'paid' row; this is the seller's "handed the goods
+            // over" record. payload: { recipient (buyer's name), item, qty,
+            // amount }. The sale price is included when present.
+            const recipient = sanitizeLabel(p.recipient || 'someone');
+            const goods = formatItemQty(p.item, p.qty);
+            const coins = Number(p.amount) > 0 ? ' for ' + formatCoins(p.amount) : '';
+            return '(delivered ' + goods + ' to ' + recipient + coins + ')';
+        }
+        case 'consumed': {
+            // consume tool — ate/drank an inventory item. payload: { item, qty }.
+            // No food-vs-drink semantic is carried, so a neutral "had" reads
+            // naturally for both ("had ale" / "had 2x bread").
+            const goods = formatItemQty(p.item, p.qty);
+            return '(had ' + goods + ')';
+        }
+        case 'took_break': {
+            // take_break tool — the NPC stepped away from its post. payload:
+            // { reason? } is the model-supplied prose ("weary from the day"),
+            // rendered as a narration aside when present.
+            const reason = sanitizeNarration(p.reason || '');
+            return reason ? '(stepped away, ' + reason + ')' : '(stepped away)';
         }
         case 'enter_huddle':
             // Membership marker (ZBBS-094). The engine writes one of
@@ -375,4 +427,6 @@ async function distillSimConversationDay(agentName, dayStr, events) {
     return { saved: true, slug, lines: all.length, bytes: content.length };
 }
 
-module.exports = { distillSimConversationDay };
+// narrateEvent is exported for unit tests (sim-conversation-distiller.test.js);
+// distillSimConversationDay is the only production caller.
+module.exports = { distillSimConversationDay, narrateEvent };
