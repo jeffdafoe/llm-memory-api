@@ -161,7 +161,11 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         if (typeof conversationId !== 'string' || conversationId.length > 64) {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'conversation_id must be a string up to 64 chars' } });
         }
-        if (conversationId.trim() === '') {
+        // Trim before storing so " sc-abc " can't split grouping from "sc-abc"
+        // (the engine sends a clean omitempty id, but be defensive about other
+        // clients). Whitespace-only normalizes to NULL, like scene_structure.
+        conversationId = conversationId.trim();
+        if (conversationId === '') {
             conversationId = null;
         }
     }
