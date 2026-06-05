@@ -83,6 +83,11 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // engine messages that originated from a structure-less cascade
     // (chronicler dispatch, admin trigger, noticeboard generation).
     const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
+    // conversationId (MEM-133 / ZBBS-HOME-397): the engine's narrative-beat scene
+    // id — the STABLE grouping key (across the ticks AND participants of one
+    // conversation beat) the admin chat viewer collapses a whole exchange under,
+    // distinct from the per-tick sceneId. NULL outside grouped sim ticks.
+    const conversationId = opts && opts.conversationId !== undefined ? opts.conversationId : null;
     // ephemeralContext (lean sim-history): per-tick scratch context (current
     // affordances / world-state) forwarded to handleDirectChat to attach to
     // the model's current turn. NOT persisted — it never enters rowSpecs, so
@@ -209,7 +214,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
         for (const [idx, spec] of rowSpecs.entries()) {
             const textResult = await client.query(
                 `INSERT INTO chat_message_texts
-                    (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error)
+                    (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error, conversation_id)
                  VALUES (
                     $1, $2, $3, NOW(), $4, $5, $6, $7,
                     COALESCE($8, CASE
@@ -220,7 +225,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                              ORDER BY id ASC LIMIT 1
                         )
                     END),
-                    $9
+                    $9, $10
                  )
                  RETURNING id, sent_at`,
                 [
@@ -241,6 +246,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     sceneId,
                     sceneStructure,
                     isError,
+                    conversationId,
                 ]
             );
             insertedTexts.push({
@@ -321,6 +327,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                 message: t.message,
                 discussion_id: discussionId || null,
                 scene_id: sceneId,
+                conversation_id: conversationId,
                 sent_at: t.sent_at
             });
         }
@@ -401,7 +408,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, isToolResultCall, sceneId, sceneStructure, ackReplyOnInsert: wait, ephemeralContext,
+                            toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, ackReplyOnInsert: wait, ephemeralContext,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
@@ -412,7 +419,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, isToolResultCall, sceneId, sceneStructure, ephemeralContext,
+                                toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, ephemeralContext,
                             }).catch(() => {});
                         }
                     }

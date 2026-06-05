@@ -9,12 +9,14 @@ function useChat({ api, showToast, dashboard }) {
     // rows whenever Salem is busy.
     const expandedScenes = ref(new Set());
 
-    // Group chat rows by scene_id for the admin chat list. Companion-mode
-    // and any pre-MEM-121 row has a NULL scene_id and renders as a single
-    // standalone row exactly as before. Sim-mode rows that share a
-    // scene_id collapse into one expandable scene row.
+    // Group chat rows by conversation_id (the engine's narrative-beat scene)
+    // for the admin chat list, falling back to scene_id for rows without one.
+    // Companion-mode and any pre-MEM-121 row has neither and renders as a single
+    // standalone row exactly as before. Sim-mode rows sharing a conversation
+    // collapse into one expandable group — so a whole exchange is one row
+    // (MEM-133 / ZBBS-HOME-397) instead of one group per per-tick scene_id.
     //
-    // Ordering: a scene group occupies the slot of its most recent message,
+    // Ordering: a group occupies the slot of its most recent message,
     // so a fresh tavern conversation lands at the top. Inside the group
     // messages are sub-grouped by participant thread (chronicler ↔ engine,
     // each villager ↔ engine), with each thread rendered chronologically.
@@ -44,14 +46,23 @@ function useChat({ api, showToast, dashboard }) {
         return pair || '(unknown)';
     }
     const chatGroups = computed(() => {
-        const sceneIndex = new Map(); // scene_id -> group ref
+        const sceneIndex = new Map(); // group key -> group ref
         const groups = [];
         for (const msg of chatMessages.value) {
-            if (msg.scene_id) {
-                let group = sceneIndex.get(msg.scene_id);
+            // Group by conversation_id (MEM-133 / ZBBS-HOME-397) — the engine's
+            // narrative-beat scene, STABLE across the ticks AND participants of
+            // one conversation beat — so a whole Josiah↔Moses exchange collapses
+            // into ONE group instead of one group per per-tick scene_id. Fall
+            // back to scene_id for rows without a conversation_id (companion-mode,
+            // pre-MEM-133 history, solo no-huddle ticks) so their behavior is
+            // unchanged. The group's `scene_id` field carries the grouping key,
+            // so the collapse/expand wiring keyed on it keeps working.
+            const groupKey = msg.conversation_id || msg.scene_id;
+            if (groupKey) {
+                let group = sceneIndex.get(groupKey);
                 if (!group) {
-                    group = { type: 'scene', scene_id: msg.scene_id, messages: [] };
-                    sceneIndex.set(msg.scene_id, group);
+                    group = { type: 'scene', scene_id: groupKey, conversation_id: msg.conversation_id || null, messages: [] };
+                    sceneIndex.set(groupKey, group);
                     groups.push(group);
                 }
                 group.messages.push(msg);
