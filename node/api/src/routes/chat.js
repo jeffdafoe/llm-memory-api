@@ -150,6 +150,22 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         }
     }
 
+    // conversation_id (MEM-133 / ZBBS-HOME-396) — the engine's narrative-beat
+    // scene id (sim.Scene.ID, "sc-"+hex), STABLE across the ticks AND the
+    // participants of one conversation beat. Threaded so the admin chat viewer
+    // groups a whole exchange under one conversation instead of one group per
+    // per-tick scene_id. Unlike scene_id this is NOT a UUID (TEXT column).
+    // NULL for companion-mode, human chat, and solo (no-huddle) sim ticks.
+    let conversationId = req.body.conversation_id;
+    if (conversationId !== undefined && conversationId !== null) {
+        if (typeof conversationId !== 'string' || conversationId.length > 64) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'conversation_id must be a string up to 64 chars' } });
+        }
+        if (conversationId.trim() === '') {
+            conversationId = null;
+        }
+    }
+
     const wait = req.body.wait === true;
 
     if (persistOnly && wait) {
@@ -157,7 +173,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     }
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, wait, ephemeralContext,
+        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, conversationId, wait, ephemeralContext,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.
