@@ -150,7 +150,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         }
     }
 
-    // conversation_id (MEM-133 / ZBBS-HOME-396) — the engine's narrative-beat
+    // conversation_id (MEM-133 / ZBBS-HOME-397) — the engine's narrative-beat
     // scene id (sim.Scene.ID, "sc-"+hex), STABLE across the ticks AND the
     // participants of one conversation beat. Threaded so the admin chat viewer
     // groups a whole exchange under one conversation instead of one group per

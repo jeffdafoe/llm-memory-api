@@ -2359,7 +2359,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
     // lands with NULL scene_structure and the admin chat UI's scene
     // grouping renders the label inconsistently within a scene.
     const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
-    // conversationId (MEM-133 / ZBBS-HOME-396): forwarded from the original
+    // conversationId (MEM-133 / ZBBS-HOME-397): forwarded from the original
     // /chat/send so the VA's reply row AND this call's log entry carry the same
     // narrative-beat grouping id as the perception that prompted them — keeping
     // the whole exchange in one conversation in the admin viewer.

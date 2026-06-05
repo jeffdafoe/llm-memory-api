@@ -83,7 +83,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // engine messages that originated from a structure-less cascade
     // (chronicler dispatch, admin trigger, noticeboard generation).
     const sceneStructure = opts && opts.sceneStructure !== undefined ? opts.sceneStructure : null;
-    // conversationId (MEM-133 / ZBBS-HOME-396): the engine's narrative-beat scene
+    // conversationId (MEM-133 / ZBBS-HOME-397): the engine's narrative-beat scene
     // id — the STABLE grouping key (across the ticks AND participants of one
     // conversation beat) the admin chat viewer collapses a whole exchange under,
     // distinct from the per-tick sceneId. NULL outside grouped sim ticks.

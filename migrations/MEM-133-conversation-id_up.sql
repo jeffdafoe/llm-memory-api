@@ -6,7 +6,7 @@
 -- narrative-beat scene (sim.Scene.ID) instead — STABLE across the ticks AND the
 -- participants of one conversation beat — so the viewer can collapse the whole
 -- exchange back into one conversation (with the per-tick scene_id as the inner
--- sub-group). Threaded from salem via the /v1/chat/send body (ZBBS-HOME-396).
+-- sub-group). Threaded from salem via the /v1/chat/send body (ZBBS-HOME-397).
 --
 -- TEXT, not uuid (unlike scene_id): sim.SceneID is "sc-"+hex, not a UUID.
 -- Nullable — NULL for companion-mode, human chat, and solo (no-huddle) sim ticks,

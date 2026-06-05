@@ -14,7 +14,7 @@ function useChat({ api, showToast, dashboard }) {
     // Companion-mode and any pre-MEM-121 row has neither and renders as a single
     // standalone row exactly as before. Sim-mode rows sharing a conversation
     // collapse into one expandable group — so a whole exchange is one row
-    // (MEM-133 / ZBBS-HOME-396) instead of one group per per-tick scene_id.
+    // (MEM-133 / ZBBS-HOME-397) instead of one group per per-tick scene_id.
     //
     // Ordering: a group occupies the slot of its most recent message,
     // so a fresh tavern conversation lands at the top. Inside the group
@@ -49,7 +49,7 @@ function useChat({ api, showToast, dashboard }) {
         const sceneIndex = new Map(); // group key -> group ref
         const groups = [];
         for (const msg of chatMessages.value) {
-            // Group by conversation_id (MEM-133 / ZBBS-HOME-396) — the engine's
+            // Group by conversation_id (MEM-133 / ZBBS-HOME-397) — the engine's
             // narrative-beat scene, STABLE across the ticks AND participants of
             // one conversation beat — so a whole Josiah↔Moses exchange collapses
             // into ONE group instead of one group per per-tick scene_id. Fall
