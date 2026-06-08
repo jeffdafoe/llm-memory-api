@@ -105,7 +105,7 @@ function sanitizeLabel(s) {
 // we can't query from here. Inverts the convention loadPeopleContext
 // already uses going the other way ("Josiah Thorne" -> josiah-thorne):
 // strip the leading zbbs- prefix, split on hyphens, title-case each
-// segment, rejoin with spaces. Non-zbbs slugs (salem-chronicler, home,
+// segment, rejoin with spaces. Non-zbbs slugs (salem-generic, home,
 // the engine itself) get title-cased as-is so they still render
 // readably if they ever appear as a speaker.
 function slugToDisplay(name) {
