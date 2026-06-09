@@ -204,14 +204,14 @@
                             <div class="agent-card-description">Which other agents this actor can see when checking who's online</div>
                         </div>
                         <span class="agent-card-state" :class="actorHasWildcardVis ? 'agent-card-state--accent' : ''">
-                            {{ actorHasWildcardVis ? 'All agents' : (actorVisibilityGrants.length + ' grant' + (actorVisibilityGrants.length !== 1 ? 's' : '')) }}
+                            {{ actorHasWildcardVis ? 'All realm peers' : (actorVisibilityGrants.length + ' grant' + (actorVisibilityGrants.length !== 1 ? 's' : '')) }}
                         </span>
                     </div>
 
                     <div class="setting-row" style="margin-bottom: 12px;">
                         <div class="setting-row-text">
-                            <div class="setting-row-title">See all agents</div>
-                            <div class="setting-row-description">Wildcard visibility — can see every registered agent</div>
+                            <div class="setting-row-title">See whole realm</div>
+                            <div class="setting-row-description">Wildcard visibility — can see all agents sharing a realm with this actor</div>
                         </div>
                         <input type="checkbox" v-model="actorHasWildcardVis">
                     </div>
