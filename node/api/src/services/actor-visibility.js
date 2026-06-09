@@ -68,13 +68,15 @@ async function loadVisibility(actorId) {
         [actorId]
     );
 
-    // Check for wildcard (NULL target) — sees all agents within their realm(s)
+    // Check for wildcard (NULL target) — sees all agents within their realm(s).
+    // Copy rather than mutate realmPeers, in case loadRealmPeers is ever cached.
     for (const row of result.rows) {
         if (row.target_actor_id === null) {
+            const ids = new Set(realmPeers);
             for (const c of created.rows) {
-                realmPeers.add(c.id);
+                ids.add(c.id);
             }
-            return realmPeers;
+            return ids;
         }
     }
 
