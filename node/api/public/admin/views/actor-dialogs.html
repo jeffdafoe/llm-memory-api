@@ -232,7 +232,7 @@
                                     <td><button class="btn btn-ghost btn-compact btn-danger" @click="removeVisibilityGrant(idx)" title="Remove">&times;</button></td>
                                 </tr>
                                 <tr v-if="actorVisibilityGrants.length === 0">
-                                    <td colspan="3" class="ts">No grants — can only see self.</td>
+                                    <td colspan="3" class="ts">No grants — can only see self and agents they created.</td>
                                 </tr>
                             </tbody>
                         </table>
