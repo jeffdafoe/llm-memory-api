@@ -13,7 +13,7 @@ const pool = require('../db');
 const { hasPermission } = require('./admin-permissions');
 
 // Cache: actorId -> { visibleIds: Set<number> | null, expires }
-// null visibleIds means no filtering needed (see everything in realm)
+// null visibleIds means no filtering needed (superadmin; cross-realm)
 const cache = new Map();
 const CACHE_TTL_MS = 2 * 60 * 1000;
 
