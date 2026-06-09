@@ -1,11 +1,16 @@
-// Actor visibility — controls which actors a logged-in admin UI user can see.
-// Two layers of filtering:
-//   1. Realm scoping — actors only see others that share at least one realm.
-//   2. Explicit grants — within a realm, visibility can be further restricted
-//      via actor_visibility_configuration (wildcard or per-actor grants).
+// Actor visibility — controls which actors a viewer can see, on the admin UI
+// routes and the agent-facing roster surfaces (/agent/status, MCP agent_status).
+// Three layers:
+//   1. Superadmin (*:*) — unfiltered, sees everything across realms.
+//   2. Realm scoping — actors only see others that share at least one realm.
+//   3. Explicit grants — within a realm, visibility comes from
+//      actor_visibility_configuration (wildcard or per-actor grants).
+// Default-deny: an actor with no grant rows sees only itself. Visibility
+// beyond self is opt-in — trusted agents get a wildcard row.
 // Implicit: every actor can always see themselves.
 
 const pool = require('../db');
+const { hasPermission } = require('./admin-permissions');
 
 // Cache: actorId -> { visibleIds: Set<number> | null, expires }
 // null visibleIds means no filtering needed (see everything in realm)
@@ -36,8 +41,14 @@ async function loadRealmPeers(actorId) {
 }
 
 // Load visibility grants for an actor from the database.
-// Returns null (wildcard — see everything in realm) or a Set of visible actor IDs.
+// Returns null (superadmin — no filtering) or a Set of visible actor IDs.
 async function loadVisibility(actorId) {
+    // Superadmins (*:*) bypass visibility entirely — they see all actors,
+    // across realms. Everyone else is bounded by realm + grants below.
+    if (await hasPermission(actorId, '*', '*')) {
+        return null;
+    }
+
     // First get realm peers — this is the outer boundary
     const realmPeers = await loadRealmPeers(actorId);
 
@@ -54,11 +65,13 @@ async function loadVisibility(actorId) {
         }
     }
 
-    // No explicit grants and no wildcard — default to seeing all realm peers.
-    // The explicit grant system is for restricting within a realm, not for
-    // granting access. If you have no grants, you see your whole realm.
+    // No explicit grants and no wildcard — default-deny: see only yourself.
+    // A fresh signup starts blind to the rest of its realm; visibility is
+    // granted deliberately (wildcard row for trusted agents, per-actor rows
+    // otherwise). This used to default to all realm peers, which let any
+    // open-registration signup enumerate the whole roster.
     if (result.rows.length === 0) {
-        return realmPeers;
+        return new Set([actorId]);
     }
 
     // Explicit grants exist — intersect with realm peers
@@ -73,7 +86,8 @@ async function loadVisibility(actorId) {
 }
 
 // Get visible actor IDs for an actor (cached).
-// Returns Set<number> of visible actor IDs.
+// Returns Set<number> of visible actor IDs, or null when no filtering
+// applies (superadmin). Callers treat null as "skip the WHERE clause".
 async function getVisibleActorIds(actorId) {
     if (!isValidActorId(actorId)) {
         return new Set(); // fail closed — see nothing
@@ -99,6 +113,10 @@ async function canSee(viewerActorId, targetActorId) {
     }
 
     const visibleIds = await getVisibleActorIds(viewerActorId);
+    // null = unfiltered (superadmin)
+    if (visibleIds === null) {
+        return true;
+    }
     return visibleIds.has(targetActorId);
 }
 

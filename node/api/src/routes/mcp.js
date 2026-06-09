@@ -26,6 +26,7 @@ const { broadcast } = require('../services/events');
 const { requireByName, resolveByName } = require('../services/actors');
 const { requireAccess, hasAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
 const { hasNoteAccess, listSharesByOwner, listSharedDocuments } = require('../services/note-permissions');
+const { getVisibleActorIds } = require('../services/actor-visibility');
 const sanitize = require('../sanitize');
 
 const router = Router();
@@ -1207,8 +1208,13 @@ const TOOL_HANDLERS = {
     // --- Agent ---
     async agent_status(args, agent, namespace, actorId) {
         const queryAgent = validateIdentity(args.agent, agent, 'agent');
-        const result = await pool.query(
-            `SELECT
+
+        // Visibility filter — same rules as /agent/status and the /admin/*
+        // routes (null = superadmin, no filtering). This is the surface an
+        // agent session actually calls, so it must not leak the full roster.
+        const visibleIds = await getVisibleActorIds(actorId);
+
+        let rosterSql = `SELECT
                 a.agent,
                 a.status,
                 a.last_seen,
@@ -1232,10 +1238,14 @@ const TOOL_HANDLERS = {
                 FROM mail ml
                 WHERE ml.to_actor_id = $1 AND ml.acked_at IS NULL AND ml.deleted_at IS NULL
                 GROUP BY ml.from_actor_id
-            ) m ON m.from_actor_id = a.actor_id
-            ORDER BY CASE a.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'degraded' THEN 2 WHEN 'offline' THEN 3 ELSE 4 END, a.last_seen DESC NULLS LAST`,
-            [actorId]
-        );
+            ) m ON m.from_actor_id = a.actor_id`;
+        const rosterParams = [actorId];
+        if (visibleIds !== null) {
+            rosterSql += ' WHERE a.actor_id = ANY($2)';
+            rosterParams.push(Array.from(visibleIds));
+        }
+        rosterSql += ` ORDER BY CASE a.status WHEN 'online' THEN 0 WHEN 'available' THEN 1 WHEN 'degraded' THEN 2 WHEN 'offline' THEN 3 ELSE 4 END, a.last_seen DESC NULLS LAST`;
+        const result = await pool.query(rosterSql, rosterParams);
 
         const lines = result.rows.map(a => {
             const parts = [`${a.agent}: ${a.status}`];
