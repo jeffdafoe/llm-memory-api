@@ -1999,6 +1999,12 @@ router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRou
 // Default (no filters, dry_run=false): processes every (agent, person)
 // pair across all agents in dream_mode IN ('sim', 'companion').
 router.post('/admin/dream/consolidate-people', requirePerm('agents', 'write'), adminRoute('dream-consolidate-people', async (req, res) => {
+    // Dream consolidation is a global, cross-actor operation — superadmin only.
+    // agents:write alone isn't enough (every self-signup is granted it), so gate
+    // on the *:* permission, matching actors/admin-permissions/save.
+    if (!await hasPermission(req.actorId, '*', '*')) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Dream consolidation requires superadmin' } });
+    }
     const agentFilterRaw = req.body.agent;
     const personFilterRaw = req.body.person_slug;
     const dryRun = !!req.body.dry_run;

@@ -87,11 +87,11 @@ function clearCache() {
 // Access is governed solely by the per-agent ACL — realm is NOT consulted here.
 // Granted if any of:
 //   1. The actor is the creator (owner) of the virtual agent
-//   2. The actor has an admin_permissions row (admin)
+//   2. The actor is a superadmin (holds the *:* admin permission)
 //   3. There's a virtual_agent_access row with grantee_actor_id = NULL (public)
 //   4. There's a virtual_agent_access row with grantee_actor_id = actor's id
 //
-// Default-deny: a VA with no ACL rows is reachable only by its owner and admins.
+// Default-deny: a VA with no ACL rows is reachable only by its owner and superadmins.
 // Realms are a tenant-isolation boundary, NOT an access grant — sharing a realm
 // does not confer access. "Who can use" comes entirely from the access ACL (the
 // admin virtual-agent-access dialogue). Previously a realm-overlap clause granted
@@ -103,8 +103,11 @@ async function canAccessVirtualAgent(actorId, virtualAgentId) {
             -- Creator/owner check
             SELECT 1 FROM actors WHERE id = $2 AND created_by = $1
             UNION ALL
-            -- Admin check
-            SELECT 1 FROM admin_permissions WHERE actor_id = $1
+            -- Superadmin check. A bare admin_permissions row is NOT sufficient:
+            -- every self-signup is granted admin_permissions at registration, so
+            -- matching any row would let any account trigger any VA. Only the *:*
+            -- grant bypasses the per-VA ACL below.
+            SELECT 1 FROM admin_permissions WHERE actor_id = $1 AND resource = '*' AND action = '*'
             UNION ALL
             -- ACL check (public or explicit grant)
             SELECT 1 FROM virtual_agent_access
