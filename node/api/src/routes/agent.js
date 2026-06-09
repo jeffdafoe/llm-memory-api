@@ -14,6 +14,7 @@ const config = require('../services/config');
 const { apiRoute } = require('../middleware/route-wrapper');
 const { invokeAgent } = require('../services/virtual-agent');
 const { deleteSessionByToken } = require('../services/sessions');
+const { getVisibleActorIds } = require('../services/actor-visibility');
 // actors service no longer needed — all routes use req.actorId from auth middleware
 
 const router = Router();
@@ -248,10 +249,14 @@ router.post('/agent/status', apiRoute('agent', 'status', async (req, res) => {
     // Use authenticated identity only — never trust req.body.agent
     const actorId = req.actorId;
 
+    // Visibility filter — the roster only shows actors the caller has been
+    // granted sight of (same rules as the /admin/* routes; null = superadmin,
+    // no filtering). Without this, any API key could enumerate every agent.
+    const visibleIds = await getVisibleActorIds(actorId);
+
     // Single query: join agent_status view with per-sender unread counts for
     // both chat and mail, so the caller sees everything at once.
-    const result = await pool.query(
-        `SELECT
+    let rosterSql = `SELECT
             a.agent,
             a.status,
             a.last_seen,
@@ -277,10 +282,14 @@ router.post('/agent/status', apiRoute('agent', 'status', async (req, res) => {
             JOIN actors fa ON fa.id = ml.from_actor_id
             WHERE ml.to_actor_id = $1 AND ml.acked_at IS NULL AND ml.deleted_at IS NULL
             GROUP BY fa.name
-        ) m ON m.from_agent = a.agent
-        ORDER BY a.agent`,
-        [actorId]
-    );
+        ) m ON m.from_agent = a.agent`;
+    const rosterParams = [actorId];
+    if (visibleIds !== null) {
+        rosterSql += ' WHERE a.actor_id = ANY($2)';
+        rosterParams.push(Array.from(visibleIds));
+    }
+    rosterSql += ' ORDER BY a.agent';
+    const result = await pool.query(rosterSql, rosterParams);
 
     // Get active subsystems per agent from non-expired sessions
     const sessionsResult = await pool.query(

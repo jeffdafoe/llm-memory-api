@@ -2143,8 +2143,8 @@ function parseActorId(raw, res) {
 
 // POST /admin/actors/list — list all actors (for the Actors config tab)
 router.post('/admin/actors/list', requirePerm('agents', 'read'), adminRoute('actors-list', async (req, res) => {
-    const result = await pool.query(
-        `SELECT a.id, a.name, a.created_at, a.visible_to_others, a.created_by,
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    let sql = `SELECT a.id, a.name, a.created_at, a.visible_to_others, a.created_by,
                 (ac.actor_id IS NOT NULL) AS is_agent,
                 (a.password_hash IS NOT NULL) AS is_user,
                 a.realms,
@@ -2155,9 +2155,14 @@ router.post('/admin/actors/list', requirePerm('agents', 'read'), adminRoute('act
          FROM actors a
          LEFT JOIN agent_configuration ac ON ac.actor_id = a.id
          LEFT JOIN agent_status s ON s.actor_id = a.id
-         LEFT JOIN actors creator ON creator.id = a.created_by
-         ORDER BY a.name`
-    );
+         LEFT JOIN actors creator ON creator.id = a.created_by`;
+    const params = [];
+    if (visibleIds !== null) {
+        sql += ' WHERE a.id = ANY($1)';
+        params.push(Array.from(visibleIds));
+    }
+    sql += ' ORDER BY a.name';
+    const result = await pool.query(sql, params);
 
     // Pre-fetch OpenRouter catalog if any actor uses it
     if (result.rows.some(r => r.provider === 'openrouter')) {
