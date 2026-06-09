@@ -5,9 +5,12 @@
 //   2. Realm scoping — actors only see others that share at least one realm.
 //   3. Explicit grants — within a realm, visibility comes from
 //      actor_visibility_configuration (wildcard or per-actor grants).
-// Default-deny: an actor with no grant rows sees only itself. Visibility
-// beyond self is opt-in — trusted agents get a wildcard row.
-// Implicit: every actor can always see themselves.
+// Default-deny: an actor with no grant rows sees only itself and the actors
+// it created. Visibility beyond that is opt-in — trusted agents get a
+// wildcard row.
+// Implicit: every actor can always see itself AND actors it created
+// (created_by) — those are its own resources; a signup must be able to see
+// and manage its agents without any grant rows.
 
 const pool = require('../db');
 const { hasPermission } = require('./admin-permissions');
@@ -49,8 +52,15 @@ async function loadVisibility(actorId) {
         return null;
     }
 
-    // First get realm peers — this is the outer boundary
+    // First get realm peers — this is the outer boundary for grants
     const realmPeers = await loadRealmPeers(actorId);
+
+    // Actors you created are implicitly visible, like self — they're your
+    // resources. Not bounded by realm: you see what you made, period.
+    const created = await pool.query(
+        'SELECT id FROM actors WHERE created_by = $1',
+        [actorId]
+    );
 
     // Then check explicit visibility grants
     const result = await pool.query(
@@ -61,22 +71,29 @@ async function loadVisibility(actorId) {
     // Check for wildcard (NULL target) — sees all agents within their realm(s)
     for (const row of result.rows) {
         if (row.target_actor_id === null) {
+            for (const c of created.rows) {
+                realmPeers.add(c.id);
+            }
             return realmPeers;
         }
     }
 
-    // No explicit grants and no wildcard — default-deny: see only yourself.
+    const ids = new Set();
+    ids.add(actorId);
+    for (const c of created.rows) {
+        ids.add(c.id);
+    }
+
+    // No explicit grants and no wildcard — default-deny: self + created only.
     // A fresh signup starts blind to the rest of its realm; visibility is
     // granted deliberately (wildcard row for trusted agents, per-actor rows
     // otherwise). This used to default to all realm peers, which let any
     // open-registration signup enumerate the whole roster.
     if (result.rows.length === 0) {
-        return new Set([actorId]);
+        return ids;
     }
 
     // Explicit grants exist — intersect with realm peers
-    const ids = new Set();
-    ids.add(actorId);
     for (const row of result.rows) {
         if (realmPeers.has(row.target_actor_id)) {
             ids.add(row.target_actor_id);

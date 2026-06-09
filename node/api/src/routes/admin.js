@@ -1620,21 +1620,12 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
             );
         }
 
-        // Grant the creator visibility to the new agent (so they can see it in the UI).
-        // Skip if the creator already has wildcard visibility (sees everything).
-        const creatorVis = await client.query(
-            'SELECT target_actor_id FROM actor_visibility_configuration WHERE actor_id = $1 AND target_actor_id IS NULL',
-            [req.actorId]
-        );
-        if (creatorVis.rows.length === 0) {
-            await client.query(
-                'INSERT INTO actor_visibility_configuration (actor_id, target_actor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                [req.actorId, actorId]
-            );
-        }
+        // No explicit visibility grant needed: the creator sees this agent
+        // implicitly via created_by (services/actor-visibility.js).
 
         await client.query('COMMIT');
-        // Clear visibility cache so the new grant takes effect immediately
+        // Clear visibility cache so the creator's implicit sight of the new
+        // agent takes effect immediately
         const { clearCache: clearVisCache } = require('../services/actor-visibility');
         clearVisCache(req.actorId);
     } catch (txErr) {
@@ -2332,6 +2323,28 @@ router.post('/admin/actors/visibility/save', requirePerm('agents', 'write'), adm
         const existCheck = await pool.query('SELECT id FROM actors WHERE id = ANY($1)', [deduped]);
         if (existCheck.rows.length !== deduped.length) {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'One or more target actors do not exist' } });
+        }
+    }
+
+    // Delegation bound — you can only share sight you already have.
+    // Without this, ownership alone would let any signup with agents:write
+    // re-grant ITSELF wildcard visibility and undo the default-deny flip.
+    // Superadmins (callerVisible === null) skip the bound.
+    const callerVisible = await getVisibleActorIds(req.actorId);
+    if (callerVisible !== null) {
+        if (wildcard) {
+            // Wildcard for the target requires the caller to hold wildcard
+            // itself (realm-wide sight is not something self/created
+            // ownership confers).
+            const callerWildcard = await pool.query(
+                'SELECT 1 FROM actor_visibility_configuration WHERE actor_id = $1 AND target_actor_id IS NULL',
+                [req.actorId]
+            );
+            if (callerWildcard.rows.length === 0) {
+                return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Granting wildcard visibility requires wildcard visibility yourself' } });
+            }
+        } else if (deduped.some(g => !callerVisible.has(g))) {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only grant visibility of actors you can see yourself' } });
         }
     }
 
