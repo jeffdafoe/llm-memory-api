@@ -48,7 +48,10 @@
                     <div v-else class="chat-transcript" ref="chatTranscriptEl">
                         <div v-for="msg in discussionChat" :key="msg.id" class="chat-bubble">
                             <div class="chat-meta">
-                                <strong :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</strong>
+                                <!-- chat-meta is flex space-between, so the ref-id chip is
+                                     grouped with the sender name to stay on the left edge
+                                     instead of floating to the middle as a third child. -->
+                                <span><strong :style="{ color: agentColor(msg.from_agent) }">{{ msg.from_agent }}</strong> <code class="ref-id" title="chat_message_texts.id — click to copy" @click="copyRefId(msg.text_id)">{{ msg.text_id }}</code></span>
                                 <span class="chat-time">{{ formatDate(msg.sent_at) }}</span>
                             </div>
                             <div class="chat-text">{{ msg.message }}</div>
@@ -82,6 +85,7 @@
             </p>
             <p class="ts" style="margin-bottom: 12px;">{{ formatDate(selectedMessage.sent_at) }}
                 <span v-if="selectedMessage.channel"> | Channel: {{ selectedMessage.channel }}</span>
+                <span v-if="selectedMessage.text_id"> | ID: <code class="ref-id" title="chat_message_texts.id — click to copy" @click="copyRefId(selectedMessage.text_id)">{{ selectedMessage.text_id }}</code></span>
             </p>
             <div class="mail-body">
                 <template v-if="selectedMessage.message">{{ selectedMessage.message }}</template>

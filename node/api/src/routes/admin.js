@@ -745,7 +745,7 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
     // For discussion channels, query distinct messages from chat_message_texts
     // to avoid showing duplicate delivery rows
     if (discussionId) {
-        let sql = `SELECT cmt.id, fa.name AS from_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cmt.discussion_id, cmt.scene_id, cmt.conversation_id${sceneSelect}
+        let sql = `SELECT cmt.id, cmt.id AS text_id, fa.name AS from_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cmt.discussion_id, cmt.scene_id, cmt.conversation_id${sceneSelect}
                    FROM chat_message_texts cmt
                    JOIN actors fa ON fa.id = cmt.from_actor_id`;
         const conditions = ['cmt.discussion_id = $1'];
@@ -761,8 +761,17 @@ router.post('/admin/chat', requirePerm('comms', 'read'), adminRoute('chat-list',
         const result = await pool.query(sql, params);
         res.json({ messages: result.rows });
     } else {
-        // Non-discussion: query delivery rows as before
-        let sql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cm.acked_at, cmt.scene_id, cmt.conversation_id${sceneSelect}
+        // Non-discussion: query delivery rows as before. Two ids ride along
+        // (ZBBS-HOME-415): cm.id is the per-recipient DELIVERY row (what
+        // delete operates on — one utterance to a multi-actor huddle fans
+        // out to several of these), while text_id is the CONTENT row
+        // (chat_message_texts.id — one per utterance, the id you can
+        // SELECT by directly). The viewer displays text_id as the row's
+        // reference id so an id read off the screen round-trips to a
+        // single content row. The discussion branch above queries
+        // chat_message_texts directly, so its text_id is the same value
+        // as its id — aliased anyway so the frontend reads one field.
+        let sql = `SELECT cm.id, cmt.id AS text_id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.tool_calls, cmt.sent_at, cm.acked_at, cmt.scene_id, cmt.conversation_id${sceneSelect}
                    FROM chat_messages cm
                    JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
                    JOIN actors fa ON fa.id = cmt.from_actor_id

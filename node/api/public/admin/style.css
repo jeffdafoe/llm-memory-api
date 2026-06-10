@@ -718,6 +718,20 @@ tbody tr:last-child td { border-bottom: none; }
 .col-agent { width: 10em; }
 .col-channel { width: 8em; }
 .col-time { width: 11em; }
+.col-ref-id { width: 4.5em; }
+
+/* Per-row reference id (ZBBS-HOME-415): chat_message_texts.id rendered as
+   a small monospace chip so the admin can cite an exact row ("look at row
+   51421") instead of screenshotting. Click-to-copy via copyRefId();
+   user-select: all keeps one-click manual selection as a fallback. */
+.ref-id {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-muted);
+    cursor: copy;
+    user-select: all;
+}
+.ref-id:hover { color: var(--text-primary); }
 
 /* ═══════════════════════════════════════════════════════════════════
    Sub-tabs
