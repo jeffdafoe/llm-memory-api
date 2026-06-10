@@ -1,8 +1,8 @@
 const pool = require('../db');
-const { verify } = require('../services/hashing');
 const { logError } = require('../services/logger');
 const { SESSION_KIND } = require('../constants');
 const { validateSessionToken } = require('../services/sessions');
+const { findApiKeyByToken } = require('../services/api-keys');
 
 // Cache session tokens in memory to avoid DB lookup on every request
 // Key: bearer token, Value: { agent, actorId, expires }
@@ -10,30 +10,20 @@ const sessionCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // API key auth — accepts a 64-char hex token issued via the admin
-// `agent_api_keys` table. Iterates over non-revoked keys and verifies the hash.
-// Returns { agent, actorId } on match, null otherwise. Updates last_used_at on
-// success (fire-and-forget). Mirrors the path used by mcp-auth.js so a single
-// API key works against both /mcp and /v1.
+// `agent_api_keys` table. Resolves it through the shared indexed lookup
+// (services/api-keys.js, MEM-136 — one PBKDF2 verify, not a per-row scan).
+// Returns { agent, actorId } on match, null otherwise. last_used_at is
+// stamped by the service (fire-and-forget). Mirrors the path used by
+// mcp-auth.js so a single API key works against both /mcp and /v1.
 async function tryApiKeyAuth(token) {
     if (typeof token !== 'string' || !/^[0-9a-f]{64}$/i.test(token)) {
         return null;
     }
-    const keys = await pool.query(
-        `SELECT ac.name AS agent, ak.actor_id, ak.key_hash, ak.key_salt
-         FROM agent_api_keys ak
-         JOIN actors ac ON ac.id = ak.actor_id
-         WHERE ak.revoked_at IS NULL`
-    );
-    for (const row of keys.rows) {
-        if (await verify(token, row.key_salt, row.key_hash)) {
-            pool.query(
-                'UPDATE agent_api_keys SET last_used_at = NOW() WHERE actor_id = $1 AND key_salt = $2',
-                [row.actor_id, row.key_salt]
-            ).catch(() => {});
-            return { agent: row.agent, actorId: row.actor_id };
-        }
+    const row = await findApiKeyByToken(token);
+    if (!row) {
+        return null;
     }
-    return null;
+    return { agent: row.agent, actorId: row.actorId };
 }
 
 // Opportunistic heartbeat — update last_seen on every authenticated agent request
