@@ -191,10 +191,26 @@ function useChat({ api, showToast, dashboard }) {
         selectedMessage.value = null;
     }
 
+    // Copy a row's reference id (chat_message_texts.id) to the clipboard
+    // (ZBBS-HOME-415). The id is the handle for pointing Claude at a
+    // specific row ("look at row 51421"), so click-to-copy beats
+    // select-and-drag on a 5-6 digit number. navigator.clipboard needs a
+    // secure context, which the admin always has (https); the catch is
+    // for the rare denial (e.g. permissions policy) so the click never
+    // throws unhandled.
+    async function copyRefId(id) {
+        try {
+            await navigator.clipboard.writeText(String(id));
+            showToast('ID ' + id + ' copied');
+        } catch (err) {
+            showToast('Copy failed: ' + err.message, 'error');
+        }
+    }
+
     return {
         chatMessages, selectedMessage,
         chatGroups, expandedScenes, toggleScene, isSceneExpanded,
-        loadChat, deleteChat, closeDialogs,
+        loadChat, deleteChat, closeDialogs, copyRefId,
     };
 }
 

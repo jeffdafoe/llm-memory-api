@@ -71,6 +71,7 @@
             <table class="fixed-table">
                 <colgroup>
                     <col class="col-icon">
+                    <col class="col-ref-id">
                     <col class="col-agent">
                     <col class="col-agent">
                     <col class="col-channel">
@@ -80,6 +81,7 @@
                 <thead>
                     <tr>
                         <th></th>
+                        <th>ID</th>
                         <th>From</th>
                         <th>To</th>
                         <th>Channel</th>
@@ -92,6 +94,10 @@
                         <!-- Companion-mode and pre-MEM-121 rows render unchanged. -->
                         <tr v-if="group.type === 'msg'" @click="selectedMessage = group.msg" class="clickable">
                             <td class="icon-cell"><i :class="group.msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                            <!-- Reference id = chat_message_texts.id (ZBBS-HOME-415), the
+                                 content-row id a query can SELECT by — NOT the delivery-row
+                                 id. @click.stop so copying doesn't also open the modal. -->
+                            <td><code class="ref-id" title="chat_message_texts.id — click to copy" @click.stop="copyRefId(group.msg.text_id)">{{ group.msg.text_id }}</code></td>
                             <td>{{ group.msg.from_agent }}</td>
                             <td>{{ group.msg.to_agent }}</td>
                             <td>{{ group.msg.channel || '—' }}</td>
@@ -116,6 +122,10 @@
                                 <i :class="isSceneExpanded(group.scene_id) ? 'icon-chevron-down' : 'icon-chevron-right'"></i>
                                 <i v-if="group.hasUnacked" class="icon-circle unacked-icon scene-ack-marker"></i>
                             </td>
+                            <!-- A scene header aggregates many messages, so it has no
+                                 single reference id — the scene_id chip in the summary
+                                 cell is its handle. Empty cell keeps the columns aligned. -->
+                            <td></td>
                             <td colspan="3" class="scene-participants">{{ group.participants.join(', ') }}</td>
                             <td class="message-cell"><span class="scene-summary">Scene<template v-if="group.location"> · {{ group.location }}</template> · {{ group.messages.length }} messages · <code class="scene-id">{{ group.scene_id }}</code></span></td>
                             <td class="time-cell">{{ formatDate(group.latest_at) }}</td>
@@ -133,11 +143,13 @@
                                     <td class="icon-cell">
                                         <i v-if="thread.hasUnacked" class="icon-circle unacked-icon"></i>
                                     </td>
+                                    <td></td>
                                     <td colspan="4" class="scene-thread-label">{{ thread.participant }} <span class="scene-thread-count">· {{ thread.messages.length }}</span></td>
                                     <td class="time-cell">{{ formatDate(thread.earliest_at) }}</td>
                                 </tr>
                                 <tr v-for="msg in thread.messages" :key="'scene-msg-' + msg.id" @click="selectedMessage = msg" class="clickable scene-child">
                                     <td class="icon-cell"><i :class="msg.acked_at ? 'icon-check acked-icon' : 'icon-circle unacked-icon'"></i></td>
+                                    <td><code class="ref-id" title="chat_message_texts.id — click to copy" @click.stop="copyRefId(msg.text_id)">{{ msg.text_id }}</code></td>
                                     <td>{{ msg.from_agent }}</td>
                                     <td>{{ msg.to_agent }}</td>
                                     <td>{{ msg.channel || '—' }}</td>
