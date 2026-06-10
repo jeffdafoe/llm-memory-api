@@ -32,6 +32,15 @@ const { verify, tokenLookupHash } = require('./hashing');
 // Failures of these updates are swallowed — they're telemetry/optimization,
 // not authorization, and the next successful auth retries them.
 async function findApiKeyByToken(token, options) {
+    // Shape gate (code_review R1): every key generateKey() has ever issued
+    // is 64 hex chars, so anything else can be rejected before hashing —
+    // and, more importantly, before the legacy PBKDF2 fallback below.
+    // Centralized here so all three callers get it (mcp-auth and oauth had
+    // no local check; mcp-auth in particular used to PBKDF2-scan the table
+    // for ANY non-HMAC bearer string).
+    if (typeof token !== 'string' || !/^[0-9a-f]{64}$/i.test(token)) {
+        return null;
+    }
     let actorId = null;
     if (options && options.actorId) {
         actorId = options.actorId;
@@ -81,6 +90,16 @@ async function findApiKeyByToken(token, options) {
          WHERE ${legacyWhere}`,
         legacyParams
     );
+    // Residual scan visibility (code_review R1): a well-formed-but-invalid
+    // key that misses the fast path PBKDF2-scans whatever legacy rows
+    // remain — self-heal only shrinks that population via SUCCESSFUL auths,
+    // so dormant pre-MEM-136 keys keep this path alive until rotated or
+    // revoked. Log the scan so the remaining fleet is observable in prod;
+    // the follow-up (drop the fallback once the NULL population is zero)
+    // is tracked in shared/tasks/pending.
+    if (legacy.rows.length > 0) {
+        console.warn(`api-keys: legacy fallback scanning ${legacy.rows.length} pre-MEM-136 row(s) (self-heals on successful auth)`);
+    }
     for (const row of legacy.rows) {
         if (await verify(token, row.key_salt, row.key_hash)) {
             // Self-heal: this key's plaintext is in hand exactly here, so

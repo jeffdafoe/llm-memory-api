@@ -11,14 +11,12 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // API key auth — accepts a 64-char hex token issued via the admin
 // `agent_api_keys` table. Resolves it through the shared indexed lookup
-// (services/api-keys.js, MEM-136 — one PBKDF2 verify, not a per-row scan).
+// (services/api-keys.js, MEM-136 — one PBKDF2 verify, not a per-row scan;
+// the 64-hex shape gate lives in the service so all callers share it).
 // Returns { agent, actorId } on match, null otherwise. last_used_at is
 // stamped by the service (fire-and-forget). Mirrors the path used by
 // mcp-auth.js so a single API key works against both /mcp and /v1.
 async function tryApiKeyAuth(token) {
-    if (typeof token !== 'string' || !/^[0-9a-f]{64}$/i.test(token)) {
-        return null;
-    }
     const row = await findApiKeyByToken(token);
     if (!row) {
         return null;
