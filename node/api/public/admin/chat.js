@@ -199,11 +199,23 @@ function useChat({ api, showToast, dashboard }) {
     // for the rare denial (e.g. permissions policy) so the click never
     // throws unhandled.
     async function copyRefId(id) {
+        // Defensive: a malformed/legacy row without a text_id would
+        // otherwise copy the literal string "undefined".
+        if (id === null || id === undefined || id === '') {
+            showToast('No reference ID for this row', 'error');
+            return;
+        }
         try {
+            // clipboard can be absent despite https (iframe permissions
+            // policy, older browser) — without this check the failure is
+            // a confusing "Cannot read properties of undefined".
+            if (!navigator.clipboard?.writeText) {
+                throw new Error('clipboard unavailable');
+            }
             await navigator.clipboard.writeText(String(id));
             showToast('ID ' + id + ' copied');
         } catch (err) {
-            showToast('Copy failed: ' + err.message, 'error');
+            showToast('Copy failed: ' + (err?.message || String(err)), 'error');
         }
     }
 
