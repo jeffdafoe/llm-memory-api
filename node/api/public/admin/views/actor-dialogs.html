@@ -414,6 +414,7 @@
                                     <th style="text-align: center;">Read</th>
                                     <th style="text-align: center;">Write</th>
                                     <th style="text-align: center;">Delete</th>
+                                    <th style="text-align: center;">Administer</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -429,6 +430,10 @@
                                     </td>
                                     <td style="text-align: center;">
                                         <input v-if="row.actions.includes('delete')" type="checkbox" :checked="adminPermChecked(idx, 'delete')" @change="toggleAdminPerm(idx, 'delete')">
+                                        <span v-else class="ts">—</span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <input v-if="row.actions.includes('administer')" type="checkbox" :checked="adminPermChecked(idx, 'administer')" @change="toggleAdminPerm(idx, 'administer')">
                                         <span v-else class="ts">—</span>
                                     </td>
                                 </tr>

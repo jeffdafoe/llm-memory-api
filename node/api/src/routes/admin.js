@@ -2436,7 +2436,17 @@ const ADMIN_PERM_ALLOWLIST = {
     config: ['read', 'write'],
     actors: ['read', 'write'],
     templates: ['read', 'write', 'delete'],
-    logs: ['read']
+    logs: ['read'],
+    // Access-requests + invite-codes routes (below). The dashboard has always offered
+    // this pair, but the routes landed a week after this allowlist (701cd32 vs c0b0716)
+    // and the entry was never added — so granting it silently no-opped.
+    access: ['read', 'write'],
+    // Village-operator capability — consumed by the salem umbilical's requireOperator
+    // (via /auth/verify's permission map) and /sim/raw-turns, not by any /admin route.
+    // It must still be in this allowlist: admin-permissions/save is replace-all and
+    // silently drops any row that fails isValidAdminPerm, so without this entry every
+    // dashboard permissions save would revoke a holder's operator access.
+    plugins: ['administer']
 };
 
 function isValidAdminPerm(resource, action) {
