@@ -57,8 +57,22 @@ function requestLog(req, res, next) {
             return;
         }
 
-        // Get client IP (respect X-Forwarded-For from nginx)
-        const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || null;
+        // Get client IP from the LAST X-Forwarded-For hop. nginx appends the
+        // address it actually saw after any client-supplied entries
+        // ($proxy_add_x_forwarded_for), so earlier entries are spoofable —
+        // scanners send "X-Forwarded-For: 127.0.0.1" probing for localhost
+        // trust, and taking the first entry let that spoof into the log
+        // (observed 2026-06-10). We sit exactly one trusted proxy deep, so
+        // the last entry is always the real peer nginx connected from.
+        let ip = null;
+        const xff = req.headers['x-forwarded-for'];
+        if (xff) {
+            const hops = xff.split(',');
+            ip = hops[hops.length - 1].trim() || null;
+        }
+        if (!ip) {
+            ip = req.ip || null;
+        }
 
         // Capture response length: Content-Length header, or body in end(), or accumulated write() bytes
         let responseLength = res.getHeader('content-length') ? parseInt(res.getHeader('content-length'), 10) : null;
