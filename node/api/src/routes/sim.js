@@ -66,6 +66,12 @@ router.post('/sim/conversation-day', apiRoute('sim', 'conversation_day', async (
 //              shared "salem-vendor"/"salem-visitor"); 1:1 for a stateful NPC,
 //              many-to-one for a shared VA
 //   since    — ISO timestamp lower bound on created_at
+//   until    — EXCLUSIVE upper bound on created_at (strictly earlier-than).
+//              The route returns the newest rows first with no offset
+//              pagination, so without this an older episode buried behind 50+
+//              newer turns is unreachable. Exclusive so it works as a cursor:
+//              pass the oldest row's created_at verbatim to fetch the next
+//              page back without repeating the boundary row.
 //   status   — 'success' | 'error'
 //   limit    — default 5, capped at 50 (each turn carries ~5k+14k chars of
 //              prompt, so the default stays small; raise it deliberately)
@@ -116,6 +122,15 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         }
         conditions.push(`c.created_at >= $${idx++}`);
         params.push(since.toISOString());
+    }
+
+    if (body.until !== undefined && body.until !== null && body.until !== '') {
+        const until = new Date(body.until);
+        if (Number.isNaN(until.getTime())) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'until must be a valid timestamp' } });
+        }
+        conditions.push(`c.created_at < $${idx++}`);
+        params.push(until.toISOString());
     }
 
     if (body.status !== undefined && body.status !== null && body.status !== '') {
