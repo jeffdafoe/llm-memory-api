@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../db');
 const config = require('../services/config');
 const generatePassphrase = require('eff-diceware-passphrase');
-const { generateSalt, hash: hashToken, generateKey } = require('../services/hashing');
+const { generateSalt, hash: hashToken, generateKey, tokenLookupHash } = require('../services/hashing');
 const { mailSend } = require('../services/mail');
 const { saveNote } = require('../services/documents');
 const { checkNameAvailability, moderateActorName } = require('../services/actors');
@@ -190,13 +190,15 @@ router.post('/api/register', async (req, res) => {
             [actorId]
         );
 
-        // Generate API key for MCP/OAuth authentication
+        // Generate API key for MCP/OAuth authentication. key_lookup_hash
+        // (MEM-136) is the deterministic SHA-256 index key that lets auth
+        // find this row in one SELECT instead of PBKDF2-scanning the table.
         const apiKey = generateKey();
         const apiKeySalt = generateSalt();
         const apiKeyHash = await hashToken(apiKey, apiKeySalt);
         await client.query(
-            `INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, label) VALUES ($1, $2, $3, 'default')`,
-            [actorId, apiKeyHash, apiKeySalt]
+            `INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, key_lookup_hash, label) VALUES ($1, $2, $3, $4, 'default')`,
+            [actorId, apiKeyHash, apiKeySalt, tokenLookupHash(apiKey)]
         );
 
         await client.query('COMMIT');

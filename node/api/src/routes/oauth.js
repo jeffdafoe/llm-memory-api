@@ -11,8 +11,8 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
-const { hash, verify } = require('../services/hashing');
 const { logError } = require('../services/logger');
+const { findApiKeyByToken } = require('../services/api-keys');
 
 const router = Router();
 
@@ -44,26 +44,21 @@ function getBaseUrl(req) {
     return `${req.protocol}://${req.get('host')}`;
 }
 
-// Validate a client_id + client_secret pair against agent_api_keys.
+// Validate a client_id + client_secret pair against agent_api_keys, via the
+// shared indexed lookup (services/api-keys.js, MEM-136) scoped to the named
+// actor's keys — one PBKDF2 verify instead of a per-key scan. last_used_at
+// is stamped by the service.
 // Returns the agent name on success, null on failure.
 async function validateClientCredentials(clientId, clientSecret) {
     const { resolveByName } = require('../services/actors');
     const actor = await resolveByName(clientId);
     if (!actor) return null;
 
-    const result = await pool.query(
-        'SELECT id, key_hash, key_salt FROM agent_api_keys WHERE actor_id = $1 AND revoked_at IS NULL',
-        [actor.id]
-    );
-
-    for (const row of result.rows) {
-        if (await verify(clientSecret, row.key_salt, row.key_hash)) {
-            // Track usage
-            pool.query('UPDATE agent_api_keys SET last_used_at = NOW() WHERE id = $1', [row.id]).catch(() => {});
-            return clientId;
-        }
+    const row = await findApiKeyByToken(clientSecret, { actorId: actor.id });
+    if (!row) {
+        return null;
     }
-    return null;
+    return clientId;
 }
 
 // Issue a deterministic HMAC token for an agent.

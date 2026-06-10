@@ -8,9 +8,9 @@
 const crypto = require('crypto');
 const pool = require('../db');
 const config = require('../services/config');
-const { verify } = require('../services/hashing');
 const { broadcast } = require('../services/events');
 const { resolveByName } = require('../services/actors');
+const { findApiKeyByToken } = require('../services/api-keys');
 
 // Opportunistic heartbeat — update last_seen on every authenticated MCP request.
 // Also refreshes active_since if already set, so the activity spinner stays alive
@@ -67,30 +67,17 @@ function tryHmacAuth(token) {
     return match ? agent : null;
 }
 
-// Try to authenticate with an API key from agent_api_keys.
+// Try to authenticate with an API key from agent_api_keys, via the shared
+// indexed lookup (services/api-keys.js, MEM-136 — one PBKDF2 verify, not a
+// per-row scan; last_used_at stamped by the service).
 // Returns { agent, actorId, permissions } on success, null on failure.
 async function tryApiKeyAuth(token) {
-    const keys = await pool.query(
-        `SELECT ac.name AS agent, ak.actor_id, ak.key_hash, ak.key_salt
-         FROM agent_api_keys ak
-         JOIN actors ac ON ac.id = ak.actor_id
-         WHERE ak.revoked_at IS NULL`
-    );
-
-    for (const row of keys.rows) {
-        if (await verify(token, row.key_salt, row.key_hash)) {
-            // Update last_used_at
-            pool.query(
-                'UPDATE agent_api_keys SET last_used_at = NOW() WHERE actor_id = $1 AND key_salt = $2',
-                [row.actor_id, row.key_salt]
-            ).catch(() => {});
-
-            const permissions = await getPermissions(row.actor_id);
-            return { agent: row.agent, actorId: row.actor_id, permissions };
-        }
+    const row = await findApiKeyByToken(token);
+    if (!row) {
+        return null;
     }
-
-    return null;
+    const permissions = await getPermissions(row.actorId);
+    return { agent: row.agent, actorId: row.actorId, permissions };
 }
 
 async function mcpAuth(req, res, next) {
