@@ -928,7 +928,13 @@ async function runDream() {
                 }
                 // The chunk window is exclusive on `from` (updated_at > from),
                 // so back off 1ms to include the earliest note itself.
-                since = new Date(earliest.rows[0].min_updated.getTime() - 1);
+                // Coerce defensively — a custom pg type parser could hand
+                // back a string instead of a Date (same guard buildNotesLog
+                // applies to updated_at).
+                const minUpdated = earliest.rows[0].min_updated instanceof Date
+                    ? earliest.rows[0].min_updated
+                    : new Date(earliest.rows[0].min_updated);
+                since = new Date(minUpdated.getTime() - 1);
             }
             if (!since) {
                 since = new Date(Date.now() - 24 * 60 * 60 * 1000);
