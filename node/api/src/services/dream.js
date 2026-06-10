@@ -1,5 +1,6 @@
 // Dream processing — nightly conversation log analysis.
-// Reads conversation logs uploaded by agents, sends them through a dream
+// Reads conversation logs uploaded by agents (or, for dream_source=notes
+// agents, their curated notes — see MEM-137), sends them through a dream
 // virtual agent (companion or technical), and saves consolidated insights
 // as notes in the agent's namespace.
 
@@ -178,6 +179,20 @@ function prefilterLog(content) {
     }
 
     return result.join('\n');
+}
+
+// Assemble the notes-mode dream source text (MEM-137). Each curated note
+// gets a header carrying its slug and last-updated date so the dream agent
+// can attribute material to a document, mirroring how conversation logs
+// carry their own timestamps. Rows arrive from the notes-mode source query
+// ordered by updated_at ASC.
+function buildNotesLog(rows) {
+    return rows.map(r => {
+        const updated = r.updated_at instanceof Date
+            ? r.updated_at.toISOString().slice(0, 10)
+            : String(r.updated_at).slice(0, 10);
+        return '## Note: ' + r.slug + ' (updated ' + updated + ')\n\n' + r.content;
+    }).join('\n\n---\n\n');
 }
 
 // Extract unique speakers from conversation logs and group lines by speaker.
@@ -505,21 +520,58 @@ async function processDreamChunk(agent, agentNames, chunk) {
     const { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName } = agentNames;
     const { from, to } = chunk;
     const chunkDateStr = from.toISOString().slice(0, 10);
+    const notesMode = agent.dream_source === 'notes';
 
-    const logs = await pool.query(
-        `SELECT slug, content, created_at FROM documents
-         WHERE namespace = $1 AND slug LIKE 'conversations/%' AND deleted_at IS NULL
-         AND created_at > $2 AND created_at <= $3
-         ORDER BY created_at ASC`,
-        [agent.name, from, to]
-    );
+    let logs;
+    if (notesMode) {
+        // Notes-sourced dreaming (MEM-137): the raw material is the agent's
+        // own curated notes, windowed by updated_at instead of created_at —
+        // so a later human edit to a note re-enters it as fresh material on
+        // the next run. The prefix exclusions are load-bearing: without them
+        // the cron would dream about its own dreams/soul/learnings output and
+        // feed back on itself (the same spiral that bloated the technical
+        // souls). conversations/% is excluded because dream_source selects
+        // ONE source — agents with real conversation logs use the default.
+        logs = await pool.query(
+            `SELECT slug, content, updated_at FROM documents
+             WHERE namespace = $1 AND deleted_at IS NULL
+             AND slug NOT LIKE 'conversations/%'
+             AND slug NOT LIKE 'dreams/%'
+             AND slug NOT LIKE 'context/%'
+             AND slug NOT LIKE 'learnings/%'
+             AND updated_at > $2 AND updated_at <= $3
+             ORDER BY updated_at ASC`,
+            [agent.name, from, to]
+        );
+    } else {
+        logs = await pool.query(
+            `SELECT slug, content, created_at FROM documents
+             WHERE namespace = $1 AND slug LIKE 'conversations/%' AND deleted_at IS NULL
+             AND created_at > $2 AND created_at <= $3
+             ORDER BY created_at ASC`,
+            [agent.name, from, to]
+        );
+    }
     if (logs.rows.length === 0) {
-        logDream('chunk-no-logs', { agent: agent.name, chunkDate: chunkDateStr });
+        logDream('chunk-no-logs', { agent: agent.name, source: agent.dream_source, chunkDate: chunkDateStr });
         return { skipped: true, reason: 'no logs', chunkDate: chunkDateStr };
     }
 
-    const fullLog = logs.rows.map(r => r.content).join('\n\n---\n\n');
-    const filtered = prefilterLog(fullLog);
+    // In notes mode each note gets a slug+date header so the dream agent can
+    // tell documents apart (conversation logs carry their own timestamps;
+    // curated notes don't). No signal prefilter either: SIGNAL_PATTERNS are
+    // conversational markers ("remember", "don't do that") that deliberate
+    // prose rarely contains — filtering would drop most of the material as
+    // "no signals". Curated notes are already distilled; feed them whole.
+    let fullLog;
+    let filtered;
+    if (notesMode) {
+        fullLog = buildNotesLog(logs.rows);
+        filtered = fullLog;
+    } else {
+        fullLog = logs.rows.map(r => r.content).join('\n\n---\n\n');
+        filtered = prefilterLog(fullLog);
+    }
     if (!filtered) {
         logDream('chunk-no-signals', { agent: agent.name, chunkDate: chunkDateStr, logCount: logs.rows.length });
         return { skipped: true, reason: 'no signals', chunkDate: chunkDateStr, logCount: logs.rows.length };
@@ -528,13 +580,17 @@ async function processDreamChunk(agent, agentNames, chunk) {
     logDream('chunk-processing', {
         agent: agent.name,
         mode: agent.dream_mode,
+        source: agent.dream_source,
         chunkDate: chunkDateStr,
         logCount: logs.rows.length,
         originalSize: fullLog.length,
         filteredSize: filtered.length,
     });
 
-    const userMessage = 'Conversation logs for agent "' + agent.name + '" on ' + chunkDateStr + ':\n\n'
+    const userMessage = (notesMode
+        ? 'Curated notes written or updated by agent "' + agent.name + '" on ' + chunkDateStr
+            + ' (this agent\'s memory lives in hand-curated notes — journals, identity documents, session summaries — rather than conversation logs):\n\n'
+        : 'Conversation logs for agent "' + agent.name + '" on ' + chunkDateStr + ':\n\n')
         + filtered
         + '\n\nAlso provide a brief title summarizing the overarching subject of the day.';
 
@@ -664,7 +720,13 @@ async function processDreamChunk(agent, agentNames, chunk) {
     // dream mode (currently companion and sim). Per-chunk for the same
     // reason soul does: per-day relationship updates compose better than
     // one massive end-of-run pass over weeks of conversation.
-    if (peopleAgentName) {
+    //
+    // Skipped in notes mode: extractSpeakers parses conversation formats
+    // (chat timestamps, discussion lines, sim distiller output) and would
+    // misparse curated prose into junk context/people/* files — e.g. any
+    // "word:" line in a journal becomes a phantom speaker. Notes-sourced
+    // dreaming deliberately writes only dreams/* and context/soul.
+    if (peopleAgentName && !notesMode) {
         try {
             const speakers = extractSpeakers(filtered, agent.name);
             for (const [slug, entry] of speakers) {
@@ -703,7 +765,10 @@ async function processDreamChunk(agent, agentNames, chunk) {
     // for sim agents, where every in-world tick is tool-use and the per-turn
     // extractor is silenced by its !isToolUse gate. Distills the day's
     // filtered conversation into a single learnings note keyed by date.
-    if (learningsAgentName) {
+    // Skipped in notes mode for the same containment reason as people above
+    // (and learnings/% is an excluded source prefix — writing it would feed
+    // the next run's input).
+    if (learningsAgentName && !notesMode) {
         const learningsSlug = 'learnings/' + chunkDateStr + '-sim-day';
         try {
             let existingFile = '';
@@ -795,8 +860,8 @@ async function runDream() {
 
     // Find agents with dream mode enabled
     const agents = await pool.query(
-        `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.last_dream_at,
-                agc.startup_instructions
+        `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.dream_source,
+                agc.last_dream_at, agc.startup_instructions
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
          WHERE agc.dream_mode IN ('companion', 'technical', 'sim')`
@@ -840,8 +905,34 @@ async function runDream() {
             // Split the work since last_dream_at into per-UTC-day chunks so an
             // agent that's fallen behind doesn't try to fit weeks of logs into
             // one model call (which is what tripped home with deepseek's 163K
-            // window). First-run agents process the previous 24h.
-            const since = agent.last_dream_at || new Date(Date.now() - 24 * 60 * 60 * 1000);
+            // window). First-run agents process the previous 24h — except in
+            // notes mode, where the first run starts at the earliest curated
+            // note so the soul accretes over the full history in authored
+            // order. (Day-chunks with no notes skip cheaply, so a long span
+            // costs only the days that actually have material.)
+            let since = agent.last_dream_at;
+            if (!since && agent.dream_source === 'notes') {
+                const earliest = await pool.query(
+                    `SELECT MIN(updated_at) AS min_updated FROM documents
+                     WHERE namespace = $1 AND deleted_at IS NULL
+                     AND slug NOT LIKE 'conversations/%'
+                     AND slug NOT LIKE 'dreams/%'
+                     AND slug NOT LIKE 'context/%'
+                     AND slug NOT LIKE 'learnings/%'`,
+                    [agent.name]
+                );
+                if (!earliest.rows[0] || !earliest.rows[0].min_updated) {
+                    logDream('no-notes', { agent: agent.name });
+                    results.push({ agent: agent.name, skipped: true, reason: 'dream_source=notes but namespace has no source notes' });
+                    continue;
+                }
+                // The chunk window is exclusive on `from` (updated_at > from),
+                // so back off 1ms to include the earliest note itself.
+                since = new Date(earliest.rows[0].min_updated.getTime() - 1);
+            }
+            if (!since) {
+                since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            }
             const chunks = computeDailyChunks(since, new Date());
 
             if (chunks.length === 0) {
@@ -967,4 +1058,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, startDreamScheduler, runPersonContextUpdate, findDreamAgent };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent };

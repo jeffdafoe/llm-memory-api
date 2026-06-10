@@ -377,7 +377,7 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     const visibleIds = await getVisibleActorIds(req.actorId);
     // Subqueries for visibility and VA access summaries shown in the agent list
     let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
-                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, s.storage_quota, ac.configuration,
+                s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, ac.dream_source, s.storage_quota, ac.configuration,
                 a.realms,
                 COALESCE(vis.summary, 'self only') AS visibility_summary,
                 va.summary AS va_access_summary
@@ -1519,7 +1519,7 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
     const { name, provider, model, welcome_template_id, welcome_note_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
-            ui_access, password, dream_mode } = req.body;
+            ui_access, password, dream_mode, dream_source } = req.body;
 
     if (!name || !name.trim()) {
         return res.status(400).json({
@@ -1607,8 +1607,8 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
 
         // Create agent configuration
         await client.query(
-            `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration, dream_mode)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            `INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration, dream_mode, dream_source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [actorId, provider || null, model || null,
              isVirtual === true, personality || null,
              parseCostBudget(cost_budget_daily, 'cost_budget_daily'),
@@ -1617,7 +1617,8 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
              max_tokens != null ? safeInt(max_tokens) : null,
              temperature != null ? parseFloat(temperature) : null,
              configuration ? JSON.stringify(sanitizeAgentConfiguration(configuration)) : null,
-             ['none', 'companion', 'technical', 'sim'].includes(dream_mode) ? dream_mode : 'none']
+             ['none', 'companion', 'technical', 'sim'].includes(dream_mode) ? dream_mode : 'none',
+             ['conversation', 'notes'].includes(dream_source) ? dream_source : 'conversation']
         );
 
         // Grant all MCP permissions (full tool access) — non-virtual agents only
@@ -1739,7 +1740,7 @@ router.post('/admin/agents/read', requirePerm('agents', 'read'), adminRoute('age
                 agc.cache_prompts, agc.learning_enabled, agc.max_tokens, agc.temperature,
                 agc.cost_budget_daily, agc.cost_budget_monthly, agc.storage_quota,
                 agc.api_key IS NOT NULL AS has_api_key,
-                agc.dream_mode, ac.realms
+                agc.dream_mode, agc.dream_source, ac.realms
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
          WHERE agc.actor_id = $1`,
@@ -1796,7 +1797,7 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
     const agent = sanitize.agentName(req.body.agent);
     const { personality, api_key, configuration, provider, model,
             cost_budget_daily, cost_budget_monthly, storage_quota,
-            cache_prompts, learning_enabled, max_tokens, temperature, dream_mode, realms } = req.body;
+            cache_prompts, learning_enabled, max_tokens, temperature, dream_mode, dream_source, realms } = req.body;
 
     if (!agent) {
         return res.status(400).json({
@@ -1901,6 +1902,15 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         }
         params.push(dream_mode);
         updates.push(`dream_mode = $${idx++}`);
+    }
+    if (dream_source !== undefined) {
+        if (!['conversation', 'notes'].includes(dream_source)) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'dream_source must be conversation or notes' }
+            });
+        }
+        params.push(dream_source);
+        updates.push(`dream_source = $${idx++}`);
     }
 
     // Realms lives on actors table, not agent_configuration — handle separately
