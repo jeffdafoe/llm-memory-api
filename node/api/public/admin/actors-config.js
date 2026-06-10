@@ -57,7 +57,8 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         { id: 'actors', label: 'Actors', actions: ['read', 'write'], hint: 'Actor management: permissions, visibility, passwords, create/edit actors' },
         { id: 'templates', label: 'Templates', actions: ['read', 'write', 'delete'], hint: 'Welcome and onboarding message templates' },
         { id: 'logs', label: 'Logs', actions: ['read'], hint: 'API request logs and error logs' },
-        { id: 'access', label: 'Access', actions: ['read', 'write'], hint: 'Access requests from the landing page' }
+        { id: 'access', label: 'Access', actions: ['read', 'write'], hint: 'Access requests from the landing page' },
+        { id: 'plugins', label: 'Plugins', actions: ['administer'], hint: 'Village-operator capability: salem umbilical control surface, sim ingestion' }
     ];
 
     // Virtual agent access state
@@ -493,11 +494,23 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
         const row = actorAdminPerms.value[resourceIndex];
         if (!row) return;
         const has = row.granted.includes(action);
+        // Non-hierarchical actions (e.g. plugins:administer) aren't in the rank
+        // ladder — they toggle independently, implying and implied by nothing.
+        const hierarchy = { read: 1, write: 2, delete: 3 };
+        if (!hierarchy[action]) {
+            if (has) {
+                row.granted = row.granted.filter(a => a !== action);
+            } else {
+                row.granted = [...row.granted, action];
+            }
+            return;
+        }
         if (has) {
             // Remove this action and any lower-ranked actions that become orphaned
+            // (keep non-hierarchical grants — they're outside the ladder)
             const rank = { read: 1, write: 2, delete: 3 };
             const removedRank = rank[action];
-            row.granted = row.granted.filter(a => rank[a] < removedRank);
+            row.granted = row.granted.filter(a => !rank[a] || rank[a] < removedRank);
         } else {
             // Add this action and any implied lower actions
             const rank = { read: 1, write: 2, delete: 3 };
