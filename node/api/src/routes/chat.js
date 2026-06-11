@@ -207,6 +207,23 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
             // The VA reply path failed before sending its [Error] feedback
             // chat message. Surface the error directly so the wait-mode
             // caller can react instead of polling for a sentinel.
+            // One allowlisted typed error passes through: the 429
+            // RATE_LIMITED throw from handleDirectChat (ZBBS-WORK-404), so
+            // the engine can classify a cooldown honestly instead of
+            // booking it as malformed. Allowlisted rather than passing any
+            // thrown statusCode through — an arbitrary internal error
+            // carrying statusCode would otherwise widen this route's
+            // public contract. Everything else stays 502 REPLY_FAILED.
+            if (replyErr.code === 'RATE_LIMITED' && replyErr.statusCode === 429) {
+                const error = {
+                    code: 'RATE_LIMITED',
+                    message: replyErr.message || 'Rate limited',
+                };
+                if (replyErr.resumesInSeconds != null) {
+                    error.resumes_in_seconds = replyErr.resumesInSeconds;
+                }
+                return res.status(429).json({ error });
+            }
             return res.status(502).json({
                 error: { code: 'REPLY_FAILED', message: replyErr.message || 'virtual agent reply failed' },
             });

@@ -299,6 +299,18 @@ async function isRateLimited(agentName, sceneId = null) {
     return false;
 }
 
+// Seconds until an agent's active cooldown lifts; 0 when none is active.
+// Only meaningful right after isRateLimited returned true — both limited
+// branches (already-cooling and just-tripped) leave _cooldownUntil set, so
+// wait-mode callers can surface a Retry-After-style hint (ZBBS-WORK-404).
+function rateLimitResumeSeconds(agentName) {
+    const history = callHistory[agentName];
+    if (!history || !history._cooldownUntil) {
+        return 0;
+    }
+    return Math.max(0, Math.ceil((history._cooldownUntil - Date.now()) / 1000));
+}
+
 // Record a provider call for rate limiting.
 //
 // sceneId (optional): the salem per-tick scene id. Only the FIRST call of a new
@@ -2569,7 +2581,21 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             logVA('direct-chat-rate-limited', { agent: virtualAgentName, from: fromAgent });
             await chatSend(virtualAgentName, [fromAgent], null,
                 '[Error] Rate limited — too many API calls. Please wait before trying again.', { sceneId, conversationId, isError: true });
-            return null;
+            // Throw rather than resolve null (ZBBS-WORK-404). Resolving null
+            // gave wait=true callers (the salem engine) a 200 with reply=null,
+            // which the engine could only classify as a malformed response —
+            // rate-limit cooldowns masquerading as model-output failures in
+            // tick telemetry (the misattribution behind reactor-liveness
+            // finding #13). The route maps statusCode/code onto the HTTP
+            // reply so the engine sees an honest 429. The breadcrumb chat row
+            // above still lands for history/admin; non-wait dispatch swallows
+            // the rejection (.catch in chat.js), same as the missing-config
+            // throw below.
+            throw Object.assign(new Error('Rate limited — too many API calls'), {
+                statusCode: 429,
+                code: 'RATE_LIMITED',
+                resumesInSeconds: rateLimitResumeSeconds(agent.agent),
+            });
         }
 
         // Budget check
