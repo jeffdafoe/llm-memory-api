@@ -8,6 +8,22 @@ import svgPanZoom from 'svg-pan-zoom';
 // Initialize mermaid — startOnLoad false since we render manually
 mermaid.initialize({
     startOnLoad: false,
+    // securityLevel 'strict' is mermaid 11.x's default, but pin it explicitly:
+    // it is the layer that DOMPurifies mermaid's own SVG output, and a future
+    // "loose" (the common tweak to enable click handlers / HTML labels) would
+    // silently turn the v-html sink below into stored XSS. Note content is
+    // semi-trusted — agents and the dream pipeline (LLM output) author it.
+    // (ZBBS-WORK-395)
+    securityLevel: 'strict',
+    // Render labels as native SVG <text> instead of <foreignObject> + HTML.
+    // This pairs with the app-level DOMPurify SVG pass at the render site:
+    // with htmlLabels on, flowchart labels are HTML-in-SVG, which the SVG
+    // sanitize profile strips (verified: every flowchart label vanished) and
+    // which DOMPurify's namespace rules won't cleanly re-allow. Pure-SVG
+    // output sanitizes losslessly — verified zero element loss on flowchart,
+    // sequence, and adversarial-payload diagrams. (ZBBS-WORK-395)
+    htmlLabels: false,
+    flowchart: { htmlLabels: false },
     theme: 'base',
     themeVariables: {
         background: '#1c1c30',
@@ -289,7 +305,17 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
                 // mermaid.render needs a unique ID per call
                 const id = 'mermaid-' + Date.now();
                 const { svg } = await mermaid.render(id, diagram);
-                renderedNoteContent.value = svg;
+                // App-level sanitize before the v-html sink, mirroring the
+                // markdown path below — mermaid's internal DOMPurify pass
+                // (securityLevel 'strict') is a single point of failure with
+                // bypass CVEs in its history. The SVG profiles pass mermaid's
+                // pure-SVG output through losslessly BECAUSE htmlLabels is
+                // off in the initialize above (with HTML labels they'd strip
+                // every flowchart label) — keep the two settings together.
+                // (ZBBS-WORK-395)
+                renderedNoteContent.value = DOMPurify.sanitize(svg, {
+                    USE_PROFILES: { svg: true, svgFilters: true },
+                });
                 // Wait for DOM update, then attach pan+zoom
                 await nextTick();
                 initPanZoom();
