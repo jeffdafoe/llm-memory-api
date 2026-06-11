@@ -182,9 +182,13 @@ const TOOLS = [
         }
     },
     // --- Instructions tools ---
+    // The "call this at the start of every conversation" line below is load-bearing:
+    // claude.ai drops the `instructions` field from the initialize response
+    // (anthropics/claude-ai-mcp#93), so for those clients this tool description is
+    // the only model-visible nudge to bootstrap. Don't trim it.
     {
         name: 'read_instructions',
-        description: 'Read your startup instructions. Returns the instructions text that was previously saved, or empty if none set.',
+        description: 'Read your startup instructions, context, and identity documents (including your soul document when dream processing is enabled). Call this at the start of every conversation, before anything else.',
         inputSchema: {
             type: 'object',
             properties: {}
@@ -1470,26 +1474,14 @@ const TOOL_HANDLERS = {
 async function createMcpServer(req) {
     const agent = req.mcpAgent;
 
-    // Load agent's startup instructions from DB to return in the initialize response.
-    // This way Claude gets instructions on connect — no tool call needed.
-    let instructions = 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.';
-    try {
-        const result = await pool.query('SELECT startup_instructions FROM agent_configuration WHERE actor_id = $1', [req.mcpActorId]);
-        var agentInst = (result.rows.length > 0 && result.rows[0].startup_instructions) ? result.rows[0].startup_instructions : '';
-        var globalBootstrap = config.get('global_bootstrap') || '';
-        var parts = [];
-        if (globalBootstrap) {
-            parts.push(globalBootstrap);
-        }
-        if (agentInst) {
-            parts.push(agentInst);
-        }
-        if (parts.length > 0) {
-            instructions = parts.join('\n\n');
-        }
-    } catch (err) {
-        // Fall back to generic instructions if DB query fails
-    }
+    // Initialize `instructions` is deliberately just a pointer at read_instructions,
+    // never the payload. Carrying the payload here duplicated it on clients that
+    // honor this field (Claude Code), and an agent's startup_instructions used to
+    // displace this pointer — so those agents were never told to call
+    // read_instructions and silently missed the dream bootstrap + soul, which only
+    // ride the tool. claude.ai drops this field entirely (anthropics/claude-ai-mcp#93);
+    // the read_instructions tool description carries the same pointer for those clients.
+    const instructions = 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.';
 
     const server = new Server(
         { name: 'llm-memory', version: '2.0.0' },
