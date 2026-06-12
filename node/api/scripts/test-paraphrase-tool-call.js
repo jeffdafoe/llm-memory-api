@@ -75,6 +75,34 @@ assertEqual(
     ''
 );
 
+// A quote-take (quote_id present) settles instantly engine-side
+// (ZBBS-HOME-424 fast path), so the paraphrase states the completed
+// purchase — "offered" misread a done deal as pending and primed a re-buy
+// (ZBBS-HOME-436, the six-meat morning).
+assertEqual(
+    'pay_with_item quote_id (number) + consume_now → bought + ate',
+    paraphraseToolCall('pay_with_item', { qty: 1, item: 'Meat', amount: 4, seller: 'John Ellis', quote_id: 1, consume_now: true }),
+    '(I bought Meat from John Ellis and ate it on the spot)'
+);
+
+assertEqual(
+    'pay_with_item quote_id (Llama-stringified) without consume_now → bought',
+    paraphraseToolCall('pay_with_item', { item: 'Bread', seller: 'John Ellis', quote_id: '3' }),
+    '(I bought Bread from John Ellis)'
+);
+
+assertEqual(
+    'pay_with_item quote_id zero → still an offer',
+    paraphraseToolCall('pay_with_item', { item: 'Water', seller: 'Hannah Boggs', quote_id: 0 }),
+    '(I offered to buy Water from Hannah Boggs)'
+);
+
+assertEqual(
+    'pay_with_item quote_id garbage string → still an offer',
+    paraphraseToolCall('pay_with_item', { item: 'Water', seller: 'Hannah Boggs', quote_id: 'abc' }),
+    '(I offered to buy Water from Hannah Boggs)'
+);
+
 // ---------- move_to (the field-name bug) ----------
 
 assertEqual(

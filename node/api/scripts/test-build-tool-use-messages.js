@@ -59,6 +59,18 @@ check('msg3 has the gap marker', msgs[3].content.startsWith('--- gap: 3h ---\n[5
 const noTime = buildToolUseMessages([{ from_agent: 'salem-engine', message: '# Your turn\nno time' }], NPC);
 check('no sent_at -> raw content, no prefix', noTime[0].content === '# Your turn\nno time');
 
+// ZBBS-HOME-436: a REJECTED quote-take replays its "bought" paraphrase with
+// the [error] tool result immediately adjacent (paired by tool_call_id in
+// stored row order), so the false-success window the wording opens is closed
+// in the same breath. This pins the invariant the paraphrase relies on.
+const rejected = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: agoISO(10) },
+    { from_agent: NPC, message: '', tool_calls: [{ id: 't9', name: 'pay_with_item', input: { item: 'Meat', seller: 'John Ellis', quote_id: 1, consume_now: true } }], sent_at: agoISO(9) },
+    { from_agent: 'salem-engine', message: '[error: quote expired]', tool_call_id: 't9', sent_at: agoISO(9) },
+], NPC);
+check('rejected quote-take: bought paraphrase', rejected[1].content === '(I bought Meat from John Ellis and ate it on the spot)');
+check('rejected quote-take: [error] result directly follows', rejected[2].role === 'tool' && rejected[2].tool_call_id === 't9' && rejected[2].content === '[error: quote expired]');
+
 if (failed > 0) {
     console.log('FAILED ' + failed + ' / ' + (passed + failed));
     failures.forEach(f => console.log(f));
