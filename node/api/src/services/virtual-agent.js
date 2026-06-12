@@ -2128,15 +2128,29 @@ function paraphraseToolCall(name, input) {
         case 'pay_with_item': {
             if (typeof inp.item !== 'string' || !inp.item) return '';
             const seller = (typeof inp.seller === 'string' && inp.seller) ? ' from ' + inp.seller : '';
-            // pay_with_item places an OFFER the seller must accept — the [ok]
-            // tool result means "offer placed", NOT "purchase completed" (the
-            // offer can later "fall through" if the seller never fulfils it).
-            // Paraphrase the attempt, not a success the history may contradict:
-            // "I bought and consumed cheese" while the NPC stays starving (and a
-            // later perception says the offer fell through) is exactly the
-            // incoherent self-history that degrades the model. Llama stringifies
-            // bools, so consume_now may be true or 'true'.
-            const eatNow = (inp.consume_now === true || inp.consume_now === 'true') ? ' to eat now' : '';
+            // Llama stringifies bools, so consume_now may be true or 'true'.
+            const eatsNow = (inp.consume_now === true || inp.consume_now === 'true');
+            // A quote-take (quote_id present) settles INSTANTLY in the engine
+            // (ZBBS-HOME-424 fast path): payment, goods, and any consume_now
+            // meal complete inside the call — "offered" misreads a done deal
+            // as still pending and primes a re-buy (ZBBS-HOME-436, the
+            // six-meat morning). A REJECTED quote-take replays with its
+            // [error] tool result right after this line, which corrects the
+            // claim in the same breath. Llama stringifies numbers too, so
+            // quote_id may be 1 or '1'.
+            const quoteId = Number(inp.quote_id);
+            if (Number.isFinite(quoteId) && quoteId > 0) {
+                const ateNow = eatsNow ? ' and ate it on the spot' : '';
+                return '(I bought ' + inp.item + seller + ateNow + ')';
+            }
+            // Without a quote this places an OFFER the seller must accept —
+            // the [ok] tool result means "offer placed", NOT "purchase
+            // completed" (the offer can later "fall through" if the seller
+            // never fulfils it). Paraphrase the attempt, not a success the
+            // history may contradict: "I bought and consumed cheese" while
+            // the NPC stays starving is exactly the incoherent self-history
+            // that degrades the model.
+            const eatNow = eatsNow ? ' to eat now' : '';
             return '(I offered to buy ' + inp.item + seller + eatNow + ')';
         }
         case 'consume':
