@@ -2410,10 +2410,27 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // continuity layer (actor_narrative_state, actor_relationship)
         // baked into the perception, not from chat history.
         //
+        // salem-generic is the engine's stateless cascade utility VA
+        // (atmosphere prose, noticeboard authoring). Every cascade call
+        // mints a fresh scene_id precisely so calls stay isolated, and the
+        // engine prompt carries all needed context explicitly (the prior
+        // atmosphere / prior notice ride along as anti-anchors) — so
+        // scene-scoped history is correctly EMPTY for it. Before it was
+        // added here (ZBBS-HOME-445), every cascade call dragged the
+        // unscoped window — virtual_agent_chat_history_hours (72 live) ×
+        // LIMIT 50 — of mixed atmosphere+noticeboard transcript into the
+        // prompt (~35KB observed), drowning the instruction.
+        //
         // Persistent VAs (zbbs-prudence-ward, zbbs-john-ellis, etc.) have
         // their own actor row per persona, so the actor1↔actor2 filter
         // already scopes correctly — pass null and keep the time-windowed
-        // history they had pre-fix.
+        // history they had pre-fix. That unscoped history IS their
+        // cross-tick continuity channel, which is why this can't simply
+        // scope on sceneId presence (sim ticks always carry one).
+        //
+        // This slug list is acknowledged tech debt: the classification
+        // belongs on the agent row as configuration, not in code. See
+        // shared/tasks/icebox/memory-api-config-driven-shared-va-classification.
         //
         // Defensive: if a shared-VA call arrives with no sceneId, do NOT
         // fall through to unscoped history (that's the cross-persona
@@ -2422,7 +2439,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // user message, the model just gets no prior context. The engine
         // always passes a sceneId for sim ticks, so this branch only fires
         // for misconfigured callers and is intentionally fail-closed.
-        const isSharedVA = agent.agent === 'salem-visitor' || agent.agent === 'salem-vendor';
+        const isSharedVA = agent.agent === 'salem-visitor' || agent.agent === 'salem-vendor'
+            || agent.agent === 'salem-generic';
         let history;
         if (isSharedVA && !sceneId) {
             history = [];
