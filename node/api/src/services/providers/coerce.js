@@ -112,12 +112,16 @@ function coerceToSchema(value, schema) {
         // plain object is left untouched for downstream validation to reject.
         if (typeof value === 'string') {
             const parsed = tryParseJSON(value);
-            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return value;
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return value;
             value = parsed;
         }
         if (value && typeof value === 'object' && !Array.isArray(value)
             && schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
             for (const key of Object.keys(value)) {
+                // Never assign through a prototype-poisoning key, even if a schema
+                // somehow declared one: value["__proto__"] = ... can invoke the
+                // legacy prototype setter rather than set an own data property.
+                if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
                 // Own-property check only — never read through to Object.prototype for
                 // a model-supplied key like "__proto__".
                 if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) continue;
