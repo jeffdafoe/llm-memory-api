@@ -31,10 +31,14 @@ function asNumber(v) {
 //
 // Coercion is conservative: a value is converted only when it cleanly matches
 // the declared type. Anything that doesn't (a non-numeric string for an integer
-// field, garbage for a boolean) is returned untouched so downstream validation
-// still rejects it with a precise error rather than this layer masking a real
-// problem. Only the observed failure direction (model stringifies numbers/bools)
-// is handled; string fields are left alone.
+// field, garbage for a boolean, a string that isn't valid JSON for an
+// array/object field) is returned untouched so downstream validation still
+// rejects it with a precise error rather than this layer masking a real
+// problem. The handled failure direction is over-stringification: the model
+// emits a scalar (number/bool) — or, for an array/object field, the entire
+// structure — as a JSON string despite the declared type. A field whose schema
+// type is `string` is never touched (the model over-stringifies; it never
+// under-stringifies).
 //
 // Recurses through declared object properties and array items so nested
 // argument shapes coerce too. `value` is a freshly parsed throwaway object, so
@@ -52,6 +56,19 @@ function singleNonNullType(type) {
         if (nonNull.length === 1 && typeof nonNull[0] === 'string') return nonNull[0];
     }
     return null;
+}
+
+// tryParseJSON returns the parsed value, or undefined when `s` isn't valid
+// JSON. Used to recover a whole array/object argument the model
+// over-stringified (emitted the entire structure as a JSON string rather than
+// inline JSON). A non-throwing parse so callers can fall back to leaving the
+// original string in place for strict downstream validation.
+function tryParseJSON(s) {
+    try {
+        return JSON.parse(s);
+    } catch (e) {
+        return undefined;
+    }
 }
 
 function coerceToSchema(value, schema) {
@@ -88,20 +105,45 @@ function coerceToSchema(value, schema) {
         return value;
     }
 
-    if (type === 'object' && value && typeof value === 'object' && !Array.isArray(value)
-        && schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
-        for (const key of Object.keys(value)) {
-            // Own-property check only — never read through to Object.prototype for
-            // a model-supplied key like "__proto__".
-            if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) continue;
-            value[key] = coerceToSchema(value[key], schema.properties[key]);
+    if (type === 'object') {
+        // Llama (via OpenRouter) sometimes over-stringifies a whole object
+        // argument: the entire {...} arrives as a JSON string instead of an
+        // object. Recover it before coercing; a string that doesn't parse to a
+        // plain object is left untouched for downstream validation to reject.
+        if (typeof value === 'string') {
+            const parsed = tryParseJSON(value);
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return value;
+            value = parsed;
+        }
+        if (value && typeof value === 'object' && !Array.isArray(value)
+            && schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
+            for (const key of Object.keys(value)) {
+                // Never assign through a prototype-poisoning key, even if a schema
+                // somehow declared one: value["__proto__"] = ... can invoke the
+                // legacy prototype setter rather than set an own data property.
+                if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+                // Own-property check only — never read through to Object.prototype for
+                // a model-supplied key like "__proto__".
+                if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) continue;
+                value[key] = coerceToSchema(value[key], schema.properties[key]);
+            }
         }
         return value;
     }
 
-    if (type === 'array' && Array.isArray(value) && schema.items) {
-        for (let i = 0; i < value.length; i++) {
-            value[i] = coerceToSchema(value[i], schema.items);
+    if (type === 'array') {
+        // Same over-stringification failure mode: the whole array arrives as a
+        // JSON string. Recover it before coercing items; a string that doesn't
+        // parse to an array is left untouched for downstream validation to reject.
+        if (typeof value === 'string') {
+            const parsed = tryParseJSON(value);
+            if (!Array.isArray(parsed)) return value;
+            value = parsed;
+        }
+        if (Array.isArray(value) && schema.items) {
+            for (let i = 0; i < value.length; i++) {
+                value[i] = coerceToSchema(value[i], schema.items);
+            }
         }
         return value;
     }
