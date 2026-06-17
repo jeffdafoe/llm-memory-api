@@ -1372,19 +1372,28 @@ function isStopUnsupportedError(err) {
     return stopMarkers.some(marker => lower.includes(marker.toLowerCase()));
 }
 
-// Format a timestamp as a compact relative time string.
+// Spell out unit + count, singular at 1 ("1 hour ago", not "1 hours ago").
+function relativeUnit(count, unit) {
+    if (count === 1) return `1 ${unit} ago`;
+    return `${count} ${unit}s ago`;
+}
+
+// Format a timestamp as a relative time string prefixed onto VA chat-history
+// rows. Spelled out rather than compact ([3 hours ago] not [3h]) — weak VA
+// models (llama-3.3-70b) read the words as "this context is stale" more
+// reliably than the dev shorthand.
 function formatRelativeTime(sentAt) {
     const now = Date.now();
     const then = new Date(sentAt).getTime();
     const diffMs = now - then;
     const diffSec = Math.floor(diffMs / 1000);
-    if (diffSec < 60) return '[now]';
+    if (diffSec < 60) return '[just now]';
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `[${diffMin}m]`;
+    if (diffMin < 60) return `[${relativeUnit(diffMin, 'minute')}]`;
     const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `[${diffHr}h]`;
+    if (diffHr < 24) return `[${relativeUnit(diffHr, 'hour')}]`;
     const diffDay = Math.floor(diffHr / 24);
-    return `[${diffDay}d]`;
+    return `[${relativeUnit(diffDay, 'day')}]`;
 }
 
 function renderDirectChatContext(agent) {
