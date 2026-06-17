@@ -65,6 +65,11 @@ router.post('/sim/conversation-day', apiRoute('sim', 'conversation_day', async (
 //   agent    — the memory-api agent NAME (e.g. "zbbs-ezekiel-thorne", or the
 //              shared "salem-vendor"/"salem-visitor"); 1:1 for a stateful NPC,
 //              many-to-one for a shared VA
+//   conversation — the salem huddle id (hud-<hex>) the engine threads onto
+//              conversation_id via /v1/chat/send (ZBBS-HOME-397). The one-call
+//              "every turn in this huddle's conversation" filter (ZBBS-WORK-431),
+//              stable across the huddle's ticks and participants. TEXT, not a UUID
+//              like scene_id, so no format validation — just a length bound.
 //   since    — ISO timestamp lower bound on created_at
 //   until    — EXCLUSIVE upper bound on created_at (strictly earlier-than).
 //              The route returns the newest rows first with no offset
@@ -78,11 +83,12 @@ router.post('/sim/conversation-day', apiRoute('sim', 'conversation_day', async (
 //
 // Returns { turns: [...] }, most-recent first.
 //
-// Indexing note: scene_id (idx_va_calls_scene) and agent (resolves to actor_id →
-// idx_va_calls_actor_created) are both indexed, so the common debug queries are
-// cheap. An UNfiltered call (no scene_id/agent) sorts the whole retention window
-// by created_at — fine for an occasional operator call, but prefer a scene_id or
-// agent filter when you can.
+// Indexing note: scene_id (idx_va_calls_scene), agent (resolves to actor_id →
+// idx_va_calls_actor_created), and conversation (idx_va_calls_conversation, the
+// partial index from MEM-133) are all indexed, so the common debug queries are
+// cheap. An UNfiltered call (no scene_id/agent/conversation) sorts the whole
+// retention window by created_at — fine for an occasional operator call, but
+// prefer a filter when you can.
 router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('sim', 'raw_turns', async (req, res) => {
     const body = req.body || {};
 
@@ -113,6 +119,21 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         }
         conditions.push(`ac.name = $${idx++}`);
         params.push(body.agent);
+    }
+
+    if (body.conversation !== undefined && body.conversation !== null && body.conversation !== '') {
+        if (typeof body.conversation !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'conversation must be a string' } });
+        }
+        // conversation_id is the salem huddle id (hud-<hex>) — a TEXT column (not a
+        // UUID like scene_id), so no format cast is needed. Cap the length on this
+        // privileged debug route the same way `agent` is bounded; the value is a
+        // bound parameter, so there's no injection risk either way.
+        if (body.conversation.length > 200) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'conversation is too long' } });
+        }
+        conditions.push(`c.conversation_id = $${idx++}`);
+        params.push(body.conversation);
     }
 
     if (body.since !== undefined && body.since !== null && body.since !== '') {
