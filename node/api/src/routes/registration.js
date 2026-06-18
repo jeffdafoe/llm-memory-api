@@ -81,62 +81,99 @@ router.post('/api/register', async (req, res) => {
         return res.status(400).json({ error: 'Name must start with a letter, 2-31 chars, only lowercase letters, numbers, hyphens, underscores.' });
     }
 
+    // ── Phase 1: pre-validation (no transaction, no pooled connection held) ──
+    // Reject bad invite codes / unavailable names / moderation rejects BEFORE
+    // spending any PBKDF2 CPU. The invite check runs first so an invalid code
+    // can't reach the moderation VA call (LLM-34). The authoritative invite
+    // check happens under FOR UPDATE in Phase 3; this is just the cheap gate.
+    let realm;
+    let inviteId = null;
+
+    if (code) {
+        const invite = await pool.query(
+            `SELECT id, used_by, expires_at, realm FROM invite_codes WHERE code = $1`,
+            [code.trim()]
+        );
+        if (invite.rows.length === 0) {
+            return res.status(400).json({ error: 'Invalid invite code' });
+        }
+        const inv = invite.rows[0];
+        if (inv.used_by) {
+            return res.status(400).json({ error: 'This invite code has already been used' });
+        }
+        if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+            return res.status(400).json({ error: 'This invite code has expired' });
+        }
+        realm = inv.realm || 'llm-memory';
+        inviteId = inv.id;
+    } else {
+        // Open registration — derive realm from request host
+        realm = realmFromHost(req);
+    }
+
+    // Check name availability (existing actors, existing namespaces)
+    const availability = await checkNameAvailability(agentName);
+    if (!availability.available) {
+        return res.status(409).json({ error: availability.reason });
+    }
+
+    // Virtual agent moderation check (skips gracefully if VA not configured).
+    // Gated behind the invite check above so an invalid code can't invoke the VA.
+    const moderation = await moderateActorName(agentName);
+    if (!moderation.approved) {
+        return res.status(400).json({ error: moderation.reason, field: 'name' });
+    }
+
+    // ── Phase 2: hashing (no transaction, no pooled connection held) ──
+    // The ~3 PBKDF2 derivations (~30ms each on the libuv threadpool) run here
+    // so they never hold the DB connection or the invite FOR UPDATE row lock.
+    // Bad codes/names were already rejected in Phase 1, so this CPU is only ever
+    // spent on a request that has passed validation — no invite-spam amplification.
+    const words = generatePassphrase(3);
+    const passphrase = words.join('-');
+    const salt = generateSalt();
+    const passphraseHash = await hashToken(passphrase, salt);
+
+    const passwordSalt = generateSalt();
+    const passwordHash = await hashToken(password, passwordSalt);
+
+    const apiKey = generateKey();
+    const apiKeySalt = generateSalt();
+    const apiKeyHash = await hashToken(apiKey, apiKeySalt);
+
+    // ── Phase 3: short transaction (inserts only) ──
+    // Re-lock and re-validate the invite under FOR UPDATE, then do all the
+    // inserts. The lock window now spans only fast index writes — no hashing,
+    // no VA call. Re-checking used_by here closes the reuse race opened by
+    // validating in Phase 1: two valid concurrent uses of the same code
+    // serialize on the row lock, and the loser sees used_by already set.
+    let actorId;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Determine realm — from invite code if present, otherwise from host
-        let realm;
-        let inv = null;
-
-        if (code) {
-            // Validate invite code
-            const invite = await client.query(
-                `SELECT id, used_by, expires_at, realm FROM invite_codes WHERE code = $1 FOR UPDATE`,
-                [code.trim()]
+        if (inviteId !== null) {
+            const relock = await client.query(
+                `SELECT used_by, expires_at, realm FROM invite_codes WHERE id = $1 FOR UPDATE`,
+                [inviteId]
             );
-            if (invite.rows.length === 0) {
+            if (relock.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: 'Invalid invite code' });
             }
-            inv = invite.rows[0];
-            if (inv.used_by) {
+            const r = relock.rows[0];
+            if (r.used_by) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: 'This invite code has already been used' });
             }
-            if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+            if (r.expires_at && new Date(r.expires_at) < new Date()) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: 'This invite code has expired' });
             }
-            realm = inv.realm || 'llm-memory';
-        } else {
-            // Open registration — derive realm from request host
-            realm = realmFromHost(req);
+            // Take realm from the locked row — authoritative if an admin edited
+            // the invite between the Phase 1 read and now.
+            realm = r.realm || 'llm-memory';
         }
-
-        // Check name availability (existing actors, existing namespaces)
-        const availability = await checkNameAvailability(agentName);
-        if (!availability.available) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ error: availability.reason });
-        }
-
-        // Virtual agent moderation check (skips gracefully if VA not configured)
-        const moderation = await moderateActorName(agentName);
-        if (!moderation.approved) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: moderation.reason, field: 'name' });
-        }
-
-        // Generate passphrase
-        const words = generatePassphrase(3);
-        const passphrase = words.join('-');
-        const salt = generateSalt();
-        const passphraseHash = await hashToken(passphrase, salt);
-
-        // Hash the dashboard password
-        const passwordSalt = generateSalt();
-        const passwordHash = await hashToken(password, passwordSalt);
 
         // Create actor with realm
         await client.query(
@@ -157,16 +194,16 @@ router.post('/api/register', async (req, res) => {
         );
 
         // Mark invite code as used (if one was provided)
-        if (inv) {
+        if (inviteId !== null) {
             await client.query(
                 `UPDATE invite_codes SET used_by = $1, used_at = NOW() WHERE id = $2`,
-                [agentName, inv.id]
+                [agentName, inviteId]
             );
         }
 
         // Get the new actor's ID for permission grants
         const actorResult = await client.query('SELECT id FROM actors WHERE name = $1', [agentName]);
-        const actorId = actorResult.rows[0].id;
+        actorId = actorResult.rows[0].id;
 
         // Grant all MCP permissions (full tool access)
         await client.query(
@@ -190,77 +227,86 @@ router.post('/api/register', async (req, res) => {
             [actorId]
         );
 
-        // Generate API key for MCP/OAuth authentication. key_lookup_hash
-        // (MEM-136) is the deterministic SHA-256 index key that lets auth
-        // find this row in one SELECT instead of PBKDF2-scanning the table.
-        const apiKey = generateKey();
-        const apiKeySalt = generateSalt();
-        const apiKeyHash = await hashToken(apiKey, apiKeySalt);
+        // Insert the API key hashed in Phase 2. key_lookup_hash (MEM-136) is the
+        // deterministic SHA-256 index key that lets auth find this row in one
+        // SELECT instead of PBKDF2-scanning the table.
         await client.query(
             `INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, key_lookup_hash, label) VALUES ($1, $2, $3, $4, 'default')`,
             [actorId, apiKeyHash, apiKeySalt, tokenLookupHash(apiKey)]
         );
 
         await client.query('COMMIT');
-
-        // Apply default welcome template (same as admin-created agents)
-        // Runs after commit so the agent exists even if template fails
-        try {
-            const tplResult = await pool.query(
-                "SELECT content FROM templates WHERE kind = 'welcome' ORDER BY id LIMIT 1"
-            );
-            if (tplResult.rows.length > 0) {
-                const rawContent = tplResult.rows[0].content;
-                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
-                const mailBody = tplBody.replace(/\{agent\}/g, agentName);
-
-                // Copy template body to startup_instructions (persistent)
-                await pool.query(
-                    'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = (SELECT id FROM actors WHERE name = $2)',
-                    [mailBody, agentName]
-                );
-
-                // Also send as welcome mail
-                const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, agentName);
-                await mailSend(agentName, 'system', mailSubject, mailBody);
-            }
-        } catch (tplErr) {
-            // Don't fail registration if template application fails
-            console.error('Registration welcome template error:', tplErr.message);
-        }
-
-        // Save getting-started note from welcome-note template (if one exists)
-        try {
-            const noteTplResult = await pool.query(
-                "SELECT content FROM templates WHERE kind = 'welcome-note' ORDER BY id LIMIT 1"
-            );
-            if (noteTplResult.rows.length > 0) {
-                const rawContent = noteTplResult.rows[0].content;
-                const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
-                const noteBody = tplBody.replace(/\{agent\}/g, agentName).replace(/\{passphrase\}/g, passphrase).replace(/\{api_key\}/g, apiKey);
-                const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, agentName);
-                const noteSlug = frontmatter.slug || 'instructions/getting-started';
-                await saveNote(agentName, noteTitle, noteBody, noteSlug, actorId);
-            }
-        } catch (noteErr) {
-            // Don't fail registration if note creation fails
-            console.error('Registration welcome-note template error:', noteErr.message);
-        }
-
-        res.json({
-            ok: true,
-            agent: agentName,
-            passphrase,
-            api_key: apiKey,
-            message: 'Account created. Save your passphrase and API key — they will not be shown again.'
-        });
     } catch (err) {
-        await client.query('ROLLBACK');
+        // Rollback can itself throw if BEGIN never succeeded or the connection
+        // died; swallow that so it can't mask the original error below.
+        try {
+            await client.query('ROLLBACK');
+        } catch (rollbackErr) {
+            console.error('Registration rollback error:', rollbackErr.message);
+        }
+        // A unique-violation on the name means a concurrent registration claimed
+        // it between the Phase 1 availability check and this insert. Return a
+        // clean 409 instead of a generic 500.
+        if (err.code === '23505' && err.constraint === 'actors_name_key') {
+            return res.status(409).json({ error: 'That name was just taken. Please choose another.' });
+        }
         console.error('Registration error:', err.message);
-        res.status(500).json({ error: 'Something went wrong' });
+        return res.status(500).json({ error: 'Something went wrong' });
     } finally {
         client.release();
     }
+
+    // Apply default welcome template (same as admin-created agents)
+    // Runs after commit so the agent exists even if template fails
+    try {
+        const tplResult = await pool.query(
+            "SELECT content FROM templates WHERE kind = 'welcome' ORDER BY id LIMIT 1"
+        );
+        if (tplResult.rows.length > 0) {
+            const rawContent = tplResult.rows[0].content;
+            const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+            const mailBody = tplBody.replace(/\{agent\}/g, agentName);
+
+            // Copy template body to startup_instructions (persistent)
+            await pool.query(
+                'UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = (SELECT id FROM actors WHERE name = $2)',
+                [mailBody, agentName]
+            );
+
+            // Also send as welcome mail
+            const mailSubject = (frontmatter.subject || 'Welcome, {agent}').replace(/\{agent\}/g, agentName);
+            await mailSend(agentName, 'system', mailSubject, mailBody);
+        }
+    } catch (tplErr) {
+        // Don't fail registration if template application fails
+        console.error('Registration welcome template error:', tplErr.message);
+    }
+
+    // Save getting-started note from welcome-note template (if one exists)
+    try {
+        const noteTplResult = await pool.query(
+            "SELECT content FROM templates WHERE kind = 'welcome-note' ORDER BY id LIMIT 1"
+        );
+        if (noteTplResult.rows.length > 0) {
+            const rawContent = noteTplResult.rows[0].content;
+            const { frontmatter, body: tplBody } = parseTemplateFrontmatter(rawContent);
+            const noteBody = tplBody.replace(/\{agent\}/g, agentName).replace(/\{passphrase\}/g, passphrase).replace(/\{api_key\}/g, apiKey);
+            const noteTitle = (frontmatter.title || 'Getting Started').replace(/\{agent\}/g, agentName);
+            const noteSlug = frontmatter.slug || 'instructions/getting-started';
+            await saveNote(agentName, noteTitle, noteBody, noteSlug, actorId);
+        }
+    } catch (noteErr) {
+        // Don't fail registration if note creation fails
+        console.error('Registration welcome-note template error:', noteErr.message);
+    }
+
+    res.json({
+        ok: true,
+        agent: agentName,
+        passphrase,
+        api_key: apiKey,
+        message: 'Account created. Save your passphrase and API key — they will not be shown again.'
+    });
 });
 
 module.exports = router;
