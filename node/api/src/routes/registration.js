@@ -154,7 +154,7 @@ router.post('/api/register', async (req, res) => {
 
         if (inviteId !== null) {
             const relock = await client.query(
-                `SELECT used_by, expires_at FROM invite_codes WHERE id = $1 FOR UPDATE`,
+                `SELECT used_by, expires_at, realm FROM invite_codes WHERE id = $1 FOR UPDATE`,
                 [inviteId]
             );
             if (relock.rows.length === 0) {
@@ -170,6 +170,9 @@ router.post('/api/register', async (req, res) => {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: 'This invite code has expired' });
             }
+            // Take realm from the locked row — authoritative if an admin edited
+            // the invite between the Phase 1 read and now.
+            realm = r.realm || 'llm-memory';
         }
 
         // Create actor with realm
@@ -234,7 +237,13 @@ router.post('/api/register', async (req, res) => {
 
         await client.query('COMMIT');
     } catch (err) {
-        await client.query('ROLLBACK');
+        // Rollback can itself throw if BEGIN never succeeded or the connection
+        // died; swallow that so it can't mask the original error below.
+        try {
+            await client.query('ROLLBACK');
+        } catch (rollbackErr) {
+            console.error('Registration rollback error:', rollbackErr.message);
+        }
         // A unique-violation on the name means a concurrent registration claimed
         // it between the Phase 1 availability check and this insert. Return a
         // clean 409 instead of a generic 500.
