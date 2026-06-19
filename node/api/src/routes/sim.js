@@ -78,10 +78,20 @@ router.post('/sim/conversation-day', apiRoute('sim', 'conversation_day', async (
 //              pass the oldest row's created_at verbatim to fetch the next
 //              page back without repeating the boundary row.
 //   status   — 'success' | 'error'
-//   limit    — default 5, capped at 50 (each turn carries ~5k+14k chars of
-//              prompt, so the default stays small; raise it deliberately)
+//   limit    — when a bounding filter (scene_id / conversation / agent) is set,
+//              the result is bounded and indexed, so it returns the FULL set by
+//              default (capped at 500) — the point of those filters is "give me
+//              this conversation," not a 5-row tail of it. With NO bounding
+//              filter the result is a tail of the whole retention window and
+//              each turn carries ~5k+14k chars of prompt, so it stays small:
+//              default 5, capped at 50 — raise it deliberately, or use `until`
+//              as a walk-back cursor.
 //
-// Returns { turns: [...] }, most-recent first.
+// Returns { turns: [...], returned, has_more }, most-recent first. has_more is
+// true when more rows matched than were returned (a partial tail), so truncation
+// is never silent. It's computed by over-fetching one row rather than a COUNT,
+// so the unfiltered tail still stops at the index instead of scanning the whole
+// retention window just to report a total.
 //
 // Indexing note: scene_id (idx_va_calls_scene), agent (resolves to actor_id →
 // idx_va_calls_actor_created), and conversation (idx_va_calls_conversation, the
@@ -97,6 +107,11 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
     const conditions = [];
     const params = [];
     let idx = 1;
+    // A scene_id / conversation / agent filter bounds the result to a single
+    // scene, conversation, or NPC — each backed by an index — so a bounded query
+    // returns its complete set by default (see the limit handling below). since /
+    // until / status narrow but don't bound, so they don't flip this.
+    let hasBoundingFilter = false;
 
     if (body.scene_id !== undefined && body.scene_id !== null && body.scene_id !== '') {
         const sceneId = String(body.scene_id);
@@ -105,6 +120,7 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         }
         conditions.push(`c.scene_id = $${idx++}`);
         params.push(sceneId);
+        hasBoundingFilter = true;
     }
 
     if (body.agent !== undefined && body.agent !== null && body.agent !== '') {
@@ -119,6 +135,7 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         }
         conditions.push(`ac.name = $${idx++}`);
         params.push(body.agent);
+        hasBoundingFilter = true;
     }
 
     if (body.conversation !== undefined && body.conversation !== null && body.conversation !== '') {
@@ -134,6 +151,7 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         }
         conditions.push(`c.conversation_id = $${idx++}`);
         params.push(body.conversation);
+        hasBoundingFilter = true;
     }
 
     if (body.since !== undefined && body.since !== null && body.since !== '') {
@@ -162,9 +180,25 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         params.push(body.status);
     }
 
-    const limit = Math.min(Math.max(safeInt(body.limit) ?? 5, 1), 50);
+    // A bounded query (scene_id / conversation / agent) returns its complete set
+    // by default — the filter already scopes it to one conversation/scene/NPC, so
+    // a small default would silently truncate the very thing the caller asked for.
+    // An unbounded query is a tail of the whole retention window where each row
+    // carries a multi-KB prompt, so it stays small by default and must be raised
+    // deliberately.
+    const unboundedDefaultLimit = 5;
+    const unboundedMaxLimit = 50;
+    const boundedMaxLimit = 500;
+    const defaultLimit = hasBoundingFilter ? boundedMaxLimit : unboundedDefaultLimit;
+    const maxLimit = hasBoundingFilter ? boundedMaxLimit : unboundedMaxLimit;
+    const limit = Math.min(Math.max(safeInt(body.limit) ?? defaultLimit, 1), maxLimit);
+
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    // Over-fetch one row past the limit to detect truncation without a COUNT. A
+    // COUNT(*) OVER() would force the unfiltered tail to walk the whole retention
+    // window instead of stopping at the index after `limit` rows; the one extra
+    // row is enough to set has_more, and it's trimmed before returning.
     const result = await pool.query(
         `SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,
                 c.system_prompt, c.user_message, c.response,
@@ -176,9 +210,12 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
          ${where}
          ORDER BY c.created_at DESC
          LIMIT $${idx}`,
-        [...params, limit]
+        [...params, limit + 1]
     );
-    res.json({ turns: result.rows });
+
+    const hasMore = result.rows.length > limit;
+    const turns = hasMore ? result.rows.slice(0, limit) : result.rows;
+    res.json({ turns, returned: turns.length, has_more: hasMore });
 }));
 
 module.exports = router;
