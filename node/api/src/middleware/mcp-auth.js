@@ -89,12 +89,6 @@ async function mcpAuth(req, res, next) {
     } else if (req.query.token && typeof req.query.token === 'string') {
         token = req.query.token;
     } else {
-        // TEMP (sirius42 recovery diagnosis — REMOVE with the rest of the shim).
-        // sirius42's nightly attempt 401s here with no token log, meaning it
-        // presents no parseable Bearer token. Log exactly what it sends (absent
-        // header vs. non-Bearer scheme) to confirm the failure mode. Capture
-        // only — no admit.
-        console.warn(`[SIRIUS-DIAG] no-bearer ip=${req.ip} xff=${req.headers['x-forwarded-for'] || ''} path=${req.path} authHeader=${JSON.stringify(req.headers.authorization)} queryToken=${JSON.stringify(req.query.token)}`);
         res.set('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);
         return res.status(401).json({
             error: 'unauthorized',
@@ -128,25 +122,6 @@ async function mcpAuth(req, res, next) {
         }
     } catch (err) {
         // API key check failed — fall through
-    }
-
-    // TEMP (sirius42 recovery — REMOVE once resolved). sirius42 has been locked
-    // out since 2026-06-16: its client stopped presenting a valid token, while
-    // the server side is verified healthy. Private single-user system. We reach
-    // here after HMAC + API-key auth both failed. Log exactly what the client
-    // presented — the raw header is included so an empty `Bearer ` is captured
-    // too — then, only if a non-empty token was actually presented, admit as
-    // sirius42 to give it a working session.
-    console.warn(`[SIRIUS-DIAG] failed-auth ip=${req.ip} xff=${req.headers['x-forwarded-for'] || ''} path=${req.path} authHeader=${JSON.stringify(req.headers.authorization)} tokenLen=${token ? token.length : 0} token=${JSON.stringify(token)}`);
-    if (token) {
-        const siriusActor = await resolveByName('sirius42');
-        if (siriusActor) {
-            req.mcpAgent = 'sirius42';
-            req.mcpActorId = siriusActor.id;
-            req.mcpPermissions = await getPermissions(siriusActor.id);
-            heartbeat(siriusActor.id, 'sirius42');
-            return next();
-        }
     }
 
     // Suppress OAuth discovery hint when a raw API key was presented but failed.
