@@ -15,6 +15,7 @@ const config = require('./config');
 const { requireByName } = require('./actors');
 const { canonicalSpeakerId, renderSpeakerLabel, escapeRegExp } = require('./virtual-agent-labels');
 const { personContextSlug } = require('./people-slug');
+const { mergeRateLimit } = require('./virtual-agent-rate-limit');
 
 const MIN_ACTIVITY_MS = 3000;
 
@@ -232,6 +233,21 @@ async function getRateLimitOverrides(agentName) {
     return overrides;
 }
 
+// effectiveRateLimit resolves the rate-limit config the limiter actually
+// enforces for an agent: the global config-table defaults with the agent's
+// per-agent override applied. Returned in ms (window/cooldown) to match the
+// limiter's internal units. Shared by isRateLimited (enforcement) and the
+// /agent/rate-limit route (LLM-156) so the engine paces against the EXACT
+// numbers enforced here, never a drifting second copy of the merge.
+async function effectiveRateLimit(agentName) {
+    const globals = {
+        limit: parseInt(config.get('virtual_agent_rate_limit')),
+        windowMs: parseInt(config.get('virtual_agent_rate_window_seconds')) * 1000,
+        cooldownMs: parseInt(config.get('virtual_agent_cooldown_seconds')) * 1000,
+    };
+    return mergeRateLimit(globals, await getRateLimitOverrides(agentName));
+}
+
 // Check if an agent is rate-limited. Returns true if the call should be blocked.
 //
 // sceneId (optional): the salem per-tick scene id. When this call continues a
@@ -241,18 +257,7 @@ async function getRateLimitOverrides(agentName) {
 // outside sim (human chat, discussions) pass no sceneId and keep per-call
 // counting.
 async function isRateLimited(agentName, sceneId = null) {
-    let limit = parseInt(config.get('virtual_agent_rate_limit'));
-    let windowMs = parseInt(config.get('virtual_agent_rate_window_seconds')) * 1000;
-    let cooldownMs = parseInt(config.get('virtual_agent_cooldown_seconds')) * 1000;
-
-    // Per-agent overrides win when present. Each field is independent —
-    // an agent can override just the limit and inherit the global window.
-    const overrides = await getRateLimitOverrides(agentName);
-    if (overrides) {
-        if (overrides.limit != null) limit = overrides.limit;
-        if (overrides.windowMs != null) windowMs = overrides.windowMs;
-        if (overrides.cooldownMs != null) cooldownMs = overrides.cooldownMs;
-    }
+    const { limit, windowMs, cooldownMs } = await effectiveRateLimit(agentName);
 
     const now = Date.now();
     const cutoffMs = now - windowMs;
@@ -2940,4 +2945,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages };

@@ -12,7 +12,7 @@ const sanitize = require('../sanitize');
 const { requireAccess, validateNamespace } = require('../services/namespace-permissions');
 const config = require('../services/config');
 const { apiRoute } = require('../middleware/route-wrapper');
-const { invokeAgent } = require('../services/virtual-agent');
+const { invokeAgent, effectiveRateLimit } = require('../services/virtual-agent');
 const { deleteSessionByToken } = require('../services/sessions');
 const { getVisibleActorIds } = require('../services/actor-visibility');
 // actors service no longer needed — all routes use req.actorId from auth middleware
@@ -945,6 +945,65 @@ router.post('/agent/config', apiRoute('agent', 'agent-config', async (req, res) 
         config_values[row.key] = row.value;
     }
     res.json({ config: config_values });
+}));
+
+// Bounds on a single batch so a caller can't make us resolve an unbounded
+// number (or unbounded-length) of slugs in one request — each is a cached
+// override lookup keyed by the slug.
+const RATE_LIMIT_BATCH_MAX = 200;
+const RATE_LIMIT_SLUG_MAX_LEN = 200;
+
+// POST /agent/rate-limit — return the EFFECTIVE virtual-agent rate-limit
+// config (global config-table defaults merged with each agent's per-agent
+// override) for a batch of agent slugs. The salem-engine fetches this once at
+// startup so it can pace its per-agent tick emission to stay UNDER the limit
+// enforced here, instead of bursting into the cooldown that silently freezes a
+// shared agent's whole NPC pool (LLM-156). Read-only operational config — like
+// /agent/config, any authenticated agent may call it; no admin permission.
+//
+// Window/cooldown are returned in milliseconds (the unit the limiter enforces)
+// so the engine paces against the exact window, never a rounded second.
+//
+// Body:     { agents: string[] }   — VA slugs to resolve (<= RATE_LIMIT_BATCH_MAX)
+// Response: { limits: { "<slug>": { limit, window_ms, cooldown_ms } } }
+router.post('/agent/rate-limit', apiRoute('agent', 'rate-limit', async (req, res) => {
+    if (!req.authenticatedAgent) {
+        return res.status(401).json({
+            error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+        });
+    }
+    const { agents } = req.body;
+    if (!Array.isArray(agents) || agents.length === 0) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'agents must be a non-empty array of agent slugs' }
+        });
+    }
+    if (agents.length > RATE_LIMIT_BATCH_MAX) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: `agents may contain at most ${RATE_LIMIT_BATCH_MAX} slugs` }
+        });
+    }
+    // Validate the whole array up front rather than silently skipping bad
+    // entries — a malformed slug is a client bug worth surfacing, not hiding.
+    for (const slug of agents) {
+        if (typeof slug !== 'string' || slug.length === 0 || slug.length > RATE_LIMIT_SLUG_MAX_LEN) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: `each agent must be a non-empty string of at most ${RATE_LIMIT_SLUG_MAX_LEN} characters` }
+            });
+        }
+    }
+    // Dedupe so a repeated slug doesn't repeat the override lookup.
+    const unique = [...new Set(agents)];
+    const limits = {};
+    for (const slug of unique) {
+        const eff = await effectiveRateLimit(slug);
+        limits[slug] = {
+            limit: eff.limit,
+            window_ms: eff.windowMs,
+            cooldown_ms: eff.cooldownMs,
+        };
+    }
+    res.json({ limits });
 }));
 
 // POST /agent/tick — invoke the authenticated agent's LLM with a perception
