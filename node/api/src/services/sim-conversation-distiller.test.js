@@ -74,6 +74,18 @@ test('took_break renders the reason as an aside, or a bare line without one', ()
     assert.equal(narrateEvent({ kind: 'took_break', payload: {} }, ACTOR), '(stepped away)');
 });
 
+test('labored renders the reward earned and the employer (LLM-162)', () => {
+    assert.equal(
+        narrateEvent({ kind: 'labored', payload: { employer: 'Hannah', amount: 5, duration_min: 30 } }, ACTOR),
+        '(earned 5 coins working for Hannah)'
+    );
+    // amount 1 singularizes; a missing employer degrades to "someone".
+    assert.equal(
+        narrateEvent({ kind: 'labored', payload: { amount: 1 } }, ACTOR),
+        '(earned 1 coin working for someone)'
+    );
+});
+
 test('an unknown kind falls back to generic narration (never a dropped frame)', () => {
     assert.equal(narrateEvent({ kind: 'summoned', payload: {} }, ACTOR), '(Ezekiel Crane summoned)');
 });

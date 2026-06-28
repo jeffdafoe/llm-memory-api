@@ -43,8 +43,8 @@
 // emitted 'speak' / 'pay' / 'move_to' / 'act' / 'chore' / 'object_refresh';
 // the v2 rewrite renamed the verbs and added a few, so narrateEvent also
 // handles 'spoke' / 'paid' / 'walked' / 'delivered' / 'consumed' /
-// 'took_break' (ZBBS-WORK-376). Unknown kinds get a generic narration so a
-// new engine action_type doesn't silently drop frames.
+// 'took_break' (ZBBS-WORK-376) / 'labored' (LLM-162). Unknown kinds get a
+// generic narration so a new engine action_type doesn't silently drop frames.
 
 const pool = require('../db');
 const { saveNote } = require('./documents');
@@ -276,6 +276,20 @@ function narrateEvent(event, actorName) {
             // rendered as a narration aside when present.
             const reason = sanitizeNarration(p.reason || '');
             return reason ? '(stepped away, ' + reason + ')' : '(stepped away)';
+        }
+        case 'labored': {
+            // LLM-162: a completed solicit_work labor contract (settle-at-
+            // completion). Worker-side row — the worker EARNED the reward
+            // working for the employer. payload: { employer, amount,
+            // duration_min }. The counterpart to the buyer-side 'paid' line;
+            // duration is audit-only (recorded in agent_action_log) and left
+            // out of the narration — the economic fact (who paid, how much) is
+            // what the dream memory needs.
+            // Fall back AFTER sanitizing: a blank/unsafe employer string
+            // sanitizes to '' and would otherwise render "working for " — the
+            // || 'someone' has to come last so it catches that case too.
+            const employer = sanitizeLabel(p.employer || p.recipient || '') || 'someone';
+            return '(earned ' + formatCoins(p.amount) + ' working for ' + employer + ')';
         }
         case 'enter_huddle':
             // Membership marker (ZBBS-094). The engine writes one of
