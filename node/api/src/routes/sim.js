@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const pool = require('../db');
 const { distillSimConversationDay } = require('../services/sim-conversation-distiller');
+const { synthesizeSimSoul } = require('../services/sim-soul');
 const { apiRoute } = require('../middleware/route-wrapper');
 const { requirePerm } = require('../services/admin-permissions');
 const { safeInt } = require('../util');
@@ -216,6 +217,45 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
     const hasMore = result.rows.length > limit;
     const turns = hasMore ? result.rows.slice(0, limit) : result.rows;
     res.json({ turns, returned: turns.length, has_more: hasMore });
+}));
+
+// POST /v1/sim/soul
+//
+// Synthesizes one shared-NPC "soul" (the accreting `## Who you are` identity
+// prose) from engine-supplied material, via the system-owned `dream-sim-soul`
+// agent — the same agent that writes stateful NPCs' souls. See
+// services/sim-soul.js for the full rationale; this route is a thin
+// authenticate-and-dispatch wrapper.
+//
+// The salem engine calls this once per in-sim day per shared NPC, off the hot
+// path. Stateful NPCs get their soul from the nightly dream cron in their own
+// namespace; shared VAs (one agent, many bodies) can't, so the engine hands
+// their day material here and stores the returned prose in
+// actor_narrative_state.about_me.
+//
+// Gated on plugins/administer — same capability as /sim/raw-turns, reachable by
+// the salem engine's authenticated AGENT session (not the web admin UI).
+//
+// Body: { character_description, current_soul?, day_snapshot, day? }
+//   character_description — live-composed per-actor seed (name + dwelling +
+//                           household); the soul prompt's load-bearing anchor.
+//   current_soul          — prior about_me; empty/absent on a first run.
+//   day_snapshot          — the day's material (events + per-peer impressions).
+//   day                   — optional YYYY-MM-DD label for the snapshot header.
+//
+// Returns { text } — the synthesized soul, or { text: '', rejected } when the
+// model produced nothing usable (empty reply or reasoning-preamble leakage), in
+// which case the engine keeps the prior soul. 400 on missing/oversized fields,
+// 503 when the soul agent isn't configured.
+router.post('/sim/soul', requirePerm('plugins', 'administer'), apiRoute('sim', 'soul', async (req, res) => {
+    const body = req.body || {};
+    const result = await synthesizeSimSoul({
+        characterDescription: body.character_description,
+        currentSoul: body.current_soul,
+        daySnapshot: body.day_snapshot,
+        day: body.day,
+    });
+    res.json(result);
 }));
 
 module.exports = router;

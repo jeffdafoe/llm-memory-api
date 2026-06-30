@@ -1064,4 +1064,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble };
