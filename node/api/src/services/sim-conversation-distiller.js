@@ -43,8 +43,9 @@
 // emitted 'speak' / 'pay' / 'move_to' / 'act' / 'chore' / 'object_refresh';
 // the v2 rewrite renamed the verbs and added a few, so narrateEvent also
 // handles 'spoke' / 'paid' / 'walked' / 'delivered' / 'consumed' /
-// 'took_break' (ZBBS-WORK-376) / 'labored' (LLM-162). Unknown kinds get a
-// generic narration so a new engine action_type doesn't silently drop frames.
+// 'took_break' (ZBBS-WORK-376) / 'labored' (LLM-162) / 'solicited_work' /
+// 'hired' (LLM-213). Unknown kinds get a generic narration so a new engine
+// action_type doesn't silently drop frames.
 
 const pool = require('../db');
 const { saveNote } = require('./documents');
@@ -290,6 +291,26 @@ function narrateEvent(event, actorName) {
             // || 'someone' has to come last so it catches that case too.
             const employer = sanitizeLabel(p.employer || p.recipient || '') || 'someone';
             return '(earned ' + formatCoins(p.amount) + ' working for ' + employer + ')';
+        }
+        case 'solicited_work': {
+            // LLM-213: a worker offered to work for the employer (solicit_work
+            // minted a live pending offer). Worker-side row. payload: { employer,
+            // amount, duration_min }. The offer-time counterpart to the settle-
+            // time 'labored' line; no coins move yet, so the beat is the ARRANGEMENT
+            // (who, how much asked). duration is audit-only, left out of narration.
+            // Same post-sanitize '|| someone' fallback as 'labored' so a blank/
+            // unsafe employer still renders a clean line.
+            const employer = sanitizeLabel(p.employer || p.recipient || '') || 'someone';
+            return '(offered to work for ' + employer + ' for ' + formatCoins(p.amount) + ')';
+        }
+        case 'hired': {
+            // LLM-213: an employer took a worker on (accept_work flipped the offer
+            // to Working). Employer-side row. payload: { worker, amount,
+            // duration_min }. No coins move at accept — the reward settles at
+            // completion ('labored') — but the arrangement is the beat the dream
+            // memory needs.
+            const worker = sanitizeLabel(p.worker || p.recipient || '') || 'someone';
+            return '(hired ' + worker + ' for ' + formatCoins(p.amount) + ')';
         }
         case 'enter_huddle':
             // Membership marker (ZBBS-094). The engine writes one of
