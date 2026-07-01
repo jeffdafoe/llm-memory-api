@@ -86,6 +86,30 @@ test('labored renders the reward earned and the employer (LLM-162)', () => {
     );
 });
 
+test('solicited_work renders the offer to the employer for the reward (LLM-213)', () => {
+    assert.equal(
+        narrateEvent({ kind: 'solicited_work', payload: { employer: 'Hannah', amount: 4, duration_min: 240 } }, ACTOR),
+        '(offered to work for Hannah for 4 coins)'
+    );
+    // amount 1 singularizes; a missing employer degrades to "someone".
+    assert.equal(
+        narrateEvent({ kind: 'solicited_work', payload: { amount: 1 } }, ACTOR),
+        '(offered to work for someone for 1 coin)'
+    );
+});
+
+test('hired renders the worker taken on and the reward (LLM-213)', () => {
+    assert.equal(
+        narrateEvent({ kind: 'hired', payload: { worker: 'Hannah', amount: 4, duration_min: 240 } }, ACTOR),
+        '(hired Hannah for 4 coins)'
+    );
+    // a missing worker degrades to "someone".
+    assert.equal(
+        narrateEvent({ kind: 'hired', payload: { amount: 6 } }, ACTOR),
+        '(hired someone for 6 coins)'
+    );
+});
+
 test('an unknown kind falls back to generic narration (never a dropped frame)', () => {
     assert.equal(narrateEvent({ kind: 'summoned', payload: {} }, ACTOR), '(Ezekiel Crane summoned)');
 });
