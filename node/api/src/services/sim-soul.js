@@ -97,6 +97,22 @@ function optionalString(name, val) {
     }
 }
 
+// optionalDay validates the snapshot's date label. Unlike the other fields,
+// `day` is NOT prompt material — it's interpolated verbatim into the
+// "## Dream snapshot for <day>" section header, so an unconstrained string
+// (newlines, markdown, instruction text) would let an operator-gated caller
+// inject prompt content through the header. Accept only a strict YYYY-MM-DD
+// label; reject anything else. Absent/empty is allowed (the header falls back
+// to a bare "## Dream snapshot").
+function optionalDay(name, val) {
+    if (val === undefined || val === null || val === '') {
+        return;
+    }
+    if (typeof val !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        throw Object.assign(new Error(name + ' must be YYYY-MM-DD'), { statusCode: 400 });
+    }
+}
+
 // synthesizeSimSoul resolves the shared soul agent, runs the assembled material
 // through it, and returns the prose. Returns `{ text }` on success, or
 // `{ text: '', rejected }` when the model produced nothing usable — the engine
@@ -111,7 +127,7 @@ async function synthesizeSimSoul({ characterDescription, currentSoul, daySnapsho
     requireString('character_description', characterDescription);
     requireString('day_snapshot', daySnapshot);
     optionalString('current_soul', currentSoul);
-    optionalString('day', day);
+    optionalDay('day', day);
 
     const { findDreamAgent, detectReasoningPreamble } = require('./dream');
     const { invokeAgent } = require('./virtual-agent');
