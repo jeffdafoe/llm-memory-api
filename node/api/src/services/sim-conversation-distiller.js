@@ -184,6 +184,17 @@ function formatLaborReward(p) {
             if (!line || typeof line !== 'object') {
                 continue;
             }
+            // Validate the line before pushing (code_review): an empty/
+            // sanitized-away item name or a non-positive/non-numeric qty must
+            // be SKIPPED, not rendered — otherwise a malformed line both
+            // contributes junk text ("something") and suppresses the
+            // coins-only fallback below. formatItemQty still does the
+            // rendering (and its own sanitize) on the raw name.
+            const item = sanitizeLabel(line.item || '');
+            const qty = Number(line.qty);
+            if (!item || !Number.isInteger(qty) || qty < 1) {
+                continue;
+            }
             parts.push(formatItemQty(line.item, line.qty));
         }
     }

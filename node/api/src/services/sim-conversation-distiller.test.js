@@ -157,6 +157,44 @@ test('labor rewards carry the in-kind goods leg (LLM-225)', () => {
         narrateEvent({ kind: 'labored', payload: { employer: 'Hannah', amount: 5, reward_items: 'porridge' } }, ACTOR),
         '(earned 5 coins working for Hannah)'
     );
+    // Malformed LINES are skipped too (code_review): empty item, qty 0,
+    // non-numeric qty — none may render junk or suppress the coin fallback.
+    assert.equal(
+        narrateEvent(
+            {
+                kind: 'labored',
+                payload: {
+                    employer: 'Hannah',
+                    amount: 5,
+                    reward_items: [
+                        { item: '', qty: 1 },
+                        { item: 'porridge', qty: 0 },
+                        { item: 'porridge', qty: 'x' },
+                    ],
+                },
+            },
+            ACTOR
+        ),
+        '(earned 5 coins working for Hannah)'
+    );
+    // A valid line still renders when it rides next to malformed ones.
+    assert.equal(
+        narrateEvent(
+            {
+                kind: 'labored',
+                payload: {
+                    employer: 'Hannah',
+                    amount: 0,
+                    reward_items: [
+                        { item: '', qty: 1 },
+                        { item: 'porridge', qty: 1 },
+                    ],
+                },
+            },
+            ACTOR
+        ),
+        '(earned porridge working for Hannah)'
+    );
 });
 
 test('an unknown kind falls back to generic narration (never a dropped frame)', () => {
