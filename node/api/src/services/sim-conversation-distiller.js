@@ -168,6 +168,50 @@ function formatItemQty(item, qty) {
     return name;
 }
 
+// Format a labor reward's payment terms (LLM-225): coins, in-kind goods
+// (payload.reward_items — [{item, qty}], present only when the hire's pay
+// carries goods), or both. Coins-only payloads render exactly as before
+// ("5 coins"), so pre-LLM-225 rows and coin hires are unchanged; an in-kind
+// leg joins with commas/"and" ("porridge and 2 coins"). A goods-only reward
+// (amount 0) drops the coin leg rather than rendering "and 0 coins". Each
+// goods line goes through formatItemQty, so item names are sanitized the
+// same way the delivered/consumed lines are. Shared by the labored /
+// solicited_work / hired cases.
+function formatLaborReward(p) {
+    const parts = [];
+    if (Array.isArray(p.reward_items)) {
+        for (const line of p.reward_items) {
+            if (!line || typeof line !== 'object') {
+                continue;
+            }
+            // Validate the line before pushing (code_review): an empty/
+            // sanitized-away item name or a non-positive/non-numeric qty must
+            // be SKIPPED, not rendered — otherwise a malformed line both
+            // contributes junk text ("something") and suppresses the
+            // coins-only fallback below. formatItemQty still does the
+            // rendering (and its own sanitize) on the raw name.
+            const item = sanitizeLabel(line.item || '');
+            const qty = Number(line.qty);
+            if (!item || !Number.isInteger(qty) || qty < 1) {
+                continue;
+            }
+            parts.push(formatItemQty(line.item, line.qty));
+        }
+    }
+    const coins = Number(p.amount);
+    // Keep the coin leg whenever it is positive, and also as the sole
+    // fallback when there are no goods lines — an all-empty reward then
+    // renders "0 coins", matching the pre-LLM-225 behavior for malformed
+    // payloads instead of producing an empty phrase.
+    if ((Number.isFinite(coins) && coins > 0) || parts.length === 0) {
+        parts.push(formatCoins(p.amount));
+    }
+    if (parts.length === 1) {
+        return parts[0];
+    }
+    return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+}
+
 // Map an engine event to a narration line. Returns the (action) text
 // rendered in parens, or null when the event carries no narrative
 // signal (look_around, done with no state change). Keeping this in
@@ -290,7 +334,7 @@ function narrateEvent(event, actorName) {
             // sanitizes to '' and would otherwise render "working for " — the
             // || 'someone' has to come last so it catches that case too.
             const employer = sanitizeLabel(p.employer || p.recipient || '') || 'someone';
-            return '(earned ' + formatCoins(p.amount) + ' working for ' + employer + ')';
+            return '(earned ' + formatLaborReward(p) + ' working for ' + employer + ')';
         }
         case 'solicited_work': {
             // LLM-213: a worker offered to work for the employer (solicit_work
@@ -301,7 +345,7 @@ function narrateEvent(event, actorName) {
             // Same post-sanitize '|| someone' fallback as 'labored' so a blank/
             // unsafe employer still renders a clean line.
             const employer = sanitizeLabel(p.employer || p.recipient || '') || 'someone';
-            return '(offered to work for ' + employer + ' for ' + formatCoins(p.amount) + ')';
+            return '(offered to work for ' + employer + ' for ' + formatLaborReward(p) + ')';
         }
         case 'hired': {
             // LLM-213: an employer took a worker on (accept_work flipped the offer
@@ -310,7 +354,7 @@ function narrateEvent(event, actorName) {
             // completion ('labored') — but the arrangement is the beat the dream
             // memory needs.
             const worker = sanitizeLabel(p.worker || p.recipient || '') || 'someone';
-            return '(hired ' + worker + ' for ' + formatCoins(p.amount) + ')';
+            return '(hired ' + worker + ' for ' + formatLaborReward(p) + ')';
         }
         case 'enter_huddle':
             // Membership marker (ZBBS-094). The engine writes one of
