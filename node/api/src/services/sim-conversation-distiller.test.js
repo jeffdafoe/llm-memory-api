@@ -110,6 +110,55 @@ test('hired renders the worker taken on and the reward (LLM-213)', () => {
     );
 });
 
+test('labor rewards carry the in-kind goods leg (LLM-225)', () => {
+    // Goods + coins: the porridge leg joins the coin leg with "and".
+    assert.equal(
+        narrateEvent(
+            {
+                kind: 'labored',
+                payload: { employer: 'Hannah', amount: 2, reward_items: [{ item: 'porridge', qty: 1 }] },
+            },
+            ACTOR
+        ),
+        '(earned porridge and 2 coins working for Hannah)'
+    );
+    // Goods-only (amount 0): the coin leg is dropped, not rendered "and 0 coins".
+    assert.equal(
+        narrateEvent(
+            {
+                kind: 'solicited_work',
+                payload: { employer: 'Hannah', amount: 0, reward_items: [{ item: 'porridge', qty: 2 }] },
+            },
+            ACTOR
+        ),
+        '(offered to work for Hannah for 2x porridge)'
+    );
+    // Several goods lines join with commas before the coin leg.
+    assert.equal(
+        narrateEvent(
+            {
+                kind: 'hired',
+                payload: {
+                    worker: 'Anne',
+                    amount: 1,
+                    reward_items: [
+                        { item: 'porridge', qty: 1 },
+                        { item: 'bread', qty: 2 },
+                    ],
+                },
+            },
+            ACTOR
+        ),
+        '(hired Anne for porridge, 2x bread and 1 coin)'
+    );
+    // A malformed reward_items shape degrades to the coin leg (the
+    // pre-LLM-225 rendering), never an empty phrase.
+    assert.equal(
+        narrateEvent({ kind: 'labored', payload: { employer: 'Hannah', amount: 5, reward_items: 'porridge' } }, ACTOR),
+        '(earned 5 coins working for Hannah)'
+    );
+});
+
 test('an unknown kind falls back to generic narration (never a dropped frame)', () => {
     assert.equal(narrateEvent({ kind: 'summoned', payload: {} }, ACTOR), '(Ezekiel Crane summoned)');
 });
