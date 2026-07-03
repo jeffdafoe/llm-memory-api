@@ -337,7 +337,11 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
     if (!response.ok) {
         const errorText = await response.text();
         logProvider('api-error', { provider: 'openai', model, endpoint: 'responses', status: response.status, error: errorText });
-        throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
+        // status rides on the error so retryWithBackoff can pick a
+        // cadence by error class (deterministic 4xx vs outage/429).
+        const apiError = new Error(`OpenAI API error ${response.status}: ${errorText}`);
+        apiError.status = response.status;
+        throw apiError;
     }
 
     const data = await response.json();
@@ -511,7 +515,11 @@ function createCall(model, apiKey, configuration) {
         if (!response.ok) {
             const errorText = await response.text();
             logProvider('api-error', { provider: 'openai', model, status: response.status, error: errorText });
-            throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
+            // status rides on the error so retryWithBackoff can pick a
+            // cadence by error class (deterministic 4xx vs outage/429).
+            const apiError = new Error(`OpenAI API error ${response.status}: ${errorText}`);
+            apiError.status = response.status;
+            throw apiError;
         }
 
         const data = await response.json();

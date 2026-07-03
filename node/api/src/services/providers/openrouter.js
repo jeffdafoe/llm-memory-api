@@ -212,7 +212,11 @@ function createCall(model, apiKey, configuration) {
         if (!response.ok) {
             var errorText = await response.text();
             logProvider('api-error', { provider: 'openrouter', model, status: response.status, error: errorText });
-            throw new Error('OpenRouter API error ' + response.status + ': ' + errorText);
+            // status rides on the error so retryWithBackoff can pick a
+            // cadence by error class (deterministic 4xx vs outage/429).
+            var apiError = new Error('OpenRouter API error ' + response.status + ': ' + errorText);
+            apiError.status = response.status;
+            throw apiError;
         }
 
         var data = await response.json();

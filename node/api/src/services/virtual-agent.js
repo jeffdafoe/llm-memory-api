@@ -103,11 +103,44 @@ async function setAgentStatus(agentName, status) {
 // Optional onFirstFailure(err, retryInfo) callback fires once after the first
 // attempt fails, before the backoff sleep — lets callers send immediate feedback
 // (e.g. "retrying, please wait") so the sender isn't left in the dark.
+// Parse a comma-separated seconds cadence ("60,600,3600") into millisecond
+// delays, falling back to the default when the config value is missing or
+// yields no usable numbers (a garbage setting must not become a NaN sleep).
+function parseBackoffCadence(str, fallback) {
+    const parsed = String(str || fallback)
+        .split(',')
+        .map(s => parseInt(s.trim(), 10) * 1000)
+        .filter(n => Number.isFinite(n) && n >= 0);
+    if (parsed.length > 0) {
+        return parsed;
+    }
+    return String(fallback).split(',').map(s => parseInt(s.trim(), 10) * 1000);
+}
+
+// Sum the delays a retry run would actually sleep: retryCount draws from the
+// cadence, clamped to its last entry when the cadence is shorter than the
+// retry count (mirrors the delay lookup in retryWithBackoff).
+function totalDelayMsForCadence(cadence, retryCount) {
+    let total = 0;
+    for (let n = 0; n < retryCount; n++) {
+        total += cadence[Math.min(n, cadence.length - 1)];
+    }
+    return total;
+}
+
 async function retryWithBackoff(agentName, fn, onFirstFailure) {
     // Retry count is derived from the backoff cadence — each entry = one retry.
     // e.g. "300,600,3600" means 3 retries at 5m, 10m, 1h intervals.
-    const backoffStr = config.get('virtual_agent_retry_backoff') || '60,600,3600';
-    const backoffs = backoffStr.split(',').map(s => parseInt(s.trim()) * 1000);
+    const backoffs = parseBackoffCadence(config.get('virtual_agent_retry_backoff'), '60,600,3600');
+    // Deterministic client errors (4xx, except 429) retry on a much shorter
+    // cadence. The main cadence is sized for provider outages and rate
+    // limits; a 4xx means the provider REJECTED the request, and for
+    // OpenRouter that is often a routing lottery (e.g. landing on a strict
+    // single-tool-call upstream — LLM-237) where an immediate re-roll
+    // usually succeeds and a 5-minute wait is pure NPC dead air. 429 stays
+    // on the slow cadence — retrying a rate limit quickly makes it worse.
+    // Providers attach the HTTP status to thrown API errors as err.status.
+    const clientErrorBackoffs = parseBackoffCadence(config.get('virtual_agent_retry_backoff_client_error'), '5,15,60');
 
     let lastError;
     for (let attempt = 0; attempt <= backoffs.length; attempt++) {
@@ -121,12 +154,24 @@ async function retryWithBackoff(agentName, fn, onFirstFailure) {
             lastError = err;
             if (attempt < backoffs.length) {
                 await setAgentStatus(agentName, 'degraded');
-                const delay = backoffs[attempt];
+                // Pick the cadence per-failure: a run can start as a 400 and
+                // later hit a 429, so each sleep matches the error it follows.
+                // The retry COUNT always comes from the main cadence length.
+                let cadence = backoffs;
+                if (typeof err.status === 'number' && err.status >= 400 && err.status < 500 && err.status !== 429) {
+                    cadence = clientErrorBackoffs;
+                }
+                const delay = cadence[Math.min(attempt, cadence.length - 1)];
                 logVA('retry-backoff', { agent: agentName, attempt: attempt + 1, retries: backoffs.length, delayMs: delay, error: err.message });
 
-                // Notify caller on first failure so they can send feedback to the sender
+                // Notify caller on first failure so they can send feedback
+                // to the sender. Total wait sums the delays the run would
+                // ACTUALLY sleep — backoffs.length draws from the chosen
+                // cadence with last-entry clamping — not the cadence's raw
+                // entries, which under-reports when the cadence is shorter
+                // than the retry count.
                 if (attempt === 0 && onFirstFailure) {
-                    const totalSeconds = Math.ceil(backoffs.reduce((a, b) => a + b, 0) / 1000);
+                    const totalSeconds = Math.ceil(totalDelayMsForCadence(cadence, backoffs.length) / 1000);
                     try {
                         await onFirstFailure(err, { retriesRemaining: backoffs.length, totalSeconds });
                     } catch (cbErr) {
@@ -2234,41 +2279,6 @@ function buildToolUseMessages(history, npcAgentName) {
                         },
                     };
                 });
-                // Salience: prior speak/move_to/chore tool_calls carry
-                // semantically-meaningful payloads (the spoken text, the
-                // destination, the chore type). When this row was emitted
-                // the model had it as a fresh decision; when REPLAYED in
-                // history, the payload sits inside tool_calls.arguments
-                // JSON, which the language-modeling pass treats as "an
-                // action I took" rather than "speech I said" / "place I
-                // walked to". That makes it weak as a "do not repeat
-                // yourself" signal — observed empirically as NPC
-                // tavernkeepers re-greeting the same person across
-                // adjacent turns with near-identical phrasing.
-                //
-                // Mirror the payload into `content` as a brief
-                // first-person paraphrase. tool_calls structure is
-                // preserved (protocol-correct, paired with tool results
-                // by tool_call_id); content adds the natural-language
-                // copy so prior speeches/moves are salient as language
-                // alongside other agents' speech in the perception's
-                // "Recent:" block. Skip look_around (tool result IS the
-                // information) and done (no payload worth surfacing).
-                if (!msg.content) {
-                    const lines = [];
-                    for (const tc of raw) {
-                        const input = (typeof tc.input === 'string')
-                            ? safeParseJSON(tc.input)
-                            : (tc.input || {});
-                        const paraphrase = paraphraseToolCall(tc.name, input);
-                        if (paraphrase) {
-                            lines.push(paraphrase);
-                        }
-                    }
-                    if (lines.length > 0) {
-                        msg.content = lines.join('\n');
-                    }
-                }
             }
             messages.push(msg);
         } else if (row.tool_call_id) {
@@ -2300,6 +2310,130 @@ function buildToolUseMessages(history, npcAgentName) {
             prevSentAt = row.sent_at;
         }
     }
+    // Two replay-time post-passes (order matters): split parallel tool_calls
+    // into single-call pieces first, then mirror each call's payload into its
+    // piece's content. Both operate on the OpenAI-shape messages, not the
+    // stored rows — nothing is persisted.
+    return mirrorToolCallSalience(splitParallelToolCallTurns(messages));
+}
+
+// Split a replayed assistant turn carrying MULTIPLE tool_calls into one
+// assistant message per call, each immediately followed by its own tool
+// result (matched by tool_call_id).
+//
+// Why: Llama-3.3 legitimately emits parallel tool calls — speak + done in
+// one turn is the engine tick protocol's normal shape — and providers that
+// support that serve the generating request fine. But OpenRouter routes
+// EVERY request independently across upstream providers, and several
+// vLLM-based upstreams (Nebius, AkashML, WandB) reject any request whose
+// message history contains an assistant message with more than one
+// tool_call: "This model only supports single tool-calls at once!". When
+// the remaining upstreams are rate-limited, OpenRouter exhausts the list
+// and returns a hard 400 — so one permissive provider's response poisons
+// the replayed history for every follow-up request that routes strictly
+// (LLM-237: observed live as minutes of NPC dead air while the call sat in
+// retry backoff). Splitting at replay time keeps the stored row faithful
+// while making the outbound request renderable by every upstream.
+//
+// The engine writes a tool-result row for every tool_call id (including
+// "[done]" and "[skipped: post_terminal]"), so id-matched interleaving is
+// normally lossless. If a result is missing (e.g. a generation triggered
+// while later results were still in flight), a neutral "[no result
+// recorded]" result is synthesized so no piece carries a dangling
+// tool_call — strict providers reject unanswered tool_calls too.
+function splitParallelToolCallTurns(messages) {
+    const out = [];
+    let i = 0;
+    while (i < messages.length) {
+        const msg = messages[i];
+        const isParallelTurn = msg.role === 'assistant'
+            && Array.isArray(msg.tool_calls)
+            && msg.tool_calls.length > 1;
+        if (!isParallelTurn) {
+            out.push(msg);
+            i++;
+            continue;
+        }
+
+        // Collect the run of tool results that follows this turn, keyed by
+        // the tool_call id each one answers.
+        const resultsById = new Map();
+        let j = i + 1;
+        while (j < messages.length && messages[j].role === 'tool') {
+            resultsById.set(messages[j].tool_call_id, messages[j]);
+            j++;
+        }
+
+        msg.tool_calls.forEach(function (toolCall, index) {
+            const piece = { role: 'assistant', content: '', tool_calls: [toolCall] };
+            if (index === 0) {
+                // Model-authored text (rare — Llama usually emits empty
+                // content alongside tool calls) belongs to the turn as a
+                // whole; keep it on the first piece only.
+                piece.content = msg.content || '';
+            }
+            out.push(piece);
+            const result = resultsById.get(toolCall.id);
+            if (result) {
+                out.push(result);
+                resultsById.delete(toolCall.id);
+            } else {
+                // Neutral, non-affirming placeholder — "[ok]" could falsely
+                // confirm an action whose real result arrives only in the
+                // next generation's history.
+                out.push({ role: 'tool', tool_call_id: toolCall.id, content: '[no result recorded]' });
+            }
+        });
+
+        // Defensive: a trailing tool result answering none of this turn's
+        // calls shouldn't exist, but keep it rather than silently dropping
+        // history. Map preserves insertion order.
+        for (const leftover of resultsById.values()) {
+            out.push(leftover);
+        }
+
+        i = j;
+    }
+    return out;
+}
+
+// Salience: prior speak/move_to/chore tool_calls carry semantically-
+// meaningful payloads (the spoken text, the destination, the chore type).
+// When the row was emitted the model had it as a fresh decision; when
+// REPLAYED in history, the payload sits inside tool_calls.arguments JSON,
+// which the language-modeling pass treats as "an action I took" rather than
+// "speech I said" / "place I walked to". That makes it weak as a "do not
+// repeat yourself" signal — observed empirically as NPC tavernkeepers
+// re-greeting the same person across adjacent turns with near-identical
+// phrasing.
+//
+// Mirror the payload into `content` as a brief first-person paraphrase.
+// tool_calls structure is preserved (protocol-correct, paired with tool
+// results by tool_call_id); content adds the natural-language copy so prior
+// speeches/moves are salient as language alongside other agents' speech in
+// the perception's "Recent:" block. Skip look_around (tool result IS the
+// information) and done (no payload worth surfacing). Runs AFTER
+// splitParallelToolCallTurns so each split piece gets the paraphrase of its
+// own call; model-authored content is never overwritten.
+function mirrorToolCallSalience(messages) {
+    for (const msg of messages) {
+        if (msg.role !== 'assistant' || !Array.isArray(msg.tool_calls) || msg.content) {
+            continue;
+        }
+        const lines = [];
+        for (const toolCall of msg.tool_calls) {
+            const paraphrase = paraphraseToolCall(
+                toolCall.function.name,
+                safeParseJSON(toolCall.function.arguments)
+            );
+            if (paraphrase) {
+                lines.push(paraphrase);
+            }
+        }
+        if (lines.length > 0) {
+            msg.content = lines.join('\n');
+        }
+    }
     return messages;
 }
 
@@ -2329,7 +2463,9 @@ function safeParseJSON(s) {
 // role: user (a perception/text from engine→VA, never a tool_result —
 // tool_results are role: tool in OpenAI shape). Tool-use protocol
 // completeness inside the kept window is preserved by buildToolUseMessages
-// itself (each row maps 1:1, no slicing); this only handles the boundary.
+// itself (rows map to messages with no slicing; the parallel-tool-call
+// split keeps every call paired with its result); this only handles the
+// boundary.
 function trimHeadToUserMessage(messages) {
     let firstUser = 0;
     while (firstUser < messages.length && messages[firstUser].role !== 'user') {

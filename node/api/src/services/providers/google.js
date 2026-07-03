@@ -335,7 +335,11 @@ function createCall(model, apiKey, configuration) {
         if (!response.ok) {
             const errorText = await response.text();
             logProvider('api-error', { provider: 'google', model, status: response.status, error: errorText });
-            throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+            // status rides on the error so retryWithBackoff can pick a
+            // cadence by error class (deterministic 4xx vs outage/429).
+            const apiError = new Error(`Gemini API error ${response.status}: ${errorText}`);
+            apiError.status = response.status;
+            throw apiError;
         }
 
         const data = await response.json();
