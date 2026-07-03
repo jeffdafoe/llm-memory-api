@@ -247,7 +247,7 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
 // model produced nothing usable (empty reply or reasoning-preamble leakage), in
 // which case the engine keeps the prior soul. 400 on missing/oversized fields,
 // 503 when the soul agent isn't configured.
-router.post('/sim/soul', requirePerm('plugins', 'administer'), apiRoute('sim', 'soul', async (req, res) => {
+router.post('/sim/soul', apiRoute('sim', 'soul', async (req, res) => {
     const body = req.body || {};
     const result = await synthesizeSimSoul({
         characterDescription: body.character_description,
