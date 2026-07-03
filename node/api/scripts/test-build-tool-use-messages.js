@@ -115,7 +115,8 @@ check('parallel+text: model text on first piece', parallelText[1].content === 'L
 check('parallel+text: second piece empty, not duplicated', parallelText[3].content === '');
 
 // A missing tool result (generation raced the engine's result writes) gets a
-// synthesized neutral "[ok]" so no split piece carries a dangling tool_call.
+// synthesized neutral, non-affirming result so no split piece carries a
+// dangling tool_call.
 const missingResult = buildToolUseMessages([
     { from_agent: 'salem-engine', message: '# Your turn', sent_at: agoISO(10) },
     { from_agent: NPC, message: '', tool_calls: [
@@ -125,11 +126,27 @@ const missingResult = buildToolUseMessages([
     { from_agent: 'salem-engine', message: '[ok]', tool_call_id: 'm1', sent_at: agoISO(9) },
 ], NPC);
 check('missing result: still fully paired (5 messages)', missingResult.length === 5);
-check('missing result: synthesized [ok] for the unanswered call',
-    missingResult[4].role === 'tool' && missingResult[4].tool_call_id === 'm2' && missingResult[4].content === '[ok]');
+check('missing result: synthesized placeholder for the unanswered call',
+    missingResult[4].role === 'tool' && missingResult[4].tool_call_id === 'm2' && missingResult[4].content === '[no result recorded]');
 
 // Single-call turns are untouched by the split (shape identical to before).
 check('single-call turn untouched', msgs[1].tool_calls.length === 1 && msgs[2].role === 'tool');
+
+// Stored tool_call input may be a JSON STRING (provider-dependent), not an
+// object. The OpenAI-shape conversion passes strings through unchanged, so
+// the salience mirror (which now parses function.arguments) must produce the
+// same paraphrase as it did when it read the neutral row directly.
+const stringInput = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: agoISO(10) },
+    { from_agent: NPC, message: '', tool_calls: [
+        { id: 's1', name: 'speak', input: '{"text":"Fresh bread today!"}' },
+    ], sent_at: agoISO(9) },
+    { from_agent: 'salem-engine', message: '[ok]', tool_call_id: 's1', sent_at: agoISO(9) },
+], NPC);
+check('string input: paraphrase survives the OpenAI-shape round trip',
+    stringInput[1].content === '(I said aloud: "Fresh bread today!")');
+check('string input: arguments not double-encoded',
+    stringInput[1].tool_calls[0].function.arguments === '{"text":"Fresh bread today!"}');
 
 if (failed > 0) {
     console.log('FAILED ' + failed + ' / ' + (passed + failed));

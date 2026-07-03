@@ -103,11 +103,35 @@ async function setAgentStatus(agentName, status) {
 // Optional onFirstFailure(err, retryInfo) callback fires once after the first
 // attempt fails, before the backoff sleep — lets callers send immediate feedback
 // (e.g. "retrying, please wait") so the sender isn't left in the dark.
+// Parse a comma-separated seconds cadence ("60,600,3600") into millisecond
+// delays, falling back to the default when the config value is missing or
+// yields no usable numbers (a garbage setting must not become a NaN sleep).
+function parseBackoffCadence(str, fallback) {
+    const parsed = String(str || fallback)
+        .split(',')
+        .map(s => parseInt(s.trim(), 10) * 1000)
+        .filter(n => Number.isFinite(n) && n >= 0);
+    if (parsed.length > 0) {
+        return parsed;
+    }
+    return String(fallback).split(',').map(s => parseInt(s.trim(), 10) * 1000);
+}
+
+// Sum the delays a retry run would actually sleep: retryCount draws from the
+// cadence, clamped to its last entry when the cadence is shorter than the
+// retry count (mirrors the delay lookup in retryWithBackoff).
+function totalDelayMsForCadence(cadence, retryCount) {
+    let total = 0;
+    for (let n = 0; n < retryCount; n++) {
+        total += cadence[Math.min(n, cadence.length - 1)];
+    }
+    return total;
+}
+
 async function retryWithBackoff(agentName, fn, onFirstFailure) {
     // Retry count is derived from the backoff cadence — each entry = one retry.
     // e.g. "300,600,3600" means 3 retries at 5m, 10m, 1h intervals.
-    const backoffStr = config.get('virtual_agent_retry_backoff') || '60,600,3600';
-    const backoffs = backoffStr.split(',').map(s => parseInt(s.trim()) * 1000);
+    const backoffs = parseBackoffCadence(config.get('virtual_agent_retry_backoff'), '60,600,3600');
     // Deterministic client errors (4xx, except 429) retry on a much shorter
     // cadence. The main cadence is sized for provider outages and rate
     // limits; a 4xx means the provider REJECTED the request, and for
@@ -116,8 +140,7 @@ async function retryWithBackoff(agentName, fn, onFirstFailure) {
     // usually succeeds and a 5-minute wait is pure NPC dead air. 429 stays
     // on the slow cadence — retrying a rate limit quickly makes it worse.
     // Providers attach the HTTP status to thrown API errors as err.status.
-    const clientErrorStr = config.get('virtual_agent_retry_backoff_client_error') || '5,15,60';
-    const clientErrorBackoffs = clientErrorStr.split(',').map(s => parseInt(s.trim()) * 1000);
+    const clientErrorBackoffs = parseBackoffCadence(config.get('virtual_agent_retry_backoff_client_error'), '5,15,60');
 
     let lastError;
     for (let attempt = 0; attempt <= backoffs.length; attempt++) {
@@ -141,9 +164,14 @@ async function retryWithBackoff(agentName, fn, onFirstFailure) {
                 const delay = cadence[Math.min(attempt, cadence.length - 1)];
                 logVA('retry-backoff', { agent: agentName, attempt: attempt + 1, retries: backoffs.length, delayMs: delay, error: err.message });
 
-                // Notify caller on first failure so they can send feedback to the sender
+                // Notify caller on first failure so they can send feedback
+                // to the sender. Total wait sums the delays the run would
+                // ACTUALLY sleep — backoffs.length draws from the chosen
+                // cadence with last-entry clamping — not the cadence's raw
+                // entries, which under-reports when the cadence is shorter
+                // than the retry count.
                 if (attempt === 0 && onFirstFailure) {
-                    const totalSeconds = Math.ceil(cadence.reduce((a, b) => a + b, 0) / 1000);
+                    const totalSeconds = Math.ceil(totalDelayMsForCadence(cadence, backoffs.length) / 1000);
                     try {
                         await onFirstFailure(err, { retriesRemaining: backoffs.length, totalSeconds });
                     } catch (cbErr) {
@@ -2310,9 +2338,9 @@ function buildToolUseMessages(history, npcAgentName) {
 // The engine writes a tool-result row for every tool_call id (including
 // "[done]" and "[skipped: post_terminal]"), so id-matched interleaving is
 // normally lossless. If a result is missing (e.g. a generation triggered
-// while later results were still in flight), a neutral "[ok]" result is
-// synthesized so no piece carries a dangling tool_call — strict providers
-// reject unanswered tool_calls too.
+// while later results were still in flight), a neutral "[no result
+// recorded]" result is synthesized so no piece carries a dangling
+// tool_call — strict providers reject unanswered tool_calls too.
 function splitParallelToolCallTurns(messages) {
     const out = [];
     let i = 0;
@@ -2350,7 +2378,10 @@ function splitParallelToolCallTurns(messages) {
                 out.push(result);
                 resultsById.delete(toolCall.id);
             } else {
-                out.push({ role: 'tool', tool_call_id: toolCall.id, content: '[ok]' });
+                // Neutral, non-affirming placeholder — "[ok]" could falsely
+                // confirm an action whose real result arrives only in the
+                // next generation's history.
+                out.push({ role: 'tool', tool_call_id: toolCall.id, content: '[no result recorded]' });
             }
         });
 
