@@ -372,10 +372,18 @@ function narrateEvent(event, actorName) {
             // raw-payload format.
             return null;
         default:
-            // Unknown action_type — surface as generic narration so the
-            // line isn't silently lost. Better than dropping; signals
-            // that a new engine action_type needs a real mapping here.
-            return '(' + actorName + ' ' + sanitizeLabel(event.kind) + ')';
+            // A durable action_type with no narration mapping. Do NOT surface it
+            // as generic "(Name kind)" text: loadDayEventsSQL pushes ALL of an
+            // actor's durable rows regardless of type, so generic narration leaks
+            // feed/audit-only beats into NPC dream memory. That is exactly how
+            // gathered (LLM-273) and stayed_open (ZBBS-WORK-387) were already
+            // producing "(Josiah gathered)" noise, and how LLM-283's offered /
+            // declined / countered would too. Drop it from the dream transcript
+            // and log so an unmapped kind surfaces in server logs, not in
+            // production dreams. A beat that SHOULD feed dreams gets an explicit
+            // case above.
+            log('sim-distill-unmapped-kind', { kind: event.kind, speaker: event.speaker });
+            return null;
     }
 }
 

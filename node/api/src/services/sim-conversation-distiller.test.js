@@ -197,8 +197,19 @@ test('labor rewards carry the in-kind goods leg (LLM-225)', () => {
     );
 });
 
-test('an unknown kind falls back to generic narration (never a dropped frame)', () => {
-    assert.equal(narrateEvent({ kind: 'summoned', payload: {} }, ACTOR), '(Ezekiel Crane summoned)');
+test('an unmapped kind is dropped from dreams, not surfaced as generic noise', () => {
+    // LLM-283: loadDayEventsSQL pushes ALL of an actor's durable rows regardless
+    // of type, so the old generic-narration default leaked feed/audit-only beats
+    // into NPC dream memory. Unmapped kinds now drop to null. This covers
+    // LLM-283's negotiation beats, the pre-existing gathered / stayed_open leaks,
+    // and any future durable type until it earns an explicit mapping.
+    assert.equal(narrateEvent({ kind: 'offered', payload: {} }, ACTOR), null);
+    assert.equal(narrateEvent({ kind: 'declined', payload: {} }, ACTOR), null);
+    assert.equal(narrateEvent({ kind: 'countered', payload: {} }, ACTOR), null);
+    assert.equal(narrateEvent({ kind: 'gathered', payload: {} }, ACTOR), null);
+    assert.equal(narrateEvent({ kind: 'stayed_open', payload: {} }, ACTOR), null);
+    assert.equal(narrateEvent({ kind: 'summoned', payload: {} }, ACTOR), null);
+    assert.equal(narrateEvent({ kind: 'some_future_beat', payload: {} }, ACTOR), null);
 });
 
 test('pure-perception kinds still render nothing', () => {
