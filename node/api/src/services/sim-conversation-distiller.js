@@ -212,6 +212,12 @@ function formatLaborReward(p) {
     return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
 }
 
+// Tracks unmapped action_types already logged this process, so the default
+// case's "needs a mapping" signal fires once per kind rather than once per row —
+// a busy day of gathered / stayed_open rows would otherwise spam the log. Reset
+// only on restart; a single line per kind is enough to prompt adding a mapping.
+const loggedUnmappedKinds = new Set();
+
 // Map an engine event to a narration line. Returns the (action) text
 // rendered in parens, or null when the event carries no narrative
 // signal (look_around, done with no state change). Keeping this in
@@ -379,10 +385,14 @@ function narrateEvent(event, actorName) {
             // gathered (LLM-273) and stayed_open (ZBBS-WORK-387) were already
             // producing "(Josiah gathered)" noise, and how LLM-283's offered /
             // declined / countered would too. Drop it from the dream transcript
-            // and log so an unmapped kind surfaces in server logs, not in
-            // production dreams. A beat that SHOULD feed dreams gets an explicit
-            // case above.
-            log('sim-distill-unmapped-kind', { kind: event.kind, speaker: event.speaker });
+            // and log ONCE per kind (loggedUnmappedKinds) so an unmapped kind
+            // surfaces in server logs without spamming a line per row, and never
+            // in production dreams. A beat that SHOULD feed dreams gets an
+            // explicit case above.
+            if (!loggedUnmappedKinds.has(event.kind)) {
+                loggedUnmappedKinds.add(event.kind);
+                log('sim-distill-unmapped-kind', { kind: event.kind });
+            }
             return null;
     }
 }
