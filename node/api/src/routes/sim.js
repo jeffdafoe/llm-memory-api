@@ -170,14 +170,21 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         // no format cast. It's a bounding filter (indexed by idx_va_calls_sim_actor):
         // "every turn this in-world character took," which for a shared-VA NPC is
         // the attribution the agent-name filter can't give (salem-vendor backs
-        // many characters). Length-bounded like `agent` / `conversation`; the value
-        // is a bound parameter, so there's no injection risk either way.
-        if (body.sim_actor.length > 200) {
+        // many characters). Trim + cap 100 to MATCH the write path (chat.js stores
+        // a trimmed value <=100), so a padded filter like " alice " still hits the
+        // stored "alice" and a value that could never have been written is rejected;
+        // the value is a bound parameter, so there's no injection risk either way.
+        const simActor = body.sim_actor.trim();
+        if (simActor.length > 100) {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor is too long' } });
         }
-        conditions.push(`c.sim_actor_id = $${idx++}`);
-        params.push(body.sim_actor);
-        hasBoundingFilter = true;
+        // Whitespace-only trims to empty — treat as no filter rather than a
+        // guaranteed-no-match condition on ''.
+        if (simActor !== '') {
+            conditions.push(`c.sim_actor_id = $${idx++}`);
+            params.push(simActor);
+            hasBoundingFilter = true;
+        }
     }
 
     if (body.since !== undefined && body.since !== null && body.since !== '') {

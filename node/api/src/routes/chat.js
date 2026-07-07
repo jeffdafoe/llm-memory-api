@@ -180,22 +180,30 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     // omitted (omitempty) by the engine for village-level cascades and are NULL
     // for companion-mode / human chat. Whitespace-only normalizes to NULL, like
     // scene_structure / conversation_id.
+    // Trim BEFORE the length check so padding can't count against the cap for a
+    // value that fits once trimmed (the stored value is the trimmed one).
     let simActorId = req.body.sim_actor_id;
     if (simActorId !== undefined && simActorId !== null) {
-        if (typeof simActorId !== 'string' || simActorId.length > 100) {
+        if (typeof simActorId !== 'string') {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_id must be a string up to 100 chars' } });
         }
         simActorId = simActorId.trim();
+        if (simActorId.length > 100) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_id must be a string up to 100 chars' } });
+        }
         if (simActorId === '') {
             simActorId = null;
         }
     }
     let simActorName = req.body.sim_actor_name;
     if (simActorName !== undefined && simActorName !== null) {
-        if (typeof simActorName !== 'string' || simActorName.length > 100) {
+        if (typeof simActorName !== 'string') {
             return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_name must be a string up to 100 chars' } });
         }
         simActorName = simActorName.trim();
+        if (simActorName.length > 100) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_name must be a string up to 100 chars' } });
+        }
         if (simActorName === '') {
             simActorName = null;
         }
