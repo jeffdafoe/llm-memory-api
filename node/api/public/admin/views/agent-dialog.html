@@ -301,6 +301,7 @@
         <div class="call-detail-body">
             <div class="call-detail-meta">
                 <span><strong>{{ callDetail.context || '-' }}</strong></span>
+                <span v-if="callDetail.sim_actor_name || callDetail.sim_actor_id" class="ts" title="in-world actor this turn was made on behalf of (LLM-236)">as {{ callDetail.sim_actor_name || callDetail.sim_actor_id }}</span>
                 <span class="ts">{{ callDetail.provider }} / {{ callDetail.model }}</span>
                 <span :class="callDetail.status === 'error' ? 'badge badge-error' : 'badge badge-online'" style="font-size: 11px;">{{ callDetail.status }}</span>
                 <span class="ts" v-if="callDetail.duration_ms">{{ callDetail.duration_ms }}ms</span>

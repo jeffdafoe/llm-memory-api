@@ -88,6 +88,13 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // conversation beat) the admin chat viewer collapses a whole exchange under,
     // distinct from the per-tick sceneId. NULL outside grouped sim ticks.
     const conversationId = opts && opts.conversationId !== undefined ? opts.conversationId : null;
+    // simActorId / simActorName (MEM-139 / LLM-236): the in-world actor a
+    // shared-VA turn is made on behalf of. Forwarded to handleDirectChat, which
+    // stamps them on the virtual_agent_calls row so a salem-vendor turn can be
+    // attributed to a specific character instead of only the switchboard agent.
+    // NULL outside sim ticks and for village-level cascades.
+    const simActorId = opts && opts.simActorId !== undefined ? opts.simActorId : null;
+    const simActorName = opts && opts.simActorName !== undefined ? opts.simActorName : null;
     // ephemeralContext (lean sim-history): per-tick scratch context (current
     // affordances / world-state) forwarded to handleDirectChat to attach to
     // the model's current turn. NOT persisted — it never enters rowSpecs, so
@@ -408,7 +415,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, ackReplyOnInsert: wait, ephemeralContext,
+                            toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ackReplyOnInsert: wait, ephemeralContext,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
@@ -419,7 +426,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, ephemeralContext,
+                                toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ephemeralContext,
                             }).catch(() => {});
                         }
                     }
