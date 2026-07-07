@@ -777,6 +777,9 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
 //   durationMs     — wall-clock time for the call
 //   error          — error object (if the call failed)
 //   sceneId        — engine cascade UUID (MEM-121); NULL outside sim-mode chat
+//   simActorId     — in-world actor id a shared-VA turn is FOR (MEM-139/LLM-236);
+//                    NULL outside sim ticks and for village-level cascades
+//   simActorName   — that actor's display name (<=100 chars)
 async function logCall(options) {
     try {
         // Extract the static portion of the system prompt (skip RAG context)
@@ -801,8 +804,9 @@ async function logCall(options) {
              (actor_id, context, context_id, provider, model, system_prompt, user_message,
               response, status, status_code, error_message,
               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-              cost, duration_ms, usage_id, scene_id, conversation_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+              cost, duration_ms, usage_id, scene_id, conversation_id,
+              sim_actor_id, sim_actor_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
             [
                 options.actorId,
                 options.context || null,
@@ -824,6 +828,8 @@ async function logCall(options) {
                 options.usageId || null,
                 options.sceneId || null,
                 options.conversationId || null,
+                options.simActorId || null,
+                options.simActorName || null,
             ]
         );
     } catch (err) {
@@ -2503,6 +2509,14 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
     // narrative-beat grouping id as the perception that prompted them — keeping
     // the whole exchange in one conversation in the admin viewer.
     const conversationId = opts && opts.conversationId !== undefined ? opts.conversationId : null;
+    // simActorId / simActorName (MEM-139 / LLM-236): the in-world actor this
+    // shared-VA turn is FOR. Logged on this call's virtual_agent_calls row so a
+    // salem-vendor turn is attributable to a specific character instead of only
+    // the switchboard agent. NOT propagated to the reply row (the reply is the
+    // NPC speaking AS that actor; the attribution belongs on the LLM call). NULL
+    // outside sim ticks and for village-level cascades.
+    const simActorId = opts && opts.simActorId !== undefined ? opts.simActorId : null;
+    const simActorName = opts && opts.simActorName !== undefined ? opts.simActorName : null;
     // ephemeralContext (lean sim-history): per-tick scratch context (current
     // affordances / world-state) attached to the model's CURRENT turn below.
     // Never persisted — it only shapes this one provider call, so it can't
@@ -2832,7 +2846,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             actorId: agent.actor_id, agentName: agent.agent, context: 'chat',
             provider: agent.provider, model: agent.model,
             systemPrompt, userMessage: loggedUserMessage, response: loggedResponse, usage, cost: chatCost,
-            durationMs: chatDurationMs, usageId: chatUsageId, sceneId, conversationId,
+            durationMs: chatDurationMs, usageId: chatUsageId, sceneId, conversationId, simActorId, simActorName,
         }).catch(() => {});
 
         // Send response as direct chat back to the sender. Tool-use replies
@@ -2899,7 +2913,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             provider: agent ? agent.provider : 'unknown', model: agent ? agent.model : 'unknown',
             systemPrompt: typeof systemPrompt !== 'undefined' ? systemPrompt : null,
             userMessage: typeof loggedUserMessage !== 'undefined' ? loggedUserMessage : messageText,
-            error: err, durationMs: chatErrDuration, usageId: chatFailUsageId, sceneId, conversationId,
+            error: err, durationMs: chatErrDuration, usageId: chatFailUsageId, sceneId, conversationId, simActorId, simActorName,
         }).catch(() => {});
         logError('virtual-agent', 'direct-chat-error', {
             agent: virtualAgentName,

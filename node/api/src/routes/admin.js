@@ -1971,6 +1971,7 @@ router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRou
     }
     const result = await pool.query(
         `SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model,
+                c.sim_actor_id, c.sim_actor_name,
                 c.system_prompt, c.user_message, c.response,
                 c.status, c.status_code, c.error_message,
                 c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,

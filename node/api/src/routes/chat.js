@@ -170,6 +170,45 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         }
     }
 
+    // sim_actor_id / sim_actor_name (MEM-139 / LLM-236) — the in-world actor a
+    // shared-VA (salem-vendor) turn is made ON BEHALF OF. The row's actor_id is
+    // the switchboard VA (many characters, one agent), so without these the only
+    // way to attribute a turn to a character was parsing the perception text.
+    // The engine stamps the deliberating actor; memory_api stores both on the
+    // virtual_agent_calls row. sim_actor_id is the salem engine actor id — an
+    // opaque TEXT key here, never cast to uuid (like conversation_id). Both are
+    // omitted (omitempty) by the engine for village-level cascades and are NULL
+    // for companion-mode / human chat. Whitespace-only normalizes to NULL, like
+    // scene_structure / conversation_id.
+    // Trim BEFORE the length check so padding can't count against the cap for a
+    // value that fits once trimmed (the stored value is the trimmed one).
+    let simActorId = req.body.sim_actor_id;
+    if (simActorId !== undefined && simActorId !== null) {
+        if (typeof simActorId !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_id must be a string up to 100 chars' } });
+        }
+        simActorId = simActorId.trim();
+        if (simActorId.length > 100) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_id must be a string up to 100 chars' } });
+        }
+        if (simActorId === '') {
+            simActorId = null;
+        }
+    }
+    let simActorName = req.body.sim_actor_name;
+    if (simActorName !== undefined && simActorName !== null) {
+        if (typeof simActorName !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_name must be a string up to 100 chars' } });
+        }
+        simActorName = simActorName.trim();
+        if (simActorName.length > 100) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor_name must be a string up to 100 chars' } });
+        }
+        if (simActorName === '') {
+            simActorName = null;
+        }
+    }
+
     const wait = req.body.wait === true;
 
     if (persistOnly && wait) {
@@ -177,7 +216,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     }
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, conversationId, wait, ephemeralContext,
+        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, conversationId, simActorId, simActorName, wait, ephemeralContext,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.

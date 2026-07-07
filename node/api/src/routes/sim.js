@@ -71,6 +71,12 @@ router.post('/sim/conversation-day', apiRoute('sim', 'conversation_day', async (
 //              "every turn in this huddle's conversation" filter (ZBBS-WORK-431),
 //              stable across the huddle's ticks and participants. TEXT, not a UUID
 //              like scene_id, so no format validation — just a length bound.
+//   sim_actor — the salem ENGINE actor id (MEM-139/LLM-236) the turn was made
+//              ON BEHALF OF. For a shared-VA NPC this is the attribution the
+//              `agent` filter can't give — `agent=salem-vendor` returns every
+//              character that VA backs, `sim_actor=<id>` returns just this one.
+//              TEXT (engine actor id), indexed (idx_va_calls_sim_actor), so it's
+//              a bounding filter like the three above.
 //   since    — ISO timestamp lower bound on created_at
 //   until    — EXCLUSIVE upper bound on created_at (strictly earlier-than).
 //              The route returns the newest rows first with no offset
@@ -79,8 +85,8 @@ router.post('/sim/conversation-day', apiRoute('sim', 'conversation_day', async (
 //              pass the oldest row's created_at verbatim to fetch the next
 //              page back without repeating the boundary row.
 //   status   — 'success' | 'error'
-//   limit    — when a bounding filter (scene_id / conversation / agent) is set,
-//              the result is bounded and indexed, so it returns the FULL set by
+//   limit    — when a bounding filter (scene_id / conversation / agent / sim_actor)
+//              is set, the result is bounded and indexed, so it returns the FULL set by
 //              default (capped at 500) — the point of those filters is "give me
 //              this conversation," not a 5-row tail of it. With NO bounding
 //              filter the result is a tail of the whole retention window and
@@ -108,10 +114,11 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
     const conditions = [];
     const params = [];
     let idx = 1;
-    // A scene_id / conversation / agent filter bounds the result to a single
-    // scene, conversation, or NPC — each backed by an index — so a bounded query
-    // returns its complete set by default (see the limit handling below). since /
-    // until / status narrow but don't bound, so they don't flip this.
+    // A scene_id / conversation / agent / sim_actor filter bounds the result to a
+    // single scene, conversation, VA, or in-world actor — each backed by an index
+    // — so a bounded query returns its complete set by default (see the limit
+    // handling below). since / until / status narrow but don't bound, so they
+    // don't flip this.
     let hasBoundingFilter = false;
 
     if (body.scene_id !== undefined && body.scene_id !== null && body.scene_id !== '') {
@@ -155,6 +162,31 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         hasBoundingFilter = true;
     }
 
+    if (body.sim_actor !== undefined && body.sim_actor !== null && body.sim_actor !== '') {
+        if (typeof body.sim_actor !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor must be a string' } });
+        }
+        // sim_actor_id is the salem engine actor id (MEM-139) — a TEXT column, so
+        // no format cast. It's a bounding filter (indexed by idx_va_calls_sim_actor):
+        // "every turn this in-world character took," which for a shared-VA NPC is
+        // the attribution the agent-name filter can't give (salem-vendor backs
+        // many characters). Trim + cap 100 to MATCH the write path (chat.js stores
+        // a trimmed value <=100), so a padded filter like " alice " still hits the
+        // stored "alice" and a value that could never have been written is rejected;
+        // the value is a bound parameter, so there's no injection risk either way.
+        const simActor = body.sim_actor.trim();
+        if (simActor.length > 100) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'sim_actor is too long' } });
+        }
+        // Whitespace-only trims to empty — treat as no filter rather than a
+        // guaranteed-no-match condition on ''.
+        if (simActor !== '') {
+            conditions.push(`c.sim_actor_id = $${idx++}`);
+            params.push(simActor);
+            hasBoundingFilter = true;
+        }
+    }
+
     if (body.since !== undefined && body.since !== null && body.since !== '') {
         const since = new Date(body.since);
         if (Number.isNaN(since.getTime())) {
@@ -181,9 +213,10 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
         params.push(body.status);
     }
 
-    // A bounded query (scene_id / conversation / agent) returns its complete set
-    // by default — the filter already scopes it to one conversation/scene/NPC, so
-    // a small default would silently truncate the very thing the caller asked for.
+    // A bounded query (scene_id / conversation / agent / sim_actor) returns its
+    // complete set by default — the filter already scopes it to one
+    // conversation/scene/VA/actor, so a small default would silently truncate the
+    // very thing the caller asked for.
     // An unbounded query is a tail of the whole retention window where each row
     // carries a multi-KB prompt, so it stays small by default and must be raised
     // deliberately.
@@ -202,6 +235,7 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
     // row is enough to set has_more, and it's trimmed before returning.
     const result = await pool.query(
         `SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,
+                c.sim_actor_id, c.sim_actor_name,
                 c.system_prompt, c.user_message, c.response,
                 c.status, c.status_code, c.error_message,
                 c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,
