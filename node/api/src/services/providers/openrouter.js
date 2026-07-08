@@ -206,9 +206,10 @@ function createCall(model, apiKey, configuration) {
         // host A is a cold miss on host B and cross-tick/cross-actor cache hits
         // almost never land. Pinning the upstream is what lets the invariant
         // prefix stay warm across a burst of NPC ticks. Behavior-neutral — same
-        // prompt, same tools, only which host serves it. Guard against a stray
-        // scalar/array so a malformed config can't ship a garbage field.
-        if (conf.provider && typeof conf.provider === 'object' && !Array.isArray(conf.provider)) {
+        // prompt, same tools, only which host serves it. Require a plain object
+        // (config is parsed JSON in normal use) so a stray scalar/array — or an
+        // exotic object — can't ship a garbage routing field.
+        if (conf.provider && Object.prototype.toString.call(conf.provider) === '[object Object]') {
             body.provider = conf.provider;
         }
 

@@ -38,12 +38,14 @@ function stubFetch() {
     };
 }
 
-test('conf.provider is passed through to body.provider verbatim', async () => {
+test('conf.provider reaches body.provider with the same JSON shape on the wire', async () => {
     const stub = stubFetch();
     try {
         const routing = { order: ['deepinfra'], allow_fallbacks: false };
         const call = openrouter.createCall('deepseek/deepseek-v4-flash', 'k', { provider: routing });
         await call('sys', 'hi', {});
+        // lastBody() is the JSON-round-tripped request body, so this asserts the
+        // serialized wire shape (what OpenRouter sees), not object identity.
         assert.deepEqual(stub.lastBody().provider, routing);
     } finally {
         stub.restore();
