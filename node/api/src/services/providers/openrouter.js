@@ -196,6 +196,23 @@ function createCall(model, apiKey, configuration) {
             });
         }
 
+        // OpenRouter provider routing (LLM-328). Passed through verbatim from the
+        // agent's configuration JSON (`configuration.provider`), which mirrors
+        // OpenRouter's own `provider` request field — e.g.
+        // { "order": ["deepinfra"], "allow_fallbacks": false }. OpenRouter fronts
+        // many upstream hosts for a single model id (deepseek-v4-flash alone has
+        // 10+), and prompt-prefix caching is per-host: without pinning, OpenRouter
+        // load-balances consecutive requests across hosts, so a prefix warmed on
+        // host A is a cold miss on host B and cross-tick/cross-actor cache hits
+        // almost never land. Pinning the upstream is what lets the invariant
+        // prefix stay warm across a burst of NPC ticks. Behavior-neutral — same
+        // prompt, same tools, only which host serves it. Require a plain object
+        // (config is parsed JSON in normal use) so a stray scalar/array — or an
+        // exotic object — can't ship a garbage routing field.
+        if (conf.provider && Object.prototype.toString.call(conf.provider) === '[object Object]') {
+            body.provider = conf.provider;
+        }
+
         logProvider('api-call', { provider: 'openrouter', model, tools: useTools });
 
         var response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
