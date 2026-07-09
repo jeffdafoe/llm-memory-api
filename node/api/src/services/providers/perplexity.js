@@ -194,12 +194,28 @@ function createCall(model, apiKey, configuration) {
 
         let text = choice.message.content;
 
-        // Append citations if available and configured.
-        // Citations come as a top-level array of URLs in the response.
+        // Append sources if available and configured. Perplexity removed the
+        // top-level `citations` array (plain URL strings) in May 2025 in favor
+        // of `search_results` — an array of { title, url, date } with richer
+        // metadata. Prefer search_results; fall back to the legacy citations
+        // field so any model/response still returning it keeps working. The
+        // result index maps to the model's inline [n] markers, so numbering
+        // must stay 1-based in original order.
         const includeCitations = conf.return_citations !== false;
-        if (includeCitations && data.citations && data.citations.length > 0) {
-            const citationLines = data.citations.map((url, i) => `[${i + 1}] ${url}`);
-            text += '\n\nSources:\n' + citationLines.join('\n');
+        if (includeCitations) {
+            let sourceLines = null;
+            if (Array.isArray(data.search_results) && data.search_results.length > 0) {
+                sourceLines = data.search_results.map((r, i) => {
+                    const title = r.title ? `${r.title} — ` : '';
+                    const date = r.date ? ` (${r.date})` : '';
+                    return `[${i + 1}] ${title}${r.url || ''}${date}`;
+                });
+            } else if (Array.isArray(data.citations) && data.citations.length > 0) {
+                sourceLines = data.citations.map((url, i) => `[${i + 1}] ${url}`);
+            }
+            if (sourceLines) {
+                text += '\n\nSources:\n' + sourceLines.join('\n');
+            }
         }
 
         const usage = {
