@@ -101,6 +101,24 @@ function gpt5Capabilities() {
 // with the rest of the family.
 
 const models = {
+    'gpt-5.6-sol': {
+        label: 'GPT-5.6 Sol',
+        configVersion: 2,
+        pricing: { input: 5.00, output: 30, cache_read: 0.50 },
+        capabilities: gpt5Capabilities()
+    },
+    'gpt-5.6-terra': {
+        label: 'GPT-5.6 Terra',
+        configVersion: 2,
+        pricing: { input: 2.50, output: 15, cache_read: 0.25 },
+        capabilities: gpt5Capabilities()
+    },
+    'gpt-5.6-luna': {
+        label: 'GPT-5.6 Luna',
+        configVersion: 2,
+        pricing: { input: 1.00, output: 6, cache_read: 0.10 },
+        capabilities: gpt5Capabilities()
+    },
     'gpt-5.5': {
         label: 'GPT-5.5',
         configVersion: 2,
