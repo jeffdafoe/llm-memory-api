@@ -57,6 +57,10 @@ router.post('/memory/ingest/status', apiRoute('memory', 'ingest-status', async (
 router.post('/memory/search', apiRoute('memory', 'search', async (req, res) => {
     const query = sanitize.content(req.body.query);
     const { namespace, limit } = req.body;
+    // Optional slug-prefix scope (LLM-355): narrow the search to source_files
+    // under a prefix within the namespace. Sanitized as an identifier (permits
+    // '/', '-', '_'); LIKE metacharacters are escaped inside searchMemory.
+    const slugPrefix = req.body.slug_prefix ? sanitize.identifier(req.body.slug_prefix) : undefined;
 
     if (!query) {
         return res.status(400).json({
@@ -74,7 +78,7 @@ router.post('/memory/search', apiRoute('memory', 'search', async (req, res) => {
     if (!namespace || namespace === '*') {
         readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
     }
-    const result = await searchMemory(query, namespace, limit, readable, actor.actorId);
+    const result = await searchMemory(query, namespace, limit, readable, actor.actorId, slugPrefix);
     res.json(result);
 }));
 

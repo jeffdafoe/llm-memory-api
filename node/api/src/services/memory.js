@@ -6,6 +6,7 @@ const { embed } = require('./embeddings');
 const { chunkByHeading, chunkConversation } = require('./chunker');
 const pgvector = require('pgvector');
 const config = require('./config');
+const { handleError } = require('./error-handler');
 
 function parseNonNegativeFinite(value, fallback = 0) {
     const n = Number(value);
@@ -115,7 +116,17 @@ async function ingestContent(namespace, sourceFile, content) {
     return { chunks_created: chunks.length, source_file: sourceFile, namespace };
 }
 
-async function searchMemory(query, namespace, limit, readableNamespaces, actorId) {
+// Escape the three LIKE metacharacters so a caller-supplied prefix is matched
+// literally. Backslash is the ESCAPE character in the LIKE clauses below, so it
+// must be escaped first (the alternation handles that — each match is replaced
+// with a backslash + itself). Without this, an underscore in a slug prefix
+// (sanitize.identifier permits '_') would act as a single-char wildcard, and a
+// '%' would match anything — a scoping filter that silently over-matches.
+function escapeLikePattern(value) {
+    return value.replace(/[\\%_]/g, '\\$&');
+}
+
+async function searchMemory(query, namespace, limit, readableNamespaces, actorId, slugPrefix) {
     // Coerce limit to a positive integer — Postgres LIMIT requires an integer,
     // and callers may pass floats (e.g. 0.15) which cause a SQL type error.
     const maxResults = Math.max(1, Math.floor(limit) || 5);
@@ -239,6 +250,21 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         }
     }
 
+    // Slug-prefix scope (LLM-355): narrow a search to source_files under a
+    // prefix, e.g. "anne-walker/memory/" so one shared-VA namespace holds many
+    // NPCs' private memory without any of them recalling another's. Undefined =
+    // no filter, so existing callers are unaffected. The prefix is escaped and
+    // matched case-insensitively (consistent with the LOWER()-based join), then
+    // '%' is appended as the one live wildcard. Interpolated into BOTH inner
+    // selects below — a filter applied to only one path is a silent leak.
+    let slugPrefixFilter = '';
+    if (typeof slugPrefix === 'string' && slugPrefix.length > 0) {
+        const slugIdx = paramIdx;
+        params.push(escapeLikePattern(slugPrefix.toLowerCase()) + '%');
+        paramIdx++;
+        slugPrefixFilter = `AND LOWER(mc.source_file) LIKE $${slugIdx} ESCAPE '\\'`;
+    }
+
     // Time-decay: two-tier system. Cognitive type takes priority when available
     // (stored in metadata->>'cognitive_type' by enrichment), falls back to kind-based.
     // decay = 0.5 ^ (age_days / half_life). If half_life is 0, no decay (1.0).
@@ -315,7 +341,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
             LEFT JOIN documents d ON d.namespace = mc.namespace AND LOWER(d.slug) = LOWER(mc.source_file)
-            WHERE 1=1 ${nsFilter} ${softDeleteFilter}
+            WHERE 1=1 ${nsFilter} ${slugPrefixFilter} ${softDeleteFilter}
             ORDER BY similarity DESC
             LIMIT $2
         `;
@@ -326,7 +352,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
             LEFT JOIN documents d ON d.namespace = mc.namespace AND LOWER(d.slug) = LOWER(mc.source_file)
-            WHERE mc.namespace = $2 ${softDeleteFilter}
+            WHERE mc.namespace = $2 ${slugPrefixFilter} ${softDeleteFilter}
             ORDER BY similarity DESC
             LIMIT $3
         `;
@@ -350,7 +376,41 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     `;
 
     const result = await pool.query(sql, params);
+
+    // Retrieval reinforces a memory (LLM-355). Stamp last_accessed on the
+    // documents a search surfaced — the same column readNote touches on a direct
+    // read. It feeds the access boost AND resets decay age (age is GREATEST of
+    // created_at, updated_at, last_accessed), so a note that keeps being found
+    // stays fresh and a note never recalled fades on its half-life. Keyed on
+    // (namespace, slug) because a wildcard search spans namespaces. Raw ingests
+    // (chunks with no documents row) simply match nothing. Fire-and-forget:
+    // stamping must never add latency to or fail the search — but a failure is
+    // recorded (not silently swallowed) via the same handleError path readNote's
+    // last_accessed stamp uses, so a regression after a migration/perm change is
+    // visible in system_errors.
+    if (result.rows.length > 0) {
+        stampLastAccessed(result.rows).catch(err => {
+            handleError(null, 'memory', 'LAST_ACCESSED_STAMP_FAILED', {
+                error: err.message
+            }).catch(() => {});
+        });
+    }
+
     return { results: result.rows };
+}
+
+// Reset last_accessed to now for the (namespace, source_file) pairs a search
+// returned. unnest pairs the two arrays positionally into rows to update.
+async function stampLastAccessed(rows) {
+    const namespaces = rows.map(r => r.namespace);
+    const sourceFiles = rows.map(r => r.source_file);
+    await pool.query(
+        `UPDATE documents d
+         SET last_accessed = NOW()
+         FROM (SELECT unnest($1::text[]) AS ns, unnest($2::text[]) AS sf) t
+         WHERE d.namespace = t.ns AND LOWER(d.slug) = LOWER(t.sf) AND d.deleted_at IS NULL`,
+        [namespaces, sourceFiles]
+    );
 }
 
 async function deleteMemory(namespace, sourceFile) {
@@ -402,4 +462,4 @@ async function ingestStatus(namespace) {
     return { files: result.rows };
 }
 
-module.exports = { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus };
+module.exports = { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus, escapeLikePattern };
