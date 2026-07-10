@@ -32,12 +32,34 @@ const FILLER_WORDS = new Set([
     'please', 'thanks', 'thank',
 ]);
 
+// OpenAI's text-embedding-3-small caps each input at 8192 tokens. Search callers
+// pass raw inbound content — a virtual agent's mail subject+body, chat turns, a
+// discussion topic — that routinely exceeds that (a review diff mailed to
+// code_review is 25KB+). Without a clamp the embeddings API 400s and the caller
+// (loadRAGContext) swallows it, so the VA answers with zero memory recall exactly
+// when context matters most, leaving only a rag-error journal line. Clamp by chars:
+// the codebase carries no tokenizer, and ~3 chars/token for dense diffs keeps this
+// near 6000 tokens, well under the cap. Truncating a search query is cheap —
+// semantic search over the head of a long message is nearly as good as the whole,
+// and far better than the empty-recall fallback.
+const MAX_EMBED_QUERY_CHARS = 18000;
+
 function preprocessQuery(query) {
     // Defensive guard — the MCP dispatcher validates required fields, but
     // the /v1/search HTTP route and internal callers may reach here with a
     // non-string. Return empty to keep embedding calls from crashing; the
     // caller will get "no results" rather than a 500.
     if (typeof query !== 'string') return '';
+    // Clamp before any processing so every return path below — including the two
+    // raw-query fallbacks — stays within the embedding budget. slice() cuts UTF-16
+    // code units, so it can land inside a surrogate pair; drop a dangling high
+    // surrogate so the truncated query holds no malformed trailing character.
+    if (query.length > MAX_EMBED_QUERY_CHARS) {
+        query = query.slice(0, MAX_EMBED_QUERY_CHARS);
+        if (/[\uD800-\uDBFF]$/.test(query)) {
+            query = query.slice(0, -1);
+        }
+    }
     let cleaned = query.trim();
     // Strip leading filler phrases (apply repeatedly for stacked phrases)
     let prev;
@@ -462,4 +484,4 @@ async function ingestStatus(namespace) {
     return { files: result.rows };
 }
 
-module.exports = { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus, escapeLikePattern };
+module.exports = { ingestContent, searchMemory, deleteMemory, cleanupMemory, ingestStatus, escapeLikePattern, preprocessQuery, MAX_EMBED_QUERY_CHARS };
