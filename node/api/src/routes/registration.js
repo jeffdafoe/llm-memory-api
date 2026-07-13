@@ -148,13 +148,17 @@ router.post('/api/register', async (req, res) => {
     // validating in Phase 1: two valid concurrent uses of the same code
     // serialize on the row lock, and the loser sees used_by already set.
     let actorId;
+    // Email of the person this account belongs to, carried forward from the
+    // access request that provisioned the invite (LLM-219). NULL for code-less
+    // open registration, which collects no access request.
+    let registrantEmail = null;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
         if (inviteId !== null) {
             const relock = await client.query(
-                `SELECT used_by, expires_at, realm FROM invite_codes WHERE id = $1 FOR UPDATE`,
+                `SELECT used_by, expires_at, realm, access_request_id FROM invite_codes WHERE id = $1 FOR UPDATE`,
                 [inviteId]
             );
             if (relock.rows.length === 0) {
@@ -173,12 +177,24 @@ router.post('/api/register', async (req, res) => {
             // Take realm from the locked row — authoritative if an admin edited
             // the invite between the Phase 1 read and now.
             realm = r.realm || 'llm-memory';
+            // Carry the registrant's email forward from the access request this
+            // invite came from, so the account self-describes. Plain read (no
+            // lock) — the email is set at request-approval time and immutable.
+            if (r.access_request_id) {
+                const areq = await client.query(
+                    `SELECT email FROM access_requests WHERE id = $1`,
+                    [r.access_request_id]
+                );
+                if (areq.rows.length > 0) {
+                    registrantEmail = areq.rows[0].email;
+                }
+            }
         }
 
         // Create actor with realm
         await client.query(
-            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, realms) VALUES ($1, $2, $3, $4, $5, 'active', $6)`,
-            [agentName, passphraseHash, salt, passwordHash, passwordSalt, [realm]]
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, realms, email) VALUES ($1, $2, $3, $4, $5, 'active', $6, $7)`,
+            [agentName, passphraseHash, salt, passwordHash, passwordSalt, [realm], registrantEmail]
         );
         // Set created_by to self so the agent owns itself
         await client.query(

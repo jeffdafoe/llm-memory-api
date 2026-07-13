@@ -1519,7 +1519,7 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
     const { name, provider, model, welcome_template_id, welcome_note_template_id, virtual: isVirtual, personality,
             cost_budget_daily, cost_budget_monthly,
             cache_prompts, learning_enabled, max_tokens, temperature, configuration,
-            ui_access, password, dream_mode, dream_source } = req.body;
+            ui_access, password, dream_mode, dream_source, email } = req.body;
 
     if (!name || !name.trim()) {
         return res.status(400).json({
@@ -1554,6 +1554,15 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
                 error: { code: 'BAD_REQUEST', message: 'temperature must be a number between 0 and 2' }
             });
         }
+    }
+
+    // Bound an explicit email to the actors.email column width (VARCHAR(255)),
+    // matching the access-request form's cap, so an over-long value returns a
+    // controlled 400 rather than failing the actor INSERT with a DB error.
+    if (typeof email === 'string' && email.trim().length > 255) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'email must be 255 characters or less' }
+        });
     }
 
     // Check if actor name is available (existing actors + namespace collisions)
@@ -1591,17 +1600,28 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
     try {
         await client.query('BEGIN');
 
-        // Inherit realms from the creator so new agents land in the same realm(s)
-        const creatorRealms = await client.query('SELECT realms FROM actors WHERE id = $1', [req.authenticatedUser.id]);
-        const realms = (creatorRealms.rows[0] && creatorRealms.rows[0].realms.length > 0)
-            ? creatorRealms.rows[0].realms
+        // Inherit realms + identity email from the creator so new agents land
+        // in the same realm(s) and carry the creator's email forward (LLM-219).
+        const creatorRow = (await client.query('SELECT realms, email FROM actors WHERE id = $1', [req.authenticatedUser.id])).rows[0];
+        const realms = (creatorRow && creatorRow.realms.length > 0)
+            ? creatorRow.realms
             : ['llm-memory'];
+        // An explicit email in the request wins (admin provisioning a new
+        // person whose email isn't the creator's); otherwise inherit the
+        // creator's. Virtual agents aren't a human identity, so they stay NULL
+        // unless an email was passed explicitly.
+        let actorEmail = null;
+        if (typeof email === 'string' && email.trim()) {
+            actorEmail = email.trim();
+        } else if (isVirtual !== true && creatorRow) {
+            actorEmail = creatorRow.email || null;
+        }
 
         // Create actor
         const actorResult = await client.query(
-            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, created_by, realms)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-            [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active', req.authenticatedUser.id, realms]
+            `INSERT INTO actors (name, token_hash, token_salt, password_hash, password_salt, status, created_by, realms, email)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+            [actorName, passphraseHash, passphraseSalt, passwordHash, passwordSalt, isVirtual === true ? 'available' : 'active', req.authenticatedUser.id, realms, actorEmail]
         );
         actorId = actorResult.rows[0].id;
 
