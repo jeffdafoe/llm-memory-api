@@ -1,32 +1,65 @@
+// A markdown H1–H3 heading line. Same test used to split sections and to
+// detect a section that carries no prose.
+function isHeadingLine(line) {
+    return /^#{1,3}\s/.test(line);
+}
+
+// True when `lines` holds at least one non-blank line that is NOT a heading —
+// i.e. real prose under the heading(s), not just stacked heading lines.
+function hasProse(lines) {
+    return lines.some(l => l.trim() !== '' && !isHeadingLine(l));
+}
+
 function chunkByHeading(content) {
     const lines = content.split('\n');
     const chunks = [];
     let currentHeading = null;
     let currentLines = [];
 
+    // Emit the accumulated section, but ONLY if it has prose under its heading.
+    // A heading with no body — e.g. a note whose "# Title" line is immediately
+    // followed by a "## Section" line — would otherwise become a chunk whose
+    // chunk_text is just the title. That title-only chunk is short and on-topic,
+    // so it out-ranks the note's real body chunks in search, and the recall tool
+    // strips its heading and renders an empty "— Title —" with no content
+    // (observed for the sim NPC dream notes, which are all "# A Day of … at the
+    // Inn" followed straight by "## Notable scenes"). Dropping it lets the body
+    // sections be the hits. The whole-note fallback below keeps a heading-only
+    // note searchable.
+    const flush = () => {
+        if (currentLines.length === 0) {
+            return;
+        }
+        const text = currentLines.join('\n').trim();
+        if (text && hasProse(currentLines)) {
+            chunks.push({
+                heading: currentHeading,
+                chunk_text: text
+            });
+        }
+    };
+
     for (const line of lines) {
-        if (line.match(/^#{1,3}\s/)) {
-            if (currentLines.length > 0) {
-                const text = currentLines.join('\n').trim();
-                if (text) {
-                    chunks.push({
-                        heading: currentHeading,
-                        chunk_text: text
-                    });
-                }
-            }
+        if (isHeadingLine(line)) {
+            flush();
             currentHeading = line.trim();
             currentLines = [line];
         } else {
             currentLines.push(line);
         }
     }
+    flush();
 
-    if (currentLines.length > 0) {
-        const text = currentLines.join('\n').trim();
+    // Fallback: a note built entirely of headings with no prose produces no
+    // chunks above and would become unsearchable. Preserve findability by
+    // emitting the whole trimmed content as one chunk (its heading text is all
+    // it has to match on).
+    if (chunks.length === 0) {
+        const text = content.trim();
         if (text) {
+            const firstHeading = lines.find(isHeadingLine);
             chunks.push({
-                heading: currentHeading,
+                heading: firstHeading ? firstHeading.trim() : null,
                 chunk_text: text
             });
         }
