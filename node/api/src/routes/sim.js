@@ -14,6 +14,41 @@ const router = Router();
 // a clean 400 instead.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// requireSalemEngine — service-identity gate for the engine-internal /sim routes
+// (LLM-241). The blanket `app.use('/v1', auth)` accepts ANY authenticated actor
+// (home, work, wendy, every virtual agent), so without this gate any of them
+// could trigger an LLM soul synthesis (real cost) or write a narrative note into
+// a target agent's namespace. These routes are only ever legitimately called by
+// the salem engine, which authenticates with its fixed API key as the actor
+// `salem-engine` — middleware/auth sets that name on req.authenticatedAgent for
+// both the session and API-key paths. An admin web session sets
+// req.authenticatedUser instead (leaving req.authenticatedAgent undefined), so
+// it's rejected here too — these are not part of the admin-UI surface. Mirrors
+// the `salem-engine` principal check already used in routes/chat.js. This gate
+// deliberately does NOT cover /sim/raw-turns, which is operator-facing (home/work
+// debugging via the salem umbilical) and keeps its own plugins/administer gate.
+function requireSalemEngine(req, res, next) {
+    if (req.authenticatedAgent !== 'salem-engine') {
+        return res.status(403).json({
+            error: { code: 'FORBIDDEN', message: 'This route is restricted to the salem-engine service account' }
+        });
+    }
+    next();
+}
+
+// Engine-internal /sim sub-router. Registering the engine-only routes here and
+// gating the whole sub-router once (engineRouter.use below) applies the service
+// identity as a SET: a future engine-internal /sim route added to engineRouter
+// inherits the gate automatically, instead of each route carrying its own copy
+// that a new one could forget to add. It's mounted at the `/sim` path at the
+// bottom of this file (router.use('/sim', engineRouter)) so the gate only ever
+// runs for /sim/* requests — a bare mount would run it against fall-through
+// traffic bound for the routers mounted after this one (e.g. adminRoutes).
+// /sim/raw-turns stays on the parent `router` and MUST be registered before that
+// mount so it matches first and never enters this gated sub-router.
+const engineRouter = Router();
+engineRouter.use(requireSalemEngine);
+
 // POST /v1/sim/conversation-day
 //
 // Receives a daily activity push from salem-engine for one sim NPC and
@@ -27,7 +62,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Idempotent — re-pushing the same (agent, day) overwrites the note.
 // 400 for malformed payload, 404 for unknown agent, 400 for non-sim
 // dream_mode.
-router.post('/sim/conversation-day', apiRoute('sim', 'conversation_day', async (req, res) => {
+//
+// Engine-internal: gated to the salem-engine service identity via engineRouter
+// (LLM-241). Registered relative to the `/sim` mount, so the full path stays
+// /v1/sim/conversation-day.
+engineRouter.post('/conversation-day', apiRoute('sim', 'conversation_day', async (req, res) => {
     // Defensive body fallback — express.json gives us {} for empty bodies
     // but a missing Content-Type or unparseable body leaves req.body
     // undefined, which would throw inside sanitize.agentName before our
@@ -267,8 +306,12 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
 // their day material here and stores the returned prose in
 // actor_narrative_state.about_me.
 //
-// Gated on plugins/administer — same capability as /sim/raw-turns, reachable by
-// the salem engine's authenticated AGENT session (not the web admin UI).
+// Engine-internal: gated to the salem-engine service identity via engineRouter
+// (LLM-241) — not reachable by other authenticated agents or the web admin UI.
+// (LLM-239 first dropped an over-broad plugins/administer gate that 403'd the
+// engine's own service key; LLM-241 replaces the resulting any-/v1-actor posture
+// with the narrow service-identity check.) Registered relative to the `/sim`
+// mount, so the full path stays /v1/sim/soul.
 //
 // Body: { character_description, current_soul?, day_snapshot, day? }
 //   character_description — live-composed per-actor seed (name + dwelling +
@@ -281,7 +324,7 @@ router.post('/sim/raw-turns', requirePerm('plugins', 'administer'), apiRoute('si
 // model produced nothing usable (empty reply or reasoning-preamble leakage), in
 // which case the engine keeps the prior soul. 400 on missing/oversized fields,
 // 503 when the soul agent isn't configured.
-router.post('/sim/soul', apiRoute('sim', 'soul', async (req, res) => {
+engineRouter.post('/soul', apiRoute('sim', 'soul', async (req, res) => {
     const body = req.body || {};
     const result = await synthesizeSimSoul({
         characterDescription: body.character_description,
@@ -291,5 +334,17 @@ router.post('/sim/soul', apiRoute('sim', 'soul', async (req, res) => {
     });
     res.json(result);
 }));
+
+// Mount the engine-internal sub-router at /sim. This comes AFTER /sim/raw-turns
+// is registered on the parent router above, so a /sim/raw-turns request matches
+// that operator-gated route first and never enters the salem-engine gate here.
+// The mount path is /sim (not bare) so requireSalemEngine only runs for /sim/*
+// traffic, not fall-through requests bound for routers mounted after this one.
+router.use('/sim', engineRouter);
+
+// Exported for unit testing the service-identity gate in isolation (there's no
+// route/supertest harness in this repo). Mirrors auth.js attaching sessionCache
+// to its exported middleware.
+router.requireSalemEngine = requireSalemEngine;
 
 module.exports = router;
