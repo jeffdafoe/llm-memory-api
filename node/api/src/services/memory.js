@@ -356,9 +356,16 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     // chunk_count so callers can see "this note matched in N places".
     let innerSql;
 
+    // created_at rides along from the documents join (LLM-390) so callers can
+    // show how old a memory is — salem's recall tool renders it as "From two
+    // days ago — <topic>". Deliberately created_at alone, NOT the
+    // GREATEST(created/updated/last_accessed) the decay uses: last_accessed
+    // re-stamps on every search hit, so an age based on it would make every
+    // recalled memory look freshly written. NULL for raw ingests (no documents
+    // row).
     if (!namespace || namespace === '*') {
         innerSql = `
-            SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
+            SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace, d.created_at,
                    ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${bm25BoostExpr} + ${accessBoostExpression})
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
@@ -369,7 +376,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
         `;
     } else {
         innerSql = `
-            SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace,
+            SELECT mc.source_file, mc.heading, mc.chunk_text, mc.namespace, d.created_at,
                    ((1 - (mc.embedding <=> $1)) + ${filenameBoostExpr} + ${bm25BoostExpr} + ${accessBoostExpression})
                    * ${decayExpression} * ${kindWeightExpression} AS similarity
             FROM memory_chunks mc
@@ -385,9 +392,9 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     paramIdx++;
 
     const sql = `
-        SELECT source_file, heading, chunk_text, namespace, similarity, chunk_count
+        SELECT source_file, heading, chunk_text, namespace, created_at, similarity, chunk_count
         FROM (
-            SELECT source_file, heading, chunk_text, namespace, similarity,
+            SELECT source_file, heading, chunk_text, namespace, created_at, similarity,
                    ROW_NUMBER() OVER (PARTITION BY namespace, source_file ORDER BY similarity DESC) AS rn,
                    COUNT(*) OVER (PARTITION BY namespace, source_file) AS chunk_count
             FROM (${innerSql}) candidates
