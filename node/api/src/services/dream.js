@@ -106,6 +106,43 @@ function detectReasoningPreamble(text) {
     return REASONING_PREAMBLE_MARKERS.find(m => leadCheck.includes(m)) || null;
 }
 
+// True when a soul has no usable prior document to evolve and should be rebuilt
+// from scratch (backload recent dreams) instead. Two cases: it's empty (deleted
+// or first run), or it's a suspiciously short stub — the fingerprint of a
+// truncated/degraded write. Detecting the stub at read time matters because the
+// soul-writer feeds its own prior output back in as input, so a garbled stub
+// left in evolve-only mode compounds every cycle instead of self-healing
+// (LLM-420). minChars <= 0 disables the short-stub arm, leaving only the empty
+// check. Exported as a module-scope helper so the threshold logic is unit-testable.
+function soulNeedsRebuild(existingSoul, minChars) {
+    const trimmed = (existingSoul || '').trim();
+    if (trimmed === '') return true;
+    if (minChars > 0 && trimmed.length < minChars) return true;
+    return false;
+}
+
+// Assembles the user message for the soul-writer. Kept as a pure, exported
+// helper so the rebuild-vs-evolve branching (which document goes in, which
+// framing) is unit-testable without standing up the whole dream cron. When
+// needsRebuild is true the prior soul is deliberately withheld — replaced by a
+// placeholder, plus the from-scratch rebuild framing when a dream backload is
+// available — so a degraded/truncated stub can never leak back into the
+// writer's input (LLM-420). When a backload is not available (disabled or no
+// dreams yet) the day's chunk is used as the snapshot regardless of rebuild.
+function buildSoulUserMessage({ agentName, startupInstructions, existingSoul, needsRebuild, backloadDreams, chunkDate, dreamContent }) {
+    return '## Agent: ' + agentName + '\n\n'
+        + (startupInstructions
+            ? '## Character description\n\n' + startupInstructions + '\n\n'
+            : '')
+        + '## Current soul document\n\n'
+        + (needsRebuild ? '(none on file — rebuilding from recent dreams)' : existingSoul)
+        + (backloadDreams
+            ? '\n\n## Dream snapshot for initial soul rebuild\n\n'
+                + 'There is no usable prior soul document. Synthesize an initial soul from the recent dream history below; do not treat this as a single-day incremental update.\n\n'
+                + backloadDreams
+            : '\n\n## Dream snapshot for ' + chunkDate + '\n\n' + dreamContent);
+}
+
 // Cheap detection for the typed-context JSON array format. The whole
 // multi-turn discussion history sits on a single line as a JSON array
 // of {sender, content} objects (see virtual-agent.js's <Conversation>
@@ -637,18 +674,50 @@ async function processDreamChunk(agent, agentNames, chunk) {
                 // No soul yet — first run for this agent.
             }
 
-            // When the soul is empty (deleted or first run), backload the N
-            // most recent dreams instead of just feeding the chunk we just
-            // saved. Lets a deleted soul rebuild from accumulated personality
-            // rather than starting flat and slowly filling in over many
-            // cycles. The just-saved chunk is included as the first entry
-            // since listNotes orders by updated_at DESC. After this call
-            // existingSoul will be non-empty so subsequent cycles resume the
-            // normal per-chunk update path. Cost guards on the soul agent
+            // When there's no usable prior soul, backload the N most recent
+            // dreams instead of just feeding the chunk we just saved. Lets a
+            // rebuilt soul come back from accumulated personality rather than
+            // starting flat and slowly filling in over many cycles. "No usable
+            // prior soul" means empty (deleted or first run) OR a suspiciously
+            // short stub (dream_soul_min_chars) — the latter is the fingerprint
+            // of a truncated/degraded write, which must not be fed back in and
+            // "evolved" (it would compound; the writer reads its own prior
+            // output as input). The just-saved chunk is included as the first
+            // backload entry since listNotes orders by updated_at DESC. After
+            // the rebuild the soul is long again, so subsequent cycles resume
+            // the normal per-chunk update path. Cost guards on the soul agent
             // call protect against runaway prompt sizes.
+            let soulMinChars = 0;
+            try {
+                soulMinChars = parseInt(config.get('dream_soul_min_chars'), 10) || 0;
+            } catch (e) {
+                // Config key missing (deploy ordering: service started before
+                // migration ran). Treat as disabled — same contract as
+                // dream_backload_count below.
+                soulMinChars = 0;
+            }
             let backloadDreams = null;
-            const soulIsEmpty = existingSoul.trim() === '';
-            if (soulIsEmpty) {
+            // existingSoul is already a string (initialized '' and only ever
+            // set from soulNote.content || ''); normalize once anyway so the
+            // trimmed length is derived in one place and shared by the
+            // emptiness check, the rebuild helper, and the degraded log.
+            const normalizedSoul = typeof existingSoul === 'string' ? existingSoul : '';
+            const trimmedSoulLen = normalizedSoul.trim().length;
+            const soulIsEmpty = trimmedSoulLen === 0;
+            const needsRebuild = soulNeedsRebuild(normalizedSoul, soulMinChars);
+            if (needsRebuild && !soulIsEmpty) {
+                // Non-empty soul below the health floor: a degraded/truncated
+                // stub we're rerouting to a from-scratch rebuild. Log the
+                // self-heal so it's visible in the dream journal rather than a
+                // silent reroute.
+                logDream('chunk-soul-degraded-rebuild', {
+                    agent: agent.name,
+                    chunkDate: chunkDateStr,
+                    size: trimmedSoulLen,
+                    minChars: soulMinChars,
+                });
+            }
+            if (needsRebuild) {
                 let backloadCount = 0;
                 try {
                     backloadCount = parseInt(config.get('dream_backload_count'), 10) || 0;
@@ -674,17 +743,15 @@ async function processDreamChunk(agent, agentNames, chunk) {
                 }
             }
 
-            const soulUserMessage = '## Agent: ' + agent.name + '\n\n'
-                + (agent.startup_instructions
-                    ? '## Character description\n\n' + agent.startup_instructions + '\n\n'
-                    : '')
-                + '## Current soul document\n\n'
-                + (soulIsEmpty ? '(empty — first run)' : existingSoul)
-                + (backloadDreams
-                    ? '\n\n## Dream snapshot for initial soul rebuild\n\n'
-                        + 'The current soul document is empty. Synthesize an initial soul from the recent dream history below; do not treat this as a single-day incremental update.\n\n'
-                        + backloadDreams
-                    : '\n\n## Dream snapshot for ' + chunkDateStr + '\n\n' + content);
+            const soulUserMessage = buildSoulUserMessage({
+                agentName: agent.name,
+                startupInstructions: agent.startup_instructions,
+                existingSoul: normalizedSoul,
+                needsRebuild,
+                backloadDreams,
+                chunkDate: chunkDateStr,
+                dreamContent: content,
+            });
 
             const { text: updatedSoul, usage: soulUsage, truncated: soulTruncated, finish_reason: soulFinish } = await invokeAgent(soulAgentName, {
                 userMessage: soulUserMessage,
@@ -1117,4 +1184,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage };
