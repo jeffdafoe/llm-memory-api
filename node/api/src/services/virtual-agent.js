@@ -879,8 +879,10 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
         return;
     }
 
-    // Check for NONE response
-    if (extractionResult.trim().toUpperCase() === 'NONE' || extractionResult.trim() === '') {
+    // Check for NONE / empty response. Guard against a provider returning
+    // undefined text so this path (and the truncation path above) can't throw.
+    const extractionText = (extractionResult || '').trim();
+    if (extractionText.toUpperCase() === 'NONE' || extractionText === '') {
         logVA('learning-none', { agent: agent.agent, interactionType });
         return;
     }

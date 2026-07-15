@@ -34,8 +34,14 @@ test('/v1/responses status + incomplete_details maps correctly', () => {
     // Completed is a normal stop, unless a function_call rode along.
     assert.equal(normalizeResponsesStatus('completed', undefined, false), FINISH.STOP);
     assert.equal(normalizeResponsesStatus('completed', undefined, true), FINISH.TOOL_CALLS);
-    // Absent status is treated as completed (safe default: not truncated).
-    assert.equal(normalizeResponsesStatus(undefined, undefined, false), FINISH.STOP);
+    // Any non-completed / non-incomplete status is NOT a clean stop — the
+    // normalizer is the persistence safety boundary, so failed/cancelled/
+    // unknown/missing all fall through to 'other', never 'stop'.
+    assert.equal(normalizeResponsesStatus('failed', undefined, false), FINISH.OTHER);
+    assert.equal(normalizeResponsesStatus('cancelled', undefined, false), FINISH.OTHER);
+    assert.equal(normalizeResponsesStatus('in_progress', undefined, false), FINISH.OTHER);
+    assert.equal(normalizeResponsesStatus('surprise_status', undefined, false), FINISH.OTHER);
+    assert.equal(normalizeResponsesStatus(undefined, undefined, false), FINISH.OTHER);
 });
 
 test('Anthropic stop_reason maps to the shared vocabulary', () => {

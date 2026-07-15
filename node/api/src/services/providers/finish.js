@@ -45,9 +45,14 @@ function normalizeResponsesStatus(status, incompleteReason, hasToolCall) {
         if (incompleteReason === 'content_filter') return FINISH.CONTENT_FILTER;
         return FINISH.OTHER;
     }
-    // status 'completed' (or absent — treat as completed)
-    if (hasToolCall) return FINISH.TOOL_CALLS;
-    return FINISH.STOP;
+    if (status === 'completed') {
+        return hasToolCall ? FINISH.TOOL_CALLS : FINISH.STOP;
+    }
+    // failed / cancelled / queued / in_progress / missing / any future status —
+    // NOT a clean stop. This normalizer is the persistence safety boundary, so
+    // never label an unrecognized status as success (a partial body on a failed
+    // response must not read as a whole generation).
+    return FINISH.OTHER;
 }
 
 // Anthropic Messages shape — top-level `stop_reason`.
