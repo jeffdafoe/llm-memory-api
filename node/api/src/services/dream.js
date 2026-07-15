@@ -478,13 +478,25 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
         + '\n\n## Recent conversation excerpts involving ' + display + '\n\n'
         + excerptsBlock;
 
-    const { text: rawUpdatedFile } = await invokeAgent(peopleAgentName, {
+    const { text: rawUpdatedFile, truncated: peopleTruncated, finish_reason: peopleFinish } = await invokeAgent(peopleAgentName, {
         userMessage: peopleUserMessage,
         context: 'people',
         skipRateLimit: true,
         skipCostLimit: true,
         skipRetry: false,
     });
+
+    if (peopleTruncated) {
+        // Length-stop: the relationship file came back cut off. The writer
+        // rewrites the whole file each pass, so a truncated version drops the
+        // bullets it didn't reach — and that lossy file would feed back in as
+        // input next time. Leave the prior file intact.
+        logDream('person-context-error', {
+            agent: agentName, person: display, slug, today,
+            reason: 'truncated', finishReason: peopleFinish,
+        });
+        return { existingFile, updatedFile: '', written: false, changed: false, emptyResponse: false, truncated: true };
+    }
 
     const updatedFile = rawUpdatedFile && rawUpdatedFile.trim();
     const changed = !!(updatedFile && updatedFile !== existingFile.trim());
@@ -674,7 +686,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
                         + backloadDreams
                     : '\n\n## Dream snapshot for ' + chunkDateStr + '\n\n' + content);
 
-            const { text: updatedSoul, usage: soulUsage } = await invokeAgent(soulAgentName, {
+            const { text: updatedSoul, usage: soulUsage, truncated: soulTruncated, finish_reason: soulFinish } = await invokeAgent(soulAgentName, {
                 userMessage: soulUserMessage,
                 context: 'soul',
                 skipRateLimit: true,
@@ -682,7 +694,24 @@ async function processDreamChunk(agent, agentNames, chunk) {
                 skipRetry: false,
             });
 
-            if (updatedSoul && updatedSoul.trim()) {
+            if (soulTruncated) {
+                // Length-stop: the writer hit its token ceiling and the soul
+                // came back cut off mid-thought (observed: gemini-2.5-pro's
+                // thinking budget eats the output cap, leaving a partial like
+                // "...Stabilize, Observe,"). The partial has non-empty text, so
+                // it would sail past the checks below — saving it would poison
+                // every future tick's system prompt AND compound on the next
+                // dream cycle, since the writer reads its own prior output as
+                // input. Skip the save; the prior soul stays intact. Same
+                // contract as the reasoning-preamble guard below.
+                logDream('chunk-soul-error', {
+                    agent: agent.name,
+                    chunkDate: chunkDateStr,
+                    reason: 'truncated',
+                    finishReason: soulFinish,
+                    size: (updatedSoul || '').length,
+                });
+            } else if (updatedSoul && updatedSoul.trim()) {
                 const trimmedSoul = updatedSoul.trim();
                 // Reject reasoning-preamble leakage. Some chat models
                 // (observed: qwen3.5-flash) ignore the "Output ONLY"
@@ -801,7 +830,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
                 + '## Day\'s conversation excerpts\n\n'
                 + filtered;
 
-            const { text: extractionResult } = await invokeAgent(learningsAgentName, {
+            const { text: extractionResult, truncated: learningsTruncated, finish_reason: learningsFinish } = await invokeAgent(learningsAgentName, {
                 userMessage: learningsUserMessage,
                 context: 'learnings',
                 skipRateLimit: true,
@@ -810,7 +839,17 @@ async function processDreamChunk(agent, agentNames, chunk) {
             });
 
             const trimmed = extractionResult ? extractionResult.trim() : '';
-            if (trimmed && trimmed.toUpperCase() !== 'NONE') {
+            if (learningsTruncated) {
+                // Length-stop: the day's learnings synthesis was cut off. It
+                // upserts (integrates with and replaces the existing note), so a
+                // truncated version would drop earlier bullets. Keep the prior note.
+                logDream('chunk-learnings-error', {
+                    agent: agent.name,
+                    chunkDate: chunkDateStr,
+                    reason: 'truncated',
+                    finishReason: learningsFinish,
+                });
+            } else if (trimmed && trimmed.toUpperCase() !== 'NONE') {
                 await saveNote(
                     agent.name,
                     'Learnings — ' + chunkDateStr,

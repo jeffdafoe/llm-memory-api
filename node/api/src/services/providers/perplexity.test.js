@@ -89,3 +89,25 @@ test('return_citations=false suppresses the Sources block', async () => {
     );
     assert.equal(text, 'answer body');
 });
+
+// LLM-418 — finish_reason lives on choices[0], so the shared stubFetch's
+// top-level `extra` merge won't reach it; use a dedicated stub.
+test('finish_reason "length" surfaces truncated:true', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async function () {
+        return {
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'partial' }, finish_reason: 'length' }],
+                usage: { prompt_tokens: 10, completion_tokens: 4096 },
+            }),
+        };
+    };
+    try {
+        const res = await perplexity.createCall('sonar', 'k', {})('sys', 'q', {});
+        assert.equal(res.finish_reason, 'length');
+        assert.equal(res.truncated, true);
+    } finally {
+        globalThis.fetch = original;
+    }
+});

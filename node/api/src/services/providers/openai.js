@@ -8,6 +8,7 @@
 
 const { log } = require('../logger');
 const { asNumber } = require('./coerce');
+const { normalizeOpenAIChatFinish, normalizeResponsesStatus, isTruncated } = require('./finish');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -418,16 +419,21 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
         usage.cost = cost;
     }
 
+    // /v1/responses reports truncation via top-level status "incomplete" with
+    // incomplete_details.reason "max_output_tokens" (not a per-choice
+    // finish_reason). A completed response with a function_call is a tool stop.
+    const finish_reason = normalizeResponsesStatus(data.status, data.incomplete_details?.reason, tool_calls.length > 0);
+
     logProvider('api-response', {
         provider: 'openai', model,
         endpoint: 'responses',
         serviceTier: appliedServiceTier,
         input: uncachedInput, cached: cachedTokens,
         output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown',
-        tool_calls: tool_calls.length,
+        tool_calls: tool_calls.length, finish_reason,
     });
 
-    return { text, tool_calls, usage };
+    return { text, tool_calls, usage, finish_reason, truncated: isTruncated(finish_reason) };
 }
 
 // ── API call factory ────────────────────────────────────────────────────────
@@ -593,15 +599,18 @@ function createCall(model, apiKey, configuration) {
                 return { id: tc.id, name: tc.function.name, input };
             });
 
+        // finish_reason "length" means the response was cut at the token cap.
+        const finish_reason = normalizeOpenAIChatFinish(choice.finish_reason);
+
         logProvider('api-response', {
             provider: 'openai', model,
             serviceTier: appliedServiceTier,
             input: uncachedInput, cached: cachedTokens,
             output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown',
-            tool_calls: tool_calls.length
+            tool_calls: tool_calls.length, finish_reason
         });
 
-        return { text: choice.message.content || '', tool_calls, usage };
+        return { text: choice.message.content || '', tool_calls, usage, finish_reason, truncated: isTruncated(finish_reason) };
     };
 }
 

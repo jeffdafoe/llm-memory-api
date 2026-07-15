@@ -10,6 +10,7 @@
 
 const { log } = require('../logger');
 const { asNumber } = require('./coerce');
+const { normalizeResponsesStatus, isTruncated } = require('./finish');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -321,17 +322,23 @@ function createCall(model, apiKey, configuration) {
             usage.cost = cost;
         }
 
+        // xAI's Responses API mirrors OpenAI's: truncation shows as top-level
+        // status "incomplete" with incomplete_details.reason "max_output_tokens".
+        // No user function tools yet (hasToolCall false).
+        const finish_reason = normalizeResponsesStatus(data.status, data.incomplete_details?.reason, false);
+
         logProvider('api-response', {
             provider: 'xai', model,
             input: uncachedInput, cached: cachedTokens,
             output: completionTokens,
             cost: cost != null ? cost.toFixed(6) : 'unknown',
-            search: searchEnabled.length > 0 ? searchEnabled : false
+            search: searchEnabled.length > 0 ? searchEnabled : false,
+            finish_reason
         });
 
         // Always return an empty tool_calls so the result shape matches
         // tool-supporting providers. Real function-calling support is a TODO.
-        return { text, tool_calls: [], usage };
+        return { text, tool_calls: [], usage, finish_reason, truncated: isTruncated(finish_reason) };
     };
 }
 

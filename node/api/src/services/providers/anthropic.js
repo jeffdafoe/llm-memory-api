@@ -3,6 +3,7 @@
 
 const { log } = require('../logger');
 const { asNumber } = require('./coerce');
+const { normalizeAnthropicStop, isTruncated } = require('./finish');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -357,9 +358,14 @@ function createCall(model, apiKey, configuration) {
             cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0
         };
 
-        logProvider('api-response', { provider: 'anthropic', model, tool_calls: tool_calls.length, ...usage });
+        // stop_reason "max_tokens" means the response was cut at the token
+        // ceiling — surface it so callers that persist output don't save a
+        // partial document as if it were whole.
+        const finish_reason = normalizeAnthropicStop(data.stop_reason);
 
-        return { text, tool_calls, usage };
+        logProvider('api-response', { provider: 'anthropic', model, tool_calls: tool_calls.length, finish_reason, ...usage });
+
+        return { text, tool_calls, usage, finish_reason, truncated: isTruncated(finish_reason) };
     };
 }
 

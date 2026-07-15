@@ -46,3 +46,70 @@ test('gpt-5.6 calls route through /v1/responses like the rest of gpt-5.x', async
         globalThis.fetch = original;
     }
 });
+
+// LLM-418 — truncation on both endpoints. /v1/responses reports it as
+// status "incomplete" + incomplete_details.reason; chat-completions as a
+// per-choice finish_reason "length".
+test('/v1/responses incomplete/max_output_tokens surfaces truncated:true', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async function () {
+        return {
+            ok: true,
+            json: async () => ({
+                status: 'incomplete',
+                incomplete_details: { reason: 'max_output_tokens' },
+                output: [{ type: 'message', content: [{ type: 'output_text', text: 'partial' }] }],
+                usage: { input_tokens: 10, output_tokens: 8192 },
+            }),
+        };
+    };
+    try {
+        const res = await openai.createCall('gpt-5.6-sol', 'k', {})('sys', 'hi', {});
+        assert.equal(res.finish_reason, 'length');
+        assert.equal(res.truncated, true);
+    } finally {
+        globalThis.fetch = original;
+    }
+});
+
+test('/v1/responses completed surfaces truncated:false', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async function () {
+        return {
+            ok: true,
+            json: async () => ({
+                status: 'completed',
+                output: [{ type: 'message', content: [{ type: 'output_text', text: 'done' }] }],
+                usage: { input_tokens: 10, output_tokens: 5 },
+            }),
+        };
+    };
+    try {
+        const res = await openai.createCall('gpt-5.6-sol', 'k', {})('sys', 'hi', {});
+        assert.equal(res.finish_reason, 'stop');
+        assert.equal(res.truncated, false);
+    } finally {
+        globalThis.fetch = original;
+    }
+});
+
+test('chat-completions finish_reason "length" surfaces truncated:true', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async function () {
+        return {
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'partial', tool_calls: [] }, finish_reason: 'length' }],
+                usage: { prompt_tokens: 10, completion_tokens: 4096 },
+            }),
+        };
+    };
+    try {
+        // gpt-4o-mini stays on /v1/chat/completions (not gpt-5.x, not o-series).
+        const res = await openai.createCall('gpt-4o-mini', 'k', {})('sys', 'hi', {});
+        assert.equal(res.finish_reason, 'length');
+        assert.equal(res.truncated, true);
+    } finally {
+        globalThis.fetch = original;
+    }
+});
