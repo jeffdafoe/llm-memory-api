@@ -674,7 +674,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
                         + backloadDreams
                     : '\n\n## Dream snapshot for ' + chunkDateStr + '\n\n' + content);
 
-            const { text: updatedSoul } = await invokeAgent(soulAgentName, {
+            const { text: updatedSoul, usage: soulUsage } = await invokeAgent(soulAgentName, {
                 userMessage: soulUserMessage,
                 context: 'soul',
                 skipRateLimit: true,
@@ -709,6 +709,20 @@ async function processDreamChunk(agent, agentNames, chunk) {
                     await saveNote(agent.name, 'Soul', trimmedSoul, 'context/soul', soulAgentName, null, null, { upsert: true });
                     logDream('chunk-soul-updated', { agent: agent.name, chunkDate: chunkDateStr, size: trimmedSoul.length });
                 }
+            } else {
+                // Empty/whitespace soul response — the writer returned no
+                // visible text (observed: gemini-2.5-pro spending its whole
+                // budget on thinking tokens, so output_tokens > 0 but the body
+                // is empty). Without this the branch skips silently: no save
+                // and no log, making an empty soul response indistinguishable
+                // from the step never running. Log it so it's visible in the
+                // dream journal, mirroring the people path's
+                // person-context-empty-response. The prior soul is left intact.
+                logDream('chunk-soul-empty-response', {
+                    agent: agent.name,
+                    chunkDate: chunkDateStr,
+                    outputTokens: soulUsage?.output_tokens ?? 0,
+                });
             }
         } catch (soulErr) {
             // Soul failure doesn't block the chunk's dream/people output.
