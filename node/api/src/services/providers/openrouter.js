@@ -12,6 +12,7 @@
 
 const { log } = require('../logger');
 const { asNumber, coerceToolArgs } = require('./coerce');
+const { normalizeOpenAIChatFinish, isTruncated } = require('./finish');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -297,14 +298,19 @@ function createCall(model, apiKey, configuration) {
                 return { id: tc.id, name: tc.function.name, input: input };
             });
 
+        // finish_reason "length" means the upstream model hit its token cap.
+        // OpenRouter fronts the affected Gemini soul agent, so this is a live
+        // truncation path — surface it for the persist guards.
+        const finish_reason = normalizeOpenAIChatFinish(choice.finish_reason);
+
         logProvider('api-response', {
             provider: 'openrouter', model,
             input: uncachedInput, cached: cachedTokens,
             output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown',
-            tool_calls: tool_calls.length
+            tool_calls: tool_calls.length, finish_reason
         });
 
-        return { text: choice.message.content || '', tool_calls: tool_calls, usage: usage };
+        return { text: choice.message.content || '', tool_calls: tool_calls, usage: usage, finish_reason, truncated: isTruncated(finish_reason) };
     };
 }
 

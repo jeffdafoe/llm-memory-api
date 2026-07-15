@@ -582,10 +582,14 @@ async function invokeAgent(agentName, options) {
     }
 
     const durationMs = Date.now() - callStart;
-    const { text, tool_calls, usage } = result;
+    const { text, tool_calls, usage, finish_reason, truncated } = result;
     // Providers that pre-date tool support return undefined for tool_calls.
     // Normalize so callers always see an array.
     const toolCallsOut = Array.isArray(tool_calls) ? tool_calls : [];
+    // Normalize the truncation signal so every caller sees a uniform shape,
+    // even from a provider that hasn't been updated to report it.
+    const finishReasonOut = finish_reason || 'other';
+    const truncatedOut = truncated === true;
 
     // Record rate limit call
     if (!options.skipRateLimit) {
@@ -606,9 +610,9 @@ async function invokeAgent(agentName, options) {
 
     logVA('invoke', { agent: agentName, context: options.context || null, cost: cost.toFixed(6),
         input: usage.input_tokens || 0, output: usage.output_tokens || 0,
-        tool_calls: toolCallsOut.length });
+        tool_calls: toolCallsOut.length, finish_reason: finishReasonOut, truncated: truncatedOut });
 
-    return { text, tool_calls: toolCallsOut, usage, cost };
+    return { text, tool_calls: toolCallsOut, usage, cost, finish_reason: finishReasonOut, truncated: truncatedOut };
 }
 
 // Check if learning extraction is enabled for an agent.
@@ -859,7 +863,7 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
     const extractionPrompt = buildExtractionPrompt(interactionType, contextHint);
     const extractionUserMessage = `System prompt:\n${flatPrompt}\n\nUser message:\n${userMessage}\n\nYour response:\n${response}\n\n---\n\n${extractionPrompt}`;
 
-    const { text: extractionResult } = await invokeAgent(agent.agent, {
+    const { text: extractionResult, truncated: learningTruncated } = await invokeAgent(agent.agent, {
         systemPrompt: 'You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.',
         userMessage: extractionUserMessage,
         context: 'learning',
@@ -867,8 +871,18 @@ async function extractLearnings(agent, systemPrompt, userMessage, response, inte
         skipCostLimit: true,
     });
 
-    // Check for NONE response
-    if (extractionResult.trim().toUpperCase() === 'NONE' || extractionResult.trim() === '') {
+    // Length-stop: a truncated extraction would persist a partial fact list
+    // with a cut-off final bullet. Skip the save — nothing is lost, extraction
+    // re-runs on the next interaction.
+    if (learningTruncated) {
+        logVA('learning-truncated', { agent: agent.agent, interactionType });
+        return;
+    }
+
+    // Check for NONE / empty response. Guard against a provider returning
+    // undefined text so this path (and the truncation path above) can't throw.
+    const extractionText = (extractionResult || '').trim();
+    if (extractionText.toUpperCase() === 'NONE' || extractionText === '') {
         logVA('learning-none', { agent: agent.agent, interactionType });
         return;
     }

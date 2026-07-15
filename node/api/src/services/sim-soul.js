@@ -152,11 +152,19 @@ async function synthesizeSimSoul({ characterDescription, currentSoul, daySnapsho
     // the backstop bounding engine-triggered volume. invokeAgent throws on
     // limit; that surfaces as a 5xx the engine retries next sweep. Retry
     // transient provider errors with backoff, as the cron does.
-    const { text } = await invokeAgent(soulAgentName, {
+    const { text, truncated, finish_reason } = await invokeAgent(soulAgentName, {
         userMessage,
         context: 'soul',
         skipRetry: false,
     });
+
+    // Length-stop: the soul came back cut off mid-thought. Reject → empty text
+    // → the engine keeps the prior soul (same contract as the empty-reply and
+    // reasoning-preamble guards below).
+    if (truncated) {
+        log('sim-soul', 'truncated-rejected', { agent: soulAgentName, finishReason: finish_reason });
+        return { text: '', rejected: 'truncated' };
+    }
 
     const trimmed = (text || '').trim();
     if (!trimmed) {

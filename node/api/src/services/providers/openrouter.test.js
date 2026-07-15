@@ -76,3 +76,42 @@ test('a non-object conf.provider is ignored (guard against malformed config)', a
         stub.restore();
     }
 });
+
+// LLM-418 — the truncation signal. OpenRouter fronts the affected Gemini soul
+// agent, so a "length" finish_reason here is the live truncation path.
+function stubFinishReason(finish) {
+    const original = globalThis.fetch;
+    globalThis.fetch = async function (url) {
+        if (String(url).includes('/models')) return { ok: true, json: async () => ({ data: [] }) };
+        return {
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'partial', tool_calls: [] }, finish_reason: finish }],
+                usage: { prompt_tokens: 10, completion_tokens: 4096 },
+            }),
+        };
+    };
+    return { restore() { globalThis.fetch = original; } };
+}
+
+test('finish_reason "length" surfaces truncated:true on the returned object', async () => {
+    const stub = stubFinishReason('length');
+    try {
+        const res = await openrouter.createCall('google/gemini-2.5-pro', 'k', {})('sys', 'hi', {});
+        assert.equal(res.finish_reason, 'length');
+        assert.equal(res.truncated, true);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('finish_reason "stop" surfaces truncated:false', async () => {
+    const stub = stubFinishReason('stop');
+    try {
+        const res = await openrouter.createCall('google/gemini-2.5-pro', 'k', {})('sys', 'hi', {});
+        assert.equal(res.finish_reason, 'stop');
+        assert.equal(res.truncated, false);
+    } finally {
+        stub.restore();
+    }
+});

@@ -3,6 +3,7 @@
 
 const { log } = require('../logger');
 const { asNumber } = require('./coerce');
+const { normalizeGoogleFinish, isTruncated } = require('./finish');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -372,9 +373,15 @@ function createCall(model, apiKey, configuration) {
             output_tokens: data.usageMetadata?.candidatesTokenCount || 0
         };
 
-        logProvider('api-response', { provider: 'google', model, tool_calls: tool_calls.length, ...usage });
+        // finishReason "MAX_TOKENS" means output hit the cap. Gemini is the
+        // specific casualty here — thinking tokens count against maxOutputTokens,
+        // so a partial soul comes back with MAX_TOKENS while output_tokens looks
+        // healthy. Surface it so the persist guards can reject it.
+        const finish_reason = normalizeGoogleFinish(candidate.finishReason);
 
-        return { text, tool_calls, usage };
+        logProvider('api-response', { provider: 'google', model, tool_calls: tool_calls.length, finish_reason, ...usage });
+
+        return { text, tool_calls, usage, finish_reason, truncated: isTruncated(finish_reason) };
     };
 }
 

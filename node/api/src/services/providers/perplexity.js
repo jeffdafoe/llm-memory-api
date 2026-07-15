@@ -4,6 +4,7 @@
 
 const { log } = require('../logger');
 const { asNumber } = require('./coerce');
+const { normalizeOpenAIChatFinish, isTruncated } = require('./finish');
 
 function logProvider(action, details) {
     log('provider', action, details);
@@ -223,11 +224,14 @@ function createCall(model, apiKey, configuration) {
             output_tokens: data.usage?.completion_tokens || 0
         };
 
-        logProvider('api-response', { provider: 'perplexity', model, ...usage });
+        // finish_reason "length" means the answer was cut at the token cap.
+        const finish_reason = normalizeOpenAIChatFinish(choice.finish_reason);
+
+        logProvider('api-response', { provider: 'perplexity', model, finish_reason, ...usage });
 
         // Empty tool_calls so callers always see a uniform shape across
         // providers — Perplexity Sonar models don't support function calling.
-        return { text, tool_calls: [], usage };
+        return { text, tool_calls: [], usage, finish_reason, truncated: isTruncated(finish_reason) };
     };
 }
 
