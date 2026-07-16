@@ -172,6 +172,21 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     const filenameBoostValue = parseNonNegativeFinite(config.get('search_filename_boost'), 0.15);
     const bm25BoostScale = parseNonNegativeFinite(config.get('search_bm25_boost'), 0.1);
 
+    // Relevance floor (LLM-436): drop results whose composite score is below
+    // this value instead of returning the k least-unrelated chunks. Without a
+    // floor, search is a pure top-k ranker — a query against a small corpus
+    // (e.g. an NPC's private memory partition of a handful of notes) returns
+    // its nearest neighbor no matter how unrelated, and downstream consumers
+    // that frame hits authoritatively ("You remember: ...") turn that noise
+    // into confabulation. Floored on the composite score, not raw vector
+    // similarity: the composite already encodes the kind-weight judgment that
+    // conversations are noisy (a noise chunk can sit at ~0.35 raw but ~0.25
+    // composite) and, where decay is configured, a memory fading below the
+    // floor IS forgetting by design. Measured on live data: pure noise scores
+    // <= ~0.25, legitimate fuzzy recalls >= ~0.37 — 0.3 is the recommended
+    // operating value. Default 0 = off (no behavior change until raised).
+    const minSimilarity = parseNonNegativeFinite(config.get('search_min_similarity'), 0);
+
     // Load decay/boost config (validated to finite non-negative numbers)
     // Kind-based half-lives (fallback when no cognitive type is set)
     const halfLives = {
@@ -391,6 +406,20 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
     params.push(maxResults);
     paramIdx++;
 
+    // Floor applied in the shared outer query (both namespace branches flow
+    // through it, so there is no second path to forget). Added only when
+    // enabled so the floor-off SQL stays byte-identical to the pre-LLM-436
+    // query. Scores are computed in the inner select, so sub-floor chunks
+    // still occupy candidate-pool slots — irrelevant to correctness since the
+    // floor removes them before the final trim.
+    let floorFilter = '';
+    if (minSimilarity > 0) {
+        const floorIdx = paramIdx;
+        params.push(minSimilarity);
+        paramIdx++;
+        floorFilter = ` AND similarity >= $${floorIdx}::numeric`;
+    }
+
     const sql = `
         SELECT source_file, heading, chunk_text, namespace, created_at, similarity, chunk_count
         FROM (
@@ -399,7 +428,7 @@ async function searchMemory(query, namespace, limit, readableNamespaces, actorId
                    COUNT(*) OVER (PARTITION BY namespace, source_file) AS chunk_count
             FROM (${innerSql}) candidates
         ) ranked
-        WHERE rn = 1
+        WHERE rn = 1${floorFilter}
         ORDER BY similarity DESC
         LIMIT $${finalLimitIdx}
     `;
