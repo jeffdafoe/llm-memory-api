@@ -5,6 +5,15 @@ on:
         branches: [main]
     push:
         branches: [main]
+    # Weekly floor so the analysis keeps reporting during quiet periods. Without
+    # it the newest scan is only ever as recent as the last push, and a
+    # configuration that stops running looks identical to one nothing has
+    # touched — which is how actions and go sat unanalyzed from Apr to Jul 2026
+    # (LLM-489) with nothing surfacing it until the tool status page aged into a
+    # warning. The offset minute is deliberate: scheduled runs bunched on the
+    # hour get queued behind everyone else's.
+    schedule:
+        - cron: '17 7 * * 1'  # Mondays 07:17 UTC
 
 permissions:
     contents: read
