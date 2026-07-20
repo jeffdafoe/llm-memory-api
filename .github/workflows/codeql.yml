@@ -12,13 +12,27 @@ permissions:
 
 jobs:
     analyze:
-        name: Analyze
+        name: Analyze (${{ matrix.language }})
         runs-on: ubuntu-latest
 
+        # Covers all three languages the repo actually contains. The default
+        # setup analyzed actions/go/javascript-typescript until it was replaced
+        # by this workflow on 2026-04-01; the replacement listed only javascript,
+        # so actions and go silently lost coverage for ~3.5 months (LLM-489).
+        # Adding a language here is what keeps it analyzed — nothing else will
+        # notice its absence.
         strategy:
             fail-fast: false
             matrix:
-                language: [javascript]
+                include:
+                    - language: javascript
+                      build-mode: none
+                    - language: actions
+                      build-mode: none
+                    # The module lives at go/client, not the repo root;
+                    # autobuild locates it by finding go.mod.
+                    - language: go
+                      build-mode: autobuild
 
         steps:
             - uses: actions/checkout@v7
@@ -27,10 +41,15 @@ jobs:
               uses: github/codeql-action/init@v4
               with:
                   languages: ${{ matrix.language }}
+                  # build-mode here replaces the separate autobuild step the
+                  # javascript-only version ran.
+                  build-mode: ${{ matrix.build-mode }}
                   config-file: .github/codeql/codeql-config.yml
 
-            - name: Autobuild
-              uses: github/codeql-action/autobuild@v4
-
+            # No explicit `category:` on purpose. The default is derived from the
+            # workflow path plus language, which is what the existing javascript
+            # alerts are already filed under — setting one would re-file them
+            # under a new category and orphan the old one as a stale
+            # never-updated configuration, the exact failure this ticket fixes.
             - name: Perform CodeQL Analysis
               uses: github/codeql-action/analyze@v4
