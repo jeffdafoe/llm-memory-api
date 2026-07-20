@@ -26,11 +26,11 @@ jobs:
             matrix:
                 include:
                     - language: javascript
-                      build-mode: none
                     - language: actions
-                      build-mode: none
-                    # The module lives at go/client, not the repo root;
-                    # autobuild locates it by finding go.mod.
+                    # Only Go needs a build. The module lives at go/client, not
+                    # the repo root; autobuild locates it by finding go.mod.
+                    # javascript and actions default to build-mode none, so they
+                    # deliberately leave it unset — see the category note below.
                     - language: go
                       build-mode: autobuild
 
@@ -41,15 +41,19 @@ jobs:
               uses: github/codeql-action/init@v4
               with:
                   languages: ${{ matrix.language }}
-                  # build-mode here replaces the separate autobuild step the
-                  # javascript-only version ran.
                   build-mode: ${{ matrix.build-mode }}
                   config-file: .github/codeql/codeql-config.yml
 
-            # No explicit `category:` on purpose. The default is derived from the
-            # workflow path plus language, which is what the existing javascript
-            # alerts are already filed under — setting one would re-file them
-            # under a new category and orphan the old one as a stale
-            # never-updated configuration, the exact failure this ticket fixes.
+            # The analysis category is NOT set explicitly, so it is derived —
+            # and the derivation includes build-mode when one is supplied, not
+            # just workflow path and language. Passing `build-mode: none` to the
+            # javascript leg therefore moved it from
+            #   .github/workflows/codeql.yml:analyze/language:javascript
+            # to
+            #   .github/workflows/codeql.yml:analyze/build-mode:none/language:javascript
+            # which orphaned 567 prior analyses and the alert history filed
+            # against them. Leaving build-mode unset for javascript keeps the
+            # original category and that continuity. Changing this input on an
+            # existing language is a category change — treat it as one.
             - name: Perform CodeQL Analysis
               uses: github/codeql-action/analyze@v4
