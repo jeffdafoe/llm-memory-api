@@ -67,12 +67,32 @@ const trimmedNext = stabilizeHistoryWindow(nextTurn, CAP);
 check('next turn, same band -> identical head timestamp',
     trimmedNext[0].sent_at === trimmed[0].sent_at);
 
-// Quality floor: the trim never leaves fewer than the newest 25 rows, even
-// when the whole window sits inside one grid band (round-up would otherwise
-// eat deep into it).
-const dense = rows(CAP, ANCHOR, 5000); // 50 rows spanning ~4 minutes
+// Boundary semantics: an oldest row exactly ON a grid line closes its band —
+// the grid line IS that timestamp, so nothing is trimmed on this turn...
+const BOUNDARY = Math.ceil(ANCHOR / GRID_MS) * GRID_MS;
+const onBoundary = rows(CAP, BOUNDARY + (CAP - 1) * 60000, 60000); // oldest exactly at BOUNDARY
+check('oldest exactly on grid line -> retained from that row',
+    stabilizeHistoryWindow(onBoundary, CAP)[0].sent_at === onBoundary[0].sent_at);
+// ...and once the oldest crosses into the next band, the head jumps to the
+// next line — exactly one jump, after which it is stable again.
+const crossed = rows(CAP, BOUNDARY + CAP * 60000, 60000); // oldest at BOUNDARY+1min
+const crossedTrimmed = stabilizeHistoryWindow(crossed, CAP);
+const nextLine = BOUNDARY + GRID_MS;
+check('oldest past the line -> head jumps to the next grid line',
+    new Date(crossedTrimmed[0].sent_at).getTime() >= nextLine);
+const crossedAgain = rows(CAP, BOUNDARY + (CAP + 5) * 60000, 60000); // 5 turns later, same band
+check('subsequent turns in the new band -> head identical',
+    stabilizeHistoryWindow(crossedAgain, CAP)[0].sent_at === crossedTrimmed[0].sent_at);
+
+// Quality floor: when every fetched row sits before the grid line (a dense
+// burst just under a boundary), the floor binds — exactly the newest
+// MIN_KEEP rows are returned, deliberately unaligned to the grid (cache
+// stability abandoned for context; see the implementation comment).
+const dense = rows(CAP, BOUNDARY - 60000, 5000); // 50 rows, all inside one band, none at/after its line
 const denseTrimmed = stabilizeHistoryWindow(dense, CAP);
-check('dense window -> min-keep floor holds', denseTrimmed.length >= 25);
+check('floor binds -> exactly the newest 25 rows', denseTrimmed.length === 25);
+check('floor binds -> retained head is the 25th-newest row',
+    denseTrimmed[0] === dense[CAP - 25]);
 
 // Graceful on rows without sent_at at the head.
 const noTime = [{ message: 'x' }].concat(rows(CAP - 1, ANCHOR, 60000));

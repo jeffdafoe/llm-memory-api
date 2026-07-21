@@ -81,6 +81,21 @@ check('8m gap -> no marker', smallGap[1].content === '# Your turn again');
 const noTime = buildToolUseMessages([{ from_agent: 'salem-engine', message: '# Your turn\nno time' }], NPC);
 check('no sent_at -> raw content, no prefix', noTime[0].content === '# Your turn\nno time');
 
+// A malformed sent_at parses to NaN -> every gap threshold fails -> no marker
+// (graceful loss of that one row's grounding, never a crash or nondeterminism).
+const badTime = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: 'not-a-date' },
+    { from_agent: 'salem-engine', message: '# Your turn again', sent_at: agoISO(5) },
+], NPC);
+check('malformed sent_at -> no marker, raw content', badTime[1].content === '# Your turn again');
+
+// Out-of-order rows (clock skew) yield a negative gap -> no marker.
+const skewed = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: agoISO(5) },
+    { from_agent: 'salem-engine', message: '# Your turn again', sent_at: agoISO(60) }, // 55m BEFORE the prior row
+], NPC);
+check('negative gap -> no marker', skewed[1].content === '# Your turn again');
+
 // ZBBS-HOME-436: a REJECTED quote-take replays its "bought" paraphrase with
 // the [error] tool result immediately adjacent (paired by tool_call_id in
 // stored row order), so the false-success window the wording opens is closed

@@ -1029,17 +1029,22 @@ async function loadDirectChatHistory(agent1, agent2, sceneId) {
 // reason.)
 //
 // Fix: when the fetch hit the cap, trim the head to a fixed 15-minute grid
-// line in absolute time — the earliest fetched row's sent_at rounded UP to
-// the grid. As new rows arrive, the earliest-fetched row slides forward
-// WITHIN a grid band while the grid line itself stays put, so the retained
-// head — and therefore the replayed byte prefix — is identical across those
-// turns. Only when the earliest row crosses the grid line does the head
-// jump (one cache miss per ~15 minutes instead of one per turn).
+// line in ABSOLUTE (Unix-epoch) time — the earliest fetched row's sent_at
+// rounded UP to the grid. For any earliest row inside the half-open band
+// (k*GRID, (k+1)*GRID] the line is the same absolute timestamp
+// (k+1)*GRID, so as rows slide forward within a band the retained head —
+// and therefore the replayed byte prefix — is identical across those
+// turns. Only when the earliest row crosses into the next band does the
+// head jump (one cache miss per ~15 minutes instead of one per turn).
+// A row sitting exactly ON a boundary closes its band immediately (ceil
+// of an exact multiple is itself), which can cost one extra early jump —
+// never non-determinism, since the result is a pure function of the rows.
 //
 // MIN_KEEP quality floor: in a very busy scene the round-up could eat deep
-// into the cap'd window, so never trim below the newest MIN_KEEP rows —
-// falling back to the sliding head for that (rare) case; context beats
-// cache there.
+// into the cap'd window, so never trim below the newest MIN_KEEP rows.
+// When the floor binds, the retained head sits BEFORE the grid line and
+// slides one row per turn again — cache stability is deliberately
+// abandoned for that (rare) case; context beats cache there.
 //
 // Under the cap the fetch is bounded by the (hour-quantized) time cutoff
 // alone and rows are returned untouched. Pure; exported for unit tests.
@@ -2334,6 +2339,10 @@ function paraphraseToolCall(name, input) {
 // perception's own text still carries frozen "(4m ago)" stamps from the
 // engine's render.
 function formatGapMarker(gapMs) {
+    // A malformed sent_at parses to NaN and a clock-skewed out-of-order pair
+    // yields a negative gap; both fail every threshold below and emit no
+    // marker — losing that one row's temporal grounding, never determinism
+    // (the same rows always produce the same output).
     const HOUR_MS = 60 * 60 * 1000;
     const MINUTE_MS = 60 * 1000;
     if (gapMs >= 2 * HOUR_MS) {
@@ -2344,6 +2353,24 @@ function formatGapMarker(gapMs) {
         return '--- gap: ' + mins + 'm ---';
     }
     return null;
+}
+
+// buildCurrentTurnContext assembles the volatile per-call context attached to
+// the model's CURRENT turn on the sim tool-use path (LLM-501): the Impressions
+// block (private notes on co-located people — moved here from the sim system
+// prompt, where a co-location flip was a full-request cache miss) followed by
+// the engine's ephemeral_context (which ends with the triage coda, so it stays
+// last). Empty peopleContext emits NO Impressions block (wrapBlock returns ''
+// for empty content and the join drops it) — an empty wrapper would change the
+// payload for nothing. Non-sim callers contribute no Impressions here (theirs
+// stays in the system prompt). Returns '' when there is nothing to attach.
+// Pure; exported for unit tests.
+function buildCurrentTurnContext(isSimNpc, peopleContext, ephemeralContext) {
+    let impressionsBlock = '';
+    if (isSimNpc) {
+        impressionsBlock = wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext);
+    }
+    return [impressionsBlock, ephemeralContext].filter(Boolean).join('\n\n');
 }
 
 function buildToolUseMessages(history, npcAgentName) {
@@ -2866,11 +2893,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             // perception; for a tool-result follow-up (latest messages are tool
             // results) push a trailing user turn so the model still sees its
             // current options.
-            const impressionsBlock = isSimNpc
-                ? wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext)
-                : '';
-            const currentTurnContext = [impressionsBlock, ephemeralContext]
-                .filter(Boolean).join('\n\n');
+            const currentTurnContext = buildCurrentTurnContext(isSimNpc, peopleContext, ephemeralContext);
             if (currentTurnContext) {
                 const lastMsg = toolUseMessages[toolUseMessages.length - 1];
                 if (lastMsg && lastMsg.role === 'user') {
@@ -3228,4 +3251,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages, stabilizeHistoryWindow };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages, stabilizeHistoryWindow, buildCurrentTurnContext };
