@@ -981,9 +981,13 @@ async function loadChatHistory(discussionId, limit) {
 // layer (actor_narrative_state, actor_relationship), not from chat
 // history. Persistent-VA callers pass null here and keep the agent-wide
 // time-windowed history they had pre-fix.
+// Row cap for direct-chat history. Module-scope because the sim tick path
+// also needs it to tell "the fetch hit the cap" (see stabilizeHistoryWindow).
+const MAX_DIRECT_CHAT_HISTORY = 50;
+
 async function loadDirectChatHistory(agent1, agent2, sceneId) {
     const hours = parseInt(config.get('virtual_agent_chat_history_hours')) || 4;
-    const maxMessages = 50;
+    const maxMessages = MAX_DIRECT_CHAT_HISTORY;
 
     const actor1 = await requireByName(agent1);
     const actor2 = await requireByName(agent2);
@@ -1007,12 +1011,60 @@ async function loadDirectChatHistory(agent1, agent2, sceneId) {
          WHERE cmt.discussion_id IS NULL AND cm.deleted_at IS NULL
            AND NOT cmt.is_error
          AND ((cmt.from_actor_id = $1 AND cm.to_actor_id = $2) OR (cmt.from_actor_id = $2 AND cm.to_actor_id = $1))
-         AND cmt.sent_at >= NOW() - INTERVAL '1 hour' * $3
+         AND cmt.sent_at >= date_trunc('hour', NOW()) - INTERVAL '1 hour' * $3
          AND ($5::uuid IS NULL OR cmt.scene_id = $5::uuid)
          ORDER BY cm.id DESC LIMIT $4`,
         [actor1.id, actor2.id, hours, maxMessages, sceneId || null]
     );
     return result.rows.reverse();
+}
+
+// Quantize the sliding head of a cap-bound history window (LLM-501).
+//
+// When a busy NPC runs at the MAX_DIRECT_CHAT_HISTORY cap, the plain
+// "newest N rows" fetch drops the oldest row on EVERY new row — a byte
+// shift at position 0 of the replayed history, which is a full-prefix
+// provider-cache miss on every single turn. (The time cutoff has the same
+// disease in slow motion; it's hour-truncated in SQL above for the same
+// reason.)
+//
+// Fix: when the fetch hit the cap, trim the head to a fixed 15-minute grid
+// line in absolute time — the earliest fetched row's sent_at rounded UP to
+// the grid. As new rows arrive, the earliest-fetched row slides forward
+// WITHIN a grid band while the grid line itself stays put, so the retained
+// head — and therefore the replayed byte prefix — is identical across those
+// turns. Only when the earliest row crosses the grid line does the head
+// jump (one cache miss per ~15 minutes instead of one per turn).
+//
+// MIN_KEEP quality floor: in a very busy scene the round-up could eat deep
+// into the cap'd window, so never trim below the newest MIN_KEEP rows —
+// falling back to the sliding head for that (rare) case; context beats
+// cache there.
+//
+// Under the cap the fetch is bounded by the (hour-quantized) time cutoff
+// alone and rows are returned untouched. Pure; exported for unit tests.
+const HISTORY_HEAD_GRID_MS = 15 * 60 * 1000;
+const HISTORY_HEAD_MIN_KEEP = 25;
+function stabilizeHistoryWindow(rows, maxMessages) {
+    if (!Array.isArray(rows) || rows.length < maxMessages) {
+        return rows;
+    }
+    const first = rows[0];
+    if (!first || !first.sent_at) {
+        return rows;
+    }
+    const firstMs = new Date(first.sent_at).getTime();
+    const gridLineMs = Math.ceil(firstMs / HISTORY_HEAD_GRID_MS) * HISTORY_HEAD_GRID_MS;
+    let cut = 0;
+    while (cut < rows.length - HISTORY_HEAD_MIN_KEEP) {
+        const row = rows[cut];
+        if (row.sent_at && new Date(row.sent_at).getTime() < gridLineMs) {
+            cut++;
+        } else {
+            break;
+        }
+    }
+    return rows.slice(cut);
 }
 
 // Search the agent's namespace for context relevant to the discussion topic.
@@ -1241,6 +1293,8 @@ const DIRECTIVE_REPLY_POLICY = 'You do not have to respond. If a reply is not wa
 const DIRECTIVE_OUTPUT = 'Reply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants\' messages. End when your own message is complete.';
 
 const DIRECTIVE_OUTPUT_CHAT = 'Respond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.';
+
+const DIRECTIVE_STANDING = 'Standing facts about your character — who you are, how you live and trade, where home and work are. They change rarely; treat them as background identity. What is happening right now arrives in the user messages.';
 
 const DIRECTIVE_SIM_CONTEXT = 'You are a character inside a village simulation. The user messages are perception updates emitted by the simulation engine — what your character sees, hears, or experiences in the moment. They are not chat from a person; do not address the engine, the narrator, or "the user". Choose actions by calling the provided tools. Do not reply with ordinary prose. If you want your character to say something, use the speak tool. Speak only to characters confirmed present in your perception or by tool results. If you want to go somewhere, use move_to. If no action is appropriate this round, call done. Treat perception and tool results as authoritative — do not invent unseen characters, unavailable locations, or events not supported by the simulation state. Use your identity, memories, and impressions to decide what your character wants, but express every action through tools.';
 
@@ -2264,17 +2318,43 @@ function paraphraseToolCall(name, input) {
     }
 }
 
+// Gap marker between two replayed history rows, or null when the gap is too
+// small to note. Two tiers: minutes (rounded to 5) from 10 minutes up, hours
+// (rounded) from 2 hours up — "--- gap: 25m ---" / "--- gap: 3h ---".
+//
+// LLM-501: this is a pure function of the two rows' FROZEN sent_at values, so
+// the marker text never changes between assemblies. Its predecessor — a
+// per-perception relative-age prefix ("[3 minutes ago]") recomputed from
+// NOW() on every assembly — rewrote history bytes as time passed, which
+// killed provider prefix caching from the first ticked-over stamp onward
+// (statefuls re-billed most of their history cold every turn). The gap
+// markers keep the temporal grounding the stamps provided (a busy scene vs.
+// one spread over hours still read differently) with replay-stable bytes.
+// The finer 10-minute tier compensates for the lost per-message ages; each
+// perception's own text still carries frozen "(4m ago)" stamps from the
+// engine's render.
+function formatGapMarker(gapMs) {
+    const HOUR_MS = 60 * 60 * 1000;
+    const MINUTE_MS = 60 * 1000;
+    if (gapMs >= 2 * HOUR_MS) {
+        return '--- gap: ' + Math.round(gapMs / HOUR_MS) + 'h ---';
+    }
+    if (gapMs >= 10 * MINUTE_MS) {
+        const mins = Math.round(gapMs / (5 * MINUTE_MS)) * 5;
+        return '--- gap: ' + mins + 'm ---';
+    }
+    return null;
+}
+
 function buildToolUseMessages(history, npcAgentName) {
     const messages = [];
     const npcLower = npcAgentName.toLowerCase();
-    // Relative-time grounding for the replayed sim history: prefix each engine
-    // perception with its age ([3h], [now], ...) and mark big inter-tick gaps,
-    // so the model knows WHEN each turn happened — a busy scene vs. one spread
-    // over hours read very differently, and the tool-use path otherwise carries
-    // no time at all. Mirrors the companion buildDirectChatUserMessage path
-    // (which the sim path had dropped). Replay-time annotation computed from
-    // sent_at — NEVER persisted.
-    const GAP_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2h, matching buildDirectChatUserMessage
+    // Temporal grounding for the replayed sim history: mark inter-tick gaps
+    // so the model knows how the turns are spaced — a busy scene vs. one
+    // spread over hours read very differently, and the tool-use path
+    // otherwise carries no time at all. Replay-time annotation computed from
+    // the rows' frozen sent_at deltas — NEVER persisted, and deliberately
+    // byte-stable across assemblies (see formatGapMarker / LLM-501).
     let prevSentAt = null;
     for (const row of history) {
         const fromLower = (row.from_agent || '').toLowerCase();
@@ -2308,21 +2388,17 @@ function buildToolUseMessages(history, npcAgentName) {
                 content: row.message || '',
             });
         } else {
-            // Engine perception (user turn). Prefix with a relative-time marker
-            // and, when there's a long pause since the previous row, a gap line.
-            // Only the perception turns are stamped — the assistant/tool rows of
-            // a tick are the same moment as their perception.
+            // Engine perception (user turn). When there's a notable pause
+            // since the previous row, lead with a gap line. Only the
+            // perception turns get one — the assistant/tool rows of a tick
+            // are the same moment as their perception.
             let content = row.message || '';
-            if (row.sent_at) {
-                const prefix = [];
-                if (prevSentAt) {
-                    const gap = new Date(row.sent_at).getTime() - new Date(prevSentAt).getTime();
-                    if (gap >= GAP_THRESHOLD_MS) {
-                        prefix.push('--- gap: ' + Math.round(gap / (60 * 60 * 1000)) + 'h ---');
-                    }
+            if (row.sent_at && prevSentAt) {
+                const gap = new Date(row.sent_at).getTime() - new Date(prevSentAt).getTime();
+                const marker = formatGapMarker(gap);
+                if (marker) {
+                    content = marker + '\n' + content;
                 }
-                prefix.push(formatRelativeTime(row.sent_at));
-                content = prefix.join('\n') + '\n' + content;
             }
             messages.push({ role: 'user', content });
         }
@@ -2537,6 +2613,13 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
     // accumulate across the replayed conversation. Empty/absent → no-op.
     const ephemeralContext = (opts && typeof opts.ephemeralContext === 'string' && opts.ephemeralContext.length > 0)
         ? opts.ephemeralContext : null;
+    // stableContext (LLM-501): per-actor DAILY-stable context (identity prose,
+    // trade rules, home/work anchors) the engine wants in the provider-cached
+    // zone. Appended to the system prompt below — NOT to the user turn — so it
+    // extends the stable byte prefix instead of re-billing cold every tick.
+    // Never persisted, same as ephemeralContext. Empty/absent → no-op.
+    const stableContext = (opts && typeof opts.stableContext === 'string' && opts.stableContext.length > 0)
+        ? opts.stableContext : null;
     const isToolUse = Array.isArray(toolsOffered) && toolsOffered.length > 0;
     // isToolResultCall=true means this chat/send is the model's response
     // to a tool result the engine just sent back (e.g. "[OK] You spoke.").
@@ -2707,7 +2790,25 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (isSimNpc && isToolUse) {
             // Action tick: tools_offered is non-empty, so SimContext's push toward
             // tool-call output is correct.
-            systemPrompt = buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext);
+            //
+            // Cache-stable composition (LLM-501): the system message is the
+            // provider-cached prefix of every request, and any byte that
+            // changes in it invalidates the ENTIRE request — including all
+            // replayed history. So the action-tick system prompt carries only
+            // within-day-stable content:
+            //   - Impressions (co-located people notes) changes whenever
+            //     someone walks in or out, so it moves to the current-turn
+            //     attachment below instead (peopleContext deliberately NOT
+            //     passed here).
+            //   - The engine's stableContext (identity / trade rules /
+            //     anchors, daily-stable) is appended here, where it caches.
+            // The reflection and companion paths keep the original
+            // composition — they don't replay a per-tick history, so there's
+            // nothing to protect.
+            systemPrompt = buildSimChatSystemPrompt(agent, ragContext, soul, '');
+            if (stableContext) {
+                systemPrompt.static += '\n\n' + wrapBlock('Standing', 'standing-context', DIRECTIVE_STANDING, stableContext);
+            }
         } else if (isSimNpc) {
             // Engine-driven call with no tools = a prose-only reflection
             // (consolidation / narrative / atmosphere / noticeboard). The action
@@ -2726,7 +2827,12 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (isToolUse) {
             let toolUseHistory = history;
             if (isSimChat) {
-                toolUseHistory = pruneSimHistory(history);
+                // Quantize the cap-bound sliding head BEFORE pruning so the
+                // at-cap detection sees the fetched row count (LLM-501), then
+                // prune consecutive perceptions as before — both steps are
+                // deterministic over the same row set, so the replayed byte
+                // prefix stays stable between head jumps.
+                toolUseHistory = pruneSimHistory(stabilizeHistoryWindow(history, MAX_DIRECT_CHAT_HISTORY));
             }
             toolUseMessages = buildToolUseMessages(toolUseHistory, virtualAgentName);
             toolUseMessages = trimHeadToUserMessage(toolUseMessages);
@@ -2745,21 +2851,34 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
                 }];
             }
 
-            // Attach ephemeral_context (lean sim-history) to the CURRENT turn,
-            // AFTER history assembly so it never becomes part of the persisted /
-            // replayed conversation — it carries the per-tick affordances /
-            // world-state the model needs to decide NOW. Append to the last user
-            // message when the latest turn is a fresh perception; for a
-            // tool-result follow-up (latest messages are tool results) push it as
-            // a trailing user turn so the model still sees its current options.
-            if (ephemeralContext) {
+            // Attach the per-tick volatile context to the CURRENT turn, AFTER
+            // history assembly so it never becomes part of the persisted /
+            // replayed conversation:
+            //   - the Impressions block (private notes on co-located people) —
+            //     moved here from the sim action-tick system prompt (LLM-501):
+            //     it changes whenever co-location changes, and a byte change in
+            //     the system message is a full-request provider-cache miss.
+            //     Same content and wrapper, volatile-zone placement.
+            //   - ephemeral_context (lean sim-history) — the per-tick
+            //     affordances / world-state the model needs to decide NOW. It
+            //     ends with the engine's triage coda, so it stays last.
+            // Append to the last user message when the latest turn is a fresh
+            // perception; for a tool-result follow-up (latest messages are tool
+            // results) push a trailing user turn so the model still sees its
+            // current options.
+            const impressionsBlock = isSimNpc
+                ? wrapBlock('Impressions', 'private-relationship-notes', DIRECTIVE_IMPRESSIONS, peopleContext)
+                : '';
+            const currentTurnContext = [impressionsBlock, ephemeralContext]
+                .filter(Boolean).join('\n\n');
+            if (currentTurnContext) {
                 const lastMsg = toolUseMessages[toolUseMessages.length - 1];
                 if (lastMsg && lastMsg.role === 'user') {
                     lastMsg.content = lastMsg.content
-                        ? lastMsg.content + '\n\n' + ephemeralContext
-                        : ephemeralContext;
+                        ? lastMsg.content + '\n\n' + currentTurnContext
+                        : currentTurnContext;
                 } else {
-                    toolUseMessages.push({ role: 'user', content: ephemeralContext });
+                    toolUseMessages.push({ role: 'user', content: currentTurnContext });
                 }
             }
         }
@@ -3109,4 +3228,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages, stabilizeHistoryWindow };

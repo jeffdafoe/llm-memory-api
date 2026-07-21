@@ -130,6 +130,10 @@ function soulNeedsRebuild(existingSoul, minChars) {
 // writer's input (LLM-420). When a backload is not available (disabled or no
 // dreams yet) the day's chunk is used as the snapshot regardless of rebuild.
 function buildSoulUserMessage({ agentName, startupInstructions, existingSoul, needsRebuild, backloadDreams, chunkDate, dreamContent }) {
+    // Length cap shared with the sim-soul endpoint (LLM-501) — the soul is
+    // re-billed on every NPC turn, so both soul writers carry the same
+    // condense-don't-grow contract.
+    const { SOUL_LENGTH_DIRECTIVE } = require('./sim-soul');
     return '## Agent: ' + agentName + '\n\n'
         + (startupInstructions
             ? '## Character description\n\n' + startupInstructions + '\n\n'
@@ -140,7 +144,8 @@ function buildSoulUserMessage({ agentName, startupInstructions, existingSoul, ne
             ? '\n\n## Dream snapshot for initial soul rebuild\n\n'
                 + 'There is no usable prior soul document. Synthesize an initial soul from the recent dream history below; do not treat this as a single-day incremental update.\n\n'
                 + backloadDreams
-            : '\n\n## Dream snapshot for ' + chunkDate + '\n\n' + dreamContent);
+            : '\n\n## Dream snapshot for ' + chunkDate + '\n\n' + dreamContent)
+        + '\n\n' + SOUL_LENGTH_DIRECTIVE;
 }
 
 // Cheap detection for the typed-context JSON array format. The whole

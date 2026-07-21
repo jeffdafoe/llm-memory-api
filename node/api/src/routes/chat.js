@@ -57,6 +57,25 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     // never written to chat_message_texts, so it can't accumulate across the
     // replayed conversation. Absent = unchanged behavior. Length-capped as a
     // guard against an absurd payload (the engine's furniture block is a few KB).
+    // stable_context (LLM-501): optional per-actor DAILY-stable context —
+    // identity prose / trade rules / home-work anchors the engine wants
+    // appended to the (provider-cached) system prompt instead of re-billed
+    // cold in the volatile user turn. Same security posture as
+    // ephemeral_context below: forwarded to the model, NEVER persisted,
+    // gated to the sim engine principal.
+    const stableContext = req.body.stable_context;
+    if (stableContext !== undefined && stableContext !== null) {
+        if (from_agent !== 'salem-engine') {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'stable_context is only supported for sim engine chat' } });
+        }
+        if (typeof stableContext !== 'string') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'stable_context must be a string' } });
+        }
+        if (stableContext.length > 65536) {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'stable_context exceeds 65536 chars' } });
+        }
+    }
+
     const ephemeralContext = req.body.ephemeral_context;
     if (ephemeralContext !== undefined && ephemeralContext !== null) {
         // SECURITY: ephemeral_context is forwarded to the model but NEVER
@@ -216,7 +235,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     }
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, conversationId, simActorId, simActorName, wait, ephemeralContext,
+        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, conversationId, simActorId, simActorName, wait, ephemeralContext, stableContext,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.
