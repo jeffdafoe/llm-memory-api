@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Standalone test for buildToolUseMessages (virtual-agent.js) — focused on the
-// MEM-133 relative-time grounding: engine perceptions get a [age] prefix and a
-// "--- gap: Nh ---" marker after a long pause, mirroring the companion path the
-// sim tool-use branch had dropped. Also pins the role mapping + salience content.
+// LLM-501 byte-stable temporal grounding: engine perceptions carry NO
+// replay-time relative-age prefix (those rewrote history bytes on every
+// assembly and killed provider prefix caching); pauses are marked instead
+// with "--- gap: Nm/Nh ---" lines computed purely from the rows' frozen
+// sent_at deltas. Also pins the role mapping + salience content.
 //
 // Run: node scripts/test-build-tool-use-messages.js   (exits 0 pass / 1 fail)
 
@@ -40,11 +42,9 @@ const history = [
 const msgs = buildToolUseMessages(history, NPC);
 
 check('4 messages', msgs.length === 4);
-// 1st perception: [3h] prefix, no gap (first row).
+// 1st perception: raw content — no age prefix (LLM-501), no gap (first row).
 check('msg0 is user', msgs[0].role === 'user');
-// WORK-434 spelled out relative timestamps ([3h] → [3 hours ago]); these
-// expectations were stale until LLM-237 touched this file.
-check('msg0 prefixed with [3 hours ago]', msgs[0].content.startsWith('[3 hours ago]\n# Your turn'));
+check('msg0 is the raw perception, unprefixed', msgs[0].content === '# Your turn\n## You\nstarving');
 check('msg0 has no gap marker (first row)', !msgs[0].content.includes('gap:'));
 // assistant: salience paraphrase, NO time prefix.
 check('msg1 is assistant', msgs[1].role === 'assistant');
@@ -53,13 +53,48 @@ check('msg1 carries the tool_call', Array.isArray(msgs[1].tool_calls) && msgs[1]
 check('msg1 NOT time-prefixed', !msgs[1].content.startsWith('['));
 // tool result: untouched.
 check('msg2 is tool', msgs[2].role === 'tool' && msgs[2].tool_call_id === 't1' && msgs[2].content === '[ok]');
-// 2nd perception: gap marker (~3h) + [5m].
+// 2nd perception: hour-tier gap marker (~2.9h → 3h), no age prefix.
 check('msg3 is user', msgs[3].role === 'user');
-check('msg3 has the gap marker', msgs[3].content.startsWith('--- gap: 3h ---\n[5 minutes ago]\n# Your turn'));
+check('msg3 has the gap marker, no age prefix', msgs[3].content.startsWith('--- gap: 3h ---\n# Your turn'));
+
+// LLM-501 byte-stability: no replayed message anywhere carries a
+// relative-age stamp — those are a function of NOW() and rewrite history
+// bytes between assemblies, killing provider prefix caching.
+const AGE_STAMP = /\[(just now|\d+ (minute|hour|day)s? ago)\]/;
+check('no message carries a relative-age stamp', msgs.every(m => !AGE_STAMP.test(m.content || '')));
+
+// Minutes-tier gap: >= 10 minutes gets a 5-minute-rounded marker...
+const minuteGap = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: agoISO(60) },
+    { from_agent: 'salem-engine', message: '# Your turn again', sent_at: agoISO(18) }, // 42m later
+], NPC);
+check('42m gap -> "--- gap: 40m ---"', minuteGap[1].content.startsWith('--- gap: 40m ---\n# Your turn again'));
+
+// ...while a sub-10-minute pause (ordinary tick spacing) gets none.
+const smallGap = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: agoISO(20) },
+    { from_agent: 'salem-engine', message: '# Your turn again', sent_at: agoISO(12) }, // 8m later
+], NPC);
+check('8m gap -> no marker', smallGap[1].content === '# Your turn again');
 
 // A perception with no sent_at -> no prefix (graceful).
 const noTime = buildToolUseMessages([{ from_agent: 'salem-engine', message: '# Your turn\nno time' }], NPC);
 check('no sent_at -> raw content, no prefix', noTime[0].content === '# Your turn\nno time');
+
+// A malformed sent_at parses to NaN -> every gap threshold fails -> no marker
+// (graceful loss of that one row's grounding, never a crash or nondeterminism).
+const badTime = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: 'not-a-date' },
+    { from_agent: 'salem-engine', message: '# Your turn again', sent_at: agoISO(5) },
+], NPC);
+check('malformed sent_at -> no marker, raw content', badTime[1].content === '# Your turn again');
+
+// Out-of-order rows (clock skew) yield a negative gap -> no marker.
+const skewed = buildToolUseMessages([
+    { from_agent: 'salem-engine', message: '# Your turn', sent_at: agoISO(5) },
+    { from_agent: 'salem-engine', message: '# Your turn again', sent_at: agoISO(60) }, // 55m BEFORE the prior row
+], NPC);
+check('negative gap -> no marker', skewed[1].content === '# Your turn again');
 
 // ZBBS-HOME-436: a REJECTED quote-take replays its "bought" paraphrase with
 // the [error] tool result immediately adjacent (paired by tool_call_id in

@@ -146,6 +146,10 @@ test('evolve path feeds the existing soul plus the day chunk, no rebuild framing
     assert.ok(msg.includes('## Dream snapshot for 2026-07-15'));
     assert.ok(!msg.includes('rebuilding from recent dreams'));
     assert.ok(!msg.includes('initial soul rebuild'));
+    // The shared length cap (LLM-501) closes the message — same directive the
+    // sim-soul endpoint appends, so both soul writers carry one contract.
+    const { SOUL_LENGTH_DIRECTIVE } = require('./sim-soul');
+    assert.ok(msg.endsWith(SOUL_LENGTH_DIRECTIVE));
 });
 
 test('empty startup instructions produce no character-description section', () => {

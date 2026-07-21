@@ -100,6 +100,10 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // the model's current turn. NOT persisted — it never enters rowSpecs, so
     // only `message` (the durable narrative) hits chat_message_texts.
     const ephemeralContext = opts && opts.ephemeralContext !== undefined ? opts.ephemeralContext : null;
+    // stableContext (LLM-501): per-actor daily-stable context forwarded to
+    // handleDirectChat to append to the cached system prompt. NOT persisted —
+    // like ephemeralContext, it never enters rowSpecs.
+    const stableContext = opts && opts.stableContext !== undefined ? opts.stableContext : null;
     // is_error flag (MEM-122): set on retry/error breadcrumb rows so
     // history readers (loadDirectChatHistory, loadChatHistory) filter
     // them out of next-call context. Without this, virtual agents read
@@ -415,7 +419,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ackReplyOnInsert: wait, ephemeralContext,
+                            toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ackReplyOnInsert: wait, ephemeralContext, stableContext,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.
@@ -426,7 +430,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ephemeralContext,
+                                toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ephemeralContext, stableContext,
                             }).catch(() => {});
                         }
                     }

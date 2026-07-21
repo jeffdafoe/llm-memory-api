@@ -54,6 +54,18 @@ const MAX_FIELD_LEN = 100000;
 // "update" an empty document and produces something thin.
 //
 // Pure — exported for unit tests.
+// Soul length cap (LLM-501). The soul is rendered into every NPC turn — in
+// the shared-NPC perception's `## Who you are` block and the stateful NPC's
+// system prompt — so an unbounded "update the document" loop that only ever
+// grows it bills its full length on every LLM call, forever. Appended to the
+// user message (not the agent's startup_instructions) so it's versioned with
+// the code and applies to both the shared endpoint and the nightly stateful
+// path (dream.js imports it).
+const SOUL_LENGTH_DIRECTIVE = 'Keep the soul document under about 200 words. '
+    + 'When weaving in new material, condense: fold older detail into fewer, '
+    + 'stronger sentences and keep only what defines the character. A short, '
+    + 'sharp soul beats a long memoir.';
+
 function buildSoulUserMessage({ characterDescription, currentSoul, daySnapshot, day }) {
     const soulIsEmpty = !currentSoul || currentSoul.trim() === '';
     const snapshotHeader = day ? '## Dream snapshot for ' + day : '## Dream snapshot';
@@ -70,6 +82,7 @@ function buildSoulUserMessage({ characterDescription, currentSoul, daySnapshot, 
     }
 
     msg += daySnapshot.trim();
+    msg += '\n\n' + SOUL_LENGTH_DIRECTIVE;
     return msg;
 }
 
@@ -189,4 +202,6 @@ async function synthesizeSimSoul({ characterDescription, currentSoul, daySnapsho
 
 // buildSoulUserMessage is exported for unit tests (sim-soul.test.js);
 // synthesizeSimSoul is the production entry (routes/sim.js).
-module.exports = { synthesizeSimSoul, buildSoulUserMessage };
+// SOUL_LENGTH_DIRECTIVE is shared with the nightly stateful soul path
+// (dream.js) so both soul writers carry the same length contract.
+module.exports = { synthesizeSimSoul, buildSoulUserMessage, SOUL_LENGTH_DIRECTIVE };

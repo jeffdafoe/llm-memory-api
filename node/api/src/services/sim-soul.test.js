@@ -10,7 +10,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSoulUserMessage, synthesizeSimSoul } = require('./sim-soul');
+const { buildSoulUserMessage, synthesizeSimSoul, SOUL_LENGTH_DIRECTIVE } = require('./sim-soul');
 
 const SEED = 'Lewis Walker, who lodges at the Wayfarer with Hannah Walker.';
 const SNAPSHOT = '- [Jun 30] spoke: "Good morrow."\n- [Jun 30] sold bread to a stranger.';
@@ -25,8 +25,10 @@ test('first run (empty soul) marks it empty and frames an initial synthesis', ()
     assert.match(msg, /## Character description\n\nLewis Walker/);
     assert.match(msg, /## Current soul document\n\n\(empty — first run\)/);
     assert.match(msg, /## Dream snapshot for 2026-06-30\n\nThe current soul document is empty\. Synthesize an initial soul/);
-    // The day material still lands at the end.
-    assert.ok(msg.endsWith(SNAPSHOT));
+    // The day material lands after the framing, with the length directive
+    // (LLM-501) closing the message.
+    assert.ok(msg.includes(SNAPSHOT));
+    assert.ok(msg.endsWith(SOUL_LENGTH_DIRECTIVE));
 });
 
 test('missing/whitespace soul is treated as a first run', () => {
@@ -75,7 +77,8 @@ test('inputs are trimmed at the section boundaries', () => {
     });
     assert.match(msg, /## Character description\n\nLewis Walker/);
     assert.match(msg, /## Current soul document\n\nprior soul\n\n/);
-    assert.ok(msg.endsWith(SNAPSHOT));
+    assert.ok(msg.includes(SNAPSHOT));
+    assert.ok(msg.endsWith(SOUL_LENGTH_DIRECTIVE));
     // No doubled blank padding from untrimmed inputs.
     assert.doesNotMatch(msg, /\n\n\n/);
 });
