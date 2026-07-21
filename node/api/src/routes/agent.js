@@ -25,9 +25,6 @@ const ONLINE_THRESHOLD_MINUTES = 5;
 // Session tokens expire after 24 hours
 const SESSION_TTL_HOURS = 24;
 
-// Passphrase rotation is suggested after 30 days
-const ROTATION_THRESHOLD_DAYS = 30;
-
 function logAgent(action, details) {
     log('agent', action, details);
 }
@@ -68,7 +65,7 @@ router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
     // enforce that this actor actually has agent capability — token_hash
     // alone isn't sufficient (a web-only user could theoretically have one).
     const actorResult = await pool.query(
-        `SELECT a.id AS actor_id, a.name AS agent, a.token_hash, a.token_salt, a.status, a.passphrase_rotated_at
+        `SELECT a.id AS actor_id, a.name AS agent, a.token_hash, a.token_salt, a.status
          FROM actors a
          JOIN agent_configuration agc ON agc.actor_id = a.id
          WHERE a.name = $1 AND a.token_hash IS NOT NULL`,
@@ -114,25 +111,12 @@ router.post('/agent/login', apiRoute('agent', 'login', async (req, res) => {
         [row.actor_id]
     );
 
-    // Check if passphrase rotation is due
-    let rotationDue = false;
-    if (row.passphrase_rotated_at) {
-        const daysSinceRotation = (Date.now() - new Date(row.passphrase_rotated_at).getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSinceRotation > ROTATION_THRESHOLD_DAYS) {
-            rotationDue = true;
-        }
-    } else {
-        // No rotation timestamp means never rotated — suggest rotation
-        rotationDue = true;
-    }
-
     logAgent('login', { agent, subsystem: subsystem || null });
 
     res.json({
         agent,
         session_token: sessionToken,
-        expires_at: expiresAt,
-        rotation_due: rotationDue
+        expires_at: expiresAt
     });
 }));
 
