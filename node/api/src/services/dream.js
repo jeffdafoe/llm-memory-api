@@ -25,17 +25,40 @@ function validatePersonSlug(slug) {
     return canonical;
 }
 
-// Build the context/people note slug for a person under an optional scope
-// prefix: '' for a dedicated agent (namespace root) or a "<villager>/" prefix
-// for a shared-VA villager. This is a PURE builder that assumes an
-// already-validated prefix — validation is the caller's job and happens at the
-// real boundary (runPersonContextUpdate and processDreamChunk both canonicalize
-// the prefix before any path is built). Exported only so the path invariant
-// (empty → context/people/<slug>; shared → <villager>/context/people/<slug>) is
-// unit-testable without a document store; do not use it as a place to accept
-// unvalidated input.
+// The single validated boundary for a dream scope's slug prefix. Returns '' for
+// an ABSENT prefix (undefined/null/'' → dedicated agent, namespace root) or the
+// canonical "<villager>/" prefix for a shared-VA villager. THROWS on a
+// present-but-invalid prefix — a non-string (number/object/array), or a
+// non-canonical string (LIKE metacharacters, path traversal, wrong case,
+// over-length). Distinguishing "absent" from "present but invalid" matters: a
+// malformed shared prefix silently coerced to '' would collapse the villager's
+// notes into the unscoped namespace and cause cross-villager reads/writes.
+// Every path and LIKE pattern in the shared path flows from this. Pure +
+// exported so every branch is unit-testable.
+function resolveScopePrefix(raw) {
+    if (raw === undefined || raw === null) {
+        return '';
+    }
+    if (typeof raw !== 'string') {
+        throw new Error('invalid slug prefix: not a string');
+    }
+    if (raw === '') {
+        return '';
+    }
+    const canonical = normalizeSlugPrefix(raw);
+    if (!canonical) {
+        throw new Error('invalid slug prefix: ' + raw);
+    }
+    return canonical;
+}
+
+// Build the context/people note slug for a person under a scope prefix. Safe to
+// call with any input: the prefix runs through resolveScopePrefix (absent →
+// namespace root; present-but-invalid → throws), so this can never construct an
+// unsafe/traversing path from an untrusted prefix. Exported for direct unit
+// testing of the path invariant.
 function peopleNotePath(slugPrefix, personSlug) {
-    return (slugPrefix || '') + 'context/people/' + personSlug;
+    return resolveScopePrefix(slugPrefix) + 'context/people/' + personSlug;
 }
 
 // Signal patterns that indicate memory-worthy content.
@@ -493,23 +516,13 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
     opts = opts || {};
     const dryRun = !!opts.dryRun;
 
-    // Slug prefix scopes the relationship file under a shared-VA villager's
-    // subtree (e.g. "constance-scott/context/people/josiah-thorne"). Empty for
-    // a dedicated agent, so the path is byte-identical to the pre-Slice-2 form.
-    // A non-empty prefix must canonicalize cleanly through the same validator
-    // the distiller uses (lowercase kebab + one trailing slash, ≤100 chars) —
-    // this helper is exported, so we don't trust the caller to have validated
-    // a DB/operator-sourced prefix; an unchecked '%'/'_' would act as a LIKE
-    // wildcard downstream and '../' would escape the subtree. Reject rather
-    // than silently build a bad path.
-    const rawSlugPrefix = typeof opts.slugPrefix === 'string' ? opts.slugPrefix : '';
-    let slugPrefix = '';
-    if (rawSlugPrefix !== '') {
-        slugPrefix = normalizeSlugPrefix(rawSlugPrefix);
-        if (!slugPrefix) {
-            throw new Error('runPersonContextUpdate: invalid slug prefix: ' + rawSlugPrefix);
-        }
-    }
+    // The relationship note is scoped under a shared-VA villager's subtree via
+    // opts.slugPrefix ("<villager>/context/people/..."), or namespace root for a
+    // dedicated agent. The prefix is validated where the path is built, in
+    // peopleNotePath below (absent → root; present-but-invalid → throws), so
+    // there's no separate guard here. selfLabel is who the relationship is formed
+    // FOR in the people-VA prompt — the villager for a shared actor, not the
+    // pooled agent (salem-vendor).
     const selfLabel = opts.selfLabel || agentName;
 
     // Defend the path input now that this helper is exported. Reject
@@ -521,7 +534,7 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
         throw new Error('runPersonContextUpdate: invalid person slug: ' + slug);
     }
     slug = safeSlug;
-    const peopleSlug = peopleNotePath(slugPrefix, slug);
+    const peopleSlug = peopleNotePath(opts.slugPrefix, slug);
 
     // Sanitize display name before it's interpolated into the user
     // message. Note titles are operator-editable in admin UI, so a
@@ -620,17 +633,14 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
     // byte-identical.
     //
     // This function is the shared path's real security boundary: it builds every
-    // note slug and the conversation-source LIKE pattern from the prefix. Rather
-    // than trust the caller (the scope is an arbitrary internal object), a
-    // non-empty prefix is re-validated/canonicalized here through the same
-    // distiller normalizer — no LIKE metacharacters, no path traversal — and a
-    // non-empty-but-invalid prefix throws. '' (dedicated) passes through.
+    // note slug and the conversation-source LIKE pattern from the prefix. It does
+    // not trust the caller (scope is an arbitrary internal object) — the prefix
+    // runs through resolveScopePrefix, which returns '' for an absent prefix and
+    // throws on any present-but-invalid one (non-string, or non-canonical with
+    // LIKE metacharacters / traversal). A malformed prefix can never silently
+    // become the unscoped namespace.
     scope = scope || {};
-    const rawPrefix = typeof scope.slugPrefix === 'string' ? scope.slugPrefix : '';
-    const slugPrefix = rawPrefix ? normalizeSlugPrefix(rawPrefix) : '';
-    if (rawPrefix && !slugPrefix) {
-        throw new Error('processDreamChunk: invalid shared dream slug prefix: ' + rawPrefix);
-    }
+    const slugPrefix = resolveScopePrefix(scope.slugPrefix);
     const selfName = scope.selfName || agent.name;
 
     let logs;
@@ -1071,11 +1081,15 @@ async function runChunkLoop(agent, agentNames, chunks, scope, advanceCursor) {
 // LIKE metacharacters, path traversal, wrong case, over-length. Pure and
 // exported so the roster-boundary decision is unit-testable.
 function validateRosterPrefix(rowPrefix) {
-    if (typeof rowPrefix !== 'string') {
+    // Delegate to the throwing boundary and convert to the roster loop's
+    // skip-this-row contract: null for anything invalid (non-string,
+    // non-canonical, LIKE metacharacters, traversal) OR absent (''), since a
+    // roster row must carry a real villager prefix.
+    try {
+        return resolveScopePrefix(rowPrefix) || null;
+    } catch (e) {
         return null;
     }
-    const canonical = normalizeSlugPrefix(rowPrefix);
-    return canonical || null;
 }
 
 // Count shared-VA actors that saw any failure this run — an actor-level error
@@ -1489,6 +1503,21 @@ async function runDream() {
     return { processed: results.length, sharedActorErrorCount, results };
 }
 
+// Compute the ordered scheduler log events for a runDream result: any
+// shared-actor failure is emitted (as a durable system_errors record) BEFORE
+// the completion event, so a consumer watching 'cron-complete' can never observe
+// a clean run ahead of the failure. The completion event carries the status.
+// Pure + exported so the ordering is unit-testable without the cron runtime.
+function planCronReport(result) {
+    const sharedFailures = result ? (result.sharedActorErrorCount || 0) : 0;
+    const events = [];
+    if (sharedFailures > 0) {
+        events.push({ kind: 'shared-failures', count: sharedFailures });
+    }
+    events.push({ kind: 'complete', status: sharedFailures > 0 ? 'completed-with-errors' : 'ok' });
+    return events;
+}
+
 // Start the dream scheduler. Reads dream_cron_schedule from config
 // and schedules runDream() accordingly. Called once at server startup.
 let scheduledTask = null;
@@ -1516,19 +1545,17 @@ function startDreamScheduler() {
         logDream('cron-trigger', { schedule });
         try {
             const result = await runDream();
-            const sharedFailures = result ? (result.sharedActorErrorCount || 0) : 0;
-            // Record the failure signal BEFORE the completion event so a
-            // consumer watching 'cron-complete' can't observe a clean run ahead
-            // of the durable error, and stamp the status onto the completion
-            // event itself. runDream still resolves (one bad villager never
-            // blocks the others), but this run is not a silent success.
-            if (sharedFailures > 0) {
-                logError('dream', 'cron-shared-actor-failures', { count: sharedFailures });
+            // Emit events in planned order (see planCronReport): the durable
+            // failure record lands in system_errors BEFORE the completion event,
+            // so a shared-actor failure is never observable as a clean run.
+            // runDream still resolves (one bad villager never blocks the others).
+            for (const ev of planCronReport(result)) {
+                if (ev.kind === 'shared-failures') {
+                    logError('dream', 'cron-shared-actor-failures', { count: ev.count });
+                } else {
+                    logDream('cron-complete', { result, status: ev.status });
+                }
             }
-            logDream('cron-complete', {
-                result,
-                status: sharedFailures > 0 ? 'completed-with-errors' : 'ok',
-            });
         } catch (err) {
             logDream('cron-error', { error: err.message });
             logError('dream', 'cron-error', { message: err.message, detail: err.stack });
@@ -1538,4 +1565,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countActorErrors, peopleNotePath, validateRosterPrefix };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countActorErrors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport };

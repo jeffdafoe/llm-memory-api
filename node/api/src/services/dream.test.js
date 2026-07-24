@@ -9,7 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, runPersonContextUpdate, countActorErrors, peopleNotePath, validateRosterPrefix } = require('./dream');
+const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, runPersonContextUpdate, countActorErrors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport } = require('./dream');
 
 test('single note gets a slug+date header above its content', () => {
     const rows = [{
@@ -266,6 +266,62 @@ test('peopleNotePath scopes the path under a shared-VA villager prefix', () => {
         peopleNotePath('constance-scott/', 'josiah-thorne'),
         'constance-scott/context/people/josiah-thorne'
     );
+});
+
+test('peopleNotePath throws (builds no path) on an invalid prefix', () => {
+    // A malformed prefix must not silently produce an unscoped or traversing
+    // path — the throw happens before any concatenation.
+    assert.throws(() => peopleNotePath(42, 'jeff'), /not a string/);
+    assert.throws(() => peopleNotePath('../evil/', 'jeff'), /invalid slug prefix/);
+    assert.throws(() => peopleNotePath('a%b/', 'jeff'), /invalid slug prefix/);
+});
+
+// resolveScopePrefix — the single validated boundary (LLM-519 round 5). It must
+// distinguish ABSENT (undefined/null/'' → dedicated namespace root) from
+// PRESENT-BUT-INVALID (throws), so a malformed shared prefix can never silently
+// collapse into the unscoped namespace.
+test('resolveScopePrefix returns "" for an absent prefix', () => {
+    assert.equal(resolveScopePrefix(undefined), '');
+    assert.equal(resolveScopePrefix(null), '');
+    assert.equal(resolveScopePrefix(''), '');
+});
+
+test('resolveScopePrefix canonicalizes a valid prefix', () => {
+    assert.equal(resolveScopePrefix('constance-scott/'), 'constance-scott/');
+    assert.equal(resolveScopePrefix('john-ellis'), 'john-ellis/');
+});
+
+test('resolveScopePrefix throws on a present non-string prefix (no silent "")', () => {
+    assert.throws(() => resolveScopePrefix(42), /not a string/);
+    assert.throws(() => resolveScopePrefix({}), /not a string/);
+    assert.throws(() => resolveScopePrefix([]), /not a string/);
+    assert.throws(() => resolveScopePrefix(true), /not a string/);
+});
+
+test('resolveScopePrefix throws on a non-canonical string (wildcard / traversal)', () => {
+    assert.throws(() => resolveScopePrefix('a%b/'), /invalid slug prefix/);
+    assert.throws(() => resolveScopePrefix('a_b/'), /invalid slug prefix/);
+    assert.throws(() => resolveScopePrefix('../secrets/'), /invalid slug prefix/);
+    assert.throws(() => resolveScopePrefix('foo/../bar/'), /invalid slug prefix/);
+    assert.throws(() => resolveScopePrefix('Constance-Scott/'), /invalid slug prefix/);
+});
+
+// planCronReport — the scheduler's event ordering (LLM-519 round 5). A shared
+// actor failure must produce the durable error event BEFORE the completion
+// event so a consumer watching 'cron-complete' can't observe a clean run ahead
+// of the failure.
+test('planCronReport emits only a clean completion when there are no failures', () => {
+    assert.deepEqual(planCronReport({ sharedActorErrorCount: 0 }), [
+        { kind: 'complete', status: 'ok' },
+    ]);
+    assert.deepEqual(planCronReport(null), [{ kind: 'complete', status: 'ok' }]);
+});
+
+test('planCronReport emits the failure event BEFORE completion when a shared actor failed', () => {
+    const events = planCronReport({ sharedActorErrorCount: 3 });
+    assert.equal(events.length, 2);
+    assert.deepEqual(events[0], { kind: 'shared-failures', count: 3 });
+    assert.deepEqual(events[1], { kind: 'complete', status: 'completed-with-errors' });
 });
 
 // validateRosterPrefix — the roster-boundary decision (LLM-519 round 3). A
