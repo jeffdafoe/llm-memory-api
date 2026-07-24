@@ -661,7 +661,9 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
     if (slugPrefix && !(typeof scope.selfName === 'string' && scope.selfName.trim())) {
         throw new Error('processDreamChunk: shared scope requires a non-empty selfName');
     }
-    const selfName = scope.selfName || agent.name;
+    // Trim the shared self identity so a whitespace-padded display name matches
+    // the canonical speaker name in extractSpeakers and reads cleanly in prompts.
+    const selfName = slugPrefix ? scope.selfName.trim() : (scope.selfName || agent.name);
 
     let logs;
     if (notesMode) {
@@ -1547,11 +1549,15 @@ async function runDream() {
     return { processed: results.length, sharedActorErrorCount, results };
 }
 
-// Compute the ordered scheduler log events for a runDream result: any
-// shared-actor failure is emitted (as a durable system_errors record) BEFORE
-// the completion event, so a consumer watching 'cron-complete' can never observe
-// a clean run ahead of the failure. The completion event carries the status.
-// Pure + exported so the ordering is unit-testable without the cron runtime.
+// Map a runDream result to the scheduler's log events. The completion event
+// carries the run status ('completed-with-errors' when any shared-VA actor
+// failed, else 'ok') — that status field IS the authoritative, self-contained
+// failure signal, so a consumer reading the completion record never needs to
+// race it against a separate event. When there are failures a shared-failures
+// event is also emitted, which the scheduler records in the error_log table for
+// monitoring (best-effort/fire-and-forget, like every other error record — no
+// cross-event persistence ordering is relied upon). Pure + exported so the
+// status mapping is unit-testable without the cron runtime.
 function planCronReport(result) {
     const sharedFailures = result ? (result.sharedActorErrorCount || 0) : 0;
     const events = [];
@@ -1589,10 +1595,13 @@ function startDreamScheduler() {
         logDream('cron-trigger', { schedule });
         try {
             const result = await runDream();
-            // Emit events in planned order (see planCronReport): the durable
-            // failure record lands in system_errors BEFORE the completion event,
-            // so a shared-actor failure is never observable as a clean run.
-            // runDream still resolves (one bad villager never blocks the others).
+            // Emit the mapped events (see planCronReport): a completion event
+            // whose `status` field self-describes the run — so a shared-actor
+            // failure is never a clean-looking completion — plus, on failure, an
+            // error_log record for monitoring. No cross-event persistence
+            // ordering is assumed; the status lives in the completion record
+            // itself. runDream still resolves (one bad villager never blocks the
+            // others).
             for (const ev of planCronReport(result)) {
                 if (ev.kind === 'shared-failures') {
                     logError('dream', 'cron-shared-actor-failures', {

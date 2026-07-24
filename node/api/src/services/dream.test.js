@@ -335,22 +335,25 @@ test('resolveScopePrefix throws on a non-canonical string (wildcard / traversal)
     assert.throws(() => resolveScopePrefix('Constance-Scott/'), /invalid slug prefix/);
 });
 
-// planCronReport — the scheduler's event ordering (LLM-519 round 5). A shared
-// actor failure must produce the durable error event BEFORE the completion
-// event so a consumer watching 'cron-complete' can't observe a clean run ahead
-// of the failure.
-test('planCronReport emits only a clean completion when there are no failures', () => {
+// planCronReport — the scheduler's status mapping. The completion event's
+// `status` field is the authoritative, self-contained failure signal (no
+// cross-event persistence ordering is relied upon); a shared-failures event is
+// additionally emitted for error_log monitoring when a shared actor failed.
+test('planCronReport marks a clean run "ok" with only a completion event', () => {
     assert.deepEqual(planCronReport({ sharedActorErrorCount: 0 }), [
         { kind: 'complete', status: 'ok' },
     ]);
     assert.deepEqual(planCronReport(null), [{ kind: 'complete', status: 'ok' }]);
 });
 
-test('planCronReport emits the failure event BEFORE completion when a shared actor failed', () => {
+test('planCronReport marks a failed run "completed-with-errors" and adds a failure event', () => {
     const events = planCronReport({ sharedActorErrorCount: 3 });
-    assert.equal(events.length, 2);
-    assert.deepEqual(events[0], { kind: 'shared-failures', count: 3 });
-    assert.deepEqual(events[1], { kind: 'complete', status: 'completed-with-errors' });
+    const complete = events.find(e => e.kind === 'complete');
+    const failure = events.find(e => e.kind === 'shared-failures');
+    // The completion record self-describes the failure via its status field.
+    assert.deepEqual(complete, { kind: 'complete', status: 'completed-with-errors' });
+    // A distinct failure event is also emitted (for error_log monitoring).
+    assert.deepEqual(failure, { kind: 'shared-failures', count: 3 });
 });
 
 // validateRosterPrefix — the roster-boundary decision (LLM-519 round 3). A
