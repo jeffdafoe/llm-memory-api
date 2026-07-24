@@ -417,6 +417,13 @@ function normalizeSlugPrefix(raw) {
     if (!/^[a-z0-9]+(-[a-z0-9]+)*\/$/.test(withSlash)) {
         return '';
     }
+    // Bound the length: the prefix becomes part of the saved note slug and the
+    // sim_shared_actor primary key, so an arbitrarily long (if well-formed) value
+    // must not pass. 100 matches the ceiling other sim actor identifiers use
+    // (routes/sim.js raw-turns sim_actor).
+    if (withSlash.length > 100) {
+        return '';
+    }
     return withSlash;
 }
 
@@ -494,7 +501,17 @@ async function distillSimConversationDay(agentName, dayStr, events, opts = {}) {
                 { statusCode: 400 }
             );
         }
+        // sanitizeLabel strips bracket/quote/newline chars and can collapse a
+        // hostile input to empty; it imposes no length bound. Validate the RESULT
+        // (not just the raw input) so an empty or oversized name can't reach the
+        // note title/content or the roster display_name. 100 matches the slug cap.
         actorName = sanitizeLabel(display);
+        if (!actorName || actorName.length > 100) {
+            throw Object.assign(
+                new Error('actor (display name) is empty after sanitizing, or too long, for a sim-shared agent'),
+                { statusCode: 400 }
+            );
+        }
     } else {
         actorName = sanitizeLabel(slugToDisplay(agent.name));
     }
@@ -563,7 +580,12 @@ async function distillSimConversationDay(agentName, dayStr, events, opts = {}) {
         // Nothing happened (or nothing narratable was pushed — a day of
         // pure look_around/done collapses to zero lines). Skip writing
         // rather than producing an empty note; the dream cron will
-        // simply not see this day for this agent.
+        // simply not see this day for this agent. For a shared-VA push this
+        // ALSO skips the sim_shared_actor enrollment below (which sits after this
+        // return) — by design: the roster means "villagers with dreamable
+        // material", so an actor with only empty days stays out of it until a day
+        // lands a note (Slice 2 has nothing to consolidate for it anyway). Its
+        // first non-empty day enrolls it.
         logSim('skip-empty', { agent: agentName, day: dayStr });
         return { skipped: true, reason: 'no narratable events' };
     }

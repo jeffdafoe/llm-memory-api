@@ -243,6 +243,16 @@ test('normalizeSlugPrefix rejects empty / non-string input as ""', () => {
     assert.equal(normalizeSlugPrefix('/'), '');
 });
 
+test('normalizeSlugPrefix rejects an over-length prefix (slug/PK bound)', () => {
+    // A well-formed but very long kebab string must not pass — it becomes part of
+    // the saved note slug and the roster primary key. The cap is 100 chars
+    // including the trailing slash.
+    const under = 'a'.repeat(99) + '/'; // 100 chars → allowed
+    const over = 'a'.repeat(100) + '/'; // 101 chars → rejected
+    assert.equal(normalizeSlugPrefix(under), under);
+    assert.equal(normalizeSlugPrefix(over), '');
+});
+
 test('normalizeSlugPrefix rejects traversal and any non-kebab shape', () => {
     // Path traversal / nested paths — the whole reason the guard exists.
     assert.equal(normalizeSlugPrefix('../'), '');

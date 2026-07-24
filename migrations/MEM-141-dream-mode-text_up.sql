@@ -25,7 +25,7 @@
 
 BEGIN;
 
-DROP VIEW agent_status;
+DROP VIEW IF EXISTS agent_status;
 
 ALTER TABLE agent_configuration ALTER COLUMN dream_mode DROP DEFAULT;
 ALTER TABLE agent_configuration
@@ -66,5 +66,20 @@ CREATE VIEW agent_status AS
     agc.storage_quota
    FROM actors ac
      JOIN agent_configuration agc ON agc.actor_id = ac.id;
+
+-- Recreating the view reset its grants to the executor (postgres, still the
+-- owner). Restore the grants the original view carried. The app user (memory_api)
+-- is also re-granted by the deploy's post-migration grant step; restoring it here
+-- keeps the migration self-contained. Guarded on role existence so a fresh DB
+-- lacking a role can't fail the migration.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'memory_api') THEN
+        GRANT ALL ON agent_status TO memory_api;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'claude') THEN
+        GRANT INSERT, SELECT, UPDATE, DELETE ON agent_status TO claude;
+    END IF;
+END $$;
 
 COMMIT;
