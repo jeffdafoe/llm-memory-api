@@ -53,12 +53,18 @@ function resolveScopePrefix(raw) {
 }
 
 // Build the context/people note slug for a person under a scope prefix. Safe to
-// call with any input: the prefix runs through resolveScopePrefix (absent →
-// namespace root; present-but-invalid → throws), so this can never construct an
-// unsafe/traversing path from an untrusted prefix. Exported for direct unit
-// testing of the path invariant.
+// call with any input: BOTH components are validated — the prefix through
+// resolveScopePrefix (absent → namespace root; present-but-invalid → throws)
+// and the person slug through validatePersonSlug (must be a canonical
+// lowercase-kebab slug; a '../', space, or non-string throws). Neither path
+// component can traverse or inject. Exported for direct unit testing of the
+// path invariant.
 function peopleNotePath(slugPrefix, personSlug) {
-    return resolveScopePrefix(slugPrefix) + 'context/people/' + personSlug;
+    const safePersonSlug = validatePersonSlug(personSlug);
+    if (!safePersonSlug) {
+        throw new Error('invalid person slug: ' + personSlug);
+    }
+    return resolveScopePrefix(slugPrefix) + 'context/people/' + safePersonSlug;
 }
 
 // Signal patterns that indicate memory-worthy content.

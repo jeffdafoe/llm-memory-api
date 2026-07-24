@@ -276,6 +276,17 @@ test('peopleNotePath throws (builds no path) on an invalid prefix', () => {
     assert.throws(() => peopleNotePath('a%b/', 'jeff'), /invalid slug prefix/);
 });
 
+test('peopleNotePath validates the person slug too (both components)', () => {
+    // The person slug is the OTHER path component — a raw '../secrets' would
+    // traverse out of context/people/. Must throw, not build the path.
+    assert.throws(() => peopleNotePath('', '../secrets'), /invalid person slug/);
+    assert.throws(() => peopleNotePath('constance-scott/', '../secrets'), /invalid person slug/);
+    assert.throws(() => peopleNotePath('', 'Not A Slug'), /invalid person slug/);
+    assert.throws(() => peopleNotePath('', 42), /invalid person slug/);
+    // A canonical slug still passes through unchanged.
+    assert.equal(peopleNotePath('', 'josiah-thorne'), 'context/people/josiah-thorne');
+});
+
 // resolveScopePrefix — the single validated boundary (LLM-519 round 5). It must
 // distinguish ABSENT (undefined/null/'' → dedicated namespace root) from
 // PRESENT-BUT-INVALID (throws), so a malformed shared prefix can never silently
