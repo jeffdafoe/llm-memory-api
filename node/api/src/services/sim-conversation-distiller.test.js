@@ -251,6 +251,12 @@ test('normalizeSlugPrefix rejects an over-length prefix (slug/PK bound)', () => 
     const over = 'a'.repeat(100) + '/'; // 101 chars → rejected
     assert.equal(normalizeSlugPrefix(under), under);
     assert.equal(normalizeSlugPrefix(over), '');
+    // The bound is on the CANONICAL value, not the raw input: extra trailing
+    // slashes + whitespace push the raw length past 100 but collapse to a
+    // 100-char canonical prefix, which is accepted.
+    assert.equal(normalizeSlugPrefix('a'.repeat(99) + '////   '), 'a'.repeat(99) + '/');
+    // A raw value still over 100 after canonicalization is rejected.
+    assert.equal(normalizeSlugPrefix('a'.repeat(100) + '////'), '');
 });
 
 test('normalizeSlugPrefix rejects traversal and any non-kebab shape', () => {
