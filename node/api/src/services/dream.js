@@ -1119,7 +1119,7 @@ function validateRosterPrefix(rowPrefix) {
 // otherwise-formed actor result. A skipped chunk (no logs / no signals) is not
 // a failure and is not counted. Exported so the cron's failure signal is
 // unit-testable without standing up the whole pipeline.
-function countActorErrors(actorResults) {
+function countFailedActors(actorResults) {
     return actorResults.filter(r =>
         r.error || (Array.isArray(r.chunks) && r.chunks.some(c => c.error))
     ).length;
@@ -1138,7 +1138,7 @@ function countActorErrors(actorResults) {
 async function processSharedAgent(agent, simAgents, results) {
     const { simAgentName, simPeopleAgentName, simLearningsAgentName } = simAgents;
     if (!simAgentName) {
-        results.push({ agent: agent.name, mode: 'sim-shared', errorCount: 1, error: 'dream-sim agent not available' });
+        results.push({ agent: agent.name, mode: 'sim-shared', failedActorCount: 1, error: 'dream-sim agent not available' });
         return;
     }
 
@@ -1157,7 +1157,7 @@ async function processSharedAgent(agent, simAgents, results) {
         results.push({
             agent: agent.name,
             mode: 'sim-shared',
-            errorCount: 1,
+            failedActorCount: 1,
             error: 'dream_source must be conversation for sim-shared (got ' + dreamSource + ')',
         });
         return;
@@ -1193,17 +1193,18 @@ async function processSharedAgent(agent, simAgents, results) {
         return;
     }
 
-    // errorCount gives the cron summary a numeric failure signal for this pooled
-    // agent — actor-level errors, failed chunks nested in an actor's result, and
-    // a setup failure. Per-villager failures are also written to system_errors
-    // via logError, matching the dedicated per-agent contract: one bad villager
-    // never fails the whole run.
-    const errorCount = countActorErrors(actorResults) + (setupError ? 1 : 0);
+    // failedActorCount = how many villagers this pooled agent saw fail — an
+    // actor-level error OR any failed chunk counts the villager once (actor
+    // granularity; per-villager plannedChunks/completedChunks carry the finer
+    // detail), plus 1 for a setup failure. Per-villager failures are also
+    // written to the error_log via logError, matching the dedicated per-agent
+    // contract: one bad villager never fails the whole run.
+    const failedActorCount = countFailedActors(actorResults) + (setupError ? 1 : 0);
     const summary = {
         agent: agent.name,
         mode: 'sim-shared',
         actorCount: actorResults.length,
-        errorCount,
+        failedActorCount,
         actors: actorResults,
     };
     if (setupError) {
@@ -1520,11 +1521,11 @@ async function runDream() {
             });
             // A throw out of processSharedAgent (e.g. the roster query failing
             // before any actor result is recorded) must still register as a
-            // shared failure so the run-level sharedActorErrorCount counts it.
+            // shared failure so the run-level failedSharedActorCount counts it.
             const failureResult = { agent: agent.name, error: err.message };
             if (agent.dream_mode === 'sim-shared') {
                 failureResult.mode = 'sim-shared';
-                failureResult.errorCount = 1;
+                failureResult.failedActorCount = 1;
             }
             results.push(failureResult);
         }
@@ -1541,12 +1542,12 @@ async function runDream() {
     // 'complete'. Scoped to sim-shared deliberately: the dedicated per-agent
     // contract (capture errors into results, resolve the run) is unchanged —
     // widening the whole cron's success semantics is a separate ticket.
-    const sharedActorErrorCount = results
+    const failedSharedActorCount = results
         .filter(r => r.mode === 'sim-shared')
-        .reduce((sum, r) => sum + (r.errorCount || 0), 0);
+        .reduce((sum, r) => sum + (r.failedActorCount || 0), 0);
 
-    logDream('complete', { processed: results.length, sharedActorErrorCount });
-    return { processed: results.length, sharedActorErrorCount, results };
+    logDream('complete', { processed: results.length, failedSharedActorCount });
+    return { processed: results.length, failedSharedActorCount, results };
 }
 
 // Map a runDream result to the scheduler's log events. The completion event
@@ -1559,7 +1560,7 @@ async function runDream() {
 // cross-event persistence ordering is relied upon). Pure + exported so the
 // status mapping is unit-testable without the cron runtime.
 function planCronReport(result) {
-    const sharedFailures = result ? (result.sharedActorErrorCount || 0) : 0;
+    const sharedFailures = result ? (result.failedSharedActorCount || 0) : 0;
     const events = [];
     if (sharedFailures > 0) {
         events.push({ kind: 'shared-failures', count: sharedFailures });
@@ -1620,4 +1621,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countActorErrors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport };

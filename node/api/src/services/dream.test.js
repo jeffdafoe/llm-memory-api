@@ -9,7 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, runPersonContextUpdate, countActorErrors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport } = require('./dream');
+const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, runPersonContextUpdate, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport } = require('./dream');
 
 test('single note gets a slug+date header above its content', () => {
     const rows = [{
@@ -210,15 +210,17 @@ test('runPersonContextUpdate rejects a path-traversal slug prefix', async () => 
     );
 });
 
-// countActorErrors — the shared-VA run-level failure signal (LLM-519 round 2).
-// The subtle case is a failed CHUNK: it lives inside an actor result's chunks[]
-// array, not as an actor-level `error` field, so a naive actor-level filter
-// would report a clean run for an actor whose day actually failed.
-test('countActorErrors counts an actor-level error (invalid prefix / exception)', () => {
-    assert.equal(countActorErrors([{ prefix: 'bad/', error: 'invalid slug prefix' }]), 1);
+// countFailedActors — the shared-VA run-level failure signal: how many
+// villagers saw ANY failure (actor granularity — one villager counts once even
+// with several failed chunks; per-villager plannedChunks/completedChunks carry
+// the finer detail). The subtle case is a failed CHUNK: it lives inside an actor
+// result's chunks[] array, not as an actor-level `error` field, so a naive
+// actor-level filter would miss an actor whose day actually failed.
+test('countFailedActors counts an actor-level error (invalid prefix / exception)', () => {
+    assert.equal(countFailedActors([{ prefix: 'bad/', error: 'invalid slug prefix' }]), 1);
 });
 
-test('countActorErrors counts an actor whose chunk failed (the round-2 regression)', () => {
+test('countFailedActors counts an actor whose chunk failed (the round-2 regression)', () => {
     const actors = [{
         prefix: 'constance-scott/',
         plannedChunks: 2,
@@ -228,25 +230,25 @@ test('countActorErrors counts an actor whose chunk failed (the round-2 regressio
             { chunkDate: '2026-07-16', error: 'model timeout' },
         ],
     }];
-    assert.equal(countActorErrors(actors), 1);
+    assert.equal(countFailedActors(actors), 1);
 });
 
-test('countActorErrors ignores clean actors and skipped (non-error) chunks', () => {
+test('countFailedActors ignores clean actors and skipped (non-error) chunks', () => {
     const actors = [
         { prefix: 'a/', plannedChunks: 1, completedChunks: 1, chunks: [{ processed: true }] },
         { prefix: 'b/', skipped: true, reason: 'no conversation notes' },
         { prefix: 'c/', plannedChunks: 1, completedChunks: 1, chunks: [{ skipped: true, reason: 'no signals' }] },
     ];
-    assert.equal(countActorErrors(actors), 0);
+    assert.equal(countFailedActors(actors), 0);
 });
 
-test('countActorErrors sums actor-level and chunk-level failures across a roster', () => {
+test('countFailedActors counts each failed actor once across a roster (actor granularity)', () => {
     const actors = [
-        { prefix: 'a/', error: 'invalid slug prefix' },
-        { prefix: 'b/', chunks: [{ processed: true }, { error: 'x' }] },
-        { prefix: 'c/', chunks: [{ processed: true }] },
+        { prefix: 'a/', error: 'invalid slug prefix' },              // actor-level error
+        { prefix: 'b/', chunks: [{ processed: true }, { error: 'x' }] }, // one failed chunk
+        { prefix: 'c/', chunks: [{ processed: true }] },             // clean
     ];
-    assert.equal(countActorErrors(actors), 2);
+    assert.equal(countFailedActors(actors), 2);
 });
 
 // peopleNotePath is the exact path runPersonContextUpdate reads and writes, so
@@ -340,14 +342,14 @@ test('resolveScopePrefix throws on a non-canonical string (wildcard / traversal)
 // cross-event persistence ordering is relied upon); a shared-failures event is
 // additionally emitted for error_log monitoring when a shared actor failed.
 test('planCronReport marks a clean run "ok" with only a completion event', () => {
-    assert.deepEqual(planCronReport({ sharedActorErrorCount: 0 }), [
+    assert.deepEqual(planCronReport({ failedSharedActorCount: 0 }), [
         { kind: 'complete', status: 'ok' },
     ]);
     assert.deepEqual(planCronReport(null), [{ kind: 'complete', status: 'ok' }]);
 });
 
 test('planCronReport marks a failed run "completed-with-errors" and adds a failure event', () => {
-    const events = planCronReport({ sharedActorErrorCount: 3 });
+    const events = planCronReport({ failedSharedActorCount: 3 });
     const complete = events.find(e => e.kind === 'complete');
     const failure = events.find(e => e.kind === 'shared-failures');
     // The completion record self-describes the failure via its status field.
