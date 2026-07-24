@@ -693,7 +693,8 @@ function buildExtractionPrompt(interactionType, contextHint) {
 // virtual_agent_calls (logCall) covers debug visibility with more fidelity
 // for the va_call_log_retention_days window.
 //
-// Also skipped for dream_mode='sim'. Sim NPCs (Salem 1692 villagers) get
+// Also skipped for dream_mode='sim' and 'sim-shared'. Sim NPCs (Salem 1692
+// villagers, whether on a dedicated VA or a pooled shared VA) get
 // a per-call payload that's a JSON-stringified chat-completion request:
 // the full system prompt, every prior tick's perception/tool-call/result
 // concatenated as the user message, and the response. That shape isn't
@@ -710,7 +711,7 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
          WHERE ac.name = $1`,
         [agentName]
     );
-    if (dreamModeRow.rows.length > 0 && ['none', 'sim'].includes(dreamModeRow.rows[0].dream_mode)) {
+    if (dreamModeRow.rows.length > 0 && ['none', 'sim', 'sim-shared'].includes(dreamModeRow.rows[0].dream_mode)) {
         return;
     }
 

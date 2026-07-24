@@ -76,7 +76,14 @@ engineRouter.post('/conversation-day', apiRoute('sim', 'conversation_day', async
     const day = body.day;
     const events = body.events;
 
-    const result = await distillSimConversationDay(agent, day, events);
+    // Shared-VA ('sim-shared') pushes are per-villager: they carry the actor's
+    // memory-partition slug prefix and display name so the note lands under that
+    // villager's subtree in the pooled namespace. Dedicated 'sim' VAs omit both;
+    // distillSimConversationDay validates the pairing against the agent's mode.
+    const result = await distillSimConversationDay(agent, day, events, {
+        slugPrefix: body.slug_prefix,
+        actorName: body.actor,
+    });
     res.json(result);
 }));
 

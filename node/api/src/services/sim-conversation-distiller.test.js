@@ -9,7 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { narrateEvent } = require('./sim-conversation-distiller');
+const { narrateEvent, normalizeSlugPrefix } = require('./sim-conversation-distiller');
 
 const ACTOR = 'Ezekiel Crane';
 
@@ -216,4 +216,42 @@ test('pure-perception kinds still render nothing', () => {
     assert.equal(narrateEvent({ kind: 'done', payload: {} }, ACTOR), null);
     assert.equal(narrateEvent({ kind: 'look_around', payload: {} }, ACTOR), null);
     assert.equal(narrateEvent({ kind: 'enter_huddle', payload: {} }, ACTOR), null);
+});
+
+// normalizeSlugPrefix (LLM-515) — the guard that keeps a shared-VA push's slug
+// prefix from injecting anything unsafe into the saved note's slug. The engine
+// derives the prefix from Slugify(displayName) + '/', so a legitimate value is
+// one-or-more lowercase-kebab segments with a single trailing slash.
+test('normalizeSlugPrefix accepts a canonical kebab prefix', () => {
+    assert.equal(normalizeSlugPrefix('constance-scott/'), 'constance-scott/');
+    assert.equal(normalizeSlugPrefix('john-ellis/'), 'john-ellis/');
+    assert.equal(normalizeSlugPrefix('agent-7/'), 'agent-7/');
+});
+
+test('normalizeSlugPrefix canonicalizes a missing or doubled trailing slash', () => {
+    assert.equal(normalizeSlugPrefix('constance-scott'), 'constance-scott/');
+    assert.equal(normalizeSlugPrefix('constance-scott//'), 'constance-scott/');
+    assert.equal(normalizeSlugPrefix('  constance-scott/  '), 'constance-scott/');
+});
+
+test('normalizeSlugPrefix rejects empty / non-string input as ""', () => {
+    assert.equal(normalizeSlugPrefix(''), '');
+    assert.equal(normalizeSlugPrefix('   '), '');
+    assert.equal(normalizeSlugPrefix(null), '');
+    assert.equal(normalizeSlugPrefix(undefined), '');
+    assert.equal(normalizeSlugPrefix(42), '');
+    assert.equal(normalizeSlugPrefix('/'), '');
+});
+
+test('normalizeSlugPrefix rejects traversal and any non-kebab shape', () => {
+    // Path traversal / nested paths — the whole reason the guard exists.
+    assert.equal(normalizeSlugPrefix('../'), '');
+    assert.equal(normalizeSlugPrefix('foo/../bar/'), '');
+    assert.equal(normalizeSlugPrefix('/etc/passwd'), '');
+    assert.equal(normalizeSlugPrefix('a/b/'), '');
+    // Uppercase, dots, underscores, spaces — none are Slugify output.
+    assert.equal(normalizeSlugPrefix('Constance-Scott/'), '');
+    assert.equal(normalizeSlugPrefix('a.b/'), '');
+    assert.equal(normalizeSlugPrefix('a_b/'), '');
+    assert.equal(normalizeSlugPrefix('two words/'), '');
 });

@@ -1044,8 +1044,12 @@ const TOOL_HANDLERS = {
             parts.push(agentInstructions);
         }
 
-        // Append dream bootstrap if agent has dreaming enabled
-        if (result.rows[0].dream_mode && result.rows[0].dream_mode !== 'none') {
+        // Append dream bootstrap if agent has dreaming enabled. 'sim-shared' is
+        // excluded (see routes/agent.js): its villagers' souls live in the
+        // engine's about_me, not a per-agent context/soul note, so it takes
+        // neither the bootstrap nor the soul append — same as 'none'.
+        if (result.rows[0].dream_mode && result.rows[0].dream_mode !== 'none'
+            && result.rows[0].dream_mode !== 'sim-shared') {
             const dreamBootstrap = config.get('dream_bootstrap') || '';
             if (dreamBootstrap) {
                 parts.push(dreamBootstrap);
