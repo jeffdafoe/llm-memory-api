@@ -36,17 +36,23 @@ function validatePersonSlug(slug) {
 // Every path and LIKE pattern in the shared path flows from this. Pure +
 // exported so every branch is unit-testable.
 function resolveScopePrefix(raw) {
-    if (raw === undefined || raw === null) {
+    if (raw === undefined || raw === null || raw === '') {
         return '';
     }
     if (typeof raw !== 'string') {
         throw new Error('invalid slug prefix: not a string');
     }
-    if (raw === '') {
-        return '';
-    }
+    // Require the input to be ALREADY canonical: normalize, then demand the
+    // result equals the input. normalizeSlugPrefix canonicalizes (adds a missing
+    // trailing slash, collapses doubled slashes, trims whitespace), so a bare
+    // !canonical check would silently accept non-canonical forms — and two
+    // distinct roster values ('constance-scott' and 'constance-scott/') would
+    // collapse to one namespace. The write path (the distiller) canonicalizes on
+    // store; this read boundary rejects anything that isn't already in canonical
+    // form (missing/doubled slash, surrounding whitespace, uppercase, LIKE
+    // metacharacters, traversal, over-length).
     const canonical = normalizeSlugPrefix(raw);
-    if (!canonical) {
+    if (!canonical || canonical !== raw) {
         throw new Error('invalid slug prefix: ' + raw);
     }
     return canonical;

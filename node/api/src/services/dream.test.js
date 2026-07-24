@@ -297,9 +297,17 @@ test('resolveScopePrefix returns "" for an absent prefix', () => {
     assert.equal(resolveScopePrefix(''), '');
 });
 
-test('resolveScopePrefix canonicalizes a valid prefix', () => {
+test('resolveScopePrefix accepts an already-canonical prefix unchanged', () => {
     assert.equal(resolveScopePrefix('constance-scott/'), 'constance-scott/');
-    assert.equal(resolveScopePrefix('john-ellis'), 'john-ellis/');
+    assert.equal(resolveScopePrefix('agent-7/'), 'agent-7/');
+});
+
+test('resolveScopePrefix rejects non-canonical forms rather than silently canonicalizing', () => {
+    // normalizeSlugPrefix would canonicalize these on WRITE; the read boundary
+    // requires them to be already canonical so distinct values can't collapse.
+    assert.throws(() => resolveScopePrefix('john-ellis'), /invalid slug prefix/);        // missing slash
+    assert.throws(() => resolveScopePrefix('constance-scott//'), /invalid slug prefix/); // doubled slash
+    assert.throws(() => resolveScopePrefix('  constance-scott/  '), /invalid slug prefix/); // whitespace
 });
 
 test('resolveScopePrefix throws on a present non-string prefix (no silent "")', () => {
@@ -356,8 +364,14 @@ test('validateRosterPrefix rejects LIKE-wildcard and traversal prefixes', () => 
     assert.equal(validateRosterPrefix('foo/../bar/'), null);
 });
 
-test('validateRosterPrefix accepts and canonicalizes a valid prefix', () => {
+test('validateRosterPrefix accepts an already-canonical prefix', () => {
     assert.equal(validateRosterPrefix('constance-scott/'), 'constance-scott/');
-    // Canonicalizes a missing trailing slash (defensive; distiller writes it).
-    assert.equal(validateRosterPrefix('john-ellis'), 'john-ellis/');
+});
+
+test('validateRosterPrefix rejects a non-canonical prefix (must be stored canonical)', () => {
+    // The distiller stores canonical values; the read boundary rejects drift
+    // rather than silently canonicalizing it, so distinct values can't collapse.
+    assert.equal(validateRosterPrefix('john-ellis'), null);       // missing slash
+    assert.equal(validateRosterPrefix('constance-scott//'), null); // doubled slash
+    assert.equal(validateRosterPrefix('  constance-scott/  '), null); // whitespace
 });
