@@ -1637,7 +1637,7 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
              max_tokens != null ? safeInt(max_tokens) : null,
              temperature != null ? parseFloat(temperature) : null,
              configuration ? JSON.stringify(sanitizeAgentConfiguration(configuration)) : null,
-             ['none', 'companion', 'technical', 'sim'].includes(dream_mode) ? dream_mode : 'none',
+             ['none', 'companion', 'technical', 'sim', 'sim-shared'].includes(dream_mode) ? dream_mode : 'none',
              ['conversation', 'notes'].includes(dream_source) ? dream_source : 'conversation']
         );
 
@@ -1915,9 +1915,9 @@ router.post('/admin/agents/update', requirePerm('agents', 'write'), adminRoute('
         updates.push(`storage_quota = $${idx++}`);
     }
     if (dream_mode !== undefined) {
-        if (!['none', 'companion', 'technical', 'sim'].includes(dream_mode)) {
+        if (!['none', 'companion', 'technical', 'sim', 'sim-shared'].includes(dream_mode)) {
             return res.status(400).json({
-                error: { code: 'BAD_REQUEST', message: 'dream_mode must be none, companion, technical, or sim' }
+                error: { code: 'BAD_REQUEST', message: 'dream_mode must be none, companion, technical, sim, or sim-shared' }
             });
         }
         params.push(dream_mode);

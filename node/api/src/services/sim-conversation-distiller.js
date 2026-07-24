@@ -397,9 +397,41 @@ function narrateEvent(event, actorName) {
     }
 }
 
-// Resolve the agent name to (actor_id, name, dream_mode). The
-// distiller is sim-only — return null if dream_mode != 'sim' so the
-// caller can reject without producing an empty note.
+// normalizeSlugPrefix validates and canonicalizes a shared-VA actor's memory
+// partition prefix (e.g. 'constance-scott/') before it's spliced into the note
+// slug. The engine derives it from the villager's display name (Slugify + '/'),
+// so a legitimate value is one-or-more lowercase-kebab segments with a single
+// trailing slash. Returning '' for anything else lets the caller reject with a
+// 400 — this is the defense against a bad/hostile prefix injecting path
+// traversal ('../') into the saved note's slug. Exported for unit tests.
+function normalizeSlugPrefix(raw) {
+    if (typeof raw !== 'string') {
+        return '';
+    }
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+        return '';
+    }
+    // Collapse trailing slashes to exactly one, then require a safe kebab path.
+    const withSlash = trimmed.replace(/\/+$/, '') + '/';
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*\/$/.test(withSlash)) {
+        return '';
+    }
+    // Bound the length: the prefix becomes part of the saved note slug and the
+    // sim_shared_actor primary key, so an arbitrarily long (if well-formed) value
+    // must not pass. 100 matches the ceiling other sim actor identifiers use
+    // (routes/sim.js raw-turns sim_actor).
+    if (withSlash.length > 100) {
+        return '';
+    }
+    return withSlash;
+}
+
+// Resolve the agent name to (actor_id, name, dream_mode). The distiller is
+// sim-only — return { _wrongMode } if dream_mode is neither 'sim' (a dedicated VA,
+// one NPC per namespace) nor 'sim-shared' (a pooled VA whose villagers get
+// per-actor notes under a slug prefix), so the caller can reject without
+// producing an empty note.
 async function resolveSimAgent(agentName) {
     const r = await pool.query(
         `SELECT ac.id, ac.name, agc.dream_mode
@@ -412,7 +444,7 @@ async function resolveSimAgent(agentName) {
         return null;
     }
     const row = r.rows[0];
-    if (row.dream_mode !== 'sim') {
+    if (row.dream_mode !== 'sim' && row.dream_mode !== 'sim-shared') {
         return { ...row, _wrongMode: true };
     }
     return row;
@@ -421,7 +453,7 @@ async function resolveSimAgent(agentName) {
 // Main entry — receives an engine push, builds and saves the note.
 // Idempotent: re-running the same (agent, day, events) overwrites the
 // existing note. Returns a small summary for the caller.
-async function distillSimConversationDay(agentName, dayStr, events) {
+async function distillSimConversationDay(agentName, dayStr, events, opts = {}) {
     if (!agentName || typeof agentName !== 'string') {
         throw Object.assign(new Error('agent required'), { statusCode: 400 });
     }
@@ -438,13 +470,53 @@ async function distillSimConversationDay(agentName, dayStr, events) {
     }
     if (agent._wrongMode) {
         throw Object.assign(
-            new Error('agent ' + agentName + ' is not configured for sim dream_mode'),
+            new Error('agent ' + agentName + ' is not configured for a sim dream_mode'),
             { statusCode: 400 }
         );
     }
 
+    // A 'sim-shared' agent pools many villagers, so each push is scoped to ONE of
+    // them: it must carry that villager's memory-partition slug prefix (e.g.
+    // 'constance-scott/') and display name. The note then lands under the actor's
+    // subtree in the pooled namespace (salem-vendor/constance-scott/conversations/…,
+    // the very prefix `recall` searches), and its lines are labeled with the
+    // villager rather than the pooled agent. A dedicated 'sim' VA is one NPC per
+    // namespace, so it carries neither — the note sits at the namespace root and is
+    // labeled from the agent slug.
+    const isShared = agent.dream_mode === 'sim-shared';
+    let slugPrefix = '';
+    let actorName;
+    if (isShared) {
+        slugPrefix = normalizeSlugPrefix(opts.slugPrefix);
+        if (!slugPrefix) {
+            throw Object.assign(
+                new Error('slug_prefix required (safe kebab path) for a sim-shared agent'),
+                { statusCode: 400 }
+            );
+        }
+        const display = typeof opts.actorName === 'string' ? opts.actorName.trim() : '';
+        if (!display) {
+            throw Object.assign(
+                new Error('actor (display name) required for a sim-shared agent'),
+                { statusCode: 400 }
+            );
+        }
+        // sanitizeLabel strips bracket/quote/newline chars and can collapse a
+        // hostile input to empty; it imposes no length bound. Validate the RESULT
+        // (not just the raw input) so an empty or oversized name can't reach the
+        // note title/content or the roster display_name. 100 matches the slug cap.
+        actorName = sanitizeLabel(display);
+        if (!actorName || actorName.length > 100) {
+            throw Object.assign(
+                new Error('actor (display name) is empty after sanitizing, or too long, for a sim-shared agent'),
+                { statusCode: 400 }
+            );
+        }
+    } else {
+        actorName = sanitizeLabel(slugToDisplay(agent.name));
+    }
+
     const { start, end } = dayWindow(dayStr);
-    const actorName = sanitizeLabel(slugToDisplay(agent.name));
 
     // Build per-event narration lines from the engine push. Skip events
     // that fall outside the day window — the engine should only push
@@ -501,14 +573,19 @@ async function distillSimConversationDay(agentName, dayStr, events) {
     });
     const all = narrationLines;
 
-    const slug = 'conversations/' + dayStr + '-sim-day';
+    const slug = slugPrefix + 'conversations/' + dayStr + '-sim-day';
     const title = 'Sim day — ' + actorName + ' — ' + dayStr;
 
     if (all.length === 0) {
         // Nothing happened (or nothing narratable was pushed — a day of
         // pure look_around/done collapses to zero lines). Skip writing
         // rather than producing an empty note; the dream cron will
-        // simply not see this day for this agent.
+        // simply not see this day for this agent. For a shared-VA push this
+        // ALSO skips the sim_shared_actor enrollment below (which sits after this
+        // return) — by design: the roster means "villagers with dreamable
+        // material", so an actor with only empty days stays out of it until a day
+        // lands a note (Slice 2 has nothing to consolidate for it anyway). Its
+        // first non-empty day enrolls it.
         logSim('skip-empty', { agent: agentName, day: dayStr });
         return { skipped: true, reason: 'no narratable events' };
     }
@@ -520,10 +597,27 @@ async function distillSimConversationDay(agentName, dayStr, events) {
     const content = headerLines.concat(all.map((x) => x.line)).join('\n') + '\n';
 
     await saveNote(agentName, title, content, slug, agentName, null, null, { upsert: true });
+
+    if (isShared) {
+        // Register/refresh this villager in the shared-VA dream roster so Slice 2's
+        // per-actor dream loop knows to consolidate salem-vendor/<slug_prefix>.
+        // Keyed on (pooled agent, slug_prefix); the push is the authority for
+        // display_name + last_pushed_day. INSERT-or-update is idempotent, matching
+        // the note's own re-push-overwrites contract.
+        await pool.query(
+            `INSERT INTO sim_shared_actor (shared_actor_id, slug_prefix, display_name, last_pushed_day)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (shared_actor_id, slug_prefix)
+             DO UPDATE SET display_name = EXCLUDED.display_name,
+                           last_pushed_day = EXCLUDED.last_pushed_day`,
+            [agent.id, slugPrefix, actorName, dayStr]
+        );
+    }
+
     logSim('saved', { agent: agentName, day: dayStr, lines: all.length, bytes: content.length });
     return { saved: true, slug, lines: all.length, bytes: content.length };
 }
 
 // narrateEvent is exported for unit tests (sim-conversation-distiller.test.js);
 // distillSimConversationDay is the only production caller.
-module.exports = { distillSimConversationDay, narrateEvent };
+module.exports = { distillSimConversationDay, narrateEvent, normalizeSlugPrefix };

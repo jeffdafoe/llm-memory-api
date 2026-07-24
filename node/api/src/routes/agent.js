@@ -455,8 +455,13 @@ router.post('/agent/instructions/read', apiRoute('agent', 'instructions-read', a
 
     let instructions = result.rows[0]?.startup_instructions || null;
 
-    // Append dream bootstrap if agent has dreaming enabled
-    if (result.rows[0]?.dream_mode && result.rows[0].dream_mode !== 'none') {
+    // Append dream bootstrap if agent has dreaming enabled. 'sim-shared' is
+    // excluded: it pools many villagers under one agent whose souls live in the
+    // engine's actor_narrative_state.about_me (LLM-199), not a per-agent
+    // context/soul note, so it takes neither the bootstrap nor the soul append —
+    // same as 'none'.
+    if (result.rows[0]?.dream_mode && result.rows[0].dream_mode !== 'none'
+        && result.rows[0].dream_mode !== 'sim-shared') {
         const dreamBootstrap = config.get('dream_bootstrap') || '';
         if (dreamBootstrap) {
             instructions = (instructions || '') + '\n\n' + dreamBootstrap;

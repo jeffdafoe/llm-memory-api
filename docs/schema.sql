@@ -34,15 +34,10 @@ COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access met
 
 
 --
--- Name: dream_mode_t; Type: TYPE; Schema: public; Owner: -
+-- dream_mode_t enum removed in MEM-141 (LLM-515): agent_configuration.dream_mode
+-- is now plain TEXT, allowed values enforced app-side (routes/admin.js,
+-- registration.js) — 'none' | 'companion' | 'technical' | 'sim' | 'sim-shared'.
 --
-
-CREATE TYPE public.dream_mode_t AS ENUM (
-    'none',
-    'companion',
-    'technical',
-    'sim'
-);
 
 
 --
@@ -262,9 +257,26 @@ CREATE TABLE public.agent_configuration (
     cost_budget_daily numeric(10,2),
     cost_budget_monthly numeric(10,2),
     actor_id integer NOT NULL,
-    dream_mode public.dream_mode_t DEFAULT 'none'::public.dream_mode_t NOT NULL,
+    dream_mode text DEFAULT 'none'::text NOT NULL,
     last_dream_at timestamp with time zone,
     storage_quota bigint
+);
+
+
+--
+-- Name: sim_shared_actor; Type: TABLE; Schema: public; Owner: -
+-- Added by MEM-142 (LLM-515): the per-actor dream roster for shared-VA villagers
+-- — one row per (pooled agent actors.id, memory-partition slug_prefix). Populated
+-- by the /sim/conversation-day push, consumed by the per-actor dream loop.
+--
+
+CREATE TABLE public.sim_shared_actor (
+    shared_actor_id integer NOT NULL REFERENCES public.actors(id) ON DELETE CASCADE,
+    slug_prefix text NOT NULL,
+    display_name text NOT NULL,
+    last_pushed_day text,
+    last_dream_at timestamp with time zone,
+    PRIMARY KEY (shared_actor_id, slug_prefix)
 );
 
 
