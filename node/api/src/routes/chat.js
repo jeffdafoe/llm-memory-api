@@ -265,13 +265,14 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
             // The VA reply path failed before sending its [Error] feedback
             // chat message. Surface the error directly so the wait-mode
             // caller can react instead of polling for a sentinel.
-            // One allowlisted typed error passes through: the 429
-            // RATE_LIMITED throw from handleDirectChat (ZBBS-WORK-404), so
-            // the engine can classify a cooldown honestly instead of
-            // booking it as malformed. Allowlisted rather than passing any
-            // thrown statusCode through — an arbitrary internal error
-            // carrying statusCode would otherwise widen this route's
-            // public contract. Everything else stays 502 REPLY_FAILED.
+            // Two allowlisted typed errors pass through: the 429 RATE_LIMITED
+            // throw from handleDirectChat (ZBBS-WORK-404) and the 402
+            // OVER_BUDGET throw (LLM-513), so the engine can classify a cooldown
+            // or a budget cap honestly instead of booking either as malformed.
+            // Allowlisted rather than passing any thrown statusCode through — an
+            // arbitrary internal error carrying statusCode would otherwise widen
+            // this route's public contract. Everything else stays 502
+            // REPLY_FAILED.
             if (replyErr.code === 'RATE_LIMITED' && replyErr.statusCode === 429) {
                 const error = {
                     code: 'RATE_LIMITED',
@@ -281,6 +282,14 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
                     error.resumes_in_seconds = replyErr.resumesInSeconds;
                 }
                 return res.status(429).json({ error });
+            }
+            if (replyErr.code === 'OVER_BUDGET' && replyErr.statusCode === 402) {
+                return res.status(402).json({
+                    error: {
+                        code: 'OVER_BUDGET',
+                        message: replyErr.message || 'Cost budget exceeded',
+                    },
+                });
             }
             return res.status(502).json({
                 error: { code: 'REPLY_FAILED', message: replyErr.message || 'virtual agent reply failed' },
