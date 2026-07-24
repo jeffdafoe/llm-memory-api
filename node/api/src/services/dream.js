@@ -10,6 +10,7 @@ const { log, logError } = require('./logger');
 const { saveNote, readNote, listNotes } = require('./documents');
 const { invokeAgent } = require('./virtual-agent');
 const { personContextSlug } = require('./people-slug');
+const { normalizeSlugPrefix } = require('./sim-conversation-distiller');
 
 // validatePersonSlug — defense for runPersonContextUpdate now that it's
 // exported. Pass the input back through the same slugify the dream cron
@@ -22,6 +23,15 @@ function validatePersonSlug(slug) {
     const canonical = personContextSlug(slug);
     if (!canonical || canonical !== slug) return null;
     return canonical;
+}
+
+// Build the context/people note slug for a person under an optional scope
+// prefix: '' for a dedicated agent (namespace root) or a validated
+// "<villager>/" prefix for a shared-VA villager. Kept pure and exported so the
+// path invariant (empty prefix → context/people/<slug>; shared prefix →
+// <villager>/context/people/<slug>) is unit-testable without a document store.
+function peopleNotePath(slugPrefix, personSlug) {
+    return (slugPrefix || '') + 'context/people/' + personSlug;
 }
 
 // Signal patterns that indicate memory-worthy content.
@@ -479,6 +489,25 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
     opts = opts || {};
     const dryRun = !!opts.dryRun;
 
+    // Slug prefix scopes the relationship file under a shared-VA villager's
+    // subtree (e.g. "constance-scott/context/people/josiah-thorne"). Empty for
+    // a dedicated agent, so the path is byte-identical to the pre-Slice-2 form.
+    // A non-empty prefix must canonicalize cleanly through the same validator
+    // the distiller uses (lowercase kebab + one trailing slash, ≤100 chars) —
+    // this helper is exported, so we don't trust the caller to have validated
+    // a DB/operator-sourced prefix; an unchecked '%'/'_' would act as a LIKE
+    // wildcard downstream and '../' would escape the subtree. Reject rather
+    // than silently build a bad path.
+    const rawSlugPrefix = typeof opts.slugPrefix === 'string' ? opts.slugPrefix : '';
+    let slugPrefix = '';
+    if (rawSlugPrefix !== '') {
+        slugPrefix = normalizeSlugPrefix(rawSlugPrefix);
+        if (!slugPrefix) {
+            throw new Error('runPersonContextUpdate: invalid slug prefix: ' + rawSlugPrefix);
+        }
+    }
+    const selfLabel = opts.selfLabel || agentName;
+
     // Defend the path input now that this helper is exported. Reject
     // anything that doesn't slug-roundtrip cleanly (path traversal,
     // whitespace, mixed case, etc.). Same regex that the cron's natural
@@ -488,6 +517,7 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
         throw new Error('runPersonContextUpdate: invalid person slug: ' + slug);
     }
     slug = safeSlug;
+    const peopleSlug = peopleNotePath(slugPrefix, slug);
 
     // Sanitize display name before it's interpolated into the user
     // message. Note titles are operator-editable in admin UI, so a
@@ -499,7 +529,7 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
     // Read the current relationship file (empty string if first encounter).
     let existingFile = '';
     try {
-        const note = await readNote(agentName, 'context/people/' + slug);
+        const note = await readNote(agentName, peopleSlug);
         existingFile = note.content || '';
     } catch (e) {
         // No existing file — first encounter.
@@ -512,7 +542,7 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
         ? excerpts
         : '(no new excerpts since last update — please consolidate any redundant bullets if present, or return file unchanged if already tight)';
 
-    const peopleUserMessage = '## Agent: ' + agentName + '\n'
+    const peopleUserMessage = '## Agent: ' + selfLabel + '\n'
         + '## Person: ' + display + '\n'
         + '## Today\'s date: ' + today + '\n\n'
         + '## Current relationship file\n\n'
@@ -560,7 +590,7 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
             agentName,
             'People — ' + display,
             updatedFile,
-            'context/people/' + slug,
+            peopleSlug,
             peopleAgentName,
             null, null, { upsert: true }
         );
@@ -570,11 +600,26 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
     return { existingFile, updatedFile, written, changed, emptyResponse };
 }
 
-async function processDreamChunk(agent, agentNames, chunk) {
+async function processDreamChunk(agent, agentNames, chunk, scope) {
     const { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName } = agentNames;
     const { from, to } = chunk;
     const chunkDateStr = from.toISOString().slice(0, 10);
     const notesMode = agent.dream_source === 'notes';
+
+    // Scope selects the slug subtree and the self-identity. slugPrefix is
+    // empty for a dedicated agent (all notes at namespace root) and a
+    // "<villager>/" prefix for a shared-VA villager, so every read and write
+    // below lands under the same subtree recall searches. selfName is the
+    // identity whose own speech is skipped in extractSpeakers and whose name
+    // labels the dream/people/learnings prompts — the villager for a shared
+    // actor, else the agent itself. Defaulted so dedicated callers are
+    // byte-identical. The slug prefix comes from sim_shared_actor, written by
+    // the distiller's normalizeSlugPrefix (lowercase kebab + one trailing
+    // slash), so it carries no LIKE metacharacters and is safe to interpolate
+    // into the conversation-source LIKE pattern.
+    scope = scope || {};
+    const slugPrefix = typeof scope.slugPrefix === 'string' ? scope.slugPrefix : '';
+    const selfName = scope.selfName || agent.name;
 
     let logs;
     if (notesMode) {
@@ -600,10 +645,10 @@ async function processDreamChunk(agent, agentNames, chunk) {
     } else {
         logs = await pool.query(
             `SELECT slug, content, created_at FROM documents
-             WHERE namespace = $1 AND slug LIKE 'conversations/%' AND deleted_at IS NULL
+             WHERE namespace = $1 AND slug LIKE $4 AND deleted_at IS NULL
              AND created_at > $2 AND created_at <= $3
              ORDER BY created_at ASC`,
-            [agent.name, from, to]
+            [agent.name, from, to, slugPrefix + 'conversations/%']
         );
     }
     if (logs.rows.length === 0) {
@@ -644,7 +689,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
     const userMessage = (notesMode
         ? 'Curated notes written or updated by agent "' + agent.name + '" on ' + chunkDateStr
             + ' (this agent\'s memory lives in hand-curated notes — journals, identity documents, session summaries — rather than conversation logs):\n\n'
-        : 'Conversation logs for agent "' + agent.name + '" on ' + chunkDateStr + ':\n\n')
+        : 'Conversation logs for agent "' + selfName + '" on ' + chunkDateStr + ':\n\n')
         + filtered
         + '\n\nAlso provide a brief title summarizing the overarching subject of the day.';
 
@@ -662,14 +707,19 @@ async function processDreamChunk(agent, agentNames, chunk) {
 
     // Slug uses the chunk's date so catching up multiple days produces
     // distinct dated notes (rather than overwriting the same NOW-dated slug).
-    const slug = 'dreams/' + chunkDateStr + '-' + slugify(title);
+    const slug = slugPrefix + 'dreams/' + chunkDateStr + '-' + slugify(title);
     await saveNote(agent.name, title + ' (' + chunkDateStr + ')', content, slug, dreamAgentName);
     logDream('chunk-saved', { agent: agent.name, slug, contentLength: content.length });
 
     // Soul synthesis — runs after each chunk per Jeff's call. The current
     // soul note is the prior chunk's output, so consecutive chunks build
     // on each other naturally rather than needing a single end-of-run pass.
-    if (soulAgentName) {
+    // Skipped under a shared-VA scope: a shared villager's soul lives in the
+    // engine's actor_narrative_state.about_me (LLM-199), not a note, and a
+    // namespace-root context/soul would collide across every pooled villager.
+    // The shared path also passes a null soul agent, so this is defense in
+    // depth for any future caller.
+    if (soulAgentName && !slugPrefix) {
         try {
             let existingSoul = '';
             try {
@@ -843,7 +893,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
     // dreaming deliberately writes only dreams/* and context/soul.
     if (peopleAgentName && !notesMode) {
         try {
-            const speakers = extractSpeakers(filtered, agent.name);
+            const speakers = extractSpeakers(filtered, selfName);
             for (const [slug, entry] of speakers) {
                 const { display, lines: personLines } = entry;
                 if (personLines.length === 0) {
@@ -852,7 +902,8 @@ async function processDreamChunk(agent, agentNames, chunk) {
                 try {
                     const result = await runPersonContextUpdate(
                         agent.name, peopleAgentName, slug, display,
-                        personLines.join('\n'), chunkDateStr
+                        personLines.join('\n'), chunkDateStr,
+                        { slugPrefix, selfLabel: selfName }
                     );
                     if (result.written) {
                         logDream('chunk-people-updated', {
@@ -884,7 +935,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
     // (and learnings/% is an excluded source prefix — writing it would feed
     // the next run's input).
     if (learningsAgentName && !notesMode) {
-        const learningsSlug = 'learnings/' + chunkDateStr + '-sim-day';
+        const learningsSlug = slugPrefix + 'learnings/' + chunkDateStr + '-sim-day';
         try {
             let existingFile = '';
             try {
@@ -894,7 +945,7 @@ async function processDreamChunk(agent, agentNames, chunk) {
                 // No existing learnings file for this day — first pass.
             }
 
-            const learningsUserMessage = '## Agent: ' + agent.name + '\n'
+            const learningsUserMessage = '## Agent: ' + selfName + '\n'
                 + '## Date: ' + chunkDateStr + '\n\n'
                 + (existingFile
                     ? '## Existing learnings for today (refine, integrate; do not duplicate)\n\n' + existingFile + '\n\n'
@@ -958,6 +1009,246 @@ async function processDreamChunk(agent, agentNames, chunk) {
     };
 }
 
+// Run the per-day chunk loop for a single dreaming identity. Shared by the
+// dedicated per-agent path and the shared-VA per-actor path: the only
+// differences are the scope (namespace-root vs a villager slug prefix) and
+// where progress is stamped, both passed in. advanceCursor(chunkTo) persists
+// the cursor after each successful chunk so a later failure doesn't lose
+// earlier work; a failed chunk stops this identity's remaining chunks (so we
+// never skip past unprocessed logs) and the next cron retries it. Returns the
+// per-chunk result array.
+async function runChunkLoop(agent, agentNames, chunks, scope, advanceCursor) {
+    const interChunkDelay = parseInt(config.get('dream_interchunk_delay')) || 1000;
+    const chunkResults = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        try {
+            const r = await processDreamChunk(agent, agentNames, chunk, scope);
+            chunkResults.push(r);
+            await advanceCursor(chunk.to);
+        } catch (chunkErr) {
+            const chunkDate = chunk.from.toISOString().slice(0, 10);
+            const errDetail = { agent: agent.name, chunkDate, error: chunkErr.message };
+            if (scope.slugPrefix) {
+                errDetail.prefix = scope.slugPrefix;
+            }
+            logDream('chunk-error', errDetail);
+            logError('dream', 'chunk-error', {
+                agent: agent.name,
+                message: chunkErr.message,
+                detail: chunkErr.stack,
+            });
+            chunkResults.push({ chunkDate, error: chunkErr.message });
+            break;
+        }
+        // Inter-chunk pause for the same identity — politeness to the provider
+        // when catching up multiple days back-to-back.
+        if (i + 1 < chunks.length && interChunkDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, interChunkDelay));
+        }
+    }
+
+    return chunkResults;
+}
+
+// Validate a shared-VA roster row's slug_prefix at the dream boundary. Returns
+// the canonical prefix, or null for anything that must be skipped: a
+// NULL/non-string value (explicit type guard so a bad row can't throw and abort
+// the roster), or a non-canonical value the distiller's normalizer rejects —
+// LIKE metacharacters, path traversal, wrong case, over-length. Pure and
+// exported so the roster-boundary decision is unit-testable.
+function validateRosterPrefix(rowPrefix) {
+    if (typeof rowPrefix !== 'string') {
+        return null;
+    }
+    const canonical = normalizeSlugPrefix(rowPrefix);
+    return canonical || null;
+}
+
+// Count shared-VA actors that saw any failure this run — an actor-level error
+// (invalid prefix, per-actor exception) OR a failed chunk nested inside an
+// otherwise-formed actor result. A skipped chunk (no logs / no signals) is not
+// a failure and is not counted. Exported so the cron's failure signal is
+// unit-testable without standing up the whole pipeline.
+function countActorErrors(actorResults) {
+    return actorResults.filter(r =>
+        r.error || (Array.isArray(r.chunks) && r.chunks.some(c => c.error))
+    ).length;
+}
+
+// Dream every shared-VA villager enrolled under one pooled agent
+// (dream_mode='sim-shared', e.g. salem-vendor). Each villager is a slug
+// prefix in the pooled namespace — it has no actors row of its own — so it
+// gets a dedicated-VA-equivalent dream/learnings/people pass scoped under its
+// prefix, cursored on its own sim_shared_actor.last_dream_at. Soul is
+// deliberately omitted (null soul agent + the slug-prefix guard in
+// processDreamChunk): a shared villager's soul is the engine's
+// actor_narrative_state.about_me (LLM-199), not a note. The roster only holds
+// villagers that have landed at least one non-empty day (the distiller
+// enrolls on first material), so no empty-namespace villager reaches here.
+async function processSharedAgent(agent, simAgents, results) {
+    const { simAgentName, simPeopleAgentName, simLearningsAgentName } = simAgents;
+    if (!simAgentName) {
+        results.push({ agent: agent.name, mode: 'sim-shared', errorCount: 1, error: 'dream-sim agent not available' });
+        return;
+    }
+
+    // sim-shared is conversation-sourced only. processDreamChunk's notes-mode
+    // source query is NOT slug-scoped, so a misconfigured dream_source would
+    // read the pooled agent's cross-villager curated notes and write them into
+    // one villager's subtree — a cross-villager leak. Reject the whole agent
+    // rather than process it under the wrong source.
+    const dreamSource = agent.dream_source || 'conversation';
+    if (dreamSource !== 'conversation') {
+        logDream('shared-unsupported-source', { agent: agent.name, source: dreamSource });
+        logError('dream', 'shared-unsupported-source', { agent: agent.name, source: dreamSource });
+        results.push({
+            agent: agent.name,
+            mode: 'sim-shared',
+            errorCount: 1,
+            error: 'dream_source must be conversation for sim-shared (got ' + dreamSource + ')',
+        });
+        return;
+    }
+
+    const agentNames = {
+        dreamAgentName: simAgentName,
+        soulAgentName: null,
+        peopleAgentName: simPeopleAgentName,
+        learningsAgentName: simLearningsAgentName,
+    };
+
+    const roster = await pool.query(
+        `SELECT slug_prefix, display_name, last_dream_at
+         FROM sim_shared_actor
+         WHERE shared_actor_id = $1
+         ORDER BY slug_prefix ASC`,
+        [agent.actor_id]
+    );
+    if (roster.rows.length === 0) {
+        logDream('shared-no-roster', { agent: agent.name });
+        results.push({ agent: agent.name, mode: 'sim-shared', actorCount: 0 });
+        return;
+    }
+
+    const interActorDelay = parseInt(config.get('dream_interagent_delay')) || 2000;
+    const actorResults = [];
+
+    for (let i = 0; i < roster.rows.length; i++) {
+        const actorRow = roster.rows[i];
+        const rowPrefix = actorRow.slug_prefix;
+        // Declared before the try so the catch below can still reference it.
+        let slugPrefix = '';
+        try {
+            // Validate the roster prefix at this boundary — DB/operator-
+            // controlled state, not trusted just because the distiller normally
+            // writes it canonically. Kept inside the per-actor try so one bad row
+            // (including a NULL/non-string slug_prefix) skips only THIS villager,
+            // never aborting the rest of the roster. The canonical form drives
+            // every path built below; the stored value keys the cursor UPDATE so
+            // it targets the exact roster row.
+            const validated = validateRosterPrefix(rowPrefix);
+            if (!validated) {
+                logDream('shared-actor-invalid-prefix', { agent: agent.name, prefix: rowPrefix });
+                logError('dream', 'shared-actor-invalid-prefix', { agent: agent.name, prefix: String(rowPrefix) });
+                actorResults.push({ prefix: rowPrefix, error: 'invalid slug prefix' });
+                continue;
+            }
+            slugPrefix = validated;
+            const scope = { slugPrefix, selfName: actorRow.display_name };
+            // First run for this villager (no cursor yet): start at its
+            // earliest conversation note so a freshly-pushed backlog — an
+            // LLM-515 push-cursor backfill, or a villager enrolled several days
+            // before its first dream — is consolidated rather than skipped.
+            // Steady state, last_dream_at carries the window forward.
+            let since = actorRow.last_dream_at;
+            if (!since) {
+                const earliest = await pool.query(
+                    `SELECT MIN(created_at) AS min_created FROM documents
+                     WHERE namespace = $1 AND slug LIKE $2 AND deleted_at IS NULL`,
+                    [agent.name, slugPrefix + 'conversations/%']
+                );
+                if (!earliest.rows[0] || !earliest.rows[0].min_created) {
+                    logDream('shared-no-conversations', { agent: agent.name, prefix: slugPrefix });
+                    actorResults.push({ prefix: slugPrefix, skipped: true, reason: 'no conversation notes' });
+                    continue;
+                }
+                const minCreated = earliest.rows[0].min_created instanceof Date
+                    ? earliest.rows[0].min_created
+                    : new Date(earliest.rows[0].min_created);
+                // Window is exclusive on `from`; back off 1ms to include the
+                // earliest note itself.
+                since = new Date(minCreated.getTime() - 1);
+            }
+
+            const chunks = computeDailyChunks(since, new Date());
+            if (chunks.length === 0) {
+                logDream('shared-no-window', { agent: agent.name, prefix: slugPrefix, since });
+                actorResults.push({ prefix: slugPrefix, skipped: true, reason: 'last_dream_at is in the future' });
+                continue;
+            }
+
+            logDream('shared-chunks-planned', {
+                agent: agent.name,
+                prefix: slugPrefix,
+                count: chunks.length,
+                from: chunks[0].from.toISOString(),
+                to: chunks[chunks.length - 1].to.toISOString(),
+            });
+
+            const chunkResults = await runChunkLoop(
+                agent, agentNames, chunks, scope,
+                (chunkTo) => pool.query(
+                    `UPDATE sim_shared_actor SET last_dream_at = $1
+                     WHERE shared_actor_id = $2 AND slug_prefix = $3`,
+                    [chunkTo, agent.actor_id, rowPrefix]
+                )
+            );
+            // Report planned vs completed separately — runChunkLoop stops on the
+            // first failed chunk, so chunks.length alone would overstate progress
+            // to cron monitoring. A chunk result carries an `error` field only
+            // when it failed.
+            actorResults.push({
+                prefix: slugPrefix,
+                plannedChunks: chunks.length,
+                completedChunks: chunkResults.filter(r => !r.error).length,
+                chunks: chunkResults,
+            });
+        } catch (actorErr) {
+            const prefix = slugPrefix || rowPrefix;
+            logDream('shared-actor-error', { agent: agent.name, prefix, error: actorErr.message });
+            logError('dream', 'shared-actor-error', {
+                agent: agent.name,
+                prefix,
+                message: actorErr.message,
+                detail: actorErr.stack,
+            });
+            actorResults.push({ prefix, error: actorErr.message });
+        }
+
+        // Delay between villagers — same politeness as the inter-agent delay,
+        // since each villager is a full dedicated-VA-equivalent pass.
+        if (i + 1 < roster.rows.length && interActorDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, interActorDelay));
+        }
+    }
+
+    // errorCount gives the cron summary a numeric failure signal for this
+    // pooled agent — counting both actor-level errors and failed chunks nested
+    // in an actor's result (per-villager failures are also written to
+    // system_errors via logError, matching the dedicated per-agent contract —
+    // one bad villager never fails the whole run).
+    const errorCount = countActorErrors(actorResults);
+    results.push({
+        agent: agent.name,
+        mode: 'sim-shared',
+        actorCount: roster.rows.length,
+        errorCount,
+        actors: actorResults,
+    });
+}
+
 // Run the dream processing job.
 // Returns a summary object with counts and any errors.
 async function runDream() {
@@ -983,13 +1274,16 @@ async function runDream() {
         return { error: 'No valid dream agents found. At least one of dream-companion, dream-technical, or dream-sim must exist and be created by a trusted creator.' };
     }
 
-    // Find agents with dream mode enabled
+    // Find agents with dream mode enabled. sim-shared (pooled salem-vendor-
+    // style agents) is included but handled on a separate per-villager path
+    // below — it fans out over the sim_shared_actor roster instead of dreaming
+    // one identity across the whole namespace.
     const agents = await pool.query(
         `SELECT ac.name, ac.id AS actor_id, agc.dream_mode, agc.dream_source,
                 agc.last_dream_at, agc.startup_instructions
          FROM agent_configuration agc
          JOIN actors ac ON ac.id = agc.actor_id
-         WHERE agc.dream_mode IN ('companion', 'technical', 'sim')`
+         WHERE agc.dream_mode IN ('companion', 'technical', 'sim', 'sim-shared')`
     );
 
     if (agents.rows.length === 0) {
@@ -1003,6 +1297,19 @@ async function runDream() {
 
     for (const agent of agents.rows) {
         try {
+            if (agent.dream_mode === 'sim-shared') {
+                // Pooled shared-VA agent: fan out over its villager roster on a
+                // separate per-actor path (own cursors, slug-prefixed notes, no
+                // soul). The helper paces itself with an inter-villager delay,
+                // so skip straight to the next agent afterward.
+                await processSharedAgent(
+                    agent,
+                    { simAgentName, simPeopleAgentName, simLearningsAgentName },
+                    results
+                );
+                continue;
+            }
+
             // Pick the right dream/soul/people/learnings agents for this dream_mode.
             let dreamAgentName = null;
             let soulAgentName = null;
@@ -1079,48 +1386,16 @@ async function runDream() {
                 to: chunks[chunks.length - 1].to.toISOString(),
             });
 
-            const interChunkDelay = parseInt(config.get('dream_interchunk_delay')) || 1000;
-            const chunkResults = [];
-
-            for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                try {
-                    const r = await processDreamChunk(agent, agentNames, chunk);
-                    chunkResults.push(r);
-                    // Advance last_dream_at after each successful chunk so a
-                    // failure on a later chunk doesn't lose the work done on
-                    // earlier ones — the next cron resumes from where we
-                    // stopped, not from the start of the agent's backlog.
-                    await pool.query(
-                        'UPDATE agent_configuration SET last_dream_at = $1 WHERE actor_id = $2',
-                        [chunk.to, agent.actor_id]
-                    );
-                } catch (chunkErr) {
-                    // Don't advance last_dream_at — next cron retries this
-                    // chunk. Stop processing this agent's later chunks so we
-                    // don't skip past a failed one (would lose its logs).
-                    logDream('chunk-error', {
-                        agent: agent.name,
-                        chunkDate: chunk.from.toISOString().slice(0, 10),
-                        error: chunkErr.message,
-                    });
-                    logError('dream', 'chunk-error', {
-                        agent: agent.name,
-                        message: chunkErr.message,
-                        detail: chunkErr.stack,
-                    });
-                    chunkResults.push({
-                        chunkDate: chunk.from.toISOString().slice(0, 10),
-                        error: chunkErr.message,
-                    });
-                    break;
-                }
-                // Inter-chunk pause for the same agent — politeness to the
-                // provider when catching up multiple days back-to-back.
-                if (i + 1 < chunks.length && interChunkDelay > 0) {
-                    await new Promise(resolve => setTimeout(resolve, interChunkDelay));
-                }
-            }
+            // Dedicated agent: one identity across the whole namespace, cursor
+            // on agent_configuration.last_dream_at.
+            const chunkResults = await runChunkLoop(
+                agent, agentNames, chunks,
+                { slugPrefix: '', selfName: agent.name },
+                (chunkTo) => pool.query(
+                    'UPDATE agent_configuration SET last_dream_at = $1 WHERE actor_id = $2',
+                    [chunkTo, agent.actor_id]
+                )
+            );
 
             results.push({
                 agent: agent.name,
@@ -1138,7 +1413,15 @@ async function runDream() {
                 message: err.message,
                 detail: err.stack,
             });
-            results.push({ agent: agent.name, error: err.message });
+            // A throw out of processSharedAgent (e.g. the roster query failing
+            // before any actor result is recorded) must still register as a
+            // shared failure so the run-level sharedActorErrorCount counts it.
+            const failureResult = { agent: agent.name, error: err.message };
+            if (agent.dream_mode === 'sim-shared') {
+                failureResult.mode = 'sim-shared';
+                failureResult.errorCount = 1;
+            }
+            results.push(failureResult);
         }
 
         // Delay between agents to avoid hammering the provider
@@ -1148,8 +1431,17 @@ async function runDream() {
         }
     }
 
-    logDream('complete', { processed: results.length });
-    return { processed: results.length, results };
+    // Aggregate a run-level failure signal for shared-VA dreaming so the
+    // scheduler can record a persistent-failure run rather than a clean
+    // 'complete'. Scoped to sim-shared deliberately: the dedicated per-agent
+    // contract (capture errors into results, resolve the run) is unchanged —
+    // widening the whole cron's success semantics is a separate ticket.
+    const sharedActorErrorCount = results
+        .filter(r => r.mode === 'sim-shared')
+        .reduce((sum, r) => sum + (r.errorCount || 0), 0);
+
+    logDream('complete', { processed: results.length, sharedActorErrorCount });
+    return { processed: results.length, sharedActorErrorCount, results };
 }
 
 // Start the dream scheduler. Reads dream_cron_schedule from config
@@ -1179,7 +1471,19 @@ function startDreamScheduler() {
         logDream('cron-trigger', { schedule });
         try {
             const result = await runDream();
-            logDream('cron-complete', { result });
+            const sharedFailures = result ? (result.sharedActorErrorCount || 0) : 0;
+            // Record the failure signal BEFORE the completion event so a
+            // consumer watching 'cron-complete' can't observe a clean run ahead
+            // of the durable error, and stamp the status onto the completion
+            // event itself. runDream still resolves (one bad villager never
+            // blocks the others), but this run is not a silent success.
+            if (sharedFailures > 0) {
+                logError('dream', 'cron-shared-actor-failures', { count: sharedFailures });
+            }
+            logDream('cron-complete', {
+                result,
+                status: sharedFailures > 0 ? 'completed-with-errors' : 'ok',
+            });
         } catch (err) {
             logDream('cron-error', { error: err.message });
             logError('dream', 'cron-error', { message: err.message, detail: err.stack });
@@ -1189,4 +1493,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countActorErrors, peopleNotePath, validateRosterPrefix };

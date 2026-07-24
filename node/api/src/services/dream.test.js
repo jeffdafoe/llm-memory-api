@@ -9,7 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage } = require('./dream');
+const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, runPersonContextUpdate, countActorErrors, peopleNotePath, validateRosterPrefix } = require('./dream');
 
 test('single note gets a slug+date header above its content', () => {
     const rows = [{
@@ -163,4 +163,134 @@ test('empty startup instructions produce no character-description section', () =
         dreamContent: 'today',
     });
     assert.ok(!msg.includes('## Character description'));
+});
+
+// extractSpeakers self-skip under a shared-VA scope (LLM-519 Slice 2). The
+// dream cron threads the villager's display name as the self-identity so her
+// own sim-day lines are dropped (no self people-file) while counterparties are
+// kept. A shared villager's lines come through the sim distiller format
+// ([Weekday HH:MM Display Name] ...), and the display name is multi-word.
+const SIM_DAY_LOG = [
+    '[Wednesday 14:30 Constance Scott] (earned 6 coins working for Josiah Thorne)',
+    '[Wednesday 14:35 Josiah Thorne] Fair work, fairly paid.',
+].join('\n');
+
+test('shared-VA scope skips the villager\'s own sim-day lines, keeps the counterparty', () => {
+    const speakers = extractSpeakers(SIM_DAY_LOG, 'Constance Scott');
+    assert.ok(!speakers.has('constance-scott'), 'the villager herself must be self-skipped');
+    assert.ok(speakers.has('josiah-thorne'), 'the counterparty must be captured');
+    assert.equal(speakers.get('josiah-thorne').display, 'Josiah Thorne');
+});
+
+test('the pooled agent name does NOT self-skip the villager — why selfName threading is needed', () => {
+    // Passing the pooled agent (salem-vendor) as self, the pre-Slice-2 default,
+    // fails to match the villager's own lines: she'd wrongly accumulate a
+    // context/people file about herself. Slice 2 fixes this by passing her
+    // display name as selfName.
+    const speakers = extractSpeakers(SIM_DAY_LOG, 'salem-vendor');
+    assert.ok(speakers.has('constance-scott'), 'pooled agent name leaves the villager un-skipped');
+});
+
+// runPersonContextUpdate rejects a non-canonical slug prefix before touching
+// the store (LLM-519 code_review): the prefix reaches note paths and LIKE
+// patterns, so a '%'/'_' wildcard or a '../' traversal must be refused at this
+// exported boundary, not trusted from the roster row. The guard runs before any
+// readNote/invokeAgent call, so these assert only the synchronous rejection.
+test('runPersonContextUpdate rejects a LIKE-wildcard slug prefix', async () => {
+    await assert.rejects(
+        () => runPersonContextUpdate('salem-vendor', 'dream-sim-people', 'josiah-thorne', 'Josiah Thorne', 'x', '2026-07-15', { slugPrefix: 'cons%tance/' }),
+        /invalid slug prefix/
+    );
+});
+
+test('runPersonContextUpdate rejects a path-traversal slug prefix', async () => {
+    await assert.rejects(
+        () => runPersonContextUpdate('salem-vendor', 'dream-sim-people', 'josiah-thorne', 'Josiah Thorne', 'x', '2026-07-15', { slugPrefix: '../secrets/' }),
+        /invalid slug prefix/
+    );
+});
+
+// countActorErrors — the shared-VA run-level failure signal (LLM-519 round 2).
+// The subtle case is a failed CHUNK: it lives inside an actor result's chunks[]
+// array, not as an actor-level `error` field, so a naive actor-level filter
+// would report a clean run for an actor whose day actually failed.
+test('countActorErrors counts an actor-level error (invalid prefix / exception)', () => {
+    assert.equal(countActorErrors([{ prefix: 'bad/', error: 'invalid slug prefix' }]), 1);
+});
+
+test('countActorErrors counts an actor whose chunk failed (the round-2 regression)', () => {
+    const actors = [{
+        prefix: 'constance-scott/',
+        plannedChunks: 2,
+        completedChunks: 1,
+        chunks: [
+            { processed: true, chunkDate: '2026-07-15' },
+            { chunkDate: '2026-07-16', error: 'model timeout' },
+        ],
+    }];
+    assert.equal(countActorErrors(actors), 1);
+});
+
+test('countActorErrors ignores clean actors and skipped (non-error) chunks', () => {
+    const actors = [
+        { prefix: 'a/', plannedChunks: 1, completedChunks: 1, chunks: [{ processed: true }] },
+        { prefix: 'b/', skipped: true, reason: 'no conversation notes' },
+        { prefix: 'c/', plannedChunks: 1, completedChunks: 1, chunks: [{ skipped: true, reason: 'no signals' }] },
+    ];
+    assert.equal(countActorErrors(actors), 0);
+});
+
+test('countActorErrors sums actor-level and chunk-level failures across a roster', () => {
+    const actors = [
+        { prefix: 'a/', error: 'invalid slug prefix' },
+        { prefix: 'b/', chunks: [{ processed: true }, { error: 'x' }] },
+        { prefix: 'c/', chunks: [{ processed: true }] },
+    ];
+    assert.equal(countActorErrors(actors), 2);
+});
+
+// peopleNotePath is the exact path runPersonContextUpdate reads and writes, so
+// asserting it directly proves the dedicated/admin empty-prefix invariant
+// (context/people/<slug> at namespace root) and the shared-VA scoping without
+// mocking the document store — which the destructured-import style resists.
+test('peopleNotePath builds a namespace-root path for an empty prefix (dedicated/admin)', () => {
+    assert.equal(peopleNotePath('', 'jeff'), 'context/people/jeff');
+});
+
+test('peopleNotePath treats a missing prefix as empty', () => {
+    assert.equal(peopleNotePath(undefined, 'jeff'), 'context/people/jeff');
+});
+
+test('peopleNotePath scopes the path under a shared-VA villager prefix', () => {
+    assert.equal(
+        peopleNotePath('constance-scott/', 'josiah-thorne'),
+        'constance-scott/context/people/josiah-thorne'
+    );
+});
+
+// validateRosterPrefix — the roster-boundary decision (LLM-519 round 3). A
+// NULL/non-string row must be rejected (returns null → the caller skips only
+// that villager, never aborting the roster), as must any non-canonical value
+// (LIKE metacharacters, path traversal). A canonical prefix passes through.
+test('validateRosterPrefix rejects a NULL roster prefix', () => {
+    assert.equal(validateRosterPrefix(null), null);
+});
+
+test('validateRosterPrefix rejects a non-string roster prefix', () => {
+    assert.equal(validateRosterPrefix(42), null);
+    assert.equal(validateRosterPrefix(undefined), null);
+    assert.equal(validateRosterPrefix({}), null);
+});
+
+test('validateRosterPrefix rejects LIKE-wildcard and traversal prefixes', () => {
+    assert.equal(validateRosterPrefix('cons%tance/'), null);
+    assert.equal(validateRosterPrefix('a_b/'), null);
+    assert.equal(validateRosterPrefix('../secrets/'), null);
+    assert.equal(validateRosterPrefix('foo/../bar/'), null);
+});
+
+test('validateRosterPrefix accepts and canonicalizes a valid prefix', () => {
+    assert.equal(validateRosterPrefix('constance-scott/'), 'constance-scott/');
+    // Canonicalizes a missing trailing slash (defensive; distiller writes it).
+    assert.equal(validateRosterPrefix('john-ellis'), 'john-ellis/');
 });
