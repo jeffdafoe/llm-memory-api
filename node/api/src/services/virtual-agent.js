@@ -2956,7 +2956,19 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             logVA('direct-chat-over-cost-limit', { agent: virtualAgentName, from: fromAgent, reason: costCheck.reason });
             await chatSend(virtualAgentName, [fromAgent], null,
                 `[Error] ${costCheck.reason}`, { sceneId, conversationId, isError: true });
-            return null;
+            // Throw rather than resolve null (LLM-513), mirroring the rate-limit
+            // branch above. Resolving null gave wait=true callers (the salem
+            // engine) a 200 with reply=null, which the engine could only classify
+            // as a malformed response — a budget-exhausted NPC brain masquerading
+            // as garbled model output. The route maps statusCode/code onto the
+            // HTTP reply so the engine sees an honest 402 and raises its live
+            // budget-exhaustion alarm. The breadcrumb chat row above still lands
+            // for history/admin; non-wait dispatch swallows the rejection
+            // (.catch in chat.js), same as the rate-limit throw.
+            throw Object.assign(new Error(costCheck.reason), {
+                statusCode: 402,
+                code: 'OVER_BUDGET',
+            });
         }
 
         // Call provider with retry+backoff and activity spinner.
