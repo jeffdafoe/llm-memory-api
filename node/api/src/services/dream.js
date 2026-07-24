@@ -26,10 +26,14 @@ function validatePersonSlug(slug) {
 }
 
 // Build the context/people note slug for a person under an optional scope
-// prefix: '' for a dedicated agent (namespace root) or a validated
-// "<villager>/" prefix for a shared-VA villager. Kept pure and exported so the
-// path invariant (empty prefix → context/people/<slug>; shared prefix →
-// <villager>/context/people/<slug>) is unit-testable without a document store.
+// prefix: '' for a dedicated agent (namespace root) or a "<villager>/" prefix
+// for a shared-VA villager. This is a PURE builder that assumes an
+// already-validated prefix — validation is the caller's job and happens at the
+// real boundary (runPersonContextUpdate and processDreamChunk both canonicalize
+// the prefix before any path is built). Exported only so the path invariant
+// (empty → context/people/<slug>; shared → <villager>/context/people/<slug>) is
+// unit-testable without a document store; do not use it as a place to accept
+// unvalidated input.
 function peopleNotePath(slugPrefix, personSlug) {
     return (slugPrefix || '') + 'context/people/' + personSlug;
 }
@@ -613,12 +617,20 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
     // identity whose own speech is skipped in extractSpeakers and whose name
     // labels the dream/people/learnings prompts — the villager for a shared
     // actor, else the agent itself. Defaulted so dedicated callers are
-    // byte-identical. The slug prefix comes from sim_shared_actor, written by
-    // the distiller's normalizeSlugPrefix (lowercase kebab + one trailing
-    // slash), so it carries no LIKE metacharacters and is safe to interpolate
-    // into the conversation-source LIKE pattern.
+    // byte-identical.
+    //
+    // This function is the shared path's real security boundary: it builds every
+    // note slug and the conversation-source LIKE pattern from the prefix. Rather
+    // than trust the caller (the scope is an arbitrary internal object), a
+    // non-empty prefix is re-validated/canonicalized here through the same
+    // distiller normalizer — no LIKE metacharacters, no path traversal — and a
+    // non-empty-but-invalid prefix throws. '' (dedicated) passes through.
     scope = scope || {};
-    const slugPrefix = typeof scope.slugPrefix === 'string' ? scope.slugPrefix : '';
+    const rawPrefix = typeof scope.slugPrefix === 'string' ? scope.slugPrefix : '';
+    const slugPrefix = rawPrefix ? normalizeSlugPrefix(rawPrefix) : '';
+    if (rawPrefix && !slugPrefix) {
+        throw new Error('processDreamChunk: invalid shared dream slug prefix: ' + rawPrefix);
+    }
     const selfName = scope.selfName || agent.name;
 
     let logs;
@@ -1119,6 +1131,54 @@ async function processSharedAgent(agent, simAgents, results) {
         learningsAgentName: simLearningsAgentName,
     };
 
+    // Accumulate villager results by reference so an unexpected roster/setup
+    // failure still preserves the villagers already processed in the single
+    // aggregate result below.
+    const actorResults = [];
+    let setupError = null;
+    let rosterSize = 0;
+    try {
+        rosterSize = await dreamSharedRoster(agent, agentNames, actorResults);
+    } catch (err) {
+        // A roster-query or other setup failure — record it and fall through so
+        // any partial actorResults are still reported, not discarded.
+        logDream('shared-agent-error', { agent: agent.name, error: err.message });
+        logError('dream', 'shared-agent-error', { agent: agent.name, message: err.message, detail: err.stack });
+        setupError = err.message;
+    }
+
+    if (rosterSize === 0 && actorResults.length === 0 && !setupError) {
+        // Empty roster — nothing enrolled yet (a legit, non-error state).
+        logDream('shared-no-roster', { agent: agent.name });
+        results.push({ agent: agent.name, mode: 'sim-shared', actorCount: 0 });
+        return;
+    }
+
+    // errorCount gives the cron summary a numeric failure signal for this pooled
+    // agent — actor-level errors, failed chunks nested in an actor's result, and
+    // a setup failure. Per-villager failures are also written to system_errors
+    // via logError, matching the dedicated per-agent contract: one bad villager
+    // never fails the whole run.
+    const errorCount = countActorErrors(actorResults) + (setupError ? 1 : 0);
+    const summary = {
+        agent: agent.name,
+        mode: 'sim-shared',
+        actorCount: actorResults.length,
+        errorCount,
+        actors: actorResults,
+    };
+    if (setupError) {
+        summary.error = setupError;
+    }
+    results.push(summary);
+}
+
+// Query the villager roster for one pooled shared-VA agent and dream each
+// villager, appending one result per villager to actorResults (populated by
+// reference). Separated from processSharedAgent so a roster/setup failure here
+// is caught by the caller — which still emits one aggregate result preserving
+// whatever villagers were already processed. Returns the roster size.
+async function dreamSharedRoster(agent, agentNames, actorResults) {
     const roster = await pool.query(
         `SELECT slug_prefix, display_name, last_dream_at
          FROM sim_shared_actor
@@ -1127,13 +1187,10 @@ async function processSharedAgent(agent, simAgents, results) {
         [agent.actor_id]
     );
     if (roster.rows.length === 0) {
-        logDream('shared-no-roster', { agent: agent.name });
-        results.push({ agent: agent.name, mode: 'sim-shared', actorCount: 0 });
-        return;
+        return 0;
     }
 
     const interActorDelay = parseInt(config.get('dream_interagent_delay')) || 2000;
-    const actorResults = [];
 
     for (let i = 0; i < roster.rows.length; i++) {
         const actorRow = roster.rows[i];
@@ -1234,19 +1291,7 @@ async function processSharedAgent(agent, simAgents, results) {
         }
     }
 
-    // errorCount gives the cron summary a numeric failure signal for this
-    // pooled agent — counting both actor-level errors and failed chunks nested
-    // in an actor's result (per-villager failures are also written to
-    // system_errors via logError, matching the dedicated per-agent contract —
-    // one bad villager never fails the whole run).
-    const errorCount = countActorErrors(actorResults);
-    results.push({
-        agent: agent.name,
-        mode: 'sim-shared',
-        actorCount: roster.rows.length,
-        errorCount,
-        actors: actorResults,
-    });
+    return roster.rows.length;
 }
 
 // Run the dream processing job.
