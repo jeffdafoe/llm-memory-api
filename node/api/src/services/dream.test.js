@@ -310,6 +310,16 @@ test('resolveScopePrefix rejects non-canonical forms rather than silently canoni
     assert.throws(() => resolveScopePrefix('  constance-scott/  '), /invalid slug prefix/); // whitespace
 });
 
+test('resolveScopePrefix enforces the 100-char limit at the boundary', () => {
+    // The security boundary now depends on the normalizer's length semantics, so
+    // pin the edge directly: 100 chars (99 body + '/') is accepted, 101 rejected.
+    const atLimit = 'a'.repeat(99) + '/';
+    const overLimit = 'a'.repeat(100) + '/';
+    assert.equal(atLimit.length, 100);
+    assert.equal(resolveScopePrefix(atLimit), atLimit);
+    assert.throws(() => resolveScopePrefix(overLimit), /invalid slug prefix/);
+});
+
 test('resolveScopePrefix throws on a present non-string prefix (no silent "")', () => {
     assert.throws(() => resolveScopePrefix(42), /not a string/);
     assert.throws(() => resolveScopePrefix({}), /not a string/);

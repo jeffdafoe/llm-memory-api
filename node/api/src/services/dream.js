@@ -653,6 +653,14 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
     // become the unscoped namespace.
     scope = scope || {};
     const slugPrefix = resolveScopePrefix(scope.slugPrefix);
+    // A shared scope (non-empty prefix) MUST carry a real self identity — the
+    // villager's display name. Falling back to the pooled agent (salem-vendor)
+    // would make the villager's own lines read as counterparty speech and spawn
+    // a bogus self relationship note, so throw rather than silently default. A
+    // dedicated scope ('' prefix) legitimately uses the agent's own name.
+    if (slugPrefix && !(typeof scope.selfName === 'string' && scope.selfName.trim())) {
+        throw new Error('processDreamChunk: shared scope requires a non-empty selfName');
+    }
     const selfName = scope.selfName || agent.name;
 
     let logs;
@@ -1140,7 +1148,10 @@ async function processSharedAgent(agent, simAgents, results) {
     const dreamSource = agent.dream_source || 'conversation';
     if (dreamSource !== 'conversation') {
         logDream('shared-unsupported-source', { agent: agent.name, source: dreamSource });
-        logError('dream', 'shared-unsupported-source', { agent: agent.name, source: dreamSource });
+        logError('dream', 'shared-unsupported-source', {
+            agent: agent.name,
+            message: 'dream_source must be conversation for sim-shared (got ' + dreamSource + ')',
+        });
         results.push({
             agent: agent.name,
             mode: 'sim-shared',
@@ -1234,12 +1245,33 @@ async function dreamSharedRoster(agent, agentNames, actorResults) {
             const validated = validateRosterPrefix(rowPrefix);
             if (!validated) {
                 logDream('shared-actor-invalid-prefix', { agent: agent.name, prefix: rowPrefix });
-                logError('dream', 'shared-actor-invalid-prefix', { agent: agent.name, prefix: String(rowPrefix) });
+                logError('dream', 'shared-actor-invalid-prefix', {
+                    agent: agent.name,
+                    message: 'invalid roster slug prefix: ' + String(rowPrefix),
+                });
                 actorResults.push({ prefix: rowPrefix, error: 'invalid slug prefix' });
                 continue;
             }
             slugPrefix = validated;
-            const scope = { slugPrefix, selfName: actorRow.display_name };
+            // A shared villager needs a real display name (its self-identity for
+            // the self-skip + prompt labels). An empty one would fall back to the
+            // pooled agent (salem-vendor) in processDreamChunk, making the
+            // villager's own lines read as counterparty speech and spawning a
+            // bogus self relationship note — so skip the row rather than dream it
+            // under the wrong identity. (sim_shared_actor.display_name is NOT
+            // NULL, and the distiller stores a validated non-empty label, so this
+            // is defense against a hand-edited/corrupt row.)
+            const displayName = actorRow.display_name;
+            if (!(typeof displayName === 'string' && displayName.trim())) {
+                logDream('shared-actor-invalid-display', { agent: agent.name, prefix: slugPrefix });
+                logError('dream', 'shared-actor-invalid-display', {
+                    agent: agent.name,
+                    message: 'missing display name for roster prefix ' + slugPrefix,
+                });
+                actorResults.push({ prefix: slugPrefix, error: 'missing display name' });
+                continue;
+            }
+            const scope = { slugPrefix, selfName: displayName };
             // First run for this villager (no cursor yet): start at its
             // earliest conversation note so a freshly-pushed backlog — an
             // LLM-515 push-cursor backfill, or a villager enrolled several days
@@ -1303,7 +1335,7 @@ async function dreamSharedRoster(agent, agentNames, actorResults) {
             logDream('shared-actor-error', { agent: agent.name, prefix, error: actorErr.message });
             logError('dream', 'shared-actor-error', {
                 agent: agent.name,
-                prefix,
+                context: prefix,
                 message: actorErr.message,
                 detail: actorErr.stack,
             });
@@ -1563,7 +1595,9 @@ function startDreamScheduler() {
             // runDream still resolves (one bad villager never blocks the others).
             for (const ev of planCronReport(result)) {
                 if (ev.kind === 'shared-failures') {
-                    logError('dream', 'cron-shared-actor-failures', { count: ev.count });
+                    logError('dream', 'cron-shared-actor-failures', {
+                        message: ev.count + ' shared-VA actor(s) failed this dream run',
+                    });
                 } else {
                     logDream('cron-complete', { result, status: ev.status });
                 }
