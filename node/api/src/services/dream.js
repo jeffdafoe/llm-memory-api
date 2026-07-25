@@ -477,12 +477,15 @@ function nameMatcher(fragment) {
 
 // Pull the speaker name out of a distilled line's bracket header. Handles every
 // header the pipeline produces — "[Weekday HH:MM Name]" from the sim distiller
-// and "[HH:MM name]" from memory-sync uploads — by stripping a leading weekday
-// and a leading clock time if present, rather than demanding one exact shape.
-// Deliberately more permissive than a timestamp regex: LEDGER_LINE has already
-// accepted the line as authoritative, so a header this can't parse would mean
-// silently dropping a real transaction (code_review, LLM-523). Returns '' when
-// there is no bracket header at all.
+// (formatTimestamp) and "[HH:MM name]" from memory-sync uploads — by stripping
+// a leading weekday and a leading clock time if present, rather than demanding
+// one exact shape.
+//
+// This is a best-effort read, NOT a gate. LEDGER_LINE accepts any bracket
+// header and is the authority on what counts as a ledger line; a header shape
+// this can't reduce (a date prefix, a non-English weekday) just means the
+// caller attributes the line by the names IN it instead of by who recorded it.
+// Nothing is dropped on a parse miss. Returns '' when there's no header at all.
 function ledgerLineSpeaker(line) {
     const header = line.match(/^\[([^\]]+)\]/);
     if (!header) {
@@ -602,22 +605,24 @@ function buildPersonExcerptSections(filtered, selfName, speakers) {
     // engine does not currently push these, but the shape is legal) is filed
     // under that speaker, since it is that person's own recorded act.
     //
-    // A non-self speaker always has a section: this pass and extractSpeakers
+    // A non-self speaker normally has a section: this pass and extractSpeakers
     // read the same `filtered` text, and extractSpeakers creates an entry for
-    // every non-self bracket-header line it sees, ledger lines included. The
-    // guard is there for the one case that isn't reachable from a real line —
-    // a speaker name that doesn't slugify — and drops nothing that could have
-    // been attributed anyway (code_review, LLM-523).
+    // every non-self bracket-header line it sees, ledger lines included.
+    //
+    // When the header doesn't resolve to a section — an unslugifiable name, or
+    // a header shape ledgerLineSpeaker can't reduce (LEDGER_LINE accepts any
+    // bracket header, so it is deliberately the looser of the two) — the line
+    // falls through to name-matching rather than being dropped. That makes the
+    // header parser's strictness non-load-bearing: a transaction is attributed
+    // by whom it NAMES even when we can't tell who recorded it, and an
+    // authoritative line is never silently lost (code_review, LLM-523).
     for (const line of filtered.split('\n')) {
         if (!LEDGER_LINE.test(line)) {
             continue;
         }
         const speakerSlug = personContextSlug(ledgerLineSpeaker(line));
-        if (speakerSlug && speakerSlug !== selfSlug) {
-            const own = sections.get(speakerSlug);
-            if (own) {
-                own.ledger.push(line);
-            }
+        if (speakerSlug && speakerSlug !== selfSlug && sections.has(speakerSlug)) {
+            sections.get(speakerSlug).ledger.push(line);
             continue;
         }
         for (const person of people) {

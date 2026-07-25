@@ -351,16 +351,31 @@ test('a ledger line from another speaker is filed under that speaker', () => {
     assert.equal(josiah.said.length, 0, 'a ledger line is never repeated as speech');
 });
 
-test('an unpadded hour and a weekday-less header still attribute (LEDGER_LINE is the gate)', () => {
-    // The header parser must not be stricter than LEDGER_LINE — a shape it
-    // can't read would silently drop an authoritative transaction.
+test('every header form the pipeline emits attributes correctly', () => {
+    // The two producers: sim-conversation-distiller's formatTimestamp
+    // ("[Weekday HH:MM Name]") and memory-sync uploads ("[HH:MM name]"). An
+    // unpadded hour is included because the header parser must not be stricter
+    // than LEDGER_LINE, which is the authority on what counts as a ledger line.
     const log = [
+        '[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)',
         '[Friday 9:05 Constance Scott] (paid Josiah Thorne 2 coins for bread)',
-        '[18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+        '[18:26 Constance Scott] (paid Josiah Thorne 3 coins for cheese)',
         '[Friday 12:01 Josiah Thorne] "Good day."',
     ].join('\n');
     const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
-    assert.equal(josiah.ledger.length, 2);
+    assert.equal(josiah.ledger.length, 3);
+});
+
+test('a header the parser cannot reduce still attributes by the names in the line', () => {
+    // LEDGER_LINE accepts any bracket header, so the speaker parser is a
+    // best-effort read rather than a gate: an unrecognized header shape must
+    // not silently drop an authoritative transaction (code_review, LLM-523).
+    const log = [
+        '[2026-07-15T18:26Z Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+        '[Friday 12:01 Josiah Thorne] "Good day."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.equal(josiah.ledger.length, 1, 'the transaction survives an unparseable header');
 });
 
 test('a name is matched on whole words, not substrings', () => {
