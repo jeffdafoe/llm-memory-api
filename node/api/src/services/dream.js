@@ -1364,17 +1364,33 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
 // earlier work; a failed chunk stops this identity's remaining chunks (so we
 // never skip past unprocessed logs) and the next cron retries it. Returns the
 // per-chunk result array.
-async function runChunkLoop(agent, agentNames, chunks, scope, advanceCursor) {
+async function runChunkLoop(agent, agentNames, chunks, scope, advanceCursor, lock) {
     const interChunkDelay = parseInt(config.get('dream_interchunk_delay')) || 1000;
     const chunkResults = [];
 
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
+        // Outside the try on purpose: a lost lock aborts the run rather than
+        // being recorded as this chunk's error. Checked here because the next
+        // statements are a model call and a cursor advance — the two things
+        // that must not happen while another run may be doing the same.
+        throwIfRunLockLost(lock);
         try {
             const r = await processDreamChunk(agent, agentNames, chunk, scope);
             chunkResults.push(r);
+            // Re-checked here because the chunk above spends minutes in a model
+            // call, which is ample time for the lock's session to die. The
+            // cursor write is the one operation that loses data when two runs
+            // race, so it gets the check closest to it. (The model call itself
+            // can't be interrupted — only the write can be withheld.)
+            throwIfRunLockLost(lock);
             await advanceCursor(chunk.to);
         } catch (chunkErr) {
+            // The post-model check above throws from INSIDE this try — a lost
+            // lock is an aborted run, not this chunk's failure.
+            if (chunkErr instanceof RunLockLostError) {
+                throw chunkErr;
+            }
             const chunkDate = chunk.from.toISOString().slice(0, 10);
             const errDetail = { agent: agent.name, chunkDate, error: chunkErr.message };
             if (scope.slugPrefix) {
@@ -1438,7 +1454,7 @@ function countFailedActors(actorResults) {
 // actor_narrative_state.about_me (LLM-199), not a note. The roster only holds
 // villagers that have landed at least one non-empty day (the distiller
 // enrolls on first material), so no empty-namespace villager reaches here.
-async function processSharedAgent(agent, simAgents, results) {
+async function processSharedAgent(agent, simAgents, results, lock) {
     const { simAgentName, simPeopleAgentName, simLearningsAgentName } = simAgents;
     if (!simAgentName) {
         results.push({ agent: agent.name, mode: 'sim-shared', failedActorCount: 1, error: 'dream-sim agent not available' });
@@ -1480,8 +1496,11 @@ async function processSharedAgent(agent, simAgents, results) {
     let setupError = null;
     let rosterSize = 0;
     try {
-        rosterSize = await dreamSharedRoster(agent, agentNames, actorResults);
+        rosterSize = await dreamSharedRoster(agent, agentNames, actorResults, lock);
     } catch (err) {
+        if (err instanceof RunLockLostError) {
+            throw err;
+        }
         // A roster-query or other setup failure — record it and fall through so
         // any partial actorResults are still reported, not discarded.
         logDream('shared-agent-error', { agent: agent.name, error: err.message });
@@ -1521,7 +1540,7 @@ async function processSharedAgent(agent, simAgents, results) {
 // reference). Separated from processSharedAgent so a roster/setup failure here
 // is caught by the caller — which still emits one aggregate result preserving
 // whatever villagers were already processed. Returns the roster size.
-async function dreamSharedRoster(agent, agentNames, actorResults) {
+async function dreamSharedRoster(agent, agentNames, actorResults, lock) {
     const roster = await pool.query(
         `SELECT slug_prefix, display_name, last_dream_at
          FROM sim_shared_actor
@@ -1540,6 +1559,9 @@ async function dreamSharedRoster(agent, agentNames, actorResults) {
         const rowPrefix = actorRow.slug_prefix;
         // Declared before the try so the catch below can still reference it.
         let slugPrefix = '';
+        // Before the try, so a lost lock aborts the roster instead of being
+        // filed as this villager's error (see runChunkLoop).
+        throwIfRunLockLost(lock);
         try {
             // Validate the roster prefix at this boundary — DB/operator-
             // controlled state, not trusted just because the distiller normally
@@ -1624,7 +1646,8 @@ async function dreamSharedRoster(agent, agentNames, actorResults) {
                     `UPDATE sim_shared_actor SET last_dream_at = $1
                      WHERE shared_actor_id = $2 AND slug_prefix = $3`,
                     [chunkTo, agent.actor_id, rowPrefix]
-                )
+                ),
+                lock
             );
             // Report planned vs completed separately — runChunkLoop stops on the
             // first failed chunk, so chunks.length alone would overstate progress
@@ -1637,6 +1660,9 @@ async function dreamSharedRoster(agent, agentNames, actorResults) {
                 chunks: chunkResults,
             });
         } catch (actorErr) {
+            if (actorErr instanceof RunLockLostError) {
+                throw actorErr;
+            }
             const prefix = slugPrefix || rowPrefix;
             logDream('shared-actor-error', { agent: agent.name, prefix, error: actorErr.message });
             logError('dream', 'shared-actor-error', {
@@ -1658,15 +1684,168 @@ async function dreamSharedRoster(agent, agentNames, actorResults) {
     return roster.rows.length;
 }
 
-// Run the dream processing job.
-// Returns a summary object with counts and any errors.
+// Losing the run lock aborts the WHOLE run, so it needs its own type: every
+// loop below catches per-item errors and carries on to the next agent/villager/
+// chunk, which is right for a bad roster row and wrong for a lost lock. Each of
+// those catches rethrows this one.
+class RunLockLostError extends Error {}
+
+// Advisory lock key for the dream run (LLM-532). Advisory lock keys are
+// arbitrary integers, but each lock needs its own and a key must never be
+// reused — two jobs sharing a key would exclude each other for no reason.
+// Convention for new locks: <ticket number>001. Registry for this database:
+//   532001 — the dream run (LLM-532). The only advisory lock in the app.
+const DREAM_RUN_LOCK_KEY = 532001;
+
+// Take the dream-run lock. Returns a handle with release(), or null when
+// another run already holds it.
+//
+// The lock is what stops two overlapping runs from racing on the same
+// last_dream_at cursors: both would read the same cursor, plan overlapping day
+// windows, and whichever wrote last would advance the cursor past days the
+// other run never processed — permanently outside every future window, with no
+// error raised. The nightly cron runs inside the API service process while
+// operator/verification runs are separate processes, so the guard has to be
+// cross-process; an in-process flag would not see the other run.
+//
+// Advisory rather than a `running` flag column, deliberately: Postgres drops
+// the lock when the session ends, so a crashed or killed run leaves nothing
+// stuck and needs no stale-lock sweep.
+//
+// The subtlety worth knowing: advisory locks are SESSION-scoped, and this app
+// talks to Postgres through a connection pool. The lock therefore lives on a
+// client checked out explicitly with pool.connect() and held for the entire
+// run. Taking it via pool.query() would hand that connection straight back to
+// the pool and drop the lock with it, leaving a guard that silently does
+// nothing.
+async function acquireDreamRunLock() {
+    const client = await pool.connect();
+    let lockLost = false;
+    let released = false;
+
+    // If this connection dies mid-run its session ends and Postgres releases
+    // the lock — at which point another run can acquire it while this one is
+    // still advancing cursors, which is exactly the race the lock exists to
+    // prevent. So the listener records that the lock is GONE, and
+    // throwIfRunLockLost() below turns that into an aborted run.
+    //
+    // It is also what keeps that event handled at all: pg's Pool REMOVES its
+    // own idle error listener for as long as a client is checked out
+    // (pg-pool's _acquireClient / _release pair), and an 'error' event with no
+    // listener is thrown by EventEmitter — which on a checked-out connection
+    // would take the API service process down, not just the run.
+    function onConnectionError(err) {
+        lockLost = true;
+        logDream('lock-connection-error', { error: err.message });
+    }
+    client.on('error', onConnectionError);
+
+    // Idempotent: a second call is a no-op rather than a second unlock on a
+    // connection that has already gone back to the pool (and may by then
+    // belong to someone else).
+    async function release() {
+        if (released) {
+            return;
+        }
+        released = true;
+        let releaseError = null;
+        try {
+            // AS ok is load-bearing: unaliased, Postgres names the column
+            // after the function, and every successful unlock would read as
+            // "not held".
+            const result = await client.query('SELECT pg_advisory_unlock($1) AS ok', [DREAM_RUN_LOCK_KEY]);
+            if (!result.rows[0] || result.rows[0].ok !== true) {
+                // false means this session did not hold the lock — it was lost
+                // mid-run. Nothing to clean up, but it explains how a second run
+                // could have started, so it must not pass silently.
+                lockLost = true;
+                logDream('lock-release-not-held', {});
+            }
+        } catch (err) {
+            logDream('lock-release-error', { error: err.message });
+            releaseError = err;
+        }
+        // Removed only now, so a connection error DURING the unlock is still
+        // reported as lock-connection-error rather than swallowed.
+        client.removeListener('error', onConnectionError);
+        // A truthy argument makes pg destroy the connection instead of
+        // returning it to the pool: the session state after a failed unlock is
+        // unknown, and ending the session is itself a guaranteed lock release.
+        client.release(releaseError);
+    }
+
+    try {
+        const result = await client.query('SELECT pg_try_advisory_lock($1) AS ok', [DREAM_RUN_LOCK_KEY]);
+        if (result.rows[0] && result.rows[0].ok === true) {
+            return { lost: () => lockLost, release };
+        }
+        // Not granted: nothing to unlock, and the connection is healthy, so it
+        // goes back to the pool intact.
+        client.removeListener('error', onConnectionError);
+        client.release();
+        return null;
+    } catch (err) {
+        client.removeListener('error', onConnectionError);
+        // The acquisition statement failed, so this connection is suspect —
+        // destroy it rather than hand a possibly-broken one to the next
+        // borrower.
+        client.release(err);
+        throw err;
+    }
+}
+
+// Abort the run if its lock is gone. Called at every point where the run is
+// about to start a new unit of work or write a cursor: once the lock is lost a
+// second run can be underway, and two runs racing on last_dream_at is what
+// silently loses a day. Failing loudly here is the point — a run that keeps
+// going without its lock is the bug this ticket fixes, wearing a lock's
+// clothes. It cannot interrupt an in-flight query, only stop the next one.
+//
+// The exact guarantee, so nobody reads more into it than it gives: NO further
+// unit of work or cursor write is started after a lock loss THIS PROCESS HAS
+// OBSERVED. The check and the cursor write are not atomic with lock ownership
+// — a session that dies in the microseconds between them still lets that one
+// write through. Making that impossible would mean issuing the cursor UPDATE
+// on the lock-holding client itself (a write on the session that holds the
+// lock either happens under the lock or fails with the session), which is a
+// larger change than the guard and is deliberately not done here.
+function throwIfRunLockLost(lock) {
+    if (lock && lock.lost()) {
+        throw new RunLockLostError('dream run lock lost: its Postgres session ended mid-run, so another run may already hold the lock');
+    }
+}
+
+// Run the dream processing job, serialized against any other run (see
+// acquireDreamRunLock). Returns a summary object with counts and any errors.
 async function runDream() {
-    // Check global switch
+    // Check global switch. Before the lock: a disabled run has nothing to
+    // exclude and shouldn't check out a connection to discover that.
     if (config.get('dream_processing_enabled') !== 'true') {
         logDream('skip', { reason: 'dream_processing_enabled is false' });
         return { skipped: true, reason: 'disabled' };
     }
 
+    const lock = await acquireDreamRunLock();
+    if (!lock) {
+        logDream('skip', { reason: 'another dream run holds the lock' });
+        return { skipped: true, reason: 'already running' };
+    }
+
+    try {
+        const result = await runDreamAgents(lock);
+        // A loss between the last work boundary and here would otherwise be
+        // reported as a clean run. Any observed loss fails the run: the cursors
+        // this run wrote may have raced another run's.
+        throwIfRunLockLost(lock);
+        return result;
+    } finally {
+        await lock.release();
+    }
+}
+
+// The run itself — every cursor read and write below is serialized by the
+// caller's run lock, and aborts if that lock is lost mid-run.
+async function runDreamAgents(lock) {
     // Find dream agents by expertise tag
     const companionAgentName = await findDreamAgent('dream-companion');
     const technicalAgentName = await findDreamAgent('dream-technical');
@@ -1705,6 +1884,9 @@ async function runDream() {
     const results = [];
 
     for (const agent of agents.rows) {
+        // Before the try: a lost lock ends the run rather than being recorded
+        // as this agent's error (see runChunkLoop).
+        throwIfRunLockLost(lock);
         try {
             if (agent.dream_mode === 'sim-shared') {
                 // Pooled shared-VA agent: fan out over its villager roster on a
@@ -1714,7 +1896,8 @@ async function runDream() {
                 await processSharedAgent(
                     agent,
                     { simAgentName, simPeopleAgentName, simLearningsAgentName },
-                    results
+                    results,
+                    lock
                 );
                 continue;
             }
@@ -1803,7 +1986,8 @@ async function runDream() {
                 (chunkTo) => pool.query(
                     'UPDATE agent_configuration SET last_dream_at = $1 WHERE actor_id = $2',
                     [chunkTo, agent.actor_id]
-                )
+                ),
+                lock
             );
 
             results.push({
@@ -1813,6 +1997,9 @@ async function runDream() {
                 chunks: chunkResults,
             });
         } catch (err) {
+            if (err instanceof RunLockLostError) {
+                throw err;
+            }
             logDream('error', { agent: agent.name, error: err.message });
             // Also surface in the admin error_log so per-agent failures aren't
             // silently swallowed (the outer cron-level catch only fires if
