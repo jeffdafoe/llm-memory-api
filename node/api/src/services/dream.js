@@ -1800,6 +1800,15 @@ async function acquireDreamRunLock() {
 // silently loses a day. Failing loudly here is the point — a run that keeps
 // going without its lock is the bug this ticket fixes, wearing a lock's
 // clothes. It cannot interrupt an in-flight query, only stop the next one.
+//
+// The exact guarantee, so nobody reads more into it than it gives: NO further
+// unit of work or cursor write is started after a lock loss THIS PROCESS HAS
+// OBSERVED. The check and the cursor write are not atomic with lock ownership
+// — a session that dies in the microseconds between them still lets that one
+// write through. Making that impossible would mean issuing the cursor UPDATE
+// on the lock-holding client itself (a write on the session that holds the
+// lock either happens under the lock or fails with the session), which is a
+// larger change than the guard and is deliberately not done here.
 function throwIfRunLockLost(lock) {
     if (lock && lock.lost()) {
         throw new RunLockLostError('dream run lock lost: its Postgres session ended mid-run, so another run may already hold the lock');
