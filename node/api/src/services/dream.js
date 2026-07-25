@@ -1378,8 +1378,19 @@ async function runChunkLoop(agent, agentNames, chunks, scope, advanceCursor, loc
         try {
             const r = await processDreamChunk(agent, agentNames, chunk, scope);
             chunkResults.push(r);
+            // Re-checked here because the chunk above spends minutes in a model
+            // call, which is ample time for the lock's session to die. The
+            // cursor write is the one operation that loses data when two runs
+            // race, so it gets the check closest to it. (The model call itself
+            // can't be interrupted — only the write can be withheld.)
+            throwIfRunLockLost(lock);
             await advanceCursor(chunk.to);
         } catch (chunkErr) {
+            // The post-model check above throws from INSIDE this try — a lost
+            // lock is an aborted run, not this chunk's failure.
+            if (chunkErr instanceof RunLockLostError) {
+                throw chunkErr;
+            }
             const chunkDate = chunk.from.toISOString().slice(0, 10);
             const errDetail = { agent: agent.name, chunkDate, error: chunkErr.message };
             if (scope.slugPrefix) {
@@ -1734,7 +1745,10 @@ async function acquireDreamRunLock() {
         released = true;
         let releaseError = null;
         try {
-            const result = await client.query('SELECT pg_advisory_unlock($1)', [DREAM_RUN_LOCK_KEY]);
+            // AS ok is load-bearing: unaliased, Postgres names the column
+            // after the function, and every successful unlock would read as
+            // "not held".
+            const result = await client.query('SELECT pg_advisory_unlock($1) AS ok', [DREAM_RUN_LOCK_KEY]);
             if (!result.rows[0] || result.rows[0].ok !== true) {
                 // false means this session did not hold the lock — it was lost
                 // mid-run. Nothing to clean up, but it explains how a second run
@@ -1804,7 +1818,12 @@ async function runDream() {
     }
 
     try {
-        return await runDreamAgents(lock);
+        const result = await runDreamAgents(lock);
+        // A loss between the last work boundary and here would otherwise be
+        // reported as a clean run. Any observed loss fails the run: the cursors
+        // this run wrote may have raced another run's.
+        throwIfRunLockLost(lock);
+        return result;
     } finally {
         await lock.release();
     }

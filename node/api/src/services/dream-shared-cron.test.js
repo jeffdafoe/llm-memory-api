@@ -201,6 +201,19 @@ function makeQueryStub({ agentRows, rosterRows, chunkResponder, errorLogResponde
 function makeLockStub({ granted = true, unlockFails = false, acquireFails = false, unlockHeld = true } = {}) {
     const events = [];
     const client = new EventEmitter();
+    // Postgres names a result column after the function unless the query
+    // aliases it, so an unaliased `SELECT pg_advisory_unlock($1)` returns
+    // { pg_advisory_unlock: true } and reading `.ok` off it is always
+    // undefined — a silent misread of every lock result. Answering with the
+    // column name the SQL actually asks for is what keeps this stub honest:
+    // drop the alias in dream.js and the lock tests fail rather than pass
+    // against a shape production never returns.
+    function lockRow(sql, functionName, value) {
+        const aliased = /\bAS\s+ok\b/i.test(sql);
+        const column = aliased ? 'ok' : functionName;
+        return { rows: [{ [column]: value }] };
+    }
+
     client.query = async (sql, params) => {
         if (sql.includes('pg_try_advisory_lock')) {
             if (acquireFails) {
@@ -208,14 +221,14 @@ function makeLockStub({ granted = true, unlockFails = false, acquireFails = fals
                 throw new Error(ACQUIRE_FAILURE);
             }
             events.push({ kind: 'acquire', key: params[0], granted });
-            return { rows: [{ ok: granted }] };
+            return lockRow(sql, 'pg_try_advisory_lock', granted);
         }
         if (sql.includes('pg_advisory_unlock')) {
             events.push({ kind: 'unlock', key: params[0] });
             if (unlockFails) {
                 throw new Error(UNLOCK_FAILURE);
             }
-            return { rows: [{ ok: unlockHeld }] };
+            return lockRow(sql, 'pg_advisory_unlock', unlockHeld);
         }
         return pool.query(sql, params);
     };
@@ -746,6 +759,77 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
             ['connect', 'acquire', 'unlock', 'release']
         );
         assert.equal(lockStub.listenerCount(), 0);
+    });
+
+    // The window the per-chunk check cannot cover on its own: a chunk spends
+    // minutes in a model call, and the lock can die inside it. The cursor write
+    // that follows is the data-losing operation, so it gets its own check.
+    test('a lock lost during a chunk stops that chunk from advancing the cursor', async () => {
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            rosterRows: [rosterRow('constance-scott/', 'Constance Scott', midnightAlignedSince(1))],
+            chunkResponder: () => [],
+        });
+        // Kill the connection during the FIRST chunk's own query — after the
+        // top-of-chunk check has already passed.
+        pool.query = async (sql, params) => {
+            if (sql.includes('FROM documents') && sql.includes('created_at >')) {
+                lockStub.killConnection();
+            }
+            return stub.query(sql, params);
+        };
+
+        await assert.rejects(runDream, /dream run lock lost/);
+        assert.equal(stub.cursorUpdates.length, 0, 'a cursor advanced after the lock was lost');
+    });
+
+    // A clean run must not report a release anomaly. This is the regression
+    // test for the result-column alias: without `AS ok` the unlock result is
+    // keyed pg_advisory_unlock, reads as not-held, and every healthy run would
+    // log a lost lock (see lockRow in makeLockStub).
+    test('a clean run unlocks without reporting the lock as unheld', async () => {
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            rosterRows: [rosterRow('constance-scott/', 'Constance Scott', midnightAlignedSince(1))],
+            chunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        const result = await runDream();
+
+        assert.equal(result.failedSharedActorCount, 0);
+        assert.equal(
+            dreamEvents.some(e => e.action === 'lock-release-not-held'),
+            false,
+            'a successful unlock was misread as the lock not being held'
+        );
+        assert.equal(dreamEvents.some(e => e.action === 'lock-release-error'), false);
+    });
+
+    // Loss after the last work boundary: no later check would see it, so the
+    // run would otherwise return a clean summary for work that may have raced
+    // another run.
+    test('a loss observed after the work finishes still fails the run', async () => {
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            // Empty roster: the roster query is the run's last statement, so
+            // nothing but the final check can catch a loss here.
+            rosterRows: [],
+            chunkResponder: () => [],
+        });
+        pool.query = async (sql, params) => {
+            const result = await stub.query(sql, params);
+            if (sql.includes('FROM sim_shared_actor')) {
+                lockStub.killConnection();
+            }
+            return result;
+        };
+
+        await assert.rejects(runDream, /dream run lock lost/);
+        assert.deepEqual(
+            lockStub.events.map(e => e.kind),
+            ['connect', 'acquire', 'unlock', 'release']
+        );
     });
 
     test('an unlock reporting the lock was not held is logged, not swallowed', async () => {
