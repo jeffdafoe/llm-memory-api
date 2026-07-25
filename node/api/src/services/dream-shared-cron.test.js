@@ -24,6 +24,7 @@
 
 const { describe, test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 
 const pool = require('../db');
 const config = require('./config');
@@ -37,6 +38,10 @@ const SYSTEM_ACTOR_ID = 1;
 const POOLED_ACTOR_ID = 42;
 const POOLED_AGENT = 'salem-vendor';
 const CHUNK_FAILURE = 'simulated conversation-log query failure';
+const UNLOCK_FAILURE = 'simulated pg_advisory_unlock failure';
+const ACQUIRE_FAILURE = 'simulated pg_try_advisory_lock failure';
+const CONNECT_FAILURE = 'simulated pool.connect failure';
+const RUN_FAILURE = 'simulated agent-list query failure';
 
 // Midnight-aligned on purpose: computeDailyChunks splits [since, now] on
 // UTC-day boundaries, so an aligned `since` makes the planned chunk count
@@ -179,6 +184,63 @@ function makeQueryStub({ agentRows, rosterRows, chunkResponder, errorLogResponde
     };
 }
 
+// Stand-in for the client runDream checks out to hold the advisory run lock
+// (LLM-532). It answers the two lock statements itself and delegates anything
+// else to the per-test pool.query stub, so a stray query on the lock client
+// still hits that stub's strict unmatched-SQL guard. `granted` false simulates
+// a second run finding the lock already held.
+//
+// Every checkout, lock statement and release is recorded in order, which is
+// what lets the tests below assert the ordering that actually matters: the lock
+// is taken before any run query and released only after the last one.
+// `acquireFails` makes the pg_try_advisory_lock statement throw (an unusable
+// connection); `unlockHeld` false makes pg_advisory_unlock report that this
+// session did not hold the lock. The client is a real EventEmitter so a test
+// can emit 'error' on it mid-run, which is how a dropped connection — and
+// therefore a silently released lock — reaches the code under test.
+function makeLockStub({ granted = true, unlockFails = false, acquireFails = false, unlockHeld = true } = {}) {
+    const events = [];
+    const client = new EventEmitter();
+    client.query = async (sql, params) => {
+        if (sql.includes('pg_try_advisory_lock')) {
+            if (acquireFails) {
+                events.push({ kind: 'acquire-failed' });
+                throw new Error(ACQUIRE_FAILURE);
+            }
+            events.push({ kind: 'acquire', key: params[0], granted });
+            return { rows: [{ ok: granted }] };
+        }
+        if (sql.includes('pg_advisory_unlock')) {
+            events.push({ kind: 'unlock', key: params[0] });
+            if (unlockFails) {
+                throw new Error(UNLOCK_FAILURE);
+            }
+            return { rows: [{ ok: unlockHeld }] };
+        }
+        return pool.query(sql, params);
+    };
+    // release(err) destroys the connection rather than returning it to the
+    // pool; the argument is recorded so the failure paths are checkable.
+    client.release = (err) => {
+        events.push({ kind: 'release', destroyed: Boolean(err) });
+    };
+    return {
+        events,
+        client,
+        // Simulate the connection dropping mid-run. pg's own Pool handler is
+        // what destroys the client in production; here the only listener that
+        // matters is the one the lock installs.
+        killConnection: () => {
+            client.emit('error', new Error('simulated connection loss'));
+        },
+        listenerCount: () => client.listenerCount('error'),
+        connect: async () => {
+            events.push({ kind: 'connect' });
+            return client;
+        },
+    };
+}
+
 // concurrency: 1 is explicit rather than incidental. Every test here swaps
 // process-global state (pool.query, config.get, console.log, cron.schedule), so
 // two of them running at once would corrupt each other. node:test currently
@@ -193,8 +255,12 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
     // fire-and-forget insert reports its own failure.
     let dreamEvents = [];
     let consoleErrors = [];
+    // The default lock stub: granted. A test that needs the contended path
+    // reassigns this and pool.connect before calling runDream.
+    let lockStub;
 
     let originalQuery;
+    let originalConnect;
     let originalConfigGet;
     let originalCronSchedule;
     let originalCronValidate;
@@ -203,6 +269,7 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
 
     beforeEach(() => {
         originalQuery = pool.query;
+        originalConnect = pool.connect;
         originalConfigGet = config.get;
         originalCronSchedule = cron.schedule;
         originalCronValidate = cron.validate;
@@ -210,6 +277,10 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
         originalConsoleError = console.error;
         dreamEvents = [];
         consoleErrors = [];
+        // Without this every test would try to open a real connection for the
+        // run lock, since runDream now takes it before doing anything else.
+        lockStub = makeLockStub();
+        pool.connect = lockStub.connect;
         // Both services cache by actor across calls; a stale entry from a
         // previous test would let a later test pass without its stub consulted.
         actors.clearCache();
@@ -233,6 +304,7 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
 
     afterEach(() => {
         pool.query = originalQuery;
+        pool.connect = originalConnect;
         config.get = originalConfigGet;
         cron.schedule = originalCronSchedule;
         cron.validate = originalCronValidate;
@@ -508,6 +580,238 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
         // The valid villager still dreamed.
         assert.equal(shared.actors[1].prefix, 'josiah-thorne/');
         assert.ok(shared.actors[1].completedChunks > 0);
+    });
+
+    // --- LLM-532: the advisory run lock ---------------------------------
+    //
+    // What the lock buys is negative: a second concurrent run must not read a
+    // cursor, plan a window, or stamp progress. So these assert on what does
+    // NOT happen (no query at all on the contended path) as much as on the
+    // returned summary.
+
+    test('a second run finds the lock held and returns without touching anything', async () => {
+        lockStub = makeLockStub({ granted: false });
+        pool.connect = lockStub.connect;
+        // Any query at all would mean the guard let the run start.
+        pool.query = async (sql) => {
+            throw new Error('no query should run while the lock is held: ' + sql.trim().slice(0, 60));
+        };
+
+        const result = await runDream();
+
+        assert.deepEqual(result, { skipped: true, reason: 'already running' });
+
+        // Nothing to unlock when the lock was never granted — but the checked-out
+        // connection still goes back to the pool intact, not destroyed.
+        assert.deepEqual(
+            lockStub.events.map(e => e.kind),
+            ['connect', 'acquire', 'release']
+        );
+        assert.equal(lockStub.events[1].granted, false);
+        assert.equal(lockStub.events[2].destroyed, false);
+        // No unlock: unlocking a lock this session never held would be a no-op
+        // at best, and at worst hides the contention.
+        assert.equal(lockStub.events.some(e => e.kind === 'unlock'), false);
+        // The listener is gone, so a pooled connection doesn't accumulate one
+        // per contended run.
+        assert.equal(lockStub.listenerCount(), 0);
+
+        const skip = dreamEvents.find(e => e.action === 'skip');
+        assert.ok(skip, 'no skip event emitted');
+        assert.equal(skip.details.reason, 'another dream run holds the lock');
+        // A contended run is not a failed run: nothing lands in error_log.
+        assert.equal(dreamEvents.some(e => e.action === 'error'), false);
+    });
+
+    test('the lock is taken before any run query and released only after the last one', async () => {
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            rosterRows: [rosterRow('constance-scott/', 'Constance Scott', midnightAlignedSince(1))],
+            chunkResponder: () => [],
+        });
+        // Fold the run's queries into the lock timeline so the ordering the
+        // guard depends on — lock held across the WHOLE run, not just its first
+        // statement — is directly observable.
+        pool.query = async (sql, params) => {
+            lockStub.events.push({ kind: 'query' });
+            return stub.query(sql, params);
+        };
+
+        const result = await runDream();
+        assert.equal(result.failedSharedActorCount, 0);
+        assert.ok(stub.cursorUpdates.length > 0, 'the run did no work to bracket');
+
+        const kinds = lockStub.events.map(e => e.kind);
+        assert.deepEqual(kinds.slice(0, 2), ['connect', 'acquire']);
+        assert.deepEqual(kinds.slice(-2), ['unlock', 'release']);
+        assert.ok(
+            kinds.indexOf('query') > kinds.indexOf('acquire'),
+            'a run query ran before the lock was acquired'
+        );
+        assert.ok(
+            kinds.lastIndexOf('query') < kinds.indexOf('unlock'),
+            'a run query ran after the lock was released'
+        );
+
+        // Acquire and release must name the same key, or the unlock is a no-op
+        // and the lock leaks for the life of the connection.
+        const acquire = lockStub.events.find(e => e.kind === 'acquire');
+        const unlock = lockStub.events.find(e => e.kind === 'unlock');
+        assert.equal(acquire.key, unlock.key);
+        assert.equal(lockStub.events.find(e => e.kind === 'release').destroyed, false);
+    });
+
+    test('a run that throws still releases the lock', async () => {
+        const stub = makeQueryStub({
+            agentRows: [],
+            rosterRows: [],
+            chunkResponder: () => [],
+        });
+        pool.query = async (sql, params) => {
+            if (sql.includes('FROM agent_configuration agc')) {
+                throw new Error(RUN_FAILURE);
+            }
+            return stub.query(sql, params);
+        };
+
+        await assert.rejects(runDream, new RegExp(RUN_FAILURE));
+
+        // Released in a finally, so the next run — the 04:00 cron after a failed
+        // manual one — is not locked out.
+        assert.deepEqual(
+            lockStub.events.map(e => e.kind),
+            ['connect', 'acquire', 'unlock', 'release']
+        );
+    });
+
+    test('an unlock that fails destroys the connection rather than stranding the lock', async () => {
+        lockStub = makeLockStub({ unlockFails: true });
+        pool.connect = lockStub.connect;
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            rosterRows: [],
+            chunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        // The run's own result is unaffected — the unlock failure happens after
+        // the work is done and must not turn a clean run into a rejection.
+        const result = await runDream();
+        assert.equal(result.failedSharedActorCount, 0);
+
+        // Destroying the connection ends the session, and Postgres drops
+        // session-scoped advisory locks with it.
+        const release = lockStub.events.find(e => e.kind === 'release');
+        assert.equal(release.destroyed, true);
+
+        const failure = dreamEvents.find(e => e.action === 'lock-release-error');
+        assert.ok(failure, 'no lock-release-error event emitted');
+        assert.equal(failure.details.error, UNLOCK_FAILURE);
+    });
+
+    // The lock's failure mode that matters: if its Postgres session dies the
+    // lock is released while the run is still going, and another run can start
+    // on the same cursors. The run must stop rather than keep writing.
+    test('a lock lost mid-run aborts the run before the next cursor write', async () => {
+        const since = midnightAlignedSince(3);
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            rosterRows: [rosterRow('constance-scott/', 'Constance Scott', since)],
+            chunkResponder: () => [],
+        });
+        // Kill the connection after the first chunk's cursor advance. The lock
+        // is checked at the top of each chunk, so the run should stop there —
+        // with the completed chunk's cursor write kept and no further ones.
+        pool.query = async (sql, params) => {
+            const result = await stub.query(sql, params);
+            if (sql.includes('UPDATE sim_shared_actor SET last_dream_at') && stub.cursorUpdates.length === 1) {
+                lockStub.killConnection();
+            }
+            return result;
+        };
+
+        assert.ok(expectedChunkCount(since, Date.now()) > 1, 'need a multi-chunk window to observe the abort');
+        await assert.rejects(runDream, /dream run lock lost/);
+
+        // The whole point: no cursor advanced after the lock was gone.
+        assert.equal(stub.cursorUpdates.length, 1);
+
+        const lostEvent = dreamEvents.find(e => e.action === 'lock-connection-error');
+        assert.ok(lostEvent, 'the connection loss was not logged');
+
+        // Still released — the finally runs on the failure path too, so the
+        // pooled connection is not leaked along with the run.
+        assert.deepEqual(
+            lockStub.events.map(e => e.kind),
+            ['connect', 'acquire', 'unlock', 'release']
+        );
+        assert.equal(lockStub.listenerCount(), 0);
+    });
+
+    test('an unlock reporting the lock was not held is logged, not swallowed', async () => {
+        lockStub = makeLockStub({ unlockHeld: false });
+        pool.connect = lockStub.connect;
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            rosterRows: [],
+            chunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        // ok=false means this session did not hold the lock when it unlocked —
+        // i.e. it was lost at some point. Nothing to clean up, but it is the
+        // only evidence of a window where a second run could have started.
+        const notHeld = dreamEvents.find(e => e.action === 'lock-release-not-held');
+        assert.ok(notHeld, 'a false pg_advisory_unlock result was ignored');
+    });
+
+    test('a connection that cannot be checked out fails the run without any query', async () => {
+        pool.connect = async () => {
+            throw new Error(CONNECT_FAILURE);
+        };
+        pool.query = async () => {
+            throw new Error('no query should run when the lock connection is unavailable');
+        };
+
+        await assert.rejects(runDream, new RegExp(CONNECT_FAILURE));
+    });
+
+    test('a failed lock acquisition destroys the connection and fails the run', async () => {
+        lockStub = makeLockStub({ acquireFails: true });
+        pool.connect = lockStub.connect;
+        pool.query = async () => {
+            throw new Error('no query should run when the lock could not be acquired');
+        };
+
+        await assert.rejects(runDream, new RegExp(ACQUIRE_FAILURE));
+
+        // A connection whose lock statement failed is suspect: returning it to
+        // the pool intact would hand the next borrower a broken session.
+        assert.deepEqual(
+            lockStub.events.map(e => e.kind),
+            ['connect', 'acquire-failed', 'release']
+        );
+        assert.equal(lockStub.events[2].destroyed, true);
+        assert.equal(lockStub.listenerCount(), 0);
+    });
+
+    test('a disabled run never checks out a connection for the lock', async () => {
+        config.get = (key) => {
+            if (key === 'dream_processing_enabled') {
+                return 'false';
+            }
+            throw new Error('unexpected config key in test: ' + key);
+        };
+        pool.query = async () => {
+            throw new Error('no query should run when dream processing is disabled');
+        };
+
+        const result = await runDream();
+
+        assert.deepEqual(result, { skipped: true, reason: 'disabled' });
+        assert.deepEqual(lockStub.events, []);
     });
 
     test('a sim-shared agent misconfigured to notes source is rejected without dreaming', async () => {
