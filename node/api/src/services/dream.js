@@ -10,7 +10,7 @@ const { log, logError } = require('./logger');
 const { saveNote, readNote, listNotes } = require('./documents');
 const { invokeAgent } = require('./virtual-agent');
 const { personContextSlug } = require('./people-slug');
-const { normalizeSlugPrefix } = require('./sim-conversation-distiller');
+const { normalizeSlugPrefix, slugToDisplay } = require('./sim-conversation-distiller');
 
 // validatePersonSlug — defense for runPersonContextUpdate now that it's
 // exported. Pass the input back through the same slugify the dream cron
@@ -205,6 +205,18 @@ function buildSoulUserMessage({ agentName, startupInstructions, existingSoul, ne
 // extractSpeakers so it can parse the array into per-speaker lines.
 const JSON_ARRAY_HEAD = /^\s*\[\s*\{\s*"sender"\s*:/;
 
+// A ledger line — the engine's own record of something that actually happened,
+// as emitted by sim-conversation-distiller.js's narrateEvent: a speaker label
+// followed by narration wholly wrapped in parentheses.
+//
+//   [Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)
+//
+// Contrast with speech, which the distiller wraps in double quotes and which is
+// written by the NPC's own model — a claim, not a fact. The paren-vs-quote
+// distinction is the only discriminator the two shapes have, and it is reliable
+// because both wrappers are applied by the distiller, not by the model
+// (sanitizeSpeech escapes any embedded quote before wrapping).
+const LEDGER_LINE = /^\[[^\]]+\]\s+\(.*\)\s*$/;
 
 function logDream(action, details) {
     log('dream', action, details);
@@ -252,6 +264,22 @@ function prefilterLog(content) {
     // version of the surrounding narrative.
     for (let i = 0; i < lines.length; i++) {
         if (JSON_ARRAY_HEAD.test(lines[i])) {
+            includedLines.add(i);
+        }
+    }
+
+    // Always include engine-authored ledger lines (LLM-523). SIGNAL_PATTERNS
+    // are conversational markers, so a bare economic fact carries no signal
+    // word of its own and only survives when it happens to sit within
+    // CONTEXT_LINES of someone's chatter. On Constance Scott's 2026-07-24 that
+    // silently dropped "(earned 4 coins working for Ezekiel Crane)" and
+    // "(delivered meat to John Ellis for 4 coins)"; on 07-15 it dropped
+    // "(offered to work for Josiah Thorne for 4 coins)". These are the
+    // deterministic record the people-VA has to weigh talk against, so they are
+    // never filtered out. Cheap: a ledger line is one short sentence, and most
+    // already survived as context lines.
+    for (let i = 0; i < lines.length; i++) {
+        if (LEDGER_LINE.test(lines[i])) {
             includedLines.add(i);
         }
     }
@@ -420,6 +448,172 @@ function extractSpeakers(content, agentName) {
     return speakerLines;
 }
 
+// Build a case-insensitive whole-word matcher for a name fragment. Word
+// boundaries matter: without them "Anne" matches inside "Annexed" and, worse,
+// a short first name matches inside an unrelated word. Escapes regex
+// metacharacters because display names are operator-editable.
+function nameMatcher(fragment) {
+    const escaped = String(fragment).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(^|[^\\w])' + escaped + '($|[^\\w])', 'i');
+}
+
+// Partition one day's excerpts into the two kinds of material the people-VA
+// must weigh differently (LLM-523):
+//
+//   ledger — engine-authored action lines, deterministic fact. These are
+//     almost always spoken by the villager THEMSELF ("(paid Josiah Thorne 1
+//     coin for milk)"), which is exactly why extractSpeakers never surfaced
+//     them: its self-skip drops the agent's own lines so the agent doesn't
+//     accumulate a relationship file about itself. Correct for speech, but it
+//     meant 100% of ledger events were dropped before the people prompt was
+//     built — the people-VA had only talk to go on, and duly wrote an NPC's
+//     unbacked verbal promise ("six coins to square us up") into durable
+//     memory as a completed payment. A self ledger line is attributed to a
+//     person when that person's full display name appears in it; the distiller
+//     writes full sanitized names into the narration, so this match is exact.
+//   said — quoted speech, model-authored, no better than a claim.
+//
+// Third-party labeling: extractSpeakers groups by the OTHER party, so anything
+// this person said to someone else while the villager was co-present lands in
+// this pair's file undifferentiated. A line that names another known speaker
+// and does NOT name the villager is labeled as overheard, so it informs the
+// character impression without reading as this pair's dealings. The heuristic
+// matches a first name only when that first name is unique among the day's
+// speakers, and a mislabel costs a softened impression whereas a missing label
+// costs a fabricated transaction — so it errs toward labeling.
+//
+// Takes the speakers map from extractSpeakers (so speech grouping stays in one
+// place) plus the unsplit filtered log for the self lines extractSpeakers threw
+// away. Pure and exported for unit testing.
+//
+// Returns Map<slug, { display, ledger: string[], said: string[] }>.
+function buildPersonExcerptSections(filtered, selfName, speakers) {
+    const sections = new Map();
+    for (const [slug, entry] of speakers) {
+        sections.set(slug, { display: entry.display, ledger: [], said: [] });
+    }
+
+    // selfName arrives as the villager's display name for a shared-VA actor
+    // ("Constance Scott") and as the agent slug for a dedicated NPC
+    // ("zbbs-josiah-thorne"); slugToDisplay normalizes both to "First Last" and
+    // leaves an already-display name untouched.
+    const selfDisplay = slugToDisplay(String(selfName || ''));
+    const selfSlug = personContextSlug(String(selfName || '').replace(/^zbbs-/, ''));
+
+    // A first name identifies a person only when no one else that day shares
+    // it. Two Johns and the token tells us nothing about who was addressed.
+    const firstNameCounts = new Map();
+    for (const [, entry] of speakers) {
+        const first = entry.display.split(/\s+/)[0];
+        firstNameCounts.set(first, (firstNameCounts.get(first) || 0) + 1);
+    }
+
+    // Matchers are built once per person rather than per line — a day is
+    // thousands of lines across a dozen speakers.
+    const people = [];
+    for (const [slug, entry] of speakers) {
+        const first = entry.display.split(/\s+/)[0];
+        let firstMatcher = null;
+        if (firstNameCounts.get(first) === 1) {
+            firstMatcher = nameMatcher(first);
+        }
+        people.push({
+            slug,
+            display: entry.display,
+            full: nameMatcher(entry.display),
+            first: firstMatcher,
+        });
+    }
+
+    // Self matchers, built the same way. An empty selfDisplay would make
+    // nameMatcher('') match every line, so the whole self test is disabled
+    // instead — every line would then read as third-party. The callers all
+    // supply a real identity (a shared scope throws without one), so this is
+    // belt-and-braces.
+    let selfFullMatcher = null;
+    let selfFirstMatcher = null;
+    if (selfDisplay) {
+        selfFullMatcher = nameMatcher(selfDisplay);
+        const selfFirst = selfDisplay.split(/\s+/)[0];
+        if (!firstNameCounts.has(selfFirst)) {
+            selfFirstMatcher = nameMatcher(selfFirst);
+        }
+    }
+
+    function namesPerson(text, person) {
+        if (person.full.test(text)) {
+            return true;
+        }
+        if (person.first) {
+            return person.first.test(text);
+        }
+        return false;
+    }
+
+    function namesSelf(text) {
+        if (selfFullMatcher && selfFullMatcher.test(text)) {
+            return true;
+        }
+        if (selfFirstMatcher) {
+            return selfFirstMatcher.test(text);
+        }
+        return false;
+    }
+
+    // Ledger pass over the whole day. A ledger line spoken by the villager is
+    // filed under everyone it names; a ledger line spoken by someone else (the
+    // engine does not currently push these, but the shape is legal) is filed
+    // under that speaker, since it is that person's own recorded act.
+    for (const line of filtered.split('\n')) {
+        if (!LEDGER_LINE.test(line)) {
+            continue;
+        }
+        const speakerMatch = line.match(/^\[(?:\w+day\s+)?\d{2}:\d{2}\s+([^\]]+?)\]/);
+        if (!speakerMatch) {
+            continue;
+        }
+        const speakerSlug = personContextSlug(speakerMatch[1].trim());
+        if (speakerSlug && speakerSlug !== selfSlug) {
+            const own = sections.get(speakerSlug);
+            if (own) {
+                own.ledger.push(line);
+            }
+            continue;
+        }
+        for (const person of people) {
+            if (person.full.test(line)) {
+                sections.get(person.slug).ledger.push(line);
+            }
+        }
+    }
+
+    // Speech pass. extractSpeakers already grouped these; all that is added is
+    // the overheard label. Any ledger line that reached a non-self block above
+    // is skipped here so it isn't repeated in both sections.
+    for (const [slug, entry] of speakers) {
+        const section = sections.get(slug);
+        for (const line of entry.lines) {
+            if (LEDGER_LINE.test(line)) {
+                continue;
+            }
+            let addressee = null;
+            for (const person of people) {
+                if (person.slug !== slug && namesPerson(line, person)) {
+                    addressee = person.display;
+                    break;
+                }
+            }
+            if (addressee && !namesSelf(line)) {
+                section.said.push(line + '  (overheard — addressed to ' + addressee + ')');
+                continue;
+            }
+            section.said.push(line);
+        }
+    }
+
+    return sections;
+}
+
 // Find a dream agent by expertise tag. Verifies it exists, is owned by system
 // or by a user with 'agents/create_system_equivalent' permission, and has
 // provider/model/api_key configured. Returns the agent name or null.
@@ -511,14 +705,74 @@ function computeDailyChunks(since, now) {
 //
 // agentNames: { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName }
 // chunk: { from: Date, to: Date }
+// How the people-VA is told to weigh the two sections against each other
+// (LLM-523). Mirrors the rule the salem engine applies in its own consolidation
+// prompt (LLM-499): the ledger is what happened, speech is what someone said
+// happened, and the ledger wins. The direction clause is here because the
+// failure it guards against is not the model doubting the ledger but
+// misreading it — "(paid Josiah Thorne 1 coin for milk)" was consolidated into
+// a jug of milk given as a gift, inverting a purchase into a gratuity.
+const LEDGER_PRECEDENCE_DIRECTIVE = [
+    '## How to weigh these',
+    '',
+    'The ledger is the record of what actually happened — coin and goods that truly changed hands. It is authoritative and complete: if something is not in it, it did not happen. Speech is only what someone said, and people misremember, overstate, and promise more than they deliver. Where the two disagree, the ledger wins.',
+    '',
+    '- A payment, gift, or delivery counts ONLY if the ledger records it. Someone saying they paid you, or promising to make good on a debt, is not payment. Do not write an unbacked promise into the file as a settled matter.',
+    '- Read the ledger direction exactly as written. "(paid Josiah Thorne 1 coin for milk)" means you spent a coin and received milk — a purchase you made, not a gift you were given.',
+    '- Lines marked "overheard" were spoken while you were present but addressed to someone else. They tell you about this person\'s character and dealings; they are not your own transactions with them.',
+].join('\n');
+
+// Assemble the people-VA user message. Split out of runPersonContextUpdate so
+// the prompt structure — the thing LLM-523 is actually fixing — is directly
+// testable; runPersonContextUpdate itself reaches invokeAgent/readNote through
+// destructured requires that can't be stubbed (see dream-shared-cron.test.js).
+//
+// ledger: array of engine-authored action lines for this pair (may be empty).
+// said:   speech excerpts as one string (empty triggers consolidation-only).
+function buildPersonUserMessage({ selfLabel, display, today, existingFile, ledger, said }) {
+    // Empty excerpts trigger consolidation-only mode. The prompt recognizes
+    // this signal and either consolidates redundant bullets or returns the file
+    // unchanged if it's already tight. The sentinel wording is load-bearing —
+    // /admin/dream/consolidate-people drives that mode by passing no excerpts
+    // at all.
+    let saidBlock = '(no new excerpts since last update — please consolidate any redundant bullets if present, or return file unchanged if already tight)';
+    if (said && said.trim()) {
+        saidBlock = said;
+    }
+
+    // The ledger section. Its absence is stated rather than left blank, because
+    // "nothing changed hands" is itself the fact that stops a spoken promise
+    // from being remembered as a settled payment.
+    let ledgerBlock = '(nothing — no coin or goods changed hands between you and ' + display + ' today)';
+    if (Array.isArray(ledger) && ledger.length > 0) {
+        ledgerBlock = ledger.join('\n');
+    }
+
+    return '## Agent: ' + selfLabel + '\n'
+        + '## Person: ' + display + '\n'
+        + '## Today\'s date: ' + today + '\n\n'
+        + '## Current relationship file\n\n'
+        + (existingFile || '(empty — first encounter)')
+        + '\n\n## What the ledger records\n\n'
+        + ledgerBlock
+        + '\n\n## What was said in your hearing\n\n'
+        + saidBlock
+        + '\n\n' + LEDGER_PRECEDENCE_DIRECTIVE;
+}
+
 // runPersonContextUpdate — single (agent, person) people-VA invocation,
 // reads the existing context/people/{slug} note, runs the appropriate
 // people VA, optionally writes the result back. Used by:
 //   1. processDreamChunk (per-day dream chunk) — `excerpts` is today's
-//      conversation lines for this person.
+//      speech lines for this person and opts.ledger is the matching
+//      engine-authored action lines, both from buildPersonExcerptSections.
 //   2. /admin/dream/consolidate-people endpoint — `excerpts` is empty
-//      so the VA acts as a consolidate-only pass against bloated files.
+//      and opts.ledger absent, so the VA acts as a consolidate-only pass
+//      against bloated files.
 //
+// opts.ledger = array of ledger lines for this pair (LLM-523). Rendered as
+// its own authoritative section; absent or empty renders an explicit
+// "nothing changed hands" so a spoken promise can't be read as settled.
 // opts.dryRun = true skips the write and returns the proposed updated
 // file in the result so the caller can inspect.
 //
@@ -564,20 +818,11 @@ async function runPersonContextUpdate(agentName, peopleAgentName, slug, display,
         // No existing file — first encounter.
     }
 
-    // Empty excerpts trigger consolidation-only mode. The new prompt
-    // recognizes this signal and either consolidates redundant bullets
-    // or returns the file unchanged if it's already tight.
-    const excerptsBlock = (excerpts && excerpts.trim())
-        ? excerpts
-        : '(no new excerpts since last update — please consolidate any redundant bullets if present, or return file unchanged if already tight)';
-
-    const peopleUserMessage = '## Agent: ' + selfLabel + '\n'
-        + '## Person: ' + display + '\n'
-        + '## Today\'s date: ' + today + '\n\n'
-        + '## Current relationship file\n\n'
-        + (existingFile || '(empty — first encounter)')
-        + '\n\n## Recent conversation excerpts involving ' + display + '\n\n'
-        + excerptsBlock;
+    const peopleUserMessage = buildPersonUserMessage({
+        selfLabel, display, today, existingFile,
+        ledger: opts.ledger,
+        said: excerpts,
+    });
 
     const { text: rawUpdatedFile, truncated: peopleTruncated, finish_reason: peopleFinish } = await invokeAgent(peopleAgentName, {
         userMessage: peopleUserMessage,
@@ -938,16 +1183,21 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
     if (peopleAgentName && !notesMode) {
         try {
             const speakers = extractSpeakers(filtered, selfName);
-            for (const [slug, entry] of speakers) {
-                const { display, lines: personLines } = entry;
-                if (personLines.length === 0) {
+            // Split each person's day into ledger vs. speech before prompting
+            // (LLM-523). The ledger half is recovered from the villager's OWN
+            // lines, which extractSpeakers self-skips — so a person can now have
+            // material worth prompting on even when they said nothing.
+            const sections = buildPersonExcerptSections(filtered, selfName, speakers);
+            for (const [slug, entry] of sections) {
+                const { display, ledger, said } = entry;
+                if (ledger.length === 0 && said.length === 0) {
                     continue;
                 }
                 try {
                     const result = await runPersonContextUpdate(
                         agent.name, peopleAgentName, slug, display,
-                        personLines.join('\n'), chunkDateStr,
-                        { slugPrefix, selfLabel: selfName }
+                        said.join('\n'), chunkDateStr,
+                        { slugPrefix, selfLabel: selfName, ledger }
                     );
                     if (result.written) {
                         logDream('chunk-people-updated', {
@@ -1621,4 +1871,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildPersonExcerptSections, buildPersonUserMessage, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport };
