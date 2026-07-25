@@ -1726,9 +1726,14 @@ async function acquireDreamRunLock() {
     // If this connection dies mid-run its session ends and Postgres releases
     // the lock — at which point another run can acquire it while this one is
     // still advancing cursors, which is exactly the race the lock exists to
-    // prevent. pg's Pool attaches its own error handler and destroys the
-    // client, so this listener's job is to record that the lock is GONE.
+    // prevent. So the listener records that the lock is GONE, and
     // throwIfRunLockLost() below turns that into an aborted run.
+    //
+    // It is also what keeps that event handled at all: pg's Pool REMOVES its
+    // own idle error listener for as long as a client is checked out
+    // (pg-pool's _acquireClient / _release pair), and an 'error' event with no
+    // listener is thrown by EventEmitter — which on a checked-out connection
+    // would take the API service process down, not just the run.
     function onConnectionError(err) {
         lockLost = true;
         logDream('lock-connection-error', { error: err.message });
