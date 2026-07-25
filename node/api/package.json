@@ -6,7 +6,8 @@
     "scripts": {
         "start": "node src/server.js",
         "dev": "node --watch src/server.js",
-        "build:admin": "vite build"
+        "build:admin": "vite build",
+        "test": "node --test"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",

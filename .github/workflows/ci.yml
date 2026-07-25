@@ -44,3 +44,30 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  node-api:
+    name: Node API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: node/api
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node 20 matches the runtime Ansible installs on the VPS
+      # (infrastructure/group_vars/all.yml: nodejs_version).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # `node --test` with no path argument recursively discovers both
+      # src/**/*.test.js (node:test suites) and scripts/test-*.js (standalone
+      # assertion scripts), skipping node_modules. No glob argument — glob
+      # support in the test runner postdates Node 20.
+      - name: Test
+        run: npm test
