@@ -378,6 +378,22 @@ test('a header the parser cannot reduce still attributes by the names in the lin
     assert.equal(josiah.ledger.length, 1, 'the transaction survives an unparseable header');
 });
 
+test('a ledger line naming two people is filed under both — intended', () => {
+    // A transaction between two people belongs to both relationships, and a
+    // ledger line is a fact, so showing it to both parties fabricates nothing.
+    // Near-always a single match in practice: narrateEvent writes from the
+    // actor's point of view, so only the counterparty appears in the narration
+    // (code_review, LLM-523).
+    const log = [
+        '[Friday 12:00 Constance Scott] (watched Josiah Thorne pay John Ellis 2 coins)',
+        '[Friday 12:01 Josiah Thorne] "Settled."',
+        '[Friday 12:02 John Ellis] "Aye."',
+    ].join('\n');
+    const sections = sectionsFor(log, 'Constance Scott');
+    assert.equal(sections.get('josiah-thorne').ledger.length, 1);
+    assert.equal(sections.get('john-ellis').ledger.length, 1);
+});
+
 test('a name is matched on whole words, not substrings', () => {
     const log = [
         '[Friday 12:00 Josiah Thorne] "The annexed field is Anne\'s no longer."',

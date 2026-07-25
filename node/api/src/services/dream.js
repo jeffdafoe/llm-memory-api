@@ -616,6 +616,14 @@ function buildPersonExcerptSections(filtered, selfName, speakers) {
     // header parser's strictness non-load-bearing: a transaction is attributed
     // by whom it NAMES even when we can't tell who recorded it, and an
     // authoritative line is never silently lost (code_review, LLM-523).
+    //
+    // Name-matching deliberately files a line under EVERY known person it
+    // names, not just one. A transaction between two people is part of both
+    // relationships, and a ledger line is a fact — showing it to both parties
+    // can't fabricate anything. In practice this is near-always a single match:
+    // narrateEvent writes from the actor's point of view, so the actor is the
+    // speaker in the header and only the counterparty appears in the narration
+    // ("(earned 4 coins working for Josiah Thorne)").
     for (const line of filtered.split('\n')) {
         if (!LEDGER_LINE.test(line)) {
             continue;
