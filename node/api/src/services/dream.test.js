@@ -9,7 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, runPersonContextUpdate, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport } = require('./dream');
+const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, buildPersonExcerptSections, buildPersonUserMessage, prefilterLog, runPersonContextUpdate, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport } = require('./dream');
 
 test('single note gets a slug+date header above its content', () => {
     const rows = [{
@@ -189,6 +189,288 @@ test('the pooled agent name does NOT self-skip the villager — why selfName thr
     // display name as selfName.
     const speakers = extractSpeakers(SIM_DAY_LOG, 'salem-vendor');
     assert.ok(speakers.has('constance-scott'), 'pooled agent name leaves the villager un-skipped');
+});
+
+// ─── LLM-523: ledger vs. talk in the people-VA prompt ───
+//
+// The defect these cover: extractSpeakers self-skips the villager's own lines
+// (correct — she must not accumulate a people-file about herself), but EVERY
+// ledger event in a sim-day note is spoken by the villager. So 100% of the
+// engine's economic record was dropped before the people prompt was built, and
+// the people-VA had only NPC-authored speech to go on. It duly wrote Josiah's
+// unbacked "six coins to square us up" into durable memory as a completed
+// payment, and turned a 1-coin milk PURCHASE into a gift.
+//
+// Fixture is the shape of Constance Scott's real 2026-07-15 and 2026-07-24
+// days, trimmed to the lines that carry the defect.
+const LEDGER_DAY = [
+    '[Wednesday 17:48 Constance Scott] (offered to work for Josiah Thorne for 4 coins)',
+    '[Wednesday 17:48 Josiah Thorne] "I can offer four coins for a couple of hours\' work, if that suits you."',
+    '[Wednesday 19:49 Constance Scott] (earned 4 coins working for Josiah Thorne)',
+    '[Wednesday 19:49 Constance Scott] (offered to work for Josiah Thorne for 6 coins)',
+    '[Wednesday 20:23 Josiah Thorne] "Fifteen coins for three cuts — that\'s a fair trade, John."',
+    '[Wednesday 20:24 John Ellis] "Good trades, Josiah. Appreciate you keeping the shelves stocked."',
+    '[Wednesday 21:50 Constance Scott] (earned 6 coins working for Josiah Thorne)',
+    '[Wednesday 22:00 Constance Scott] (had stew)',
+    '[Wednesday 22:01 Josiah Thorne] "Off you go, then — safe to you, Constance Scott."',
+].join('\n');
+
+function sectionsFor(log, self) {
+    return buildPersonExcerptSections(log, self, extractSpeakers(log, self));
+}
+
+test('the villager\'s own ledger lines are filed under the person they name', () => {
+    const josiah = sectionsFor(LEDGER_DAY, 'Constance Scott').get('josiah-thorne');
+    assert.deepEqual(josiah.ledger, [
+        '[Wednesday 17:48 Constance Scott] (offered to work for Josiah Thorne for 4 coins)',
+        '[Wednesday 19:49 Constance Scott] (earned 4 coins working for Josiah Thorne)',
+        '[Wednesday 19:49 Constance Scott] (offered to work for Josiah Thorne for 6 coins)',
+        '[Wednesday 21:50 Constance Scott] (earned 6 coins working for Josiah Thorne)',
+    ]);
+});
+
+test('both engagements reach the prompt, so the day\'s full 10 coins are visible', () => {
+    // The bug wrote "offered six coins for two hours shifting crates" and lost
+    // the four-coin job entirely: the ledger was absent and the 4-coin offer had
+    // also been dropped by the signal prefilter.
+    const josiah = sectionsFor(LEDGER_DAY, 'Constance Scott').get('josiah-thorne');
+    const text = josiah.ledger.join('\n');
+    assert.ok(text.includes('earned 4 coins'), 'the four-coin engagement must survive');
+    assert.ok(text.includes('earned 6 coins'), 'the six-coin engagement must survive');
+});
+
+test('a ledger line naming nobody is filed under nobody', () => {
+    const sections = sectionsFor(LEDGER_DAY, 'Constance Scott');
+    for (const [, entry] of sections) {
+        assert.ok(
+            !entry.ledger.some(l => l.includes('(had stew)')),
+            'a solitary act is not a transaction with anyone'
+        );
+    }
+});
+
+test('the villager never gets a section about herself', () => {
+    assert.ok(!sectionsFor(LEDGER_DAY, 'Constance Scott').has('constance-scott'));
+});
+
+// The 07-24 shape — the incident that raised this to High. Josiah SAID he'd
+// paid ten coins and SAID he was handing over six to square up; the only thing
+// that actually happened was Constance buying a jug of milk for one coin.
+const PROMISE_DAY = [
+    '[Friday 18:25 Josiah Thorne] "I paid you ten coins for your labor and added a cut of meat besides, as I recollect."',
+    '[Friday 18:25 Josiah Thorne] "There we are — six coins to square us up, and a fair bit of gratitude besides."',
+    '[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+].join('\n');
+
+test('an unbacked spoken promise produces no ledger entry', () => {
+    const josiah = sectionsFor(PROMISE_DAY, 'Constance Scott').get('josiah-thorne');
+    assert.deepEqual(josiah.ledger, ['[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)']);
+    assert.ok(
+        !josiah.ledger.join('\n').includes('six coins'),
+        'the six-coin restitution was spoken only — it must not appear as fact'
+    );
+    assert.ok(
+        josiah.said.join('\n').includes('six coins to square us up'),
+        'the promise still belongs in the file as something he said'
+    );
+});
+
+test('the ledger keeps transaction direction — a purchase is not a gift', () => {
+    const josiah = sectionsFor(PROMISE_DAY, 'Constance Scott').get('josiah-thorne');
+    assert.ok(josiah.ledger[0].includes('(paid Josiah Thorne 1 coin for milk)'));
+});
+
+test('speech addressed to a third party is labeled overheard', () => {
+    const josiah = sectionsFor(LEDGER_DAY, 'Constance Scott').get('josiah-thorne');
+    const carrots = josiah.said.find(l => l.includes('Fifteen coins for three cuts'));
+    assert.ok(carrots.endsWith('(overheard — addressed to John Ellis)'));
+});
+
+test('speech that names the villager is NOT labeled overheard', () => {
+    const josiah = sectionsFor(LEDGER_DAY, 'Constance Scott').get('josiah-thorne');
+    const farewell = josiah.said.find(l => l.includes('Off you go'));
+    assert.ok(!farewell.includes('overheard'));
+});
+
+test('an ambiguous first name is not used to infer an addressee', () => {
+    // Two Johns in the day: "John" alone identifies nobody, so the line stays
+    // unlabeled rather than being attributed to the wrong man.
+    const log = [
+        '[Friday 12:00 Josiah Thorne] "Fair trade, John."',
+        '[Friday 12:01 John Ellis] "Aye."',
+        '[Friday 12:02 John Proctor] "Aye."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.ok(!josiah.said[0].includes('overheard'));
+});
+
+// prefilterLog: SIGNAL_PATTERNS are conversational markers, so a bare economic
+// fact carries no signal word and used to survive only by luck of proximity.
+test('a day of pure transactions is not discarded as signal-free', () => {
+    // The early return used to fire whenever SIGNAL_PATTERNS found nothing,
+    // taking the whole chunk with it — dream, learnings and people files. A day
+    // where money moved and nobody chattered is precisely what this change
+    // exists to carry through (code_review, LLM-523).
+    const log = [
+        '[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+        '[Friday 19:49 Constance Scott] (earned 4 coins working for Josiah Thorne)',
+    ].join('\n');
+    const filtered = prefilterLog(log);
+    assert.notEqual(filtered, null, 'a ledger-only day must survive the prefilter');
+    assert.ok(filtered.includes('(paid Josiah Thorne 1 coin for milk)'));
+    assert.ok(filtered.includes('(earned 4 coins working for Josiah Thorne)'));
+});
+
+test('a day with neither signal nor ledger is still discarded', () => {
+    assert.equal(prefilterLog('the weather held\nthe road was dry'), null);
+});
+
+test('prefilterLog keeps a ledger line that carries no conversational signal', () => {
+    const log = [
+        'I want you to remember this.',
+        'filler',
+        'filler',
+        'filler',
+        'filler',
+        'filler',
+        '[Friday 20:03 Constance Scott] (delivered meat to John Ellis for 4 coins)',
+    ].join('\n');
+    assert.ok(prefilterLog(log).includes('(delivered meat to John Ellis for 4 coins)'));
+});
+
+test('a ledger line from another speaker is filed under that speaker', () => {
+    // Not a shape the engine currently pushes, but a legal one. The two passes
+    // read the same filtered text, so extractSpeakers has already created the
+    // section this lands in.
+    const log = [
+        '[Friday 12:00 Josiah Thorne] (delivered 3x flour to Abraham Warren for 6 coins)',
+        '[Friday 12:01 Constance Scott] "A fair price."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.deepEqual(josiah.ledger, ['[Friday 12:00 Josiah Thorne] (delivered 3x flour to Abraham Warren for 6 coins)']);
+    assert.equal(josiah.said.length, 0, 'a ledger line is never repeated as speech');
+});
+
+test('every header form the pipeline emits attributes correctly', () => {
+    // The two producers: sim-conversation-distiller's formatTimestamp
+    // ("[Weekday HH:MM Name]") and memory-sync uploads ("[HH:MM name]"). An
+    // unpadded hour is included because the header parser must not be stricter
+    // than LEDGER_LINE, which is the authority on what counts as a ledger line.
+    const log = [
+        '[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+        '[Friday 9:05 Constance Scott] (paid Josiah Thorne 2 coins for bread)',
+        '[18:26 Constance Scott] (paid Josiah Thorne 3 coins for cheese)',
+        '[Friday 12:01 Josiah Thorne] "Good day."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.equal(josiah.ledger.length, 3);
+});
+
+test('a header the parser cannot reduce still attributes by the names in the line', () => {
+    // LEDGER_LINE accepts any bracket header, so the speaker parser is a
+    // best-effort read rather than a gate: an unrecognized header shape must
+    // not silently drop an authoritative transaction (code_review, LLM-523).
+    const log = [
+        '[2026-07-15T18:26Z Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+        '[Friday 12:01 Josiah Thorne] "Good day."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.equal(josiah.ledger.length, 1, 'the transaction survives an unparseable header');
+});
+
+test('a ledger line naming two people is filed under both — intended', () => {
+    // A transaction between two people belongs to both relationships, and a
+    // ledger line is a fact, so showing it to both parties fabricates nothing.
+    // Near-always a single match in practice: narrateEvent writes from the
+    // actor's point of view, so only the counterparty appears in the narration
+    // (code_review, LLM-523).
+    const log = [
+        '[Friday 12:00 Constance Scott] (watched Josiah Thorne pay John Ellis 2 coins)',
+        '[Friday 12:01 Josiah Thorne] "Settled."',
+        '[Friday 12:02 John Ellis] "Aye."',
+    ].join('\n');
+    const sections = sectionsFor(log, 'Constance Scott');
+    assert.equal(sections.get('josiah-thorne').ledger.length, 1);
+    assert.equal(sections.get('john-ellis').ledger.length, 1);
+});
+
+test('a name is matched on whole words, not substrings', () => {
+    const log = [
+        '[Friday 12:00 Josiah Thorne] "The annexed field is Anne\'s no longer."',
+        '[Friday 12:01 Anne Walker] "Aye."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    // "Anne's" is a real mention (apostrophe is a boundary); "annexed" is not,
+    // and on its own would not have triggered the label.
+    assert.ok(josiah.said[0].includes('(overheard — addressed to Anne Walker)'));
+});
+
+test('naming a third party while addressing the current person is not overheard', () => {
+    // The complement of the labeling test: the villager is named, so the line
+    // reads as spoken to her even though it discusses someone else.
+    const log = [
+        '[Friday 12:00 Josiah Thorne] "Constance, John Ellis still owes me two coins."',
+        '[Friday 12:01 John Ellis] "I do not."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.ok(!josiah.said[0].includes('overheard'));
+});
+
+// The assembled prompt. Split out of runPersonContextUpdate precisely so this
+// is assertable — that function reaches invokeAgent/readNote through
+// destructured requires that can't be stubbed.
+test('the user message renders ledger and speech as separate sections', () => {
+    const msg = buildPersonUserMessage({
+        selfLabel: 'Constance Scott',
+        display: 'Josiah Thorne',
+        today: '2026-07-24',
+        existingFile: '',
+        ledger: ['[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)'],
+        said: '[Friday 18:25 Josiah Thorne] "six coins to square us up"',
+    });
+    assert.ok(msg.includes('## What the ledger records\n\n[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)'));
+    assert.ok(msg.includes('## What was said in your hearing\n\n[Friday 18:25 Josiah Thorne] "six coins to square us up"'));
+    assert.ok(msg.indexOf('## What the ledger records') < msg.indexOf('## What was said in your hearing'));
+    assert.ok(msg.includes('Where the two disagree, the ledger wins.'));
+});
+
+test('an empty ledger says so explicitly rather than rendering blank', () => {
+    const msg = buildPersonUserMessage({
+        selfLabel: 'Constance Scott',
+        display: 'Josiah Thorne',
+        today: '2026-07-24',
+        existingFile: 'prior file',
+        ledger: [],
+        said: 'he said he would make it right',
+    });
+    assert.ok(msg.includes('(nothing — no coin or goods changed hands between you and Josiah Thorne today)'));
+});
+
+test('consolidation-only mode keeps its sentinel wording', () => {
+    // /admin/dream/consolidate-people drives this mode by passing no excerpts;
+    // the people-VA's system prompt keys off this exact phrasing.
+    const msg = buildPersonUserMessage({
+        selfLabel: 'salem-vendor',
+        display: 'Josiah Thorne',
+        today: '2026-07-24',
+        existingFile: 'bloated file',
+        ledger: undefined,
+        said: '',
+    });
+    assert.ok(msg.includes('(no new excerpts since last update — please consolidate any redundant bullets if present, or return file unchanged if already tight)'));
+});
+
+test('a dedicated NPC agent slug is recognized as its own display name', () => {
+    // A dedicated agent's selfName is the agent slug ('zbbs-josiah-thorne'),
+    // not a display name — so the self-recognition has to slug-to-display it or
+    // every line addressed to Josiah reads as third-party.
+    const log = [
+        '[Friday 12:00 Josiah Thorne] (paid John Ellis 3 coins for meat)',
+        '[Friday 12:01 John Ellis] "Fair trade, Josiah."',
+    ].join('\n');
+    const ellis = sectionsFor(log, 'zbbs-josiah-thorne').get('john-ellis');
+    assert.deepEqual(ellis.ledger, ['[Friday 12:00 Josiah Thorne] (paid John Ellis 3 coins for meat)']);
+    assert.ok(!ellis.said[0].includes('overheard'), 'a line naming Josiah is addressed to Josiah');
 });
 
 // runPersonContextUpdate rejects a non-canonical slug prefix before touching

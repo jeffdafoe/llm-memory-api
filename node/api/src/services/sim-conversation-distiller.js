@@ -619,5 +619,7 @@ async function distillSimConversationDay(agentName, dayStr, events, opts = {}) {
 }
 
 // narrateEvent is exported for unit tests (sim-conversation-distiller.test.js);
-// distillSimConversationDay is the only production caller.
-module.exports = { distillSimConversationDay, narrateEvent, normalizeSlugPrefix };
+// distillSimConversationDay is the only production caller. slugToDisplay is
+// shared with dream.js, which needs the same slug -> "First Last" rendering to
+// recognize a dedicated NPC's own name in its distilled lines (LLM-523).
+module.exports = { distillSimConversationDay, narrateEvent, normalizeSlugPrefix, slugToDisplay };
