@@ -1,10 +1,14 @@
 -- MEM-143 down — restore the dream-sim-people instructions as they stood
 -- before the ledger-precedence rewrite (md5 e29799af22ba06e733d1d1d8cfcec3e0).
 --
--- Rolling this back returns the writer to the state where it had only NPC
--- speech to reason from; the code half (dream.js's separate ledger section)
--- would still render, and the writer would simply have no standing policy for
--- weighing the two.
+-- Rollback contract: run this ONLY together with a code rollback past the
+-- LLM-523 commit. The prompt and dream.js's user-message structure are two
+-- halves of one change — reverting the prompt alone leaves the new code
+-- sending "## What the ledger records" / "## What was said in your hearing"
+-- sections to a writer whose instructions describe a single undifferentiated
+-- excerpt block and give it no rule for weighing the two. The reverse order
+-- (code back, prompt forward) is harmless: the standing policy simply
+-- describes sections that no longer arrive.
 
 BEGIN;
 

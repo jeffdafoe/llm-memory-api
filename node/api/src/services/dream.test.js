@@ -306,6 +306,25 @@ test('an ambiguous first name is not used to infer an addressee', () => {
 
 // prefilterLog: SIGNAL_PATTERNS are conversational markers, so a bare economic
 // fact carries no signal word and used to survive only by luck of proximity.
+test('a day of pure transactions is not discarded as signal-free', () => {
+    // The early return used to fire whenever SIGNAL_PATTERNS found nothing,
+    // taking the whole chunk with it — dream, learnings and people files. A day
+    // where money moved and nobody chattered is precisely what this change
+    // exists to carry through (code_review, LLM-523).
+    const log = [
+        '[Friday 18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+        '[Friday 19:49 Constance Scott] (earned 4 coins working for Josiah Thorne)',
+    ].join('\n');
+    const filtered = prefilterLog(log);
+    assert.notEqual(filtered, null, 'a ledger-only day must survive the prefilter');
+    assert.ok(filtered.includes('(paid Josiah Thorne 1 coin for milk)'));
+    assert.ok(filtered.includes('(earned 4 coins working for Josiah Thorne)'));
+});
+
+test('a day with neither signal nor ledger is still discarded', () => {
+    assert.equal(prefilterLog('the weather held\nthe road was dry'), null);
+});
+
 test('prefilterLog keeps a ledger line that carries no conversational signal', () => {
     const log = [
         'I want you to remember this.',
@@ -317,6 +336,53 @@ test('prefilterLog keeps a ledger line that carries no conversational signal', (
         '[Friday 20:03 Constance Scott] (delivered meat to John Ellis for 4 coins)',
     ].join('\n');
     assert.ok(prefilterLog(log).includes('(delivered meat to John Ellis for 4 coins)'));
+});
+
+test('a ledger line from another speaker is filed under that speaker', () => {
+    // Not a shape the engine currently pushes, but a legal one. The two passes
+    // read the same filtered text, so extractSpeakers has already created the
+    // section this lands in.
+    const log = [
+        '[Friday 12:00 Josiah Thorne] (delivered 3x flour to Abraham Warren for 6 coins)',
+        '[Friday 12:01 Constance Scott] "A fair price."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.deepEqual(josiah.ledger, ['[Friday 12:00 Josiah Thorne] (delivered 3x flour to Abraham Warren for 6 coins)']);
+    assert.equal(josiah.said.length, 0, 'a ledger line is never repeated as speech');
+});
+
+test('an unpadded hour and a weekday-less header still attribute (LEDGER_LINE is the gate)', () => {
+    // The header parser must not be stricter than LEDGER_LINE — a shape it
+    // can't read would silently drop an authoritative transaction.
+    const log = [
+        '[Friday 9:05 Constance Scott] (paid Josiah Thorne 2 coins for bread)',
+        '[18:26 Constance Scott] (paid Josiah Thorne 1 coin for milk)',
+        '[Friday 12:01 Josiah Thorne] "Good day."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.equal(josiah.ledger.length, 2);
+});
+
+test('a name is matched on whole words, not substrings', () => {
+    const log = [
+        '[Friday 12:00 Josiah Thorne] "The annexed field is Anne\'s no longer."',
+        '[Friday 12:01 Anne Walker] "Aye."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    // "Anne's" is a real mention (apostrophe is a boundary); "annexed" is not,
+    // and on its own would not have triggered the label.
+    assert.ok(josiah.said[0].includes('(overheard — addressed to Anne Walker)'));
+});
+
+test('naming a third party while addressing the current person is not overheard', () => {
+    // The complement of the labeling test: the villager is named, so the line
+    // reads as spoken to her even though it discusses someone else.
+    const log = [
+        '[Friday 12:00 Josiah Thorne] "Constance, John Ellis still owes me two coins."',
+        '[Friday 12:01 John Ellis] "I do not."',
+    ].join('\n');
+    const josiah = sectionsFor(log, 'Constance Scott').get('josiah-thorne');
+    assert.ok(!josiah.said[0].includes('overheard'));
 });
 
 // The assembled prompt. Split out of runPersonContextUpdate precisely so this

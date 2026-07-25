@@ -238,8 +238,23 @@ function prefilterLog(content) {
         }
     }
 
-    if (signalLineIndices.size === 0) {
-        return null; // No signals found — nothing worth dreaming about
+    // A day with ledger lines is never "nothing worth dreaming about", even
+    // when nobody said anything signal-bearing (LLM-523). SIGNAL_PATTERNS only
+    // recognize conversational markers, so a day of pure transactions used to
+    // be discarded whole — dream, learnings and people files alike — which is
+    // exactly the case this change exists to carry through. Ledger lines are
+    // deliberately NOT added to signalLineIndices: they are pinned below
+    // without pulling CONTEXT_LINES of surrounding chatter, so a talkative day
+    // keeps the same filtered shape it had before.
+    const ledgerLineIndices = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (LEDGER_LINE.test(lines[i])) {
+            ledgerLineIndices.push(i);
+        }
+    }
+
+    if (signalLineIndices.size === 0 && ledgerLineIndices.length === 0) {
+        return null; // Nothing said, nothing done — nothing worth dreaming about
     }
 
     // Expand to include context around each signal
@@ -268,20 +283,17 @@ function prefilterLog(content) {
         }
     }
 
-    // Always include engine-authored ledger lines (LLM-523). SIGNAL_PATTERNS
-    // are conversational markers, so a bare economic fact carries no signal
-    // word of its own and only survives when it happens to sit within
-    // CONTEXT_LINES of someone's chatter. On Constance Scott's 2026-07-24 that
-    // silently dropped "(earned 4 coins working for Ezekiel Crane)" and
-    // "(delivered meat to John Ellis for 4 coins)"; on 07-15 it dropped
-    // "(offered to work for Josiah Thorne for 4 coins)". These are the
-    // deterministic record the people-VA has to weigh talk against, so they are
-    // never filtered out. Cheap: a ledger line is one short sentence, and most
-    // already survived as context lines.
-    for (let i = 0; i < lines.length; i++) {
-        if (LEDGER_LINE.test(lines[i])) {
-            includedLines.add(i);
-        }
+    // Pin the engine-authored ledger lines found above. A bare economic fact
+    // carries no signal word of its own, so it used to survive only when it
+    // happened to sit within CONTEXT_LINES of someone's chatter. On Constance
+    // Scott's 2026-07-24 that silently dropped "(earned 4 coins working for
+    // Ezekiel Crane)" and "(delivered meat to John Ellis for 4 coins)"; on
+    // 07-15 it dropped "(offered to work for Josiah Thorne for 4 coins)".
+    // These are the deterministic record the people-VA has to weigh talk
+    // against, so they are never filtered out. Cheap: a ledger line is one
+    // short sentence, and most already survived as context lines.
+    for (const idx of ledgerLineIndices) {
+        includedLines.add(idx);
     }
 
     // Build the filtered content, inserting separators where lines are skipped
@@ -450,11 +462,36 @@ function extractSpeakers(content, agentName) {
 
 // Build a case-insensitive whole-word matcher for a name fragment. Word
 // boundaries matter: without them "Anne" matches inside "Annexed" and, worse,
-// a short first name matches inside an unrelated word. Escapes regex
-// metacharacters because display names are operator-editable.
+// a short first name matches inside an unrelated word. Metacharacters are
+// escaped because display names are operator-editable.
+//
+// The boundaries are Unicode letter/number classes rather than \w, which is
+// ASCII-only: with \w, an accented name ("Zoë Marsh") would treat the accented
+// character as a boundary and match inside a longer word (code_review, LLM-523).
+// Lookarounds rather than capture groups so adjacent occurrences can't consume
+// each other's boundary.
 function nameMatcher(fragment) {
     const escaped = String(fragment).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp('(^|[^\\w])' + escaped + '($|[^\\w])', 'i');
+    return new RegExp('(?<![\\p{L}\\p{N}_])' + escaped + '(?![\\p{L}\\p{N}_])', 'iu');
+}
+
+// Pull the speaker name out of a distilled line's bracket header. Handles every
+// header the pipeline produces — "[Weekday HH:MM Name]" from the sim distiller
+// and "[HH:MM name]" from memory-sync uploads — by stripping a leading weekday
+// and a leading clock time if present, rather than demanding one exact shape.
+// Deliberately more permissive than a timestamp regex: LEDGER_LINE has already
+// accepted the line as authoritative, so a header this can't parse would mean
+// silently dropping a real transaction (code_review, LLM-523). Returns '' when
+// there is no bracket header at all.
+function ledgerLineSpeaker(line) {
+    const header = line.match(/^\[([^\]]+)\]/);
+    if (!header) {
+        return '';
+    }
+    return header[1]
+        .replace(/^\w+day\s+/i, '')
+        .replace(/^\d{1,2}:\d{2}\s+/, '')
+        .trim();
 }
 
 // Partition one day's excerpts into the two kinds of material the people-VA
@@ -564,15 +601,18 @@ function buildPersonExcerptSections(filtered, selfName, speakers) {
     // filed under everyone it names; a ledger line spoken by someone else (the
     // engine does not currently push these, but the shape is legal) is filed
     // under that speaker, since it is that person's own recorded act.
+    //
+    // A non-self speaker always has a section: this pass and extractSpeakers
+    // read the same `filtered` text, and extractSpeakers creates an entry for
+    // every non-self bracket-header line it sees, ledger lines included. The
+    // guard is there for the one case that isn't reachable from a real line —
+    // a speaker name that doesn't slugify — and drops nothing that could have
+    // been attributed anyway (code_review, LLM-523).
     for (const line of filtered.split('\n')) {
         if (!LEDGER_LINE.test(line)) {
             continue;
         }
-        const speakerMatch = line.match(/^\[(?:\w+day\s+)?\d{2}:\d{2}\s+([^\]]+?)\]/);
-        if (!speakerMatch) {
-            continue;
-        }
-        const speakerSlug = personContextSlug(speakerMatch[1].trim());
+        const speakerSlug = personContextSlug(ledgerLineSpeaker(line));
         if (speakerSlug && speakerSlug !== selfSlug) {
             const own = sections.get(speakerSlug);
             if (own) {
