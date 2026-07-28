@@ -10,7 +10,7 @@
         "test": "node --test"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.29.0",
+        "@modelcontextprotocol/sdk": "^1.30.0",
         "@picocss/pico": "^2.1.1",
         "d3-drag": "^3.0.0",
         "d3-force": "^3.0.0",
