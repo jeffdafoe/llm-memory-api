@@ -44,8 +44,8 @@
 // the v2 rewrite renamed the verbs and added a few, so narrateEvent also
 // handles 'spoke' / 'paid' / 'walked' / 'delivered' / 'consumed' /
 // 'took_break' (ZBBS-WORK-376) / 'labored' (LLM-162) / 'solicited_work' /
-// 'hired' (LLM-213). Unknown kinds get a generic narration so a new engine
-// action_type doesn't silently drop frames.
+// 'hired' (LLM-213) / 'offered_work' (LLM-564). Unknown kinds get a generic
+// narration so a new engine action_type doesn't silently drop frames.
 
 const pool = require('../db');
 const { saveNote } = require('./documents');
@@ -352,6 +352,16 @@ function narrateEvent(event, actorName) {
             // unsafe employer still renders a clean line.
             const employer = sanitizeLabel(p.employer || p.recipient || '') || 'someone';
             return '(offered to work for ' + employer + ' for ' + formatLaborReward(p) + ')';
+        }
+        case 'offered_work': {
+            // LLM-564: an employer offered a worker a job (offer_work minted a
+            // live pending offer). Employer-side row — before this type existed
+            // these mints logged as 'solicited_work' attributed to the worker,
+            // reading in the log as the worker having asked. payload: { worker,
+            // amount, duration_min } (the 'hired' shape). No coins move at the
+            // offer; the beat is the arrangement proposed.
+            const worker = sanitizeLabel(p.worker || p.recipient || '') || 'someone';
+            return '(offered ' + worker + ' a job for ' + formatLaborReward(p) + ')';
         }
         case 'hired': {
             // LLM-213: an employer took a worker on (accept_work flipped the offer
