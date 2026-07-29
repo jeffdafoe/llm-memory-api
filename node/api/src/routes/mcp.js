@@ -1604,6 +1604,10 @@ router.head('/mcp', (req, res) => {
 // reconnect loop. A real clientInfo/capabilities pair is a few hundred bytes,
 // so anything past the cap is a malformed or hostile client and the prefix is
 // all the diagnostic needs.
+// This bounds log VOLUME only, not the work: an oversized body is still parsed
+// by express.json and serialized here before being cut. Acceptable for a
+// temporary diagnostic on an authenticated endpoint; it would not be for a
+// permanent one.
 const DIAG_VALUE_MAX_LENGTH = 2000;
 
 function capForLog(value) {
