@@ -115,3 +115,117 @@ test('finish_reason "stop" surfaces truncated:false', async () => {
         stub.restore();
     }
 });
+
+// LLM-560 — billed cost and serving upstream. The catalog here prices the model
+// at $10/Mtok so a catalog-derived cost is unmistakably distinct from any billed
+// figure the response carries: 10 prompt + 2 completion tokens = 0.00012.
+const CATALOG_PRICED = {
+    data: [{
+        id: 'deepseek/deepseek-v4-flash',
+        pricing: { prompt: '0.00001', completion: '0.00001' },
+    }],
+};
+
+// Stub returning a chat completion with the given usage/provider fields. Pass
+// `usage` verbatim so a test can omit `cost` entirely.
+function stubCompletion(responseFields) {
+    const original = globalThis.fetch;
+    // The earlier tests in this file leave an empty catalog cached for 4 hours,
+    // so without a reset the priced catalog below would never be fetched and
+    // every fallback assertion would silently measure "pricing unknown" instead.
+    openrouter._resetCatalogCache();
+    globalThis.fetch = async function (url) {
+        if (String(url).includes('/models')) return { ok: true, json: async () => CATALOG_PRICED };
+        return {
+            ok: true,
+            json: async () => Object.assign({
+                choices: [{ message: { content: 'ok', tool_calls: [] }, finish_reason: 'stop' }],
+                usage: { prompt_tokens: 10, completion_tokens: 2 },
+            }, responseFields),
+        };
+    };
+    return { restore() { globalThis.fetch = original; } };
+}
+
+test('usage.cost comes from the billed figure on the response, not the catalog', async () => {
+    const stub = stubCompletion({
+        provider: 'Baidu',
+        usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.000001365 },
+    });
+    try {
+        const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+        assert.equal(res.usage.cost, 0.000001365);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('a response without a billed cost falls back to the catalog estimate', async () => {
+    const stub = stubCompletion({ provider: 'Baidu' });
+    try {
+        const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+        // 10 uncached prompt + 2 completion tokens at $10/Mtok
+        assert.equal(res.usage.cost, 0.00012);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('a malformed billed cost is rejected in favour of the catalog estimate', async () => {
+    // NaN, negative, and non-numeric must not reach usage.cost — a bad billed
+    // figure would otherwise be trusted over a sane estimate and poison the
+    // spend totals, which is the exact class of error this ticket exists to fix.
+    for (const bad of ['not-a-number', -1, null]) {
+        const stub = stubCompletion({
+            provider: 'Baidu',
+            usage: { prompt_tokens: 10, completion_tokens: 2, cost: bad },
+        });
+        try {
+            const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+            assert.equal(res.usage.cost, 0.00012, 'bad cost ' + JSON.stringify(bad) + ' should fall back');
+        } finally {
+            stub.restore();
+        }
+    }
+});
+
+test('a zero billed cost is honoured, not treated as missing', async () => {
+    // Free-tier and promotional routes legitimately bill 0; falling back to the
+    // catalog there would invent spend that never happened.
+    const stub = stubCompletion({
+        provider: 'Chutes',
+        usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0 },
+    });
+    try {
+        const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+        assert.equal(res.usage.cost, 0);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('the serving upstream is surfaced as usage.served_by', async () => {
+    const stub = stubCompletion({
+        provider: 'Baidu',
+        usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.000001365 },
+    });
+    try {
+        const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+        assert.equal(res.usage.served_by, 'Baidu');
+    } finally {
+        stub.restore();
+    }
+});
+
+test('a response with no provider name leaves served_by unset', async () => {
+    // logCall coalesces a missing served_by to NULL; it must never write ''.
+    for (const bad of [undefined, '', 42]) {
+        const stub = stubCompletion(bad === undefined ? {} : { provider: bad });
+        try {
+            const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+            assert.equal('served_by' in res.usage, false, 'provider ' + JSON.stringify(bad) + ' should not set served_by');
+        } finally {
+            stub.restore();
+        }
+    }
+});
