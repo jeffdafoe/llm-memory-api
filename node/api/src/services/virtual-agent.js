@@ -777,7 +777,10 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
 //   systemPrompt   — system prompt (string or { static, dynamic } object)
 //   userMessage    — user/input message
 //   response       — response text (or null on failure)
-//   usage          — token usage object from provider (or null on failure)
+//   usage          — token usage object from provider (or null on failure).
+//                    usage.served_by (LLM-560) names the upstream host that
+//                    actually served the call — set by the OpenRouter provider
+//                    only; NULL for providers we call directly.
 //   cost           — calculated cost (or 0 on failure)
 //   durationMs     — wall-clock time for the call
 //   error          — error object (if the call failed)
@@ -810,8 +813,8 @@ async function logCall(options) {
               response, status, status_code, error_message,
               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
               cost, duration_ms, usage_id, scene_id, conversation_id,
-              sim_actor_id, sim_actor_name)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+              sim_actor_id, sim_actor_name, served_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
             [
                 options.actorId,
                 options.context || null,
@@ -835,6 +838,7 @@ async function logCall(options) {
                 options.conversationId || null,
                 options.simActorId || null,
                 options.simActorName || null,
+                usage.served_by || null,
             ]
         );
     } catch (err) {

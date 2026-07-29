@@ -7,8 +7,10 @@
 // supports typing arbitrary model IDs for models not yet in the catalog.
 //
 // OpenRouter pricing is per-token in their API; we convert to per-1M for
-// consistency with other providers. Cost is computed provider-side in createCall
-// using catalog pricing, so index.js calculateCost always gets usage.cost.
+// consistency with other providers. Cost is resolved provider-side in createCall
+// so index.js calculateCost always gets usage.cost — preferring the billed cost
+// OpenRouter reports on the response, falling back to catalog pricing only when
+// the response omits it. The catalog remains the source for display pricing.
 
 const { log } = require('../logger');
 const { asNumber, coerceToolArgs } = require('./coerce');
@@ -71,6 +73,15 @@ async function fetchCatalog() {
         logProvider('catalog-fetch-error', { error: err.message });
         return catalogCache || new Map();
     }
+}
+
+// Test seam. The catalog cache is module-level with a 4-hour TTL, so within one
+// process the first fetch wins for the rest of the run — a test that needs a
+// differently-priced catalog than an earlier test cannot get one. Not called by
+// application code.
+function _resetCatalogCache() {
+    catalogCache = null;
+    catalogFetchedAt = 0;
 }
 
 // Look up pricing for a model ID from the cached catalog.
@@ -261,10 +272,49 @@ function createCall(model, apiKey, configuration) {
             cache_read_input_tokens: cachedTokens
         };
 
-        // Compute cost from catalog pricing
-        var cost = await computeCost(model, promptTokens, cachedTokens, completionTokens);
+        // Cost: prefer OpenRouter's own billed figure over the catalog estimate
+        // (LLM-560). Every chat completion carries usage.cost — what our account
+        // was actually charged — with no request flag needed. The catalog holds
+        // one listed price per model id, but OpenRouter fronts many upstream
+        // hosts per model at differing prices, and a listed price can step while
+        // a pinned upstream keeps serving at the old one. That is exactly what
+        // happened on 2026-07-26: the deepseek-v4-flash listing went ~$0.096 →
+        // $0.14/Mtok, logged village spend jumped ~50% overnight, and none of it
+        // was real — the pinned traffic was still being billed at Baidu's rate.
+        // Catalog pricing is now only the fallback, for responses omitting cost.
+        var billedCost = null;
+        if (data.usage && data.usage.cost != null) {
+            var reportedCost = Number(data.usage.cost);
+            if (Number.isFinite(reportedCost) && reportedCost >= 0) {
+                billedCost = reportedCost;
+            }
+        }
+        var costSource = 'billed';
+        var cost = billedCost;
+        if (cost == null) {
+            costSource = 'catalog-estimate';
+            cost = await computeCost(model, promptTokens, cachedTokens, completionTokens);
+        }
         if (cost != null) {
             usage.cost = cost;
+        }
+
+        // Which upstream host actually served the request, persisted to
+        // virtual_agent_calls.served_by (MEM-144) so a future price or routing
+        // incident is diagnosable from our own DB instead of live test calls.
+        // Carried on `usage` because that object is the one thing every logCall
+        // site already forwards from the provider unchanged.
+        // Trimmed and capped because this is provider-controlled text landing in
+        // a column meant for grouping spend queries: a whitespace-only name would
+        // persist as a distinct non-NULL bucket that reads as blank, and an
+        // overlong one would bloat every row for a value that is in practice a
+        // short display name ("Baidu", "DeepInfra"). Left unset rather than
+        // stored empty, so logCall writes NULL.
+        if (typeof data.provider === 'string') {
+            var servedBy = data.provider.trim();
+            if (servedBy !== '') {
+                usage.served_by = servedBy.slice(0, 100);
+            }
         }
 
         // Tool calls in OpenAI-compatible shape on choice.message.tool_calls.
@@ -306,7 +356,9 @@ function createCall(model, apiKey, configuration) {
         logProvider('api-response', {
             provider: 'openrouter', model,
             input: uncachedInput, cached: cachedTokens,
-            output: completionTokens, cost: cost != null ? cost.toFixed(6) : 'unknown',
+            output: completionTokens, cost: cost != null ? cost.toFixed(8) : 'unknown',
+            cost_source: cost != null ? costSource : 'unknown',
+            served_by: usage.served_by || null,
             tool_calls: tool_calls.length, finish_reason
         });
 
@@ -349,5 +401,6 @@ module.exports = {
     formatPricing,
     lookupPricing,
     fetchCatalog,
-    getCapabilities
+    getCapabilities,
+    _resetCatalogCache
 };
