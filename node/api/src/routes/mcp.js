@@ -1598,6 +1598,26 @@ router.head('/mcp', (req, res) => {
     res.status(200).end();
 });
 
+// Cap a client-supplied value before it goes into the journal (DIAG-001).
+// The MCP body is client-controlled and express.json allows 5mb, so logging
+// these objects verbatim lets one client write multi-megabyte log lines on a
+// reconnect loop. A real clientInfo/capabilities pair is a few hundred bytes,
+// so anything past the cap is a malformed or hostile client and the prefix is
+// all the diagnostic needs.
+const DIAG_VALUE_MAX_LENGTH = 2000;
+
+function capForLog(value) {
+    const serialized = JSON.stringify(value);
+    // undefined for a missing field, and also for values JSON drops entirely.
+    if (serialized === undefined) {
+        return null;
+    }
+    if (serialized.length <= DIAG_VALUE_MAX_LENGTH) {
+        return value;
+    }
+    return { truncated: true, length: serialized.length, prefix: serialized.slice(0, DIAG_VALUE_MAX_LENGTH) };
+}
+
 // Handle POST /mcp (new request or existing session message)
 router.post('/mcp', mcpAuth, async (req, res) => {
     const sessionId = req.headers['mcp-session-id'];
@@ -1647,16 +1667,15 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         host: req.headers['host'] || null,
         allHeaders: Object.keys(req.headers).sort(),
         // DIAG: which protocol revision and capabilities each client negotiates.
-        // Gates whether MCP Tasks is worth implementing server-side — Tasks is
-        // capability-negotiated, so if no client advertises it, server-side task
-        // plumbing would be dead weight. `method` is logged too because a request
-        // with no session ID is *usually* an initialize but isn't guaranteed to be
-        // one; without it, three nulls are ambiguous between "client declared
-        // nothing" and "this wasn't an initialize at all".
-        method: req.body?.method || null,
-        protocolVersion: req.body?.params?.protocolVersion || null,
-        clientInfo: req.body?.params?.clientInfo || null,
-        capabilities: req.body?.params?.capabilities || null
+        // A sessionless request is normally initialize, but may be a retry or a
+        // batch, so log method — otherwise missing fields read the same whether
+        // the client declared nothing or never sent an initialize.
+        // ?? rather than || so a present-but-falsy value stays distinguishable
+        // from an absent one.
+        method: req.body?.method ?? null,
+        protocolVersion: req.body?.params?.protocolVersion ?? null,
+        clientInfo: capForLog(req.body?.params?.clientInfo),
+        capabilities: capForLog(req.body?.params?.capabilities)
     }));
 
     const transport = new StreamableHTTPServerTransport({
