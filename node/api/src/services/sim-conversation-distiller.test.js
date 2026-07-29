@@ -86,6 +86,18 @@ test('labored renders the reward earned and the employer (LLM-162)', () => {
     );
 });
 
+test('offered_work renders the employer-side job offer (LLM-564)', () => {
+    assert.equal(
+        narrateEvent({ kind: 'offered_work', payload: { worker: 'Patience', amount: 4, duration_min: 240 } }, ACTOR),
+        '(offered Patience a job for 4 coins)'
+    );
+    // amount 1 singularizes; a missing worker degrades to "someone".
+    assert.equal(
+        narrateEvent({ kind: 'offered_work', payload: { amount: 1 } }, ACTOR),
+        '(offered someone a job for 1 coin)'
+    );
+});
+
 test('solicited_work renders the offer to the employer for the reward (LLM-213)', () => {
     assert.equal(
         narrateEvent({ kind: 'solicited_work', payload: { employer: 'Hannah', amount: 4, duration_min: 240 } }, ACTOR),
