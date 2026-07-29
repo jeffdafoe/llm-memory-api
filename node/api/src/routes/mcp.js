@@ -1645,7 +1645,18 @@ router.post('/mcp', mcpAuth, async (req, res) => {
         origin: req.headers['origin'] || null,
         referer: req.headers['referer'] || null,
         host: req.headers['host'] || null,
-        allHeaders: Object.keys(req.headers).sort()
+        allHeaders: Object.keys(req.headers).sort(),
+        // DIAG: which protocol revision and capabilities each client negotiates.
+        // Gates whether MCP Tasks is worth implementing server-side — Tasks is
+        // capability-negotiated, so if no client advertises it, server-side task
+        // plumbing would be dead weight. `method` is logged too because a request
+        // with no session ID is *usually* an initialize but isn't guaranteed to be
+        // one; without it, three nulls are ambiguous between "client declared
+        // nothing" and "this wasn't an initialize at all".
+        method: req.body?.method || null,
+        protocolVersion: req.body?.params?.protocolVersion || null,
+        clientInfo: req.body?.params?.clientInfo || null,
+        capabilities: req.body?.params?.capabilities || null
     }));
 
     const transport = new StreamableHTTPServerTransport({
