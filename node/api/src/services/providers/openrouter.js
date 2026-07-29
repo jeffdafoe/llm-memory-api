@@ -304,8 +304,17 @@ function createCall(model, apiKey, configuration) {
         // incident is diagnosable from our own DB instead of live test calls.
         // Carried on `usage` because that object is the one thing every logCall
         // site already forwards from the provider unchanged.
-        if (typeof data.provider === 'string' && data.provider !== '') {
-            usage.served_by = data.provider;
+        // Trimmed and capped because this is provider-controlled text landing in
+        // a column meant for grouping spend queries: a whitespace-only name would
+        // persist as a distinct non-NULL bucket that reads as blank, and an
+        // overlong one would bloat every row for a value that is in practice a
+        // short display name ("Baidu", "DeepInfra"). Left unset rather than
+        // stored empty, so logCall writes NULL.
+        if (typeof data.provider === 'string') {
+            var servedBy = data.provider.trim();
+            if (servedBy !== '') {
+                usage.served_by = servedBy.slice(0, 100);
+            }
         }
 
         // Tool calls in OpenAI-compatible shape on choice.message.tool_calls.

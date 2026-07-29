@@ -217,9 +217,11 @@ test('the serving upstream is surfaced as usage.served_by', async () => {
     }
 });
 
-test('a response with no provider name leaves served_by unset', async () => {
-    // logCall coalesces a missing served_by to NULL; it must never write ''.
-    for (const bad of [undefined, '', 42]) {
+test('a response with no usable provider name leaves served_by unset', async () => {
+    // logCall coalesces a missing served_by to NULL; it must never write a blank.
+    // Whitespace-only counts as blank — otherwise it persists as a distinct
+    // non-NULL bucket that reads as empty in a spend-by-upstream query.
+    for (const bad of [undefined, '', '   ', '\t\n', 42]) {
         const stub = stubCompletion(bad === undefined ? {} : { provider: bad });
         try {
             const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
@@ -227,5 +229,23 @@ test('a response with no provider name leaves served_by unset', async () => {
         } finally {
             stub.restore();
         }
+    }
+});
+
+test('a padded provider name is trimmed, and an overlong one is capped', async () => {
+    const stub = stubCompletion({ provider: '  Baidu \n' });
+    try {
+        const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+        assert.equal(res.usage.served_by, 'Baidu');
+    } finally {
+        stub.restore();
+    }
+
+    const longStub = stubCompletion({ provider: 'x'.repeat(500) });
+    try {
+        const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', {})('sys', 'hi', {});
+        assert.equal(res.usage.served_by.length, 100);
+    } finally {
+        longStub.restore();
     }
 });
