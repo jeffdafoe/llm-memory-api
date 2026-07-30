@@ -20,13 +20,24 @@ import (
 // are aligned after each operation so future syncs see them as equal.
 // Returns the conversation retention_days from the server response
 // (used by Phase 2 to decide whether to sync conversations).
-func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error) {
+//
+// pruneRemote makes the local directory authoritative for existence: a remote
+// note with no local file is soft-deleted rather than pulled back down, so a
+// memory consolidation that retires files propagates without a manual
+// delete_note per slug. The server performs the deletion (it owns the
+// namespace and slug prefix) and reports it back as a "prune" action.
+func MemorySyncWithConvConfig(client *api.Client, projectDir string, pruneRemote bool) (int, error) {
     memoryDir := filepath.Join(projectDir, "memory")
 
     // Ensure memory directory exists
     if err := os.MkdirAll(memoryDir, 0755); err != nil {
         return 0, fmt.Errorf("create memory dir: %w", err)
     }
+
+    // Stamped before the scan, not after: the server treats a remote note
+    // updated later than this as a concurrent session's creation and pulls it
+    // instead of pruning. Taking the time first keeps that window conservative.
+    scannedAt := time.Now().UTC().Format(time.RFC3339Nano)
 
     // Scan local .md files
     entries, err := os.ReadDir(memoryDir)
@@ -57,8 +68,13 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error
 
     // Call sync endpoint
     var result memorySyncResponse
+    memory := memoryPayload{Files: localFiles}
+    if pruneRemote {
+        memory.Prune = true
+        memory.ScannedAt = scannedAt
+    }
     err = client.Post("/agent/memory/sync", memorySyncRequest{
-        Memory:        memoryPayload{Files: localFiles},
+        Memory:        memory,
         Conversations: map[string]interface{}{},
     }, &result)
     if err != nil {
@@ -70,6 +86,7 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error
     pushed := 0
     unchanged := 0
     skipped := 0
+    pruned := 0
 
     for _, action := range result.Memory.Actions {
         if !isSafeFilename(action.Filename) || !strings.HasSuffix(action.Filename, ".md") {
@@ -99,12 +116,21 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error
             fmt.Printf("  PUSH %s\n", action.Filename)
             pushed++
 
+        case "prune":
+            // Server already soft-deleted the remote note. Nothing to do
+            // locally — the file's absence is what asked for this.
+            fmt.Printf("  PRUNE (remote deleted) %s\n", action.Filename)
+            pruned++
+
         default:
             unchanged++
         }
     }
 
     summary := fmt.Sprintf("Memory sync complete: %d pulled, %d pushed, %d unchanged", pulled, pushed, unchanged)
+    if pruned > 0 {
+        summary += fmt.Sprintf(", %d pruned", pruned)
+    }
     if skipped > 0 {
         summary += fmt.Sprintf(", %d skipped (unsafe filenames)", skipped)
     }
@@ -129,6 +155,10 @@ type memoryFile struct {
 
 type memoryPayload struct {
     Files []memoryFile `json:"files"`
+    // Omitted entirely unless --prune-remote is set, so an older server that
+    // doesn't know the field sees exactly the request it saw before.
+    Prune     bool   `json:"prune,omitempty"`
+    ScannedAt string `json:"scanned_at,omitempty"`
 }
 
 type memorySyncRequest struct {

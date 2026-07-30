@@ -11,6 +11,12 @@
 //	            [--config <path-to-.agent.json>]
 //	            [--user <username>]
 //	            [--notes-only]
+//	            [--prune-remote]
+//
+// --prune-remote makes the local memory directory authoritative for which
+// notes exist: any remote note under the agent's memory prefix with no local
+// file is soft-deleted. Use it after a memory consolidation, when the local
+// files are the intended state. Deletions are recoverable via restore_note.
 package main
 
 import (
@@ -33,6 +39,7 @@ func main() {
     configPath := flag.String("config", "", "Path to .agent.json (default: .agent.json in current directory)")
     userName := flag.String("user", "user", "Label for user messages in conversation logs")
     notesOnly := flag.Bool("notes-only", false, "Skip memory sync and conversation upload; only run note directory sync")
+    pruneRemote := flag.Bool("prune-remote", false, "Soft-delete remote memory notes that have no local file (local wins on existence; use after a memory consolidation)")
     showVersion := flag.Bool("version", false, "Print version and exit")
     noUpdate := flag.Bool("no-update", false, "Skip automatic update check")
 
@@ -61,7 +68,15 @@ func main() {
     }
 
     if *projectDir == "" {
-        fmt.Fprintln(os.Stderr, "Usage: memory-sync --project-dir <path> [--config <path>] [--user <name>] [--notes-only]")
+        fmt.Fprintln(os.Stderr, "Usage: memory-sync --project-dir <path> [--config <path>] [--user <name>] [--notes-only] [--prune-remote]")
+        os.Exit(1)
+    }
+
+    // --notes-only skips Phase 1, which is where pruning happens. Combining
+    // them would report a clean run having deleted nothing — fail instead, so
+    // nobody walks away believing a consolidation was propagated.
+    if *pruneRemote && *notesOnly {
+        fmt.Fprintln(os.Stderr, "--prune-remote cannot be used with --notes-only: pruning happens during memory sync, which --notes-only skips")
         os.Exit(1)
     }
 
@@ -102,7 +117,7 @@ func main() {
 
     if !*notesOnly {
         // Phase 1: Memory sync
-        retentionDays, err := memsync.MemorySyncWithConvConfig(client, *projectDir)
+        retentionDays, err := memsync.MemorySyncWithConvConfig(client, *projectDir, *pruneRemote)
         if err != nil {
             fmt.Fprintf(os.Stderr, "Memory sync error: %s\n", err)
             os.Exit(1)

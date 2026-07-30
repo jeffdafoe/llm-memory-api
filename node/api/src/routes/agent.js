@@ -7,7 +7,7 @@ const auth = require('../middleware/auth');
 const { hash: hashToken, generateSalt, verify, tokenLookupHash } = require('../services/hashing');
 const { SESSION_KIND } = require('../constants');
 const { broadcast } = require('../services/events');
-const { listNotes, readNote, saveNote } = require('../services/documents');
+const { listNotes, readNote, saveNote, deleteNote } = require('../services/documents');
 const sanitize = require('../sanitize');
 const { requireAccess, validateNamespace } = require('../services/namespace-permissions');
 const config = require('../services/config');
@@ -529,13 +529,27 @@ router.post('/agent/instructions/save', apiRoute('agent', 'instructions-save', a
 // Body: {
 //   namespace: string (optional, defaults to agent name),
 //   prefix: string (remote slug prefix, e.g. "instructions/memory/"),
-//   files: [{ filename: string, content: string, mtime: ISO8601 string }]
+//   files: [{ filename: string, content: string, mtime: ISO8601 string }],
+//   prune: boolean (optional — see below),
+//   scanned_at: ISO8601 string (required when prune is true)
 // }
+//
+// Prune mode (LLM-565) makes the LOCAL directory authoritative for existence:
+// a remote note with no local file is soft-deleted instead of pulled back down.
+// This is what the memory-sync --prune-remote flag drives, so that retiring a
+// file during a memory consolidation propagates to remote without a manual
+// delete_note call per slug. It is off by default; without it a remote-only
+// note pulls exactly as before.
+//
+// scanned_at is when the client listed its local directory. A remote note
+// updated after that instant is NOT pruned — a concurrent session may have
+// created it after our scan, and deleting it would destroy work we never saw.
+// Such a note pulls as usual and the next run reconciles it.
 //
 // Response: {
 //   actions: [{
 //     filename: string,
-//     action: "pull" | "push" | "unchanged",
+//     action: "pull" | "push" | "unchanged" | "prune",
 //     content?: string (included for "pull" actions),
 //     title?: string (included for "pull" actions),
 //     remote_updated_at?: string
@@ -551,6 +565,38 @@ function isSafeFilename(name) {
     if (name === '.' || name === '..') return false;
     if (name.startsWith('.')) return false;
     return true;
+}
+
+// Resolve the instant a prune run compares remote notes against — the moment
+// the client listed its local directory. Returns null when the value is missing
+// or unparseable, which the route turns into a 400: prune mode without a scan
+// time cannot tell a retired note from a concurrent session's new one.
+//
+// The result is clamped to now. A client clock running ahead would otherwise
+// produce a cutoff later than every remote timestamp, satisfying the guard
+// universally and pruning exactly the concurrent creations it exists to spare.
+function resolvePruneCutoff(scannedAt, now) {
+    if (!scannedAt) return null;
+    const parsed = new Date(scannedAt).getTime();
+    if (isNaN(parsed)) return null;
+    return Math.min(parsed, now);
+}
+
+// Decide what to do with a note that exists remotely but has no local file.
+// Outside prune mode it always pulls (the historical behavior). In prune mode
+// it prunes, unless the note was updated after the client's scan — that note
+// belongs to a session we couldn't see, and pulling lets the next run
+// reconcile it instead of destroying it.
+function remoteOnlyAction(prune, remoteUpdatedAt, pruneCutoff) {
+    if (!prune) return 'pull';
+    // An absent or unparseable remote timestamp fails closed: we can't prove
+    // the note predates the scan, so we keep it. The falsy check is load-bearing
+    // and not redundant with isNaN — new Date(null) is epoch 0, not NaN, which
+    // would read as "older than any scan" and prune the note.
+    if (!remoteUpdatedAt) return 'pull';
+    const updated = new Date(remoteUpdatedAt).getTime();
+    if (isNaN(updated)) return 'pull';
+    return updated > pruneCutoff ? 'pull' : 'prune';
 }
 
 // Extract title from markdown frontmatter (name field) or fall back to filename
@@ -622,6 +668,20 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
             }
         }
 
+        // Prune mode requires a scan timestamp — without it there is no way to
+        // tell a locally-retired note from one a concurrent session just created,
+        // so we refuse rather than guess.
+        const prune = req.body.memory.prune === true;
+        let pruneCutoff = null;
+        if (prune) {
+            pruneCutoff = resolvePruneCutoff(req.body.memory.scanned_at, Date.now());
+            if (pruneCutoff === null) {
+                return res.status(400).json({
+                    error: { code: 'BAD_REQUEST', message: 'memory.scanned_at must be a valid ISO8601 timestamp when memory.prune is true' }
+                });
+            }
+        }
+
         await requireAccess(req.actorId, agent, 'agent', namespace, 'read');
 
         // Get all remote notes under the prefix
@@ -680,11 +740,41 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
             }
         }
 
+        let hasDeleteAccess = false;
+        async function ensureDeleteAccess() {
+            if (!hasDeleteAccess) {
+                await requireAccess(req.actorId, agent, 'agent', namespace, 'delete');
+                hasDeleteAccess = true;
+            }
+        }
+
         for (const filename of allFilenames) {
             const remote = remoteByFilename[filename];
             const local = localByFilename[filename];
 
             if (remote && !local) {
+                // Remote-only. In prune mode this is a note the local side
+                // retired, unless it landed after the client's scan — then it
+                // belongs to a concurrent session and still pulls.
+                if (remoteOnlyAction(prune, remote.updated_at, pruneCutoff) === 'prune') {
+                    await ensureDeleteAccess();
+                    try {
+                        await deleteNote(namespace, remote.slug);
+                    } catch (pruneErr) {
+                        // 404 means someone deleted it between our list and now.
+                        // The note is gone either way, which is the outcome we
+                        // wanted; anything else is a real failure and propagates.
+                        if (pruneErr.statusCode !== 404) {
+                            throw pruneErr;
+                        }
+                    }
+                    actions.push({
+                        filename,
+                        action: 'prune',
+                        remote_updated_at: remote.updated_at
+                    });
+                    continue;
+                }
                 const fullNote = await readNote(namespace, remote.slug);
                 actions.push({
                     filename,
@@ -1104,5 +1194,11 @@ router.post('/agent/tick', apiRoute('agent', 'tick', async (req, res) => {
         cost: result.cost,
     });
 }));
+
+// Exposed for tests — the prune decision is pure, but the route it lives in
+// isn't reachable without a request harness this repo doesn't have. Mirrors
+// sim.js attaching requireSalemEngine to its exported router.
+router.resolvePruneCutoff = resolvePruneCutoff;
+router.remoteOnlyAction = remoteOnlyAction;
 
 module.exports = router;
