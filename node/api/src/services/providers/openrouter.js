@@ -123,7 +123,28 @@ const defaultCapabilities = {
         default: 4096,
         min: 1,
         max: 32768
+    },
+    thinking_effort: {
+        type: 'select',
+        label: 'Thinking Effort',
+        description: 'Controls how much the model reasons before responding. "off" disables reasoning entirely. Only hybrid reasoning models honour this; others ignore it. LEAVING THIS UNSET IS NOT THE SAME AS "off" — unset sends nothing and the model keeps its own default, which for deepseek-v4-flash and Gemini 2.5 means it reasons. Reasoning tokens are billed as output tokens but are NOT stored in the response, so any setting other than "off" pays for text that is never kept (LLM-570 follow-up).',
+        default: 'off',
+        options: ['off', 'low', 'medium', 'high', 'max']
     }
+};
+
+// Our thinking_effort vocabulary (shared with the Anthropic provider) mapped to
+// OpenRouter's `reasoning.effort` scale. OpenRouter's scale is a superset —
+// it also accepts 'xhigh' and 'minimal', which we deliberately do not expose so
+// the setting means the same thing whichever provider an agent is pointed at.
+// 'off' maps to 'none', which suppresses reasoning rather than merely hiding it
+// (`reasoning.exclude` hides the output but still generates and bills it).
+const REASONING_EFFORT_BY_THINKING_EFFORT = {
+    off: 'none',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max'
 };
 
 const models = {};
@@ -180,6 +201,31 @@ function createCall(model, apiKey, configuration) {
         const temperature = asNumber(conf.temperature);
         if (temperature !== undefined) {
             body.temperature = temperature;
+        }
+
+        // Reasoning control (LLM-570). Until this landed the provider sent no
+        // reasoning field at all, so every model ran at its own default — and a
+        // hybrid reasoning model like deepseek-v4-flash reasons by default. Those
+        // tokens arrive on `choice.message.reasoning`, which the response
+        // extractor below does not store, but they ARE counted in
+        // usage.completion_tokens and billed. The observed result was calls
+        // charged more output tokens than the stored response had characters.
+        // ABSENT IS NOT 'off', deliberately. An absent key sends no reasoning
+        // field, leaving the model's own default — the pre-LLM-570 behaviour.
+        // Defaulting absence to 'none' would silently disable thinking on the
+        // two Gemini dream agents (dream-technical, dream-technical-soul), which
+        // is a change to home's and work's soul documents that nobody asked for.
+        // Opting an agent out is therefore an explicit "thinking_effort":"off".
+        //
+        // An unrecognized value is ignored rather than passed through, so a
+        // typo in agent configuration cannot ship a malformed reasoning field.
+        // hasOwnProperty rather than a bare lookup: configuration is operator-
+        // supplied, and a value like "constructor" or "toString" would otherwise
+        // resolve up the prototype chain to a function and ship as the effort.
+        const configuredEffort = conf.thinking_effort;
+        if (typeof configuredEffort === 'string'
+            && Object.prototype.hasOwnProperty.call(REASONING_EFFORT_BY_THINKING_EFFORT, configuredEffort)) {
+            body.reasoning = { effort: REASONING_EFFORT_BY_THINKING_EFFORT[configuredEffort] };
         }
 
         // Per-call stop sequences. OpenRouter proxies to many upstreams;
@@ -353,12 +399,21 @@ function createCall(model, apiKey, configuration) {
         // truncation path — surface it for the persist guards.
         const finish_reason = normalizeOpenAIChatFinish(choice.finish_reason);
 
+        // reasoning_chars makes discarded reasoning visible (LLM-570). The
+        // response body below keeps only content + tool_calls, so reasoning the
+        // model returned is billed inside completion_tokens and then dropped.
+        // Storing it properly is a follow-up; logging its size means an agent
+        // configured to a non-off effort is at least not silently burning
+        // output tokens. 0 on the expected path, where effort is 'none'.
+        const reasoningText = typeof choice.message.reasoning === 'string' ? choice.message.reasoning : '';
+
         logProvider('api-response', {
             provider: 'openrouter', model,
             input: uncachedInput, cached: cachedTokens,
             output: completionTokens, cost: cost != null ? cost.toFixed(8) : 'unknown',
             cost_source: cost != null ? costSource : 'unknown',
             served_by: usage.served_by || null,
+            reasoning_chars: reasoningText.length,
             tool_calls: tool_calls.length, finish_reason
         });
 
