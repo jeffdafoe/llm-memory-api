@@ -123,7 +123,28 @@ const defaultCapabilities = {
         default: 4096,
         min: 1,
         max: 32768
+    },
+    thinking_effort: {
+        type: 'select',
+        label: 'Thinking Effort',
+        description: 'Controls how much the model reasons before responding. "off" disables reasoning entirely. Only hybrid reasoning models honour this; others ignore it. Reasoning tokens are billed as output tokens even though they are not stored in the response, so leaving this unset on a reasoning-capable model means paying for text you never see.',
+        default: 'off',
+        options: ['off', 'low', 'medium', 'high', 'max']
     }
+};
+
+// Our thinking_effort vocabulary (shared with the Anthropic provider) mapped to
+// OpenRouter's `reasoning.effort` scale. OpenRouter's scale is a superset —
+// it also accepts 'xhigh' and 'minimal', which we deliberately do not expose so
+// the setting means the same thing whichever provider an agent is pointed at.
+// 'off' maps to 'none', which suppresses reasoning rather than merely hiding it
+// (`reasoning.exclude` hides the output but still generates and bills it).
+const REASONING_EFFORT_BY_THINKING_EFFORT = {
+    off: 'none',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max'
 };
 
 const models = {};
@@ -180,6 +201,24 @@ function createCall(model, apiKey, configuration) {
         const temperature = asNumber(conf.temperature);
         if (temperature !== undefined) {
             body.temperature = temperature;
+        }
+
+        // Reasoning control (LLM-570). Until this landed the provider sent no
+        // reasoning field at all, so every model ran at its own default — and a
+        // hybrid reasoning model like deepseek-v4-flash reasons by default. Those
+        // tokens arrive on `choice.message.reasoning`, which the response
+        // extractor below does not store, but they ARE counted in
+        // usage.completion_tokens and billed. The observed result was calls
+        // charged more output tokens than the stored response had characters.
+        // An unrecognized value is ignored rather than passed through, so a
+        // typo in agent configuration cannot ship a malformed reasoning field.
+        // hasOwnProperty rather than a bare lookup: configuration is operator-
+        // supplied, and a value like "constructor" or "toString" would otherwise
+        // resolve up the prototype chain to a function and ship as the effort.
+        const configuredEffort = conf.thinking_effort;
+        if (typeof configuredEffort === 'string'
+            && Object.prototype.hasOwnProperty.call(REASONING_EFFORT_BY_THINKING_EFFORT, configuredEffort)) {
+            body.reasoning = { effort: REASONING_EFFORT_BY_THINKING_EFFORT[configuredEffort] };
         }
 
         // Per-call stop sequences. OpenRouter proxies to many upstreams;

@@ -249,3 +249,54 @@ test('a padded provider name is trimmed, and an overlong one is capped', async (
         longStub.restore();
     }
 });
+
+// ── Reasoning control (LLM-570) ─────────────────────────────────────────────
+// Before this, no reasoning field was ever sent, so a hybrid reasoning model
+// reasoned by default and billed the tokens as output without them appearing in
+// the stored response. These assert the mapping actually reaches the wire.
+
+test('thinking_effort "off" sends reasoning.effort "none" (suppress, not merely hide)', async () => {
+    const stub = stubFetch();
+    try {
+        const call = openrouter.createCall('deepseek/deepseek-v4-flash', 'k', { thinking_effort: 'off' });
+        await call('sys', 'hi', {});
+        assert.deepEqual(stub.lastBody().reasoning, { effort: 'none' });
+        // `exclude` would still generate and bill the tokens — assert we never
+        // reach for it, since that is indistinguishable from the bug being fixed.
+        assert.equal('exclude' in stub.lastBody().reasoning, false);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('the remaining thinking_effort levels map 1:1 onto reasoning.effort', async () => {
+    for (const level of ['low', 'medium', 'high', 'max']) {
+        const stub = stubFetch();
+        try {
+            const call = openrouter.createCall('deepseek/deepseek-v4-flash', 'k', { thinking_effort: level });
+            await call('sys', 'hi', {});
+            assert.deepEqual(stub.lastBody().reasoning, { effort: level }, `level ${level}`);
+        } finally {
+            stub.restore();
+        }
+    }
+});
+
+test('an absent or unrecognized thinking_effort leaves body.reasoning unset', async () => {
+    // Absent: the model keeps its own default, which is the pre-LLM-570
+    // behaviour and the right thing for an agent that has not opted in.
+    // Unrecognized: a typo must not ship a malformed field to the wire.
+    // 'constructor' and 'toString' resolve up Object's prototype chain on a bare
+    // lookup, which would ship a function as the effort value.
+    for (const conf of [{}, { thinking_effort: 'none' }, { thinking_effort: 'xhigh' }, { thinking_effort: '' },
+        { thinking_effort: 'constructor' }, { thinking_effort: 'toString' }, { thinking_effort: 3 }]) {
+        const stub = stubFetch();
+        try {
+            const call = openrouter.createCall('deepseek/deepseek-v4-flash', 'k', conf);
+            await call('sys', 'hi', {});
+            assert.equal('reasoning' in stub.lastBody(), false, JSON.stringify(conf));
+        } finally {
+            stub.restore();
+        }
+    }
+});
