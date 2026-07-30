@@ -319,10 +319,15 @@ test('discarded reasoning is surfaced as reasoning_chars on the response log', a
         };
     };
     try {
-        await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', { thinking_effort: 'high' })('sys', 'hi', {});
+        const res = await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', { thinking_effort: 'high' })('sys', 'hi', {});
         const responseLine = lines.find(l => l.includes('api-response'));
         assert.ok(responseLine, 'expected an api-response log line');
         assert.match(responseLine, /"reasoning_chars":1234/);
+        // The reasoning must not leak into the returned content -- the stored
+        // response format is parsed downstream (the dream distiller, and spend
+        // queries matching on the tool_calls block).
+        assert.equal(res.text, 'ok');
+        assert.equal(res.usage.output_tokens, 400);
     } finally {
         globalThis.fetch = original;
         console.log = originalLog;
