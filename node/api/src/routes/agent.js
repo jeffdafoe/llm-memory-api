@@ -596,7 +596,8 @@ function remoteOnlyAction(prune, remoteUpdatedAt, pruneCutoff) {
     if (!remoteUpdatedAt) return 'pull';
     const updated = new Date(remoteUpdatedAt).getTime();
     if (isNaN(updated)) return 'pull';
-    return updated > pruneCutoff ? 'pull' : 'prune';
+    if (updated > pruneCutoff) return 'pull';
+    return 'prune';
 }
 
 // Extract title from markdown frontmatter (name field) or fall back to filename
