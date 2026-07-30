@@ -20,13 +20,28 @@ import (
 // are aligned after each operation so future syncs see them as equal.
 // Returns the conversation retention_days from the server response
 // (used by Phase 2 to decide whether to sync conversations).
-func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error) {
+//
+// pruneRemote makes the local directory authoritative for existence: a remote
+// note with no local file is soft-deleted rather than pulled back down, so a
+// memory consolidation that retires files propagates without a manual
+// delete_note per slug. The server performs the deletion (it owns the
+// namespace and slug prefix) and reports it back as a "prune" action.
+func MemorySyncWithConvConfig(client *api.Client, projectDir string, pruneRemote bool) (int, error) {
     memoryDir := filepath.Join(projectDir, "memory")
 
     // Ensure memory directory exists
     if err := os.MkdirAll(memoryDir, 0755); err != nil {
         return 0, fmt.Errorf("create memory dir: %w", err)
     }
+
+    // Marked before the scan, not after: the server treats a remote note
+    // updated later than this as a concurrent session's creation and pulls it
+    // instead of pruning. Taking the mark first keeps that window conservative.
+    // We send the server how long ago this was rather than when it was — the
+    // elapsed time is the gap between two readings of one clock (monotonic, so
+    // it also survives a wall-clock adjustment mid-run), which lets the server
+    // place the cutoff on its own clock instead of trusting ours.
+    scanStart := time.Now()
 
     // Scan local .md files
     entries, err := os.ReadDir(memoryDir)
@@ -57,8 +72,14 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error
 
     // Call sync endpoint
     var result memorySyncResponse
+    memory := memoryPayload{Files: localFiles}
+    if pruneRemote {
+        scanAgeMs := time.Since(scanStart).Milliseconds()
+        memory.Prune = true
+        memory.ScanAgeMs = &scanAgeMs
+    }
     err = client.Post("/agent/memory/sync", memorySyncRequest{
-        Memory:        memoryPayload{Files: localFiles},
+        Memory:        memory,
         Conversations: map[string]interface{}{},
     }, &result)
     if err != nil {
@@ -70,8 +91,21 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error
     pushed := 0
     unchanged := 0
     skipped := 0
+    pruned := 0
 
     for _, action := range result.Memory.Actions {
+        // Prune is settled server-side and touches nothing locally, so it is
+        // handled before the filename guard — that guard exists to stop a
+        // server-supplied name from steering a local write, and there is no
+        // write here. Checking it first would report an already-completed
+        // deletion as "skipped" for any slug the server derives to a non-.md
+        // filename.
+        if action.Action == "prune" {
+            fmt.Printf("  PRUNE (remote deleted) %s\n", action.Filename)
+            pruned++
+            continue
+        }
+
         if !isSafeFilename(action.Filename) || !strings.HasSuffix(action.Filename, ".md") {
             fmt.Fprintf(os.Stderr, "  SKIP unsafe filename from server: %s\n", action.Filename)
             skipped++
@@ -105,6 +139,9 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string) (int, error
     }
 
     summary := fmt.Sprintf("Memory sync complete: %d pulled, %d pushed, %d unchanged", pulled, pushed, unchanged)
+    if pruned > 0 {
+        summary += fmt.Sprintf(", %d pruned", pruned)
+    }
     if skipped > 0 {
         summary += fmt.Sprintf(", %d skipped (unsafe filenames)", skipped)
     }
@@ -129,6 +166,15 @@ type memoryFile struct {
 
 type memoryPayload struct {
     Files []memoryFile `json:"files"`
+    // Omitted entirely unless --prune-remote is set, so an older server that
+    // doesn't know the field sees exactly the request it saw before.
+    Prune bool `json:"prune,omitempty"`
+    // Milliseconds between the local directory scan and this request. A
+    // pointer, not a plain int64: a scan fast enough to round to 0 ms is the
+    // ordinary case, and omitempty on a value type would drop exactly that
+    // field and fail the server's prune validation. Nil omits it entirely,
+    // which is what an unflagged run needs.
+    ScanAgeMs *int64 `json:"scan_age_ms,omitempty"`
 }
 
 type memorySyncRequest struct {

@@ -331,7 +331,9 @@ async function listNotes(namespace, limit, offset, prefix, opts) {
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
                    MD5(d.content) AS content_hash,
-                   ac.name AS created_by, d.created_at, d.updated_at, d.last_accessed${deletedCol}
+                   ac.name AS created_by, d.created_at, d.updated_at,
+                   to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at_exact,
+                   d.last_accessed${deletedCol}
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
             WHERE d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4)${deletedFilter}
@@ -344,7 +346,9 @@ async function listNotes(namespace, limit, offset, prefix, opts) {
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
                    MD5(d.content) AS content_hash,
-                   ac.name AS created_by, d.created_at, d.updated_at, d.last_accessed${deletedCol}
+                   ac.name AS created_by, d.created_at, d.updated_at,
+                   to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at_exact,
+                   d.last_accessed${deletedCol}
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
             WHERE d.namespace = $1${deletedFilter}
@@ -462,19 +466,51 @@ function paginateContent(content, offset, limit) {
     };
 }
 
-async function deleteNote(namespace, slug) {
+// expectedUpdatedAt makes the delete conditional on the row still holding the
+// version the caller read. memory-sync's prune (LLM-565) needs this: it decides
+// what to delete from a listing taken moments earlier, and a concurrent write
+// landing in that window must not be destroyed. Callers that legitimately
+// delete whatever is there omit it and get the unconditional delete.
+//
+// Pass listNotes' `updated_at_exact`, NOT its `updated_at`. updated_at is
+// timestamptz(6) and real rows carry microseconds, but the pg driver hands
+// JavaScript a Date holding only milliseconds — comparing that would drop the
+// microseconds and let two distinct writes look like the same version.
+// updated_at_exact is the microsecond-precision text form, and comparing it
+// keeps the predicate exact and index-friendly (no function on the column).
+async function deleteNote(namespace, slug, expectedUpdatedAt) {
     // Soft delete the document and hard-delete its vector chunks.
     // The document row is kept (with deleted_at set) so restoreNote can
     // re-ingest from the preserved content. Chunks are cheap to regenerate
     // but expensive to leave behind — stale chunks leak into RAG context.
+    const conditional = expectedUpdatedAt !== undefined && expectedUpdatedAt !== null;
+    const params = [namespace, slug];
+    let versionClause = '';
+    if (conditional) {
+        params.push(expectedUpdatedAt);
+        versionClause = ' AND updated_at = $3::timestamptz';
+    }
+
     const result = await pool.query(`
         UPDATE documents
         SET deleted_at = NOW()
-        WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL
+        WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL${versionClause}
         RETURNING id, LENGTH(content) AS content_length
-    `, [namespace, slug]);
+    `, params);
 
     if (result.rows.length === 0) {
+        // A conditional delete matches nothing for two very different reasons,
+        // and the caller acts differently on each: the note is already gone
+        // (accept), or someone rewrote it since we looked (leave it alone).
+        if (conditional) {
+            const live = await pool.query(
+                'SELECT 1 FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL',
+                [namespace, slug]
+            );
+            if (live.rows.length > 0) {
+                throw Object.assign(new Error(`Note changed since it was read: ${slug}`), { statusCode: 409 });
+            }
+        }
         throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
     }
 
