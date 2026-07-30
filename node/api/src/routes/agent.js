@@ -759,22 +759,34 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                 // belongs to a concurrent session and still pulls.
                 if (remoteOnlyAction(prune, remote.updated_at, pruneCutoff) === 'prune') {
                     await ensureDeleteAccess();
+                    // Conditional on the version we listed. scanned_at only
+                    // covers writes visible in that listing; this covers the
+                    // window between the listing and this delete.
+                    let deleted = true;
                     try {
-                        await deleteNote(namespace, remote.slug);
+                        await deleteNote(namespace, remote.slug, remote.updated_at);
                     } catch (pruneErr) {
-                        // 404 means someone deleted it between our list and now.
-                        // The note is gone either way, which is the outcome we
-                        // wanted; anything else is a real failure and propagates.
-                        if (pruneErr.statusCode !== 404) {
+                        if (pruneErr.statusCode === 409) {
+                            // Rewritten under us. Fall through and pull it —
+                            // the next run reconciles against a fresh listing.
+                            deleted = false;
+                        } else if (pruneErr.statusCode !== 404) {
+                            // 404 means someone deleted it first: gone either
+                            // way, which is the outcome we wanted. Anything
+                            // else is a real failure and propagates. These are
+                            // deleteNote's own errors — the service is called
+                            // in-process, so no HTTP layer can inject a 404.
                             throw pruneErr;
                         }
                     }
-                    actions.push({
-                        filename,
-                        action: 'prune',
-                        remote_updated_at: remote.updated_at
-                    });
-                    continue;
+                    if (deleted) {
+                        actions.push({
+                            filename,
+                            action: 'prune',
+                            remote_updated_at: remote.updated_at
+                        });
+                        continue;
+                    }
                 }
                 const fullNote = await readNote(namespace, remote.slug);
                 actions.push({

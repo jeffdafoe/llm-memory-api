@@ -89,6 +89,18 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string, pruneRemote
     pruned := 0
 
     for _, action := range result.Memory.Actions {
+        // Prune is settled server-side and touches nothing locally, so it is
+        // handled before the filename guard — that guard exists to stop a
+        // server-supplied name from steering a local write, and there is no
+        // write here. Checking it first would report an already-completed
+        // deletion as "skipped" for any slug the server derives to a non-.md
+        // filename.
+        if action.Action == "prune" {
+            fmt.Printf("  PRUNE (remote deleted) %s\n", action.Filename)
+            pruned++
+            continue
+        }
+
         if !isSafeFilename(action.Filename) || !strings.HasSuffix(action.Filename, ".md") {
             fmt.Fprintf(os.Stderr, "  SKIP unsafe filename from server: %s\n", action.Filename)
             skipped++
@@ -115,12 +127,6 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string, pruneRemote
             }
             fmt.Printf("  PUSH %s\n", action.Filename)
             pushed++
-
-        case "prune":
-            // Server already soft-deleted the remote note. Nothing to do
-            // locally — the file's absence is what asked for this.
-            fmt.Printf("  PRUNE (remote deleted) %s\n", action.Filename)
-            pruned++
 
         default:
             unchanged++
