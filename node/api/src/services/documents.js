@@ -331,7 +331,9 @@ async function listNotes(namespace, limit, offset, prefix, opts) {
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
                    MD5(d.content) AS content_hash,
-                   ac.name AS created_by, d.created_at, d.updated_at, d.last_accessed${deletedCol}
+                   ac.name AS created_by, d.created_at, d.updated_at,
+                   to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at_exact,
+                   d.last_accessed${deletedCol}
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
             WHERE d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4)${deletedFilter}
@@ -344,7 +346,9 @@ async function listNotes(namespace, limit, offset, prefix, opts) {
             SELECT d.id, d.slug, d.title,
                    LEFT(d.content, 200) AS snippet,
                    MD5(d.content) AS content_hash,
-                   ac.name AS created_by, d.created_at, d.updated_at, d.last_accessed${deletedCol}
+                   ac.name AS created_by, d.created_at, d.updated_at,
+                   to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at_exact,
+                   d.last_accessed${deletedCol}
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id
             WHERE d.namespace = $1${deletedFilter}
@@ -467,6 +471,13 @@ function paginateContent(content, offset, limit) {
 // what to delete from a listing taken moments earlier, and a concurrent write
 // landing in that window must not be destroyed. Callers that legitimately
 // delete whatever is there omit it and get the unconditional delete.
+//
+// Pass listNotes' `updated_at_exact`, NOT its `updated_at`. updated_at is
+// timestamptz(6) and real rows carry microseconds, but the pg driver hands
+// JavaScript a Date holding only milliseconds — comparing that would drop the
+// microseconds and let two distinct writes look like the same version.
+// updated_at_exact is the microsecond-precision text form, and comparing it
+// keeps the predicate exact and index-friendly (no function on the column).
 async function deleteNote(namespace, slug, expectedUpdatedAt) {
     // Soft delete the document and hard-delete its vector chunks.
     // The document row is kept (with deleted_at set) so restoreNote can
@@ -477,14 +488,7 @@ async function deleteNote(namespace, slug, expectedUpdatedAt) {
     let versionClause = '';
     if (conditional) {
         params.push(expectedUpdatedAt);
-        // Truncated to milliseconds on both sides. updated_at is timestamptz(6)
-        // but the pg driver hands callers a JS Date, which holds only
-        // milliseconds — so a plain `updated_at = $3` compares .259294 against
-        // .259 and never matches, silently turning every conditional delete
-        // into a conflict. The residual blind spot is a rewrite landing in the
-        // same millisecond as the one we read, which is not a window a
-        // caller can act inside anyway.
-        versionClause = " AND date_trunc('milliseconds', updated_at) = $3";
+        versionClause = ' AND updated_at = $3::timestamptz';
     }
 
     const result = await pool.query(`

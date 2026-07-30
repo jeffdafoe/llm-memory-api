@@ -34,10 +34,14 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string, pruneRemote
         return 0, fmt.Errorf("create memory dir: %w", err)
     }
 
-    // Stamped before the scan, not after: the server treats a remote note
+    // Marked before the scan, not after: the server treats a remote note
     // updated later than this as a concurrent session's creation and pulls it
-    // instead of pruning. Taking the time first keeps that window conservative.
-    scannedAt := time.Now().UTC().Format(time.RFC3339Nano)
+    // instead of pruning. Taking the mark first keeps that window conservative.
+    // We send the server how long ago this was rather than when it was — the
+    // elapsed time is the gap between two readings of one clock (monotonic, so
+    // it also survives a wall-clock adjustment mid-run), which lets the server
+    // place the cutoff on its own clock instead of trusting ours.
+    scanStart := time.Now()
 
     // Scan local .md files
     entries, err := os.ReadDir(memoryDir)
@@ -70,8 +74,9 @@ func MemorySyncWithConvConfig(client *api.Client, projectDir string, pruneRemote
     var result memorySyncResponse
     memory := memoryPayload{Files: localFiles}
     if pruneRemote {
+        scanAgeMs := time.Since(scanStart).Milliseconds()
         memory.Prune = true
-        memory.ScannedAt = scannedAt
+        memory.ScanAgeMs = &scanAgeMs
     }
     err = client.Post("/agent/memory/sync", memorySyncRequest{
         Memory:        memory,
@@ -163,8 +168,13 @@ type memoryPayload struct {
     Files []memoryFile `json:"files"`
     // Omitted entirely unless --prune-remote is set, so an older server that
     // doesn't know the field sees exactly the request it saw before.
-    Prune     bool   `json:"prune,omitempty"`
-    ScannedAt string `json:"scanned_at,omitempty"`
+    Prune bool `json:"prune,omitempty"`
+    // Milliseconds between the local directory scan and this request. A
+    // pointer, not a plain int64: a scan fast enough to round to 0 ms is the
+    // ordinary case, and omitempty on a value type would drop exactly that
+    // field and fail the server's prune validation. Nil omits it entirely,
+    // which is what an unflagged run needs.
+    ScanAgeMs *int64 `json:"scan_age_ms,omitempty"`
 }
 
 type memorySyncRequest struct {

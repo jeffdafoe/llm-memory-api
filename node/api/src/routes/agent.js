@@ -531,7 +531,7 @@ router.post('/agent/instructions/save', apiRoute('agent', 'instructions-save', a
 //   prefix: string (remote slug prefix, e.g. "instructions/memory/"),
 //   files: [{ filename: string, content: string, mtime: ISO8601 string }],
 //   prune: boolean (optional — see below),
-//   scanned_at: ISO8601 string (required when prune is true)
+//   scan_age_ms: number (required when prune is true)
 // }
 //
 // Prune mode (LLM-565) makes the LOCAL directory authoritative for existence:
@@ -541,10 +541,12 @@ router.post('/agent/instructions/save', apiRoute('agent', 'instructions-save', a
 // delete_note call per slug. It is off by default; without it a remote-only
 // note pulls exactly as before.
 //
-// scanned_at is when the client listed its local directory. A remote note
-// updated after that instant is NOT pruned — a concurrent session may have
-// created it after our scan, and deleting it would destroy work we never saw.
-// Such a note pulls as usual and the next run reconciles it.
+// scan_age_ms is how long before this request the client listed its local
+// directory. A remote note updated after that instant is NOT pruned — a
+// concurrent session may have created it after our scan, and deleting it would
+// destroy work we never saw. Such a note pulls as usual and the next run
+// reconciles it. The client sends an elapsed duration rather than a timestamp
+// so the comparison never crosses two clocks; see resolvePruneCutoff.
 //
 // Response: {
 //   actions: [{
@@ -568,18 +570,26 @@ function isSafeFilename(name) {
 }
 
 // Resolve the instant a prune run compares remote notes against — the moment
-// the client listed its local directory. Returns null when the value is missing
-// or unparseable, which the route turns into a 400: prune mode without a scan
-// time cannot tell a retired note from a concurrent session's new one.
+// the client listed its local directory, expressed on THIS server's clock.
+// Returns null when the input is unusable, which the route turns into a 400:
+// prune mode without a scan time cannot tell a retired note from a concurrent
+// session's new one.
 //
-// The result is clamped to now. A client clock running ahead would otherwise
-// produce a cutoff later than every remote timestamp, satisfying the guard
-// universally and pruning exactly the concurrent creations it exists to spare.
-function resolvePruneCutoff(scannedAt, now) {
-    if (!scannedAt) return null;
-    const parsed = new Date(scannedAt).getTime();
-    if (isNaN(parsed)) return null;
-    return Math.min(parsed, now);
+// The client reports how long ago it scanned, not when. That elapsed figure is
+// the difference between two readings of one clock, so it survives any offset
+// between the client's clock and ours — and subtracting it from our own now
+// keeps the whole comparison in server time, which is what remote updated_at
+// is stamped in. An absolute client timestamp cannot do this: a client running
+// behind produces a cutoff later than concurrent writes and prunes them.
+const MAX_SCAN_AGE_MS = 60 * 60 * 1000;
+
+function resolvePruneCutoff(scanAgeMs, now) {
+    if (typeof scanAgeMs !== 'number' || !Number.isFinite(scanAgeMs)) return null;
+    // Negative means the client scanned in its own future — nonsense we won't
+    // guess at. Beyond the ceiling the run is too stale to reason about: the
+    // cutoff would sit far enough back to spare notes that really were retired.
+    if (scanAgeMs < 0 || scanAgeMs > MAX_SCAN_AGE_MS) return null;
+    return now - scanAgeMs;
 }
 
 // Decide what to do with a note that exists remotely but has no local file.
@@ -675,10 +685,10 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
         const prune = req.body.memory.prune === true;
         let pruneCutoff = null;
         if (prune) {
-            pruneCutoff = resolvePruneCutoff(req.body.memory.scanned_at, Date.now());
+            pruneCutoff = resolvePruneCutoff(req.body.memory.scan_age_ms, Date.now());
             if (pruneCutoff === null) {
                 return res.status(400).json({
-                    error: { code: 'BAD_REQUEST', message: 'memory.scanned_at must be a valid ISO8601 timestamp when memory.prune is true' }
+                    error: { code: 'BAD_REQUEST', message: 'memory.scan_age_ms must be a non-negative number of milliseconds no greater than ' + MAX_SCAN_AGE_MS + ' when memory.prune is true' }
                 });
             }
         }
@@ -764,7 +774,7 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                     // window between the listing and this delete.
                     let deleted = true;
                     try {
-                        await deleteNote(namespace, remote.slug, remote.updated_at);
+                        await deleteNote(namespace, remote.slug, remote.updated_at_exact);
                     } catch (pruneErr) {
                         if (pruneErr.statusCode === 409) {
                             // Rewritten under us. Fall through and pull it —
@@ -788,7 +798,20 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                         continue;
                     }
                 }
-                const fullNote = await readNote(namespace, remote.slug);
+                // The note can disappear between the listing and this read —
+                // ordinarily a concurrent delete, and on the 409 path above,
+                // one that raced our own. Remote-absent is a state the next run
+                // reconciles, so emit no action rather than failing the sync
+                // over an outcome nobody minds.
+                let fullNote;
+                try {
+                    fullNote = await readNote(namespace, remote.slug);
+                } catch (readErr) {
+                    if (readErr.statusCode === 404) {
+                        continue;
+                    }
+                    throw readErr;
+                }
                 actions.push({
                     filename,
                     action: 'pull',
