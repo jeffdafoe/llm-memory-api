@@ -300,3 +300,31 @@ test('an absent or unrecognized thinking_effort leaves body.reasoning unset', as
         }
     }
 });
+
+test('discarded reasoning is surfaced as reasoning_chars on the response log', async () => {
+    // Storing reasoning is a follow-up; until then an agent configured to a
+    // non-off effort must not burn output tokens invisibly.
+    const original = globalThis.fetch;
+    const lines = [];
+    const originalLog = console.log;
+    console.log = function (...args) { lines.push(args.join(' ')); };
+    globalThis.fetch = async function (url) {
+        if (String(url).includes('/models')) return { ok: true, json: async () => ({ data: [] }) };
+        return {
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'ok', tool_calls: [], reasoning: 'x'.repeat(1234) } }],
+                usage: { prompt_tokens: 10, completion_tokens: 400 },
+            }),
+        };
+    };
+    try {
+        await openrouter.createCall('deepseek/deepseek-v4-flash', 'k', { thinking_effort: 'high' })('sys', 'hi', {});
+        const responseLine = lines.find(l => l.includes('api-response'));
+        assert.ok(responseLine, 'expected an api-response log line');
+        assert.match(responseLine, /"reasoning_chars":1234/);
+    } finally {
+        globalThis.fetch = original;
+        console.log = originalLog;
+    }
+});
