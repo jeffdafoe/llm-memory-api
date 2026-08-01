@@ -710,9 +710,16 @@ test('dreamDelayMs leaves ordinary and negative values to the caller unchanged',
     // A negative survives the clamp and is skipped by each caller's `> 0` guard.
     config.set('dream_test_delay', '-5');
     assert.equal(dreamDelayMs('dream_test_delay', 2000), -5);
-    // Documented, pre-existing `||` behaviour: an explicit 0 takes the default,
-    // so the config rows' "0 to disable" does not disable. Pinned here so a later
-    // change to that is deliberate rather than accidental.
+});
+
+// KNOWN DEFECT, pinned deliberately — see LLM-584. This asserts behaviour that is
+// WRONG, not behaviour we want. Both config rows document "0 to disable"
+// (migrations MEM-092, MEM-118) but `parseInt(x) || fallback` treats the parsed 0
+// as falsy, so setting the row to 0 yields the DEFAULT delay instead of none.
+// LLM-583 carried the `||` over verbatim so a security fix would not also change
+// runtime behaviour; the pin exists so LLM-584's fix has to delete this test
+// rather than silently flip an assertion. Delete it when LLM-584 lands.
+test('dreamDelayMs: an explicit 0 wrongly takes the default (LLM-584, pinning a known defect)', () => {
     config.set('dream_test_delay', '0');
     assert.equal(dreamDelayMs('dream_test_delay', 2000), 2000);
 });

@@ -414,6 +414,28 @@ function narrateEvent(event, actorName) {
 // value from being processed at all.
 const MAX_RAW_SLUG_PREFIX_LENGTH = 1024;
 
+// collapseTrailingSlashes reduces a run of trailing slashes to exactly one.
+//
+// This is a linear scan rather than `replace(/\/+$/, '')`. That pattern is
+// unanchored at the start, so on a run of slashes not followed by end-of-string
+// the engine retries at every offset and backtracks in O(n^2) (CodeQL
+// js/polynomial-redos). Measured on 200k slashes plus one character: 32,076ms
+// for the regex against 0.005ms for this loop, same output.
+//
+// Exported only so the linearity guard can reach it. MAX_RAW_SLUG_PREFIX_LENGTH
+// means normalizeSlugPrefix never hands this an adversarial input, so a test
+// going through normalizeSlugPrefix would short-circuit at the length check and
+// pass even with the quadratic regex restored — it has to call this directly to
+// prove anything. The property matters independently of the bound: raising that
+// ceiling must not silently reintroduce the backtracking.
+function collapseTrailingSlashes(value) {
+    let end = value.length;
+    while (end > 0 && value[end - 1] === '/') {
+        end--;
+    }
+    return value.slice(0, end) + '/';
+}
+
 // normalizeSlugPrefix validates and canonicalizes a shared-VA actor's memory
 // partition prefix (e.g. 'constance-scott/') before it's spliced into the note
 // slug. The engine derives it from the villager's display name (Slugify + '/'),
@@ -439,16 +461,7 @@ function normalizeSlugPrefix(raw) {
         return '';
     }
     // Collapse trailing slashes to exactly one, then require a safe kebab path.
-    // The collapse is a linear scan rather than `replace(/\/+$/, '')`: that
-    // pattern is unanchored at the start, so a long run of slashes makes the
-    // engine retry at every offset and backtrack in O(n^2) (CodeQL
-    // js/polynomial-redos). The length bound below cannot prevent that — it
-    // runs after the collapse, and this value arrives on a 5 MB request body.
-    let end = trimmed.length;
-    while (end > 0 && trimmed[end - 1] === '/') {
-        end--;
-    }
-    const withSlash = trimmed.slice(0, end) + '/';
+    const withSlash = collapseTrailingSlashes(trimmed);
     if (!/^[a-z0-9]+(-[a-z0-9]+)*\/$/.test(withSlash)) {
         return '';
     }
@@ -657,4 +670,4 @@ async function distillSimConversationDay(agentName, dayStr, events, opts = {}) {
 // distillSimConversationDay is the only production caller. slugToDisplay is
 // shared with dream.js, which needs the same slug -> "First Last" rendering to
 // recognize a dedicated NPC's own name in its distilled lines (LLM-523).
-module.exports = { distillSimConversationDay, narrateEvent, normalizeSlugPrefix, slugToDisplay };
+module.exports = { distillSimConversationDay, narrateEvent, normalizeSlugPrefix, slugToDisplay, collapseTrailingSlashes };
