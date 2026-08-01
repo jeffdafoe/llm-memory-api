@@ -407,6 +407,13 @@ function narrateEvent(event, actorName) {
     }
 }
 
+// Ceiling on the RAW prefix before canonicalization. Deliberately loose against
+// the 100-char canonical cap: the raw value may carry surrounding whitespace and
+// a run of trailing slashes that collapse away, so a tight bound here would
+// reject values the canonical cap accepts. Its job is only to stop an absurd
+// value from being processed at all.
+const MAX_RAW_SLUG_PREFIX_LENGTH = 1024;
+
 // normalizeSlugPrefix validates and canonicalizes a shared-VA actor's memory
 // partition prefix (e.g. 'constance-scott/') before it's spliced into the note
 // slug. The engine derives it from the villager's display name (Slugify + '/'),
@@ -416,6 +423,15 @@ function narrateEvent(event, actorName) {
 // traversal ('../') into the saved note's slug. Exported for unit tests.
 function normalizeSlugPrefix(raw) {
     if (typeof raw !== 'string') {
+        return '';
+    }
+    // Reject an oversized value before doing any work on it. The canonical form
+    // is capped at 100 chars below, and the raw form can only legitimately add
+    // surrounding whitespace and extra trailing slashes on top of that — so
+    // anything past this ceiling was never going to be accepted. Bounding here
+    // rather than at the end keeps the trim/slice/test off a value that arrives
+    // on a 5 MB request body (express.json limit in server.js).
+    if (raw.length > MAX_RAW_SLUG_PREFIX_LENGTH) {
         return '';
     }
     const trimmed = raw.trim();

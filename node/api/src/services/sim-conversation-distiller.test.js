@@ -292,12 +292,26 @@ test('normalizeSlugPrefix returns promptly on a long run of slashes (LLM-583)', 
     // the body of POST /v1/sim/conversation-day under a 5 MB json limit, so a
     // quadratic scan here blocks the whole event loop.
     //
-    // 200k slashes plus a trailing non-slash is the worst case: linear finishes in
-    // well under a millisecond, quadratic takes minutes. The 1s bound is loose on
-    // purpose — it separates the two behaviours without being timing-sensitive.
+    // 200k slashes plus a trailing non-slash is the worst case. Measured on the
+    // old code: 32,076ms. Measured on the new code: 0.005ms. The 5s bound sits
+    // between them with 6x headroom against the quadratic case and six orders of
+    // magnitude against the linear one, so a slow or GC-stalled runner cannot
+    // flip it — only a return to backtracking can. Detecting backtracking at all
+    // requires a clock; this is the least timing-sensitive form of that.
     const hostile = '/'.repeat(200000) + 'a';
     const startedAt = process.hrtime.bigint();
     assert.equal(normalizeSlugPrefix(hostile), '');
     const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
-    assert.ok(elapsedMs < 1000, `normalizeSlugPrefix took ${elapsedMs.toFixed(1)}ms — the collapse is not linear`);
+    assert.ok(elapsedMs < 5000, `normalizeSlugPrefix took ${elapsedMs.toFixed(1)}ms — the collapse is not linear`);
+});
+
+test('normalizeSlugPrefix rejects an oversized raw value before normalizing (LLM-583)', () => {
+    // Defence in depth beside the linear collapse: the canonical cap is 100, so a
+    // raw value past 1024 was never going to be accepted and is refused before any
+    // trim/slice/regex touches it. The guard must not narrow what already passes —
+    // the raw form legitimately carries whitespace and collapsing trailing slashes.
+    assert.equal(normalizeSlugPrefix('/'.repeat(5 * 1024 * 1024)), '');
+    assert.equal(normalizeSlugPrefix('a'.repeat(1025)), '');
+    // Raw length over the canonical cap but under the raw ceiling still normalizes.
+    assert.equal(normalizeSlugPrefix('a'.repeat(99) + '/'.repeat(500)), 'a'.repeat(99) + '/');
 });

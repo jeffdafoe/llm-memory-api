@@ -12,6 +12,32 @@ const { invokeAgent } = require('./virtual-agent');
 const { personContextSlug } = require('./people-slug');
 const { normalizeSlugPrefix, slugToDisplay } = require('./sim-conversation-distiller');
 
+// Upper bound on the operator-settable politeness delays between provider calls
+// (dream_interagent_delay, MEM-092; dream_interchunk_delay, MEM-118). An hour is
+// far past any real pause — the defaults are 2s and 1s.
+const MAX_DREAM_DELAY_MS = 3600000;
+
+// dreamDelayMs reads one of those config rows and clamps it.
+//
+// The clamp is not about a hostile operator, it's about a silent inversion:
+// Node stores a timer's delay in a signed 32-bit int, so a value past 2^31-1 ms
+// (~24.8 days) overflows, is clamped to 1ms, and only emits a
+// TimeoutOverflowWarning. A fat-fingered "pause a very long time" therefore
+// becomes "no pause at all" and the run hammers the provider — the opposite of
+// what was asked, with nothing in the logs to say so.
+//
+// The `|| fallback` is carried over verbatim rather than tightened, so parsing
+// behaviour is unchanged: blank and non-numeric values take the default, a
+// negative value survives to be skipped by the caller's `> 0` guard, and a
+// fractional one truncates. (One consequence of `||` worth knowing: an explicit
+// 0 also takes the default, so the config rows' documented "0 to disable" does
+// not actually disable. Pre-existing, unrelated to the timer overflow, and both
+// rows are at their defaults in production — filed separately rather than
+// changed here.)
+function dreamDelayMs(key, fallback) {
+    return Math.min(parseInt(config.get(key)) || fallback, MAX_DREAM_DELAY_MS);
+}
+
 // validatePersonSlug — defense for runPersonContextUpdate now that it's
 // exported. Pass the input back through the same slugify the dream cron
 // uses; if the result differs from the input, the input was not already
@@ -1365,7 +1391,7 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
 // never skip past unprocessed logs) and the next cron retries it. Returns the
 // per-chunk result array.
 async function runChunkLoop(agent, agentNames, chunks, scope, advanceCursor, lock) {
-    const interChunkDelay = parseInt(config.get('dream_interchunk_delay')) || 1000;
+    const interChunkDelay = dreamDelayMs('dream_interchunk_delay', 1000);
     const chunkResults = [];
 
     for (let i = 0; i < chunks.length; i++) {
@@ -1552,7 +1578,7 @@ async function dreamSharedRoster(agent, agentNames, actorResults, lock) {
         return 0;
     }
 
-    const interActorDelay = parseInt(config.get('dream_interagent_delay')) || 2000;
+    const interActorDelay = dreamDelayMs('dream_interagent_delay', 2000);
 
     for (let i = 0; i < roster.rows.length; i++) {
         const actorRow = roster.rows[i];
@@ -2021,7 +2047,7 @@ async function runDreamAgents(lock) {
         }
 
         // Delay between agents to avoid hammering the provider
-        const interDelay = parseInt(config.get('dream_interagent_delay')) || 2000;
+        const interDelay = dreamDelayMs('dream_interagent_delay', 2000);
         if (interDelay > 0) {
             await new Promise(resolve => setTimeout(resolve, interDelay));
         }
@@ -2111,4 +2137,4 @@ function startDreamScheduler() {
     logDream('scheduler', { message: 'Dream scheduler started', schedule });
 }
 
-module.exports = { runDream, prefilterLog, extractSpeakers, buildPersonExcerptSections, buildPersonUserMessage, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport };
+module.exports = { runDream, prefilterLog, extractSpeakers, buildPersonExcerptSections, buildPersonUserMessage, buildNotesLog, startDreamScheduler, runPersonContextUpdate, findDreamAgent, detectReasoningPreamble, soulNeedsRebuild, buildSoulUserMessage, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport, dreamDelayMs };
