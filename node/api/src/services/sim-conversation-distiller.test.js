@@ -9,7 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { narrateEvent, normalizeSlugPrefix } = require('./sim-conversation-distiller');
+const { narrateEvent, normalizeSlugPrefix, collapseTrailingSlashes } = require('./sim-conversation-distiller');
 
 const ACTOR = 'Ezekiel Crane';
 
@@ -282,4 +282,57 @@ test('normalizeSlugPrefix rejects traversal and any non-kebab shape', () => {
     assert.equal(normalizeSlugPrefix('a.b/'), '');
     assert.equal(normalizeSlugPrefix('a_b/'), '');
     assert.equal(normalizeSlugPrefix('two words/'), '');
+});
+
+test('collapseTrailingSlashes is linear on a long run of slashes (LLM-583)', () => {
+    // The collapse used to be `replace(/\/+$/, '')`. That pattern is unanchored at
+    // the start, so on slashes NOT followed by end-of-string the engine restarts
+    // at every offset and backtracks in O(n^2).
+    //
+    // This calls the helper directly rather than going through
+    // normalizeSlugPrefix. It has to: the raw-length guard added alongside this
+    // fix rejects anything past 1024 chars before the collapse is reached, so a
+    // 200k-char input routed through normalizeSlugPrefix would short-circuit and
+    // pass even with the quadratic regex restored. The linearity of the collapse
+    // is a property worth pinning on its own — raising that ceiling must not
+    // quietly reintroduce the backtracking.
+    //
+    // 200k slashes plus a trailing non-slash is the worst case. Measured on the
+    // old code: 32,076ms. Measured on the new code: 0.005ms. The 5s bound sits
+    // between them with 6x headroom against the quadratic case and six orders of
+    // magnitude against the linear one, so a slow or GC-stalled runner cannot
+    // flip it — only a return to backtracking can. Detecting backtracking at all
+    // requires a clock; this is the least timing-sensitive form of that.
+    const hostile = '/'.repeat(200000) + 'a';
+    const startedAt = process.hrtime.bigint();
+    assert.equal(collapseTrailingSlashes(hostile), hostile + '/');
+    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    assert.ok(elapsedMs < 5000, `collapseTrailingSlashes took ${elapsedMs.toFixed(1)}ms — it is not linear`);
+});
+
+test('collapseTrailingSlashes matches the regex it replaced (LLM-583)', () => {
+    // Semantic equivalence with `value.replace(/\/+$/, '') + '/'`, which is what
+    // normalizeSlugPrefix used before. These are the shapes normalizeSlugPrefix
+    // feeds it — post-trim, so no surrounding whitespace.
+    assert.equal(collapseTrailingSlashes('constance-scott/'), 'constance-scott/');
+    assert.equal(collapseTrailingSlashes('constance-scott'), 'constance-scott/');
+    assert.equal(collapseTrailingSlashes('constance-scott////'), 'constance-scott/');
+    assert.equal(collapseTrailingSlashes('/'), '/');
+    assert.equal(collapseTrailingSlashes('////'), '/');
+    assert.equal(collapseTrailingSlashes(''), '/');
+    // Interior slashes are untouched — only a trailing run collapses. The kebab
+    // regex in normalizeSlugPrefix is what rejects these.
+    assert.equal(collapseTrailingSlashes('a/b'), 'a/b/');
+    assert.equal(collapseTrailingSlashes('a/b//'), 'a/b/');
+});
+
+test('normalizeSlugPrefix rejects an oversized raw value before normalizing (LLM-583)', () => {
+    // Defence in depth beside the linear collapse: the canonical cap is 100, so a
+    // raw value past 1024 was never going to be accepted and is refused before any
+    // trim/slice/regex touches it. The guard must not narrow what already passes —
+    // the raw form legitimately carries whitespace and collapsing trailing slashes.
+    assert.equal(normalizeSlugPrefix('/'.repeat(5 * 1024 * 1024)), '');
+    assert.equal(normalizeSlugPrefix('a'.repeat(1025)), '');
+    // Raw length over the canonical cap but under the raw ceiling still normalizes.
+    assert.equal(normalizeSlugPrefix('a'.repeat(99) + '/'.repeat(500)), 'a'.repeat(99) + '/');
 });

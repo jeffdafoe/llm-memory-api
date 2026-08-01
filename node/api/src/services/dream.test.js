@@ -9,7 +9,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, buildPersonExcerptSections, buildPersonUserMessage, prefilterLog, runPersonContextUpdate, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport } = require('./dream');
+const { buildNotesLog, soulNeedsRebuild, buildSoulUserMessage, extractSpeakers, buildPersonExcerptSections, buildPersonUserMessage, prefilterLog, runPersonContextUpdate, countFailedActors, peopleNotePath, validateRosterPrefix, resolveScopePrefix, planCronReport, dreamDelayMs } = require('./dream');
+const config = require('./config');
 
 test('single note gets a slug+date header above its content', () => {
     const rows = [{
@@ -671,4 +672,54 @@ test('validateRosterPrefix rejects a non-canonical prefix (must be stored canoni
     assert.equal(validateRosterPrefix('john-ellis'), null);       // missing slash
     assert.equal(validateRosterPrefix('constance-scott//'), null); // doubled slash
     assert.equal(validateRosterPrefix('  constance-scott/  '), null); // whitespace
+});
+
+// dreamDelayMs (LLM-583) — the operator-settable politeness delays between
+// provider calls. config.set writes the in-memory cache directly, so these need
+// no database.
+test('dreamDelayMs falls back when the config row is absent, blank or non-numeric', () => {
+    config.set('dream_test_delay', undefined);
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 2000);
+    config.set('dream_test_delay', '');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 2000);
+    config.set('dream_test_delay', 'soon');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 2000);
+});
+
+test('dreamDelayMs clamps a value past the 32-bit timer range (LLM-583)', () => {
+    // The bug this guards: setTimeout stores its delay in a signed 32-bit int, so
+    // 2^31 and above overflows, is clamped to 1ms and only emits a warning — the
+    // requested "wait a very long time" silently becomes no wait at all and the
+    // run hammers the provider. Clamping to an hour keeps a large value meaning
+    // "a long pause" rather than inverting it.
+    config.set('dream_test_delay', String(2 ** 31));
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 3600000);
+    config.set('dream_test_delay', '999999999999');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 3600000);
+    // Exactly at the ceiling is not clamped down.
+    config.set('dream_test_delay', '3600000');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 3600000);
+});
+
+test('dreamDelayMs leaves ordinary and negative values to the caller unchanged', () => {
+    config.set('dream_test_delay', '5000');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 5000);
+    // parseInt truncates rather than rounding — unchanged from before the clamp.
+    config.set('dream_test_delay', '1500.9');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 1500);
+    // A negative survives the clamp and is skipped by each caller's `> 0` guard.
+    config.set('dream_test_delay', '-5');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), -5);
+});
+
+// KNOWN DEFECT, pinned deliberately — see LLM-584. This asserts behaviour that is
+// WRONG, not behaviour we want. Both config rows document "0 to disable"
+// (migrations MEM-092, MEM-118) but `parseInt(x) || fallback` treats the parsed 0
+// as falsy, so setting the row to 0 yields the DEFAULT delay instead of none.
+// LLM-583 carried the `||` over verbatim so a security fix would not also change
+// runtime behaviour; the pin exists so LLM-584's fix has to delete this test
+// rather than silently flip an assertion. Delete it when LLM-584 lands.
+test('dreamDelayMs: an explicit 0 wrongly takes the default (LLM-584, pinning a known defect)', () => {
+    config.set('dream_test_delay', '0');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 2000);
 });
