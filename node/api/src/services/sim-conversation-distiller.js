@@ -423,7 +423,16 @@ function normalizeSlugPrefix(raw) {
         return '';
     }
     // Collapse trailing slashes to exactly one, then require a safe kebab path.
-    const withSlash = trimmed.replace(/\/+$/, '') + '/';
+    // The collapse is a linear scan rather than `replace(/\/+$/, '')`: that
+    // pattern is unanchored at the start, so a long run of slashes makes the
+    // engine retry at every offset and backtrack in O(n^2) (CodeQL
+    // js/polynomial-redos). The length bound below cannot prevent that — it
+    // runs after the collapse, and this value arrives on a 5 MB request body.
+    let end = trimmed.length;
+    while (end > 0 && trimmed[end - 1] === '/') {
+        end--;
+    }
+    const withSlash = trimmed.slice(0, end) + '/';
     if (!/^[a-z0-9]+(-[a-z0-9]+)*\/$/.test(withSlash)) {
         return '';
     }

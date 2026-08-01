@@ -283,3 +283,21 @@ test('normalizeSlugPrefix rejects traversal and any non-kebab shape', () => {
     assert.equal(normalizeSlugPrefix('a_b/'), '');
     assert.equal(normalizeSlugPrefix('two words/'), '');
 });
+
+test('normalizeSlugPrefix returns promptly on a long run of slashes (LLM-583)', () => {
+    // The trailing-slash collapse used to be `replace(/\/+$/, '')`. That pattern
+    // is unanchored at the start, so on slashes NOT followed by end-of-string the
+    // engine restarts at every offset and backtracks in O(n^2). The length bound
+    // runs after the collapse, so it never protected this. slugPrefix arrives on
+    // the body of POST /v1/sim/conversation-day under a 5 MB json limit, so a
+    // quadratic scan here blocks the whole event loop.
+    //
+    // 200k slashes plus a trailing non-slash is the worst case: linear finishes in
+    // well under a millisecond, quadratic takes minutes. The 1s bound is loose on
+    // purpose — it separates the two behaviours without being timing-sensitive.
+    const hostile = '/'.repeat(200000) + 'a';
+    const startedAt = process.hrtime.bigint();
+    assert.equal(normalizeSlugPrefix(hostile), '');
+    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    assert.ok(elapsedMs < 1000, `normalizeSlugPrefix took ${elapsedMs.toFixed(1)}ms — the collapse is not linear`);
+});
