@@ -10,6 +10,7 @@
 
 const pool = require('../db');
 const config = require('./config');
+const { parseNonNegativeFinite } = config;
 const { log, logError } = require('./logger');
 
 function logCleanup(action, details) {
@@ -30,17 +31,23 @@ function buildDecayConditions(threshold) {
 
     // Kind-based half-lives
     const kindHalfLives = {
-        task: parseFloat(config.get('search_decay_halflife_task')) || 0,
-        learning: parseFloat(config.get('search_decay_halflife_learning')) || 0,
-        note: parseFloat(config.get('search_decay_halflife_note')) || 0,
-        conversation: parseFloat(config.get('search_decay_halflife_conversation')) || 0,
-        dream: parseFloat(config.get('search_decay_halflife_dream')) || 0,
+        task: parseNonNegativeFinite(config.get('search_decay_halflife_task')),
+        learning: parseNonNegativeFinite(config.get('search_decay_halflife_learning')),
+        note: parseNonNegativeFinite(config.get('search_decay_halflife_note')),
+        conversation: parseNonNegativeFinite(config.get('search_decay_halflife_conversation')),
+        dream: parseNonNegativeFinite(config.get('search_decay_halflife_dream')),
     };
 
-    // Cognitive type half-lives (override kind when set)
+    // Cognitive type half-lives (override kind when set).
+    //
+    // These two carry a non-zero fallback, so they must not be read through
+    // `|| 90`: both rows document "0 = no decay", and `||` would turn that 0
+    // back into 90/180 and let the `halfLife <= 0` skip below never fire. The
+    // note would keep decaying — and here that means the cron soft-deletes it —
+    // on a half-life the operator had switched off (LLM-584).
     const cognitiveHalfLives = {
-        episodic: parseFloat(config.get('search_decay_halflife_episodic')) || 90,
-        reflective: parseFloat(config.get('search_decay_halflife_reflective')) || 180,
+        episodic: parseNonNegativeFinite(config.get('search_decay_halflife_episodic'), 90),
+        reflective: parseNonNegativeFinite(config.get('search_decay_halflife_reflective'), 180),
     };
 
     // For each kind with a non-zero half-life, add a condition that matches
@@ -216,4 +223,4 @@ function startCleanupScheduler() {
     logCleanup('scheduler', { message: 'Cleanup scheduler started', schedule });
 }
 
-module.exports = { runDecayCleanup, purgeCallLogs, startCleanupScheduler };
+module.exports = { runDecayCleanup, purgeCallLogs, startCleanupScheduler, buildDecayConditions };

@@ -26,16 +26,26 @@ const MAX_DREAM_DELAY_MS = 3600000;
 // becomes "no pause at all" and the run hammers the provider — the opposite of
 // what was asked, with nothing in the logs to say so.
 //
-// The `|| fallback` is carried over verbatim rather than tightened, so parsing
-// behaviour is unchanged: blank and non-numeric values take the default, a
-// negative value survives to be skipped by the caller's `> 0` guard, and a
-// fractional one truncates. (One consequence of `||` worth knowing: an explicit
-// 0 also takes the default, so the config rows' documented "0 to disable" does
-// not actually disable. Pre-existing, unrelated to the timer overflow, and both
-// rows are at their defaults in production — filed separately rather than
-// changed here.)
+// Parsing is integer-based and permissive: blank and non-numeric values take the
+// default, a fractional value truncates, and a negative one survives to be
+// skipped by the caller's `> 0` guard.
+//
+// Only a genuinely unparseable value falls back. An explicit 0 is kept, because
+// both config rows document "0 to disable" (migrations MEM-092, MEM-118) and the
+// earlier `parseInt(x) || fallback` treated that 0 as falsy — so setting a row to
+// 0 handed back the DEFAULT delay and the documented escape hatch never worked
+// (LLM-584). The callers' `> 0` guards already implement the disable path; only
+// the parse was swallowing the 0 before they could see it.
+//
+// This is the reason config.parseNonNegativeFinite is not used here: it parses
+// with Number rather than parseInt, which would keep fractions instead of
+// truncating them and would reject negatives instead of passing them through.
 function dreamDelayMs(key, fallback) {
-    return Math.min(parseInt(config.get(key)) || fallback, MAX_DREAM_DELAY_MS);
+    let configured = parseInt(config.get(key));
+    if (Number.isNaN(configured)) {
+        configured = fallback;
+    }
+    return Math.min(configured, MAX_DREAM_DELAY_MS);
 }
 
 // validatePersonSlug — defense for runPersonContextUpdate now that it's

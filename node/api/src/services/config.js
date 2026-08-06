@@ -27,4 +27,17 @@ function set(key, value) {
     cache[key] = value;
 }
 
-module.exports = { init, get, set };
+// Parse a config value that must be a non-negative number, falling back when it
+// is absent, blank or unparseable.
+//
+// Use this instead of `parseFloat(value) || fallback` on any key whose
+// description gives 0 a meaning ("0 to disable", "0 = no decay"). `||` treats
+// the parsed 0 as absent and substitutes the fallback, so the documented
+// escape hatch silently does the opposite of what it says (LLM-584).
+function parseNonNegativeFinite(value, fallback = 0) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n >= 0) return n;
+    return fallback;
+}
+
+module.exports = { init, get, set, parseNonNegativeFinite };
