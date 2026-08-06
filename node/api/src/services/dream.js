@@ -791,6 +791,23 @@ function computeDailyChunks(since, now) {
 // failure it guards against is not the model doubting the ledger but
 // misreading it — "(paid Josiah Thorne 1 coin for milk)" was consolidated into
 // a jug of milk given as a gift, inverting a purchase into a gratuity.
+//
+// The non-reciprocal clause is LLM-607, and it is the general form of that same
+// misreading. Every ledger line names one movement of coin or goods; nothing in
+// the block ever states that a movement came back, because a return is simply
+// another line. So a transfer with no answering line looks identical to a debt
+// outstanding, and the directive above tells the model to trust that appearance
+// completely. Moses James's character document acquired "Constable Marsh takes
+// my coin for a 'day's rate' but never delivers nails or any real help — the
+// ledger shows I pay him and get nothing", and the constable refunded eight
+// coins of collected town rate against it. The same document carried the same
+// shape about a gift of flour to a different neighbour, which is why the clause
+// is written generally rather than about the levy.
+//
+// The salem side stops the levy case at its source — a rate payment now narrates
+// as a due settled rather than carrying the payer's own words for it — but that
+// only covers transfers the engine classifies. Gifts, wages and one-sided
+// deliveries have no such marker, so the reading rule has to stand on its own.
 const LEDGER_PRECEDENCE_DIRECTIVE = [
     '## How to weigh these',
     '',
@@ -798,6 +815,7 @@ const LEDGER_PRECEDENCE_DIRECTIVE = [
     '',
     '- A payment, gift, or delivery counts ONLY if the ledger records it. Someone saying they paid you, or promising to make good on a debt, is not payment. Do not write an unbacked promise into the file as a settled matter.',
     '- Read the ledger direction exactly as written. "(paid Josiah Thorne 1 coin for milk)" means you spent a coin and received milk — a purchase you made, not a gift you were given.',
+    '- Not everything that moves one way is owed back. A due, a levy, a gift, a wage — these are settled when they change hands, and the ledger records no return because none was ever coming. Do not turn a one-way line into a debt, and do not write that someone "never delivered" or "gave nothing back" unless the ledger itself shows goods promised and not handed over.',
     '- Lines marked "overheard" were spoken while you were present but addressed to someone else. They tell you about this person\'s character and dealings; they are not your own transactions with them.',
 ].join('\n');
 

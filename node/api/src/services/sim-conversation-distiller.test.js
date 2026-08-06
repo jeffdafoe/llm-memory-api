@@ -41,6 +41,46 @@ test('paid pluralizes coins and tolerates a missing for-text', () => {
     );
 });
 
+// LLM-607. A rate payment is narrated as the due it was, and the payer's own
+// words for it are dropped. This line lands in the ledger block of the
+// consolidation prompt, under a directive saying the ledger is authoritative and
+// complete — so "for Day's rate on the James Farm" reads there as an order placed
+// and never filled. Nine of them became a standing grievance in Moses James's
+// character document, and the constable refunded eight coins of collected rate.
+test('a payment that settled the town rate narrates as a due, not a purchase', () => {
+    const payload = {
+        recipient: 'Constable Gideon Marsh',
+        amount: 1,
+        for: "Day's rate on the James Farm",
+        rate_settled: 1,
+    };
+    assert.equal(
+        narrateEvent({ kind: 'paid', payload }, ACTOR),
+        '(paid Constable Gideon Marsh 1 coin — the town rate, a due settled, with no goods owed in return)'
+    );
+    // The misleading half must be gone, not merely supplemented.
+    assert.ok(!narrateEvent({ kind: 'paid', payload }, ACTOR).includes("Day's rate"));
+});
+
+// Presence of rate_settled is the classification. Every purchase, and every row
+// written before the salem side started stamping the key, must narrate exactly as
+// it did before — a partial rollout must not reclassify ordinary trade.
+test('an ordinary purchase is unaffected by the rate-settlement branch', () => {
+    const cases = [
+        { recipient: 'Hannah', amount: 3, for: 'bread' },
+        { recipient: 'Hannah', amount: 3, for: 'bread', rate_settled: 0 },
+        { recipient: 'Hannah', amount: 3, for: 'bread', rate_settled: 'nonsense' },
+        { recipient: 'Hannah', amount: 3, for: 'bread', rate_settled: null },
+    ];
+    for (const payload of cases) {
+        assert.equal(
+            narrateEvent({ kind: 'paid', payload }, ACTOR),
+            '(paid Hannah 3 coins for bread)',
+            'rate_settled = ' + JSON.stringify(payload.rate_settled)
+        );
+    }
+});
+
 test('walked renders the destination, identical to v1 move_to', () => {
     const payload = { destination: 'the Tavern' };
     assert.equal(narrateEvent({ kind: 'walked', payload }, ACTOR), '(walked to the Tavern)');

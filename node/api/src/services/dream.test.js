@@ -435,6 +435,29 @@ test('the user message renders ledger and speech as separate sections', () => {
     assert.ok(msg.includes('Where the two disagree, the ledger wins.'));
 });
 
+// LLM-607. Every ledger line names one movement, and a return is simply another
+// line — so a one-way transfer is indistinguishable from a debt outstanding, and
+// the directive tells the model to trust the ledger completely. Moses James's
+// character document acquired "the ledger shows I pay him and get nothing" about
+// nine settled levies, and the constable refunded eight coins against it.
+test('the directive says a one-way transfer is not automatically a debt', () => {
+    const msg = buildPersonUserMessage({
+        selfLabel: 'Moses James',
+        display: 'Constable Gideon Marsh',
+        today: '2026-08-06',
+        existingFile: '',
+        ledger: ['[Thursday 12:11 Moses James] (paid Constable Gideon Marsh 1 coin — the town rate, a due settled, with no goods owed in return)'],
+        said: '',
+    });
+    assert.ok(msg.includes('Not everything that moves one way is owed back.'));
+    // The clause has to name the write it is preventing, not just the reading —
+    // the grievance reached the character document as a phrasing, not as a sum.
+    assert.ok(msg.includes('never delivered'));
+    // It sits inside the ledger-precedence block, which is the authority the
+    // misreading was drawing on; a bullet elsewhere would not be weighed against it.
+    assert.ok(msg.indexOf('Where the two disagree, the ledger wins.') < msg.indexOf('Not everything that moves one way'));
+});
+
 test('an empty ledger says so explicitly rather than rendering blank', () => {
     const msg = buildPersonUserMessage({
         selfLabel: 'Constance Scott',

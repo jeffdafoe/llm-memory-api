@@ -249,6 +249,28 @@ function narrateEvent(event, actorName) {
         case 'pay':
         case 'paid': {
             const recipient = sanitizeLabel(p.recipient || p.recipient_name || 'someone');
+            // LLM-607: a payment that discharged the town rate is narrated as the
+            // due it was, and the payer's own words for it are DROPPED.
+            //
+            // This line goes into the ledger block of the consolidation prompt,
+            // under a directive telling the model the ledger is authoritative and
+            // complete. `payload.for` is model-authored — the villager's stated
+            // purpose — and for a levy it reads "Day's rate on the James Farm",
+            // which is a payment with a stated purpose and no delivery against it,
+            // i.e. indistinguishable from an order placed and never filled. Nine of
+            // those consolidated into Moses James's character document as a standing
+            // grievance ("takes my coin ... but never delivers"), and the constable
+            // refunded eight coins of collected rate on the strength of it.
+            //
+            // The engine settled the rate and knows what the coin was; the salem
+            // side stamps that on the durable payload as rate_settled. Its presence
+            // is the classification. Preferring it over the payer's account is the
+            // same rule the engine already applies to its own relationship facts.
+            const rateSettled = Number(p.rate_settled);
+            if (Number.isFinite(rateSettled) && rateSettled > 0) {
+                return '(paid ' + recipient + ' ' + formatCoins(p.amount)
+                    + ' — the town rate, a due settled, with no goods owed in return)';
+            }
             const forText = sanitizeLabel(p.for || p.for_text || '');
             const reason = forText ? ' for ' + forText : '';
             return '(paid ' + recipient + ' ' + formatCoins(p.amount) + reason + ')';
