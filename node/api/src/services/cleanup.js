@@ -17,8 +17,10 @@ function logCleanup(action, details) {
     log('cleanup', action, details);
 }
 
-// Read one decay half-life, resolving absent/blank/unparseable to the fallback
-// and an explicit 0 to 0 (see config.parseNonNegativeFinite).
+// Read one decay half-life: absent, blank and unparseable resolve to the
+// fallback, an explicit 0 stays 0, and a negative disables the rule (see
+// config.parseNonNegativeFinite for the first two, and below for the third —
+// the negative is this function's one departure from the shared parser).
 //
 // The extra negative check is specific to cleanup. parseNonNegativeFinite
 // resolves a negative to the fallback, which is right for search ranking in
