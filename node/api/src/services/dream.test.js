@@ -735,14 +735,15 @@ test('dreamDelayMs leaves ordinary and negative values to the caller unchanged',
     assert.equal(dreamDelayMs('dream_test_delay', 2000), -5);
 });
 
-// KNOWN DEFECT, pinned deliberately — see LLM-584. This asserts behaviour that is
-// WRONG, not behaviour we want. Both config rows document "0 to disable"
-// (migrations MEM-092, MEM-118) but `parseInt(x) || fallback` treats the parsed 0
-// as falsy, so setting the row to 0 yields the DEFAULT delay instead of none.
-// LLM-583 carried the `||` over verbatim so a security fix would not also change
-// runtime behaviour; the pin exists so LLM-584's fix has to delete this test
-// rather than silently flip an assertion. Delete it when LLM-584 lands.
-test('dreamDelayMs: an explicit 0 wrongly takes the default (LLM-584, pinning a known defect)', () => {
+// The defect this replaces: `parseInt(x) || fallback` treated the parsed 0 as
+// falsy, so a row set to 0 handed back the DEFAULT delay. Both rows document
+// "0 to disable" (migrations MEM-092, MEM-118), so the documented escape hatch
+// did the opposite of what it said. The callers' `> 0` guards were always right;
+// the parse never let a 0 reach them.
+test('dreamDelayMs: an explicit 0 disables the delay (LLM-584)', () => {
     config.set('dream_test_delay', '0');
-    assert.equal(dreamDelayMs('dream_test_delay', 2000), 2000);
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 0);
+    // "0" with surrounding whitespace is still an explicit zero, not a blank row.
+    config.set('dream_test_delay', ' 0 ');
+    assert.equal(dreamDelayMs('dream_test_delay', 2000), 0);
 });

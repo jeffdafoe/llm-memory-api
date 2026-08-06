@@ -6,13 +6,8 @@ const { embed } = require('./embeddings');
 const { chunkByHeading, chunkConversation } = require('./chunker');
 const pgvector = require('pgvector');
 const config = require('./config');
+const { parseNonNegativeFinite } = config;
 const { handleError } = require('./error-handler');
-
-function parseNonNegativeFinite(value, fallback = 0) {
-    const n = Number(value);
-    if (Number.isFinite(n) && n >= 0) return n;
-    return fallback;
-}
 
 // Query preprocessing: strip filler words/phrases before embedding.
 // "can you tell me about how the auth middleware works" → "auth middleware works"
