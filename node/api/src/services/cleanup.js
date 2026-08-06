@@ -17,6 +17,27 @@ function logCleanup(action, details) {
     log('cleanup', action, details);
 }
 
+// Read one decay half-life, resolving absent/blank/unparseable to the fallback
+// and an explicit 0 to 0 (see config.parseNonNegativeFinite).
+//
+// The extra negative check is specific to cleanup. parseNonNegativeFinite
+// resolves a negative to the fallback, which is right for search ranking in
+// memory.js — a nonsense value there costs nothing but a ranking weight. Here
+// it would be fail-open: this cron soft-deletes the note AND hard-deletes its
+// vector chunks, so a restored note comes back unsearchable. A typo like "-90"
+// must not turn "no cleanup for this category" into "delete at the default
+// rate". Present-but-invalid disables the rule instead.
+//
+// The consequence is that ranking and cleanup can disagree for a negative
+// value. That is deliberate, and is not the defect LLM-584 fixes: 0 is
+// documented and must mean the same thing everywhere, a negative is undocumented
+// garbage and the destructive path is entitled to be the conservative reader.
+function decayHalfLife(key, fallback = 0) {
+    const raw = config.get(key);
+    if (Number(raw) < 0) return 0;
+    return parseNonNegativeFinite(raw, fallback);
+}
+
 // Build SQL conditions that identify notes below the decay threshold.
 // Returns { conditions, params } where conditions is an array of
 // "kind = X AND decay < threshold" clauses, and params are the bound values.
@@ -31,11 +52,11 @@ function buildDecayConditions(threshold) {
 
     // Kind-based half-lives
     const kindHalfLives = {
-        task: parseNonNegativeFinite(config.get('search_decay_halflife_task')),
-        learning: parseNonNegativeFinite(config.get('search_decay_halflife_learning')),
-        note: parseNonNegativeFinite(config.get('search_decay_halflife_note')),
-        conversation: parseNonNegativeFinite(config.get('search_decay_halflife_conversation')),
-        dream: parseNonNegativeFinite(config.get('search_decay_halflife_dream')),
+        task: decayHalfLife('search_decay_halflife_task'),
+        learning: decayHalfLife('search_decay_halflife_learning'),
+        note: decayHalfLife('search_decay_halflife_note'),
+        conversation: decayHalfLife('search_decay_halflife_conversation'),
+        dream: decayHalfLife('search_decay_halflife_dream'),
     };
 
     // Cognitive type half-lives (override kind when set).
@@ -43,11 +64,11 @@ function buildDecayConditions(threshold) {
     // These two carry a non-zero fallback, so they must not be read through
     // `|| 90`: both rows document "0 = no decay", and `||` would turn that 0
     // back into 90/180 and let the `halfLife <= 0` skip below never fire. The
-    // note would keep decaying — and here that means the cron soft-deletes it —
-    // on a half-life the operator had switched off (LLM-584).
+    // note would keep decaying — and here that means the cron deletes it — on a
+    // half-life the operator had switched off (LLM-584).
     const cognitiveHalfLives = {
-        episodic: parseNonNegativeFinite(config.get('search_decay_halflife_episodic'), 90),
-        reflective: parseNonNegativeFinite(config.get('search_decay_halflife_reflective'), 180),
+        episodic: decayHalfLife('search_decay_halflife_episodic', 90),
+        reflective: decayHalfLife('search_decay_halflife_reflective', 180),
     };
 
     // For each kind with a non-zero half-life, add a condition that matches

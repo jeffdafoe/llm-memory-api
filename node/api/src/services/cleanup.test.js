@@ -99,28 +99,41 @@ test('an absent, blank or unparseable half-life falls back rather than decaying'
     assert.deepEqual(params, [0.05, 90]);
 });
 
-test('a negative half-life never reaches the SQL', () => {
+test('a blank cognitive half-life falls back to its default, it does not disable decay', () => {
+    // Guards a trap in the parser: Number('') and Number('   ') are both 0, not
+    // NaN. Without an explicit blank check a blank row reads as an explicit
+    // zero, so on these two keys — the only ones with a non-zero fallback — a
+    // cleared value would silently mean "no decay" instead of 90/180. The
+    // preceding test cannot catch it: its blank key falls back to 0 anyway, so
+    // both readings give the same answer there.
+    silenceAllHalfLives();
+    config.set('search_decay_halflife_episodic', '');
+    config.set('search_decay_halflife_reflective', '   ');
+
+    const { conditions, params } = buildDecayConditions(0.05);
+
+    assert.equal(conditions.length, 2);
+    assert.ok(mentions(conditions, "= 'episodic'"));
+    assert.ok(mentions(conditions, "= 'reflective'"));
+    assert.deepEqual(params, [0.05, 90, 180]);
+});
+
+test('a negative half-life disables that rule, it never falls back to a deleting default', () => {
     // A negative half-life would invert the decay curve, so it must never be
-    // bound. It is invalid input rather than a request, so it takes the
-    // fallback — which means the outcome differs by key, and both are correct:
-    // a kind half-life falls back to 0 and decays nothing, while episodic and
-    // reflective fall back to their documented 90/180 and decay normally.
-    //
-    // That second case is a deliberate change of behaviour. The old `|| 180`
-    // kept the -1 (truthy) and let the `halfLife <= 0` skip swallow it, so a
-    // typo silently disabled cleanup for every reflective note while search
-    // ranking — already on parseNonNegativeFinite — went on applying 180. The
-    // two now agree, which is the point of the ticket.
+    // bound. It must also not resolve to the fallback: on episodic/reflective
+    // that fallback is 90/180, which would turn a typo into deletion at the
+    // default rate. This cron soft-deletes the note and hard-deletes its vector
+    // chunks, so that is not a recoverable mistake — invalid input disables the
+    // rule instead. See decayHalfLife's comment for why cleanup reads a
+    // negative differently from memory.js.
     silenceAllHalfLives();
     config.set('search_decay_halflife_note', '-45');
     config.set('search_decay_halflife_reflective', '-1');
 
     const { conditions, params } = buildDecayConditions(0.05);
 
-    assert.equal(conditions.length, 1);
-    assert.ok(mentions(conditions, "= 'reflective'"));
-    assert.ok(!mentions(conditions, "d.kind = 'note'"));
-    assert.deepEqual(params, [0.05, 180]);
+    assert.deepEqual(conditions, []);
+    assert.deepEqual(params, [0.05]);
 });
 
 test('parameter placeholders stay aligned with the bound values', () => {
