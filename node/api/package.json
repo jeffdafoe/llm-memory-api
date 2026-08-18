@@ -19,7 +19,7 @@
         "dompurify": "^3.4.13",
         "eff-diceware-passphrase": "^3.0.0",
         "express": "^5.2.1",
-        "lucide-static": "^1.30.0",
+        "lucide-static": "^1.31.0",
         "marked": "^18.0.9",
         "mermaid": "^11.16.1",
         "node-cron": "^4.6.0",
