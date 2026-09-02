@@ -11,12 +11,16 @@
 --    retention clock. Put created_at back on the session's own date so
 --    retention measures the conversation, not the upload. The dream cron
 --    windows on created_at too, but the dates involved have already run, so
---    this re-feeds nothing.
+--    this re-feeds nothing. metadata is client supplied and unconstrained:
+--    pg_input_is_valid (PG 16+) rejects a malformed or impossible date
+--    without throwing, where a bare cast would abort the whole migration on
+--    one bad row. CASE evaluates the cast only on the branch it takes.
 UPDATE documents
 SET created_at = (metadata->>'session_date')::date
 WHERE kind = 'conversation'
-  AND metadata->>'session_date' ~ '^\d{4}-\d{2}-\d{2}$'
-  AND created_at::date > (metadata->>'session_date')::date;
+  AND CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')
+           THEN created_at::date > (metadata->>'session_date')::date
+           ELSE false END;
 
 -- 2. namespace_usage drifted far above reality (home: 51 MB counted against
 --    18 MB live): the cron's soft-deletes never decremented it and every

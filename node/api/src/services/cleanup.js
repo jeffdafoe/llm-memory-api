@@ -151,9 +151,11 @@ async function runDecayCleanup() {
             // RETURNING the size so the quota is credited back the way a
             // manual deleteNote credits it. Before LLM-642 this UPDATE stood
             // alone and every note the cron retired kept counting against
-            // namespace_usage forever.
+            // namespace_usage forever. The deleted_at guard matters now that
+            // a credit rides on the row: a request that deleted this note
+            // between the candidate SELECT and here has already credited it.
             const retired = await pool.query(
-                'UPDATE documents SET deleted_at = NOW() WHERE id = $1 RETURNING LENGTH(content) AS content_length',
+                'UPDATE documents SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING LENGTH(content) AS content_length',
                 [row.id]
             );
             if (retired.rows.length > 0) {
@@ -216,8 +218,8 @@ async function purgeCallLogs() {
 // reading as decayHalfLife above — this path deletes, so a garbled value must
 // switch the rule off rather than fall back to a deleting default.
 //
-// softAfterDays counts from a conversation's created_at to its soft-delete:
-// retention + 1, so a session uploaded on day N stays through all of day
+// softAfterDays counts from a conversation's session date to its soft-delete:
+// retention + 1, so a session held on day N stays through all of day
 // N + retention. purgeAfterDays counts from deleted_at to the tombstone. Both
 // are the windows scripts/db-cleanup.sh used before LLM-642.
 function conversationRetentionWindows(raw) {
@@ -247,19 +249,33 @@ async function retireConversations() {
         return { skipped: true, reason: 'no retention window' };
     }
 
+    // Age is the session's own date (metadata.session_date, set by the
+    // memory-sync client from the first message), not the upload time: a
+    // months-old session first synced today is already old. created_at is
+    // the fallback for rows without a usable session_date. pg_input_is_valid
+    // (PG 16+) keeps a malformed date from throwing — metadata is client
+    // supplied and unconstrained. CASE only evaluates the cast on the branch
+    // it takes, so the guard is real.
     const expired = await pool.query(
         `UPDATE documents
          SET deleted_at = NOW()
          WHERE kind = 'conversation' AND deleted_at IS NULL
-           AND created_at < NOW() - INTERVAL '1 day' * $1
+           AND COALESCE(
+                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')
+                        THEN (metadata->>'session_date')::date END,
+                   created_at::date
+               ) < (NOW() - INTERVAL '1 day' * $1)::date
          RETURNING namespace, slug, LENGTH(content) AS content_length`,
         [windows.softAfterDays]
     );
 
     // One usage update per namespace rather than per note — the counters are
     // a fire-and-forget upsert and a nightly batch can be hundreds of rows.
+    // The rows above are retired regardless of what happens to their chunks,
+    // so the count and the credit come from the UPDATE, and a chunk failure
+    // is reported on its own.
     const usage = new Map();
-    let softDeleted = 0;
+    let chunkErrors = 0;
     for (const row of expired.rows) {
         const agg = usage.get(row.namespace) || { count: 0, bytes: 0 };
         agg.count++;
@@ -270,14 +286,15 @@ async function retireConversations() {
                 'DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)',
                 [row.namespace, row.slug]
             );
-            softDeleted++;
         } catch (err) {
+            chunkErrors++;
             logCleanup('conversation-chunk-error', { namespace: row.namespace, slug: row.slug, error: err.message });
         }
     }
     for (const [namespace, agg] of usage) {
         updateUsage(namespace, -agg.count, -agg.bytes);
     }
+    const softDeleted = expired.rowCount;
 
     // A tombstone keeps deleted_at (still deleted) and gains purged_at; the
     // purged_at guard keeps this from rewriting the same rows every night.
@@ -301,12 +318,13 @@ async function retireConversations() {
                 [row.namespace, row.slug]
             );
         } catch (err) {
+            chunkErrors++;
             logCleanup('conversation-chunk-error', { namespace: row.namespace, slug: row.slug, error: err.message });
         }
     }
 
-    const summary = { softDeleted, purged: purged.rowCount, retentionDays: windows.retentionDays };
-    if (softDeleted > 0 || purged.rowCount > 0) {
+    const summary = { softDeleted, purged: purged.rowCount, chunkErrors, retentionDays: windows.retentionDays };
+    if (softDeleted > 0 || purged.rowCount > 0 || chunkErrors > 0) {
         logCleanup('conversations-retired', summary);
     }
     return summary;

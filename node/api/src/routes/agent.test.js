@@ -131,3 +131,11 @@ test('classifySessions: server session ids match case-insensitively', () => {
     const { missing } = classifySessions([{ id: A, file_size: 1 }], serverRows([[A.toUpperCase(), 1]]), true);
     assert.deepEqual(missing, []);
 });
+
+test('classifySessions: a client id in upper case still matches its server row', () => {
+    // The route lowercases ids before classifying; the function must not
+    // depend on it.
+    const { missing, stale } = classifySessions([{ id: A.toUpperCase(), file_size: 1 }], serverRows([[A, 1]]), true);
+    assert.deepEqual(missing, []);
+    assert.deepEqual(stale, []);
+});

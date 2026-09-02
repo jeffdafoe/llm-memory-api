@@ -607,12 +607,15 @@ function classifySessions(validItems, existingRows, hasNewFormat) {
         existingMap.set(row.session_id.toLowerCase(), parseInt(row.file_size) || 0);
     }
 
+    // The route lowercases every id before it gets here; lowercasing again
+    // keeps this function correct on its own terms.
     const missing = [];
     const stale = [];
     for (const item of validItems) {
-        if (!existingMap.has(item.id)) {
+        const key = item.id.toLowerCase();
+        if (!existingMap.has(key)) {
             missing.push(item.id);
-        } else if (hasNewFormat && item.file_size > existingMap.get(item.id)) {
+        } else if (hasNewFormat && item.file_size > existingMap.get(key)) {
             stale.push(item.id);
         }
     }
