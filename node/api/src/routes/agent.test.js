@@ -82,3 +82,52 @@ test('remote-only note pulls when its remote timestamp is unusable', () => {
     assert.equal(remoteOnlyAction(true, null, NOW), 'pull');
     assert.equal(remoteOnlyAction(true, 'garbage', NOW), 'pull');
 });
+
+// ── classifySessions (LLM-642) ──────────────────────────────────────────────
+// The conversation half of /agent/memory/sync: which of the client's local
+// sessions to upload. The rows come from a query that deliberately includes
+// soft-deleted and tombstoned notes, so "the server has a row" means "do not
+// re-upload" — the contract that makes nightly retention stick.
+
+const { classifySessions } = agentRouter;
+
+function serverRows(entries) {
+    return entries.map(([id, size]) => ({ session_id: id, file_size: String(size) }));
+}
+
+const A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+test('classifySessions: a session the server has no row for is missing', () => {
+    const { missing, stale } = classifySessions([{ id: A, file_size: 100 }], [], true);
+    assert.deepEqual(missing, [A]);
+    assert.deepEqual(stale, []);
+});
+
+test('classifySessions: any row at all — live, soft-deleted or tombstoned — makes a session present', () => {
+    // A retired conversation must not come back as "missing": that is the
+    // re-upload loop that filled the quota with copies. The row the query
+    // returns for it carries the size it was last uploaded at.
+    const { missing, stale } = classifySessions([{ id: A, file_size: 100 }], serverRows([[A, 100]]), true);
+    assert.deepEqual(missing, []);
+    assert.deepEqual(stale, []);
+});
+
+test('classifySessions: stale only when the local file outgrew the largest size the server holds', () => {
+    const items = [{ id: A, file_size: 150 }, { id: B, file_size: 90 }];
+    const { missing, stale } = classifySessions(items, serverRows([[A, 100], [B, 100]]), true);
+    assert.deepEqual(missing, []);
+    // A grew (new material to fetch); B shrank or was rewritten — not stale.
+    assert.deepEqual(stale, [A]);
+});
+
+test('classifySessions: legacy id-only clients are never stale', () => {
+    const { missing, stale } = classifySessions([{ id: A, file_size: 0 }], serverRows([[A, 100]]), false);
+    assert.deepEqual(missing, []);
+    assert.deepEqual(stale, []);
+});
+
+test('classifySessions: server session ids match case-insensitively', () => {
+    const { missing } = classifySessions([{ id: A, file_size: 1 }], serverRows([[A.toUpperCase(), 1]]), true);
+    assert.deepEqual(missing, []);
+});

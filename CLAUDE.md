@@ -52,4 +52,4 @@ When a session starts from a continuation summary, treat operational details in 
 
 - Credentials stored in remote note: `read_note(namespace="work", slug="instructions/credentials/vps")`
 - Service: `memory-api.service` (runs as `memory-api` system user)
-- Cron: daily DB cleanup at 3:15 AM (`/var/www/memory-api/scripts/db-cleanup.sh`)
+- Cron: daily DB cleanup at 3:15 AM (`/var/www/memory-api/scripts/db-cleanup.sh`) — request_log, expired sessions, stale MCP sessions. Conversation retention (soft-delete at `conversation_retention_days` + 1, tombstone one window later) runs inside the app's own cleanup cron (`services/cleanup.js`, `cleanup_cron_schedule`, 05:00 UTC) since LLM-642.

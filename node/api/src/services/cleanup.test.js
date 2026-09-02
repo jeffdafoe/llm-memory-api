@@ -152,3 +152,26 @@ test('parameter placeholders stay aligned with the bound values', () => {
     assert.ok(conditions.some((c) => c.includes("d.kind = 'dream'") && c.includes('$3')));
     assert.ok(conditions.some((c) => c.includes("= 'episodic'") && c.includes('$4')));
 });
+
+// ── conversationRetentionWindows (LLM-642) ──────────────────────────────────
+// The reader behind retireConversations. Like decayHalfLife it guards a
+// deleting path, so anything but a clean non-negative integer switches the
+// rule off rather than falling back to a deleting default.
+
+const { conversationRetentionWindows } = require('./cleanup');
+
+test('conversationRetentionWindows: retention N soft-deletes at N+1 days and tombstones N+1 days after that', () => {
+    // The +1 is the window scripts/db-cleanup.sh used: a session uploaded on
+    // day N stays through the whole of day N + retention.
+    assert.deepEqual(conversationRetentionWindows('30'), { retentionDays: 30, softAfterDays: 31, purgeAfterDays: 31 });
+});
+
+test('conversationRetentionWindows: 0 is a real value — retire after one day, not "off"', () => {
+    assert.deepEqual(conversationRetentionWindows('0'), { retentionDays: 0, softAfterDays: 1, purgeAfterDays: 1 });
+});
+
+test('conversationRetentionWindows: absent, blank, garbage, fractional or negative switches retention off', () => {
+    for (const raw of [undefined, null, '', '   ', 'abc', '30.5', '-5', 'Infinity']) {
+        assert.equal(conversationRetentionWindows(raw), null, 'raw=' + JSON.stringify(raw));
+    }
+});

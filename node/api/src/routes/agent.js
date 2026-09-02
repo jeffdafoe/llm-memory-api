@@ -583,6 +583,42 @@ function isSafeFilename(name) {
 // behind produces a cutoff later than concurrent writes and prunes them.
 const MAX_SCAN_AGE_MS = 60 * 60 * 1000;
 
+// Decide which of the client's sessions it should upload. `existingRows` is
+// the server's view, one row per session_id with the largest file_size ever
+// recorded for it across live, soft-deleted and tombstoned notes alike.
+//
+// A retired session is present on purpose. Retention soft-deletes a
+// conversation at retention + 1 days and later empties it to a tombstone that
+// keeps the row (services/cleanup.js). Reporting it as missing would have the
+// client re-upload it on its next run, as a brand-new row with a new
+// created_at — which is how 359 home and 363 work sessions came back on
+// 2026-08-21 and the quota filled with copies (LLM-642). Local file mod-time
+// is no defence: every session file on a box can be touched at once.
+//
+// Stale is the one way a retired session comes back: the local file grew past
+// every size the server has seen, so there is material it never had. The
+// upload then inserts a fresh live row beside the tombstone, which the partial
+// unique index allows.
+//
+// Legacy clients send bare ids with no size; for them nothing is ever stale.
+function classifySessions(validItems, existingRows, hasNewFormat) {
+    const existingMap = new Map();
+    for (const row of existingRows) {
+        existingMap.set(row.session_id.toLowerCase(), parseInt(row.file_size) || 0);
+    }
+
+    const missing = [];
+    const stale = [];
+    for (const item of validItems) {
+        if (!existingMap.has(item.id)) {
+            missing.push(item.id);
+        } else if (hasNewFormat && item.file_size > existingMap.get(item.id)) {
+            stale.push(item.id);
+        }
+    }
+    return { missing, stale };
+}
+
 function resolvePruneCutoff(scanAgeMs, now) {
     if (typeof scanAgeMs !== 'number' || !Number.isFinite(scanAgeMs)) return null;
     // Negative means the client scanned in its own future — nonsense we won't
@@ -914,6 +950,12 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                     // Query existing sessions with their stored file_size from metadata.
                     // Uses MAX to handle any duplicate rows per session, and regex guard
                     // on the cast to avoid blowing up on non-numeric stored values.
+                    //
+                    // Deliberately NOT filtered on deleted_at. A session the
+                    // nightly retention retired (soft-deleted, or emptied to a
+                    // tombstone) must still read as present, or the client
+                    // re-uploads it as missing on the next sync and retention
+                    // never sticks — the LLM-642 loop. See classifySessions.
                     const existingResult = await pool.query(`
                         SELECT metadata->>'session_id' AS session_id,
                                MAX(
@@ -924,26 +966,12 @@ router.post('/agent/memory/sync', apiRoute('agent', 'memory-sync', async (req, r
                                    END
                                ) AS file_size
                         FROM documents
-                        WHERE namespace = $1 AND kind = 'conversation' AND deleted_at IS NULL
+                        WHERE namespace = $1 AND kind = 'conversation'
                           AND metadata->>'session_id' = ANY($2)
                         GROUP BY metadata->>'session_id'
                     `, [agent, validIds]);
 
-                    const existingMap = new Map();
-                    for (const row of existingResult.rows) {
-                        existingMap.set(row.session_id.toLowerCase(), parseInt(row.file_size) || 0);
-                    }
-
-                    const missing = [];
-                    const stale = [];
-                    for (const item of validItems) {
-                        if (!existingMap.has(item.id)) {
-                            missing.push(item.id);
-                        } else if (hasNewFormat && item.file_size > existingMap.get(item.id)) {
-                            // File grew since last upload — session was extended
-                            stale.push(item.id);
-                        }
-                    }
+                    const { missing, stale } = classifySessions(validItems, existingResult.rows, hasNewFormat);
 
                     conversationsResponse.missing = missing;
                     if (stale.length > 0) {
@@ -1236,5 +1264,6 @@ router.post('/agent/tick', apiRoute('agent', 'tick', async (req, res) => {
 // sim.js attaching requireSalemEngine to its exported router.
 router.resolvePruneCutoff = resolvePruneCutoff;
 router.remoteOnlyAction = remoteOnlyAction;
+router.classifySessions = classifySessions;
 
 module.exports = router;

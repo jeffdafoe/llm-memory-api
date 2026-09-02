@@ -529,11 +529,17 @@ async function deleteNote(namespace, slug, expectedUpdatedAt) {
 async function restoreNote(namespace, slug) {
     // Check the note exists and get its size before restoring
     const check = await pool.query(
-        'SELECT id, LENGTH(content) AS content_length FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NOT NULL',
+        `SELECT id, LENGTH(content) AS content_length, metadata->>'purged_at' AS purged_at
+         FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NOT NULL`,
         [namespace, slug]
     );
     if (check.rows.length === 0) {
         throw Object.assign(new Error(`No deleted note found: ${slug}`), { statusCode: 404 });
+    }
+    // A retention tombstone (cleanup.retireConversations) keeps the row but
+    // not the content. Restoring it would resurrect an empty note.
+    if (check.rows[0].purged_at) {
+        throw Object.assign(new Error(`Note content was purged by retention on ${check.rows[0].purged_at} and cannot be restored: ${slug}`), { statusCode: 410 });
     }
 
     // Check storage quota before restoring
@@ -1092,4 +1098,4 @@ async function movePrefix(namespace, oldPrefix, newPrefix, options = {}) {
     return { moved: docResult.rowCount, skipped: toSkip.length, overwritten: toOverwrite.length };
 }
 
-module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, movePrefix, paginateContent, titleToSlug, validateSlug, escapeLike, READ_MAX_LIMIT, GREP_MAX_CONTEXT };
+module.exports = { saveNote, listNotes, readNote, deleteNote, restoreNote, editNote, grepNotes, moveNote, movePrefix, paginateContent, titleToSlug, validateSlug, escapeLike, updateUsage, READ_MAX_LIMIT, GREP_MAX_CONTEXT };

@@ -7,10 +7,16 @@
 //      created_at, updated_at, or last_accessed.
 //   2. Call log purge — hard-deletes old virtual_agent_calls rows past
 //      the retention period.
+//   3. Conversation retention — soft-deletes conversation notes past
+//      conversation_retention_days, then empties them to tombstones a
+//      retention window later. Lived in scripts/db-cleanup.sh until LLM-642;
+//      it moved here so the quota accounting and the tombstone semantics sit
+//      next to the code that depends on them.
 
 const pool = require('../db');
 const config = require('./config');
 const { parseNonNegativeFinite } = config;
+const { updateUsage } = require('./documents');
 const { log, logError } = require('./logger');
 
 function logCleanup(action, details) {
@@ -142,10 +148,17 @@ async function runDecayCleanup() {
     let deleted = 0;
     for (const row of result.rows) {
         try {
-            await pool.query(
-                'UPDATE documents SET deleted_at = NOW() WHERE id = $1',
+            // RETURNING the size so the quota is credited back the way a
+            // manual deleteNote credits it. Before LLM-642 this UPDATE stood
+            // alone and every note the cron retired kept counting against
+            // namespace_usage forever.
+            const retired = await pool.query(
+                'UPDATE documents SET deleted_at = NOW() WHERE id = $1 RETURNING LENGTH(content) AS content_length',
                 [row.id]
             );
+            if (retired.rows.length > 0) {
+                updateUsage(row.namespace, -1, -(retired.rows[0].content_length || 0));
+            }
 
             // Hard-delete vector chunks so they can't appear in search results
             await pool.query(
@@ -197,6 +210,108 @@ async function purgeCallLogs() {
     return { purged, retentionDays };
 }
 
+// Resolve the two conversation retention windows from the raw
+// conversation_retention_days value. Returns null when retention is off:
+// absent, blank, unparseable, fractional or negative. Same conservative
+// reading as decayHalfLife above — this path deletes, so a garbled value must
+// switch the rule off rather than fall back to a deleting default.
+//
+// softAfterDays counts from a conversation's created_at to its soft-delete:
+// retention + 1, so a session uploaded on day N stays through all of day
+// N + retention. purgeAfterDays counts from deleted_at to the tombstone. Both
+// are the windows scripts/db-cleanup.sh used before LLM-642.
+function conversationRetentionWindows(raw) {
+    if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+    const days = Number(raw);
+    if (!Number.isInteger(days) || days < 0) return null;
+    return { retentionDays: days, softAfterDays: days + 1, purgeAfterDays: days + 1 };
+}
+
+// Retire conversation notes in two stages.
+//
+// Stage 1 soft-deletes conversations older than the retention window, with
+// the same quota accounting and chunk removal as deleteNote.
+//
+// Stage 2 turns conversations soft-deleted a further window ago into
+// tombstones: content emptied, chunks gone, the row and its metadata kept
+// with a purged_at stamp. The row is deliberately never dropped. The
+// memory-sync diff (routes/agent.js) treats any row for a session id as
+// "present", so a retired session is never offered back to the client as
+// missing. Hard-deleting the row was how every expired conversation came
+// straight back on the next sync (LLM-642). A tombstone is a few hundred
+// bytes of metadata; restoreNote refuses one.
+async function retireConversations() {
+    const windows = conversationRetentionWindows(config.get('conversation_retention_days'));
+    if (!windows) {
+        logCleanup('conversation-skip', { reason: 'conversation_retention_days is unset or invalid' });
+        return { skipped: true, reason: 'no retention window' };
+    }
+
+    const expired = await pool.query(
+        `UPDATE documents
+         SET deleted_at = NOW()
+         WHERE kind = 'conversation' AND deleted_at IS NULL
+           AND created_at < NOW() - INTERVAL '1 day' * $1
+         RETURNING namespace, slug, LENGTH(content) AS content_length`,
+        [windows.softAfterDays]
+    );
+
+    // One usage update per namespace rather than per note — the counters are
+    // a fire-and-forget upsert and a nightly batch can be hundreds of rows.
+    const usage = new Map();
+    let softDeleted = 0;
+    for (const row of expired.rows) {
+        const agg = usage.get(row.namespace) || { count: 0, bytes: 0 };
+        agg.count++;
+        agg.bytes += row.content_length || 0;
+        usage.set(row.namespace, agg);
+        try {
+            await pool.query(
+                'DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)',
+                [row.namespace, row.slug]
+            );
+            softDeleted++;
+        } catch (err) {
+            logCleanup('conversation-chunk-error', { namespace: row.namespace, slug: row.slug, error: err.message });
+        }
+    }
+    for (const [namespace, agg] of usage) {
+        updateUsage(namespace, -agg.count, -agg.bytes);
+    }
+
+    // A tombstone keeps deleted_at (still deleted) and gains purged_at; the
+    // purged_at guard keeps this from rewriting the same rows every night.
+    const purged = await pool.query(
+        `UPDATE documents
+         SET content = '',
+             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())
+         WHERE kind = 'conversation' AND deleted_at IS NOT NULL
+           AND metadata->>'purged_at' IS NULL
+           AND deleted_at < NOW() - INTERVAL '1 day' * $1
+         RETURNING namespace, slug`,
+        [windows.purgeAfterDays]
+    );
+
+    // Chunks normally went at soft-delete. Rows the old shell script retired
+    // before LLM-642 never had that step, so sweep again here.
+    for (const row of purged.rows) {
+        try {
+            await pool.query(
+                'DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)',
+                [row.namespace, row.slug]
+            );
+        } catch (err) {
+            logCleanup('conversation-chunk-error', { namespace: row.namespace, slug: row.slug, error: err.message });
+        }
+    }
+
+    const summary = { softDeleted, purged: purged.rowCount, retentionDays: windows.retentionDays };
+    if (softDeleted > 0 || purged.rowCount > 0) {
+        logCleanup('conversations-retired', summary);
+    }
+    return summary;
+}
+
 // Start the cleanup scheduler. Runs all cleanup tasks on the same cron schedule.
 // Called once at server startup.
 let scheduledTask = null;
@@ -241,9 +356,18 @@ function startCleanupScheduler() {
             logCleanup('cron-purge-error', { error: err.message });
             logError('cleanup', 'cron-purge-error', { message: err.message, detail: err.stack });
         }
+
+        // Task 3: Conversation retention (soft-delete, then tombstone)
+        try {
+            const result = await retireConversations();
+            logCleanup('cron-conversations-complete', { result });
+        } catch (err) {
+            logCleanup('cron-conversations-error', { error: err.message });
+            logError('cleanup', 'cron-conversations-error', { message: err.message, detail: err.stack });
+        }
     });
 
     logCleanup('scheduler', { message: 'Cleanup scheduler started', schedule });
 }
 
-module.exports = { runDecayCleanup, purgeCallLogs, startCleanupScheduler, buildDecayConditions };
+module.exports = { runDecayCleanup, purgeCallLogs, retireConversations, startCleanupScheduler, buildDecayConditions, conversationRetentionWindows };
