@@ -23,6 +23,7 @@ const { requireByName, resolveByName, resolveById, checkNameAvailability, modera
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
+const { createAttemptLimiter } = require('../services/attempt-limiter');
 const { hasPermission, requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
 const notePerms = require('../services/note-permissions');
 const { apiRoute } = require('../middleware/route-wrapper');
@@ -189,6 +190,117 @@ router.post('/admin/logout', async (req, res) => {
         console.error('Admin logout error:', err.message);
         res.status(500).json({
             error: { code: 'INTERNAL', message: 'Logout failed' }
+        });
+    }
+});
+
+// Failed-password throttles for /admin/link-account (LLM-670). Keyed per
+// caller AND per target: the caller key stops one session hammering, the
+// target key stops an attacker spreading guesses across many signups.
+const linkCallerLimiter = createAttemptLimiter({ maxFailures: 5, windowMs: 15 * 60 * 1000 });
+const linkTargetLimiter = createAttemptLimiter({ maxFailures: 10, windowMs: 15 * 60 * 1000 });
+
+// POST /admin/link-account — link the logged-in user's account with another
+// account they control, so the two can see each other (LLM-670).
+// Body: { username, password } — the OTHER account's dashboard login.
+//
+// Knowing the other account's password is the proof both belong to the same
+// person. The link is two ordinary visibility rows (caller -> target and
+// target -> caller), the same rows "Who They Can See" edits, so either side
+// can later remove its half there. It bypasses the delegation bound on
+// visibility/save on purpose: that bound stops a signup granting itself sight
+// of accounts it cannot see; here the caller has proven it owns the target.
+//
+// Every credential failure (unknown account, no dashboard password, wrong
+// password) returns the same 400 after the same hashing work, so the route
+// cannot be used to discover which accounts exist. 400, not 401: the
+// dashboard's api() helper treats any 401 as an expired session and logs the
+// user out, and a typo in the OTHER account's password must not do that.
+router.post('/admin/link-account', async (req, res) => {
+    const username = sanitize.agentName(req.body.username);
+    const { password } = req.body;
+    const callerId = req.authenticatedUser.id;
+
+    if (!username || !password) {
+        return res.status(400).json({
+            error: { code: 'BAD_REQUEST', message: 'Required fields: username, password' }
+        });
+    }
+
+    const callerBlock = linkCallerLimiter.check(callerId);
+    const targetBlock = linkTargetLimiter.check(username);
+    if (callerBlock.blocked || targetBlock.blocked) {
+        const retryAfter = Math.max(callerBlock.retryAfterSeconds || 0, targetBlock.retryAfterSeconds || 0);
+        res.set('Retry-After', String(retryAfter));
+        return res.status(429).json({
+            error: { code: 'RATE_LIMITED', message: 'Too many failed attempts. Try again in ' + Math.ceil(retryAfter / 60) + ' minutes.' }
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            'SELECT id, name, password_hash, password_salt FROM actors WHERE name = $1 AND password_hash IS NOT NULL',
+            [username]
+        );
+        const target = result.rows[0];
+
+        let valid = false;
+        if (target) {
+            valid = await verify(password, target.password_salt, target.password_hash);
+        } else {
+            // Same hashing cost as a real check, so response time does not
+            // reveal whether the account exists.
+            await hashToken(password, DUMMY_SALT);
+        }
+
+        if (!valid) {
+            linkCallerLimiter.recordFailure(callerId);
+            linkTargetLimiter.recordFailure(username);
+            logAdmin('account_link_failed', { user_id: callerId, username });
+            return res.status(400).json({
+                error: { code: 'INVALID_CREDENTIALS', message: 'Username or password is incorrect' }
+            });
+        }
+
+        linkCallerLimiter.recordSuccess(callerId);
+        linkTargetLimiter.recordSuccess(username);
+
+        if (target.id === callerId) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'That is the account you are logged in as' }
+            });
+        }
+
+        // Visibility grants only take effect between actors that share a realm
+        // (services/actor-visibility.js), so a link across realms would be
+        // saved but show nothing. Say so instead of reporting success.
+        const overlap = await pool.query(
+            'SELECT 1 FROM actors a1 JOIN actors a2 ON a1.realms && a2.realms WHERE a1.id = $1 AND a2.id = $2',
+            [callerId, target.id]
+        );
+        if (overlap.rows.length === 0) {
+            return res.status(409).json({
+                error: { code: 'NO_SHARED_REALM', message: 'These accounts are in different realms, so a link would not let them see each other. Ask an administrator to add them to a shared realm.' }
+            });
+        }
+
+        // One statement, so both halves land or neither does. UNIQUE
+        // (actor_id, target_actor_id) makes a repeat link a no-op.
+        const inserted = await pool.query(
+            `INSERT INTO actor_visibility_configuration (actor_id, target_actor_id)
+             VALUES ($1, $2), ($2, $1)
+             ON CONFLICT (actor_id, target_actor_id) DO NOTHING`,
+            [callerId, target.id]
+        );
+        clearVisibilityCache(callerId);
+        clearVisibilityCache(target.id);
+
+        logAdmin('account_link', { user_id: callerId, target_actor_id: target.id, rows_added: inserted.rowCount });
+        res.json({ linked: target.name, already_linked: inserted.rowCount === 0 });
+    } catch (err) {
+        console.error('Admin link-account error:', err.message);
+        res.status(500).json({
+            error: { code: 'INTERNAL', message: 'Failed to link account' }
         });
     }
 });

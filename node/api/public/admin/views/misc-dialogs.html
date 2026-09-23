@@ -170,6 +170,27 @@
 
             <div class="agent-card" style="margin-top: 16px;">
                 <div class="agent-card-header">
+                    <span class="agent-card-title"><i class="icon-link"></i>Link Another Account</span>
+                </div>
+                <p class="ts" style="margin: 0 0 10px;">Do you have a second account (for example, a second companion)? Enter its username and password to link it with this one. The two accounts will then see each other.</p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <div class="ts" style="margin-bottom: 4px;">Other account's username</div>
+                        <input type="text" v-model="linkAccountForm.username" placeholder="Username" autocomplete="off" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <div class="ts" style="margin-bottom: 4px;">Other account's password</div>
+                        <input type="password" v-model="linkAccountForm.password" placeholder="Its dashboard password" autocomplete="new-password" style="width: 100%; margin: 0;" @keyup.enter="linkAccount">
+                    </div>
+                    <p v-if="linkAccountError" class="error" style="margin: 0;">{{ linkAccountError }}</p>
+                    <div class="dialog-actions" style="margin-top: 4px;">
+                        <button class="btn btn-primary btn-compact" @click="linkAccount" :disabled="linkAccountSaving">{{ linkAccountSaving ? 'Linking...' : 'Link Account' }}</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="agent-card" style="margin-top: 16px;">
+                <div class="agent-card-header">
                     <span class="agent-card-title"><i class="icon-share-2"></i>Sharing</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">

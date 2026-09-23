@@ -160,12 +160,44 @@ function useCore() {
     const changePasswordError = ref('');
     const changePasswordSaving = ref(false);
     const visibleToOthers = ref(false);
+    const linkAccountForm = ref({ username: '', password: '' });
+    const linkAccountError = ref('');
+    const linkAccountSaving = ref(false);
 
     function closeProfile() {
         showProfile.value = false;
         changePasswordForm.value = { current: '', newPassword: '', confirm: '' };
         changePasswordError.value = '';
         changePasswordSaving.value = false;
+        linkAccountForm.value = { username: '', password: '' };
+        linkAccountError.value = '';
+        linkAccountSaving.value = false;
+    }
+
+    // Link another account the user controls (LLM-670): proving its password
+    // makes the two accounts able to see each other.
+    async function linkAccount() {
+        linkAccountError.value = '';
+        const username = linkAccountForm.value.username.trim();
+        if (!username || !linkAccountForm.value.password) {
+            linkAccountError.value = 'Enter the other account\'s username and password';
+            return;
+        }
+        linkAccountSaving.value = true;
+        try {
+            const data = await api('/admin/link-account', {
+                username,
+                password: linkAccountForm.value.password
+            });
+            linkAccountForm.value = { username: '', password: '' };
+            showToast(data.already_linked
+                ? 'Already linked with ' + data.linked
+                : 'Linked with ' + data.linked + '. The two accounts can now see each other.', 'success');
+        } catch (err) {
+            linkAccountError.value = err.message;
+        } finally {
+            linkAccountSaving.value = false;
+        }
     }
 
     async function loadVisibility() {
@@ -419,6 +451,7 @@ function useCore() {
         authenticated, sessionToken, user, permissions, canDo, isSuperadmin,
         loginForm, loginError, loggingIn,
         showProfile, showChangePassword, closeProfile, changePasswordForm, changePasswordError, changePasswordSaving, changePassword, visibleToOthers, loadVisibility, toggleVisibleToOthers,
+        linkAccountForm, linkAccountError, linkAccountSaving, linkAccount,
         login, logout, restoreSession, setOnSessionExpired: (fn) => { onSessionExpired = fn; },
         api, showConfirm, executeConfirm, cancelConfirm, confirmPrompt,
         showToast, toast,
