@@ -228,7 +228,7 @@ router.post('/admin/link-account', async (req, res) => {
     }
 
     // Reserve the attempt BEFORE any await, so parallel requests cannot all
-    // pass on the same remaining quota. A correct password clears it below.
+    // pass on the same remaining quota.
     const attempt = acquireAttempt([[linkCallerLimiter, callerId], [linkTargetLimiter, username]]);
     if (!attempt.allowed) {
         const retryAfter = attempt.retryAfterSeconds;
@@ -261,9 +261,9 @@ router.post('/admin/link-account', async (req, res) => {
             });
         }
 
-        linkCallerLimiter.reset(callerId);
-        linkTargetLimiter.reset(username);
-
+        // No reset on success: a correct password must not refund earlier
+        // guesses, or a caller could guess, link an account it controls to
+        // clear the count, and repeat. Every attempt counts for the window.
         if (target.id === callerId) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'That is the account you are logged in as' }

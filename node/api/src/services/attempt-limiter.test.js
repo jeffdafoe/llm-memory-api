@@ -74,13 +74,39 @@ test('the block lifts once the window has passed', () => {
     assert.equal(l.check(7).blocked, false);
 });
 
-test('reset (a success) clears the key', () => {
+test('a successful link does not refund earlier guesses', () => {
+    // code_review round 2: with a reset-on-success, a caller could make four
+    // guesses, link an account it controls to clear its count, and repeat.
+    // There is no refund now, so the controlled-account link spends the 5th
+    // attempt and the next guess is refused.
     const clock = fakeClock(1000);
-    const l = limiter(clock, 2);
-    l.consume(7);
-    l.consume(7);
-    l.reset(7);
-    assert.equal(l.check(7).blocked, false);
+    const caller = limiter(clock, 5);
+    const target = limiter(clock, 10);
+    for (let i = 0; i < 4; i++) {
+        assert.equal(acquireAttempt([[caller, 7], [target, 'victim-' + i]]).allowed, true);
+    }
+    assert.equal(acquireAttempt([[caller, 7], [target, 'my-own-account']]).allowed, true);
+    assert.equal(acquireAttempt([[caller, 7], [target, 'victim-5']]).allowed, false);
+    assert.equal(typeof caller.reset, 'undefined', 'no refund path exists');
+});
+
+test('full-map sweeps run at most once per second', () => {
+    const clock = fakeClock(1000);
+    const l = limiter(clock, 5, { sweepAt: 2, maxKeys: 2 });
+    l.consume('a');
+    l.consume('b');
+    clock.advance(59500);
+    // Sweep runs here; a and b have 500 ms left, so nothing is freed.
+    assert.equal(l.check('c').blocked, true);
+    clock.advance(500);
+    // a and b have now expired, but the last sweep was 500 ms ago: no rescan,
+    // so the map is still full. An unthrottled sweep would free them here.
+    assert.equal(l.check('c').blocked, true);
+    assert.equal(l.size(), 2);
+    clock.advance(500);
+    // 1 s since the last sweep: it runs and frees both.
+    assert.equal(l.check('c').blocked, false);
+    assert.equal(l.size(), 0);
 });
 
 test('expired one-off keys are swept once the map passes sweepAt', () => {

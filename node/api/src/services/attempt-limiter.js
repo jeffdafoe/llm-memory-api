@@ -12,12 +12,19 @@
 // Attempts are COUNTED when they start (acquireAttempt), not when they fail.
 // Counting only after the password check would let a burst of parallel
 // requests all pass the check before the first failure is recorded. A
-// success clears the key, so a user who links several of their own accounts
-// is never locked out by their own correct entries.
+// success does NOT refund anything: if it did, a caller could guess, then
+// link an account it controls to clear its count, and repeat forever. The
+// quota is sized for a person linking one or two of their own accounts.
+
+// Minimum gap between full-Map sweeps. Without it, once the Map is past
+// sweepAt, every check for a new key would scan the whole Map — work an
+// attacker controls by sending distinct keys.
+const SWEEP_INTERVAL_MS = 1000;
 
 function createAttemptLimiter({ maxAttempts, windowMs, maxKeys = 10000, sweepAt = 1000, now = Date.now }) {
     // key -> { attempts: number, windowStart: ms }
     const entries = new Map();
+    let lastSweep = -Infinity;
 
     function isExpired(entry) {
         return now() - entry.windowStart >= windowMs;
@@ -36,6 +43,10 @@ function createAttemptLimiter({ maxAttempts, windowMs, maxKeys = 10000, sweepAt 
     // and one-off keys (a guessed username) never do. Sweep the whole Map once
     // it passes sweepAt, so it holds at most the keys active in one window.
     function sweep() {
+        if (now() - lastSweep < SWEEP_INTERVAL_MS) {
+            return;
+        }
+        lastSweep = now();
         for (const [key, entry] of entries) {
             if (isExpired(entry)) {
                 entries.delete(key);
@@ -74,11 +85,7 @@ function createAttemptLimiter({ maxAttempts, windowMs, maxKeys = 10000, sweepAt 
         }
     }
 
-    function reset(key) {
-        entries.delete(key);
-    }
-
-    return { check, consume, reset, size: () => entries.size };
+    return { check, consume, size: () => entries.size };
 }
 
 // Reserve one attempt against several limiters at once: [[limiter, key], ...].
