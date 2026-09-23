@@ -386,13 +386,27 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     [recipientIds]
                 );
                 if (vr.rows.length > 0) {
-                    const { handleDirectChat } = require('./virtual-agent');
+                    const { handleDirectChat, unanswerableNotice } = require('./virtual-agent');
+                    // A non-wait message addressed to exactly one named agent is
+                    // the only case that gets an "[Error] cannot reply" notice back
+                    // (LLM-669). A "*" broadcast reaches every VA, so a notice per
+                    // unreachable one would flood the sender; wait-mode callers get
+                    // the failure as an HTTP error instead.
+                    const notifyUnanswerable = !wait && Array.isArray(toAgents)
+                        && toAgents.length === 1 && toAgents[0] !== '*';
                     const dispatches = [];
                     for (const row of vr.rows) {
                         const vrActor = recipientActors.get(row.agent);
                         if (vrActor) {
                             const hasAccess = await canAccessVirtualAgent(fromActor.id, vrActor.id);
-                            if (!hasAccess) continue;
+                            if (!hasAccess) {
+                                if (notifyUnanswerable) {
+                                    await chatSend(row.agent, [fromAgent], null,
+                                        unanswerableNotice(row.agent, 'no-access'), { isError: true })
+                                        .catch(() => {});
+                                }
+                                continue;
+                            }
                         }
                         const msgRow = results.find(r => r.agent === row.agent);
                         dispatches.push({ agent: row.agent, msgId: msgRow ? msgRow.id : null });
@@ -420,6 +434,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
                             toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ackReplyOnInsert: wait, ephemeralContext, stableContext,
+                            notifyUnanswerable,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
                         // warnings don't appear; wait-mode awaiters get the error.

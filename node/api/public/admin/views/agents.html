@@ -37,6 +37,7 @@
                         <td class="nowrap truncate" :style="{ color: agentColor(agent.agent) }" :title="agent.agent">
                             {{ agent.agent }}
                             <i v-if="agent.virtual" class="icon-cpu virtual-icon" title="Virtual agent"></i>
+                            <i v-if="agent.virtual && agent.has_api_key === false" class="icon-triangle-alert virtual-icon" style="color: var(--error);" title="No API key: this agent cannot reply"></i>
                             <i v-if="agent.dream_mode === 'companion'" class="icon-heart virtual-icon" style="color: #7c3aed;" title="Dream: companion"></i>
                             <i v-if="agent.dream_mode === 'technical'" class="icon-code virtual-icon" style="color: #0891b2;" title="Dream: technical"></i>
                             <i v-if="agent.dream_mode === 'sim'" class="icon-users virtual-icon" style="color: #65a30d;" title="Dream: sim"></i>

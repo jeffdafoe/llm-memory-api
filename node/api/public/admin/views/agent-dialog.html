@@ -37,8 +37,24 @@
                 </div>
             </div>
 
+            <!-- Missing API key: a virtual agent cannot reply to anyone until one is set -->
+            <div v-if="selectedAgent.virtual && selectedAgent.has_api_key === false && !agentProfileEditing" class="api-key-missing">
+                <div>
+                    <i class="icon-triangle-alert"></i>
+                    <strong>No API key.</strong> This agent cannot reply to anyone until you add a key for its provider.
+                </div>
+                <button v-if="canDo('agents', 'write')" class="btn btn-primary btn-compact" @click="startEditProfile"><i class="icon-key"></i> Add API key</button>
+            </div>
+
             <!-- Agent properties (visible without editing) -->
             <div v-if="!agentProfileEditing" class="agent-properties">
+                <template v-if="selectedAgent.virtual">
+                    <span>API key:
+                        <strong v-if="selectedAgent.has_api_key">set</strong>
+                        <strong v-else style="color: var(--error);">missing</strong>
+                    </span>
+                    <br>
+                </template>
                 <div v-if="selectedAgent.personality" style="font-style: italic; color: var(--text-secondary); margin-bottom: 4px;">{{ selectedAgent.personality }}</div>
                 <span>Dream Mode:
                     <span v-if="selectedAgent.dream_mode === 'companion'" class="badge" style="background: #7c3aed22; color: #7c3aed;">
@@ -80,6 +96,11 @@
                 <small v-if="modelDeprecation(agentProfileProvider, agentProfileModel)" style="color: var(--error); display: block; margin: 4px 0;">
                     &#9888; {{ modelDeprecation(agentProfileProvider, agentProfileModel) }}
                 </small>
+                <label v-if="selectedAgent.virtual">API Key <span v-if="!selectedAgent.has_api_key" style="color: var(--error);">(required)</span>
+                    <input type="password" v-model="agentProfileApiKey"
+                        :placeholder="selectedAgent.has_api_key ? 'A key is set. Enter a new key to replace it.' : 'Paste the API key for the provider above'">
+                    <small class="ts" style="display: block;">The agent uses this key to call its provider. It is encrypted at rest and never shown again.</small>
+                </label>
                 <label>Personality
                     <input type="text" v-model="agentProfilePersonality" placeholder="Short personality description">
                 </label>
@@ -105,9 +126,6 @@
                             @click="toggleProfileRealm(r)">{{ r }}</button>
                     </div>
                 </div>
-                <label v-if="selectedAgent.virtual">API Key
-                    <input type="password" v-model="agentProfileApiKey" placeholder="Enter new key to change (leave blank to keep current)">
-                </label>
                 <div class="dialog-actions">
                     <button class="btn btn-secondary btn-compact" @click="agentProfileEditing = false">Cancel</button>
                     <button class="btn btn-primary btn-compact" @click="saveProfile" :disabled="agentProfileSaving">Save</button>

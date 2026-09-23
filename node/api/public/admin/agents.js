@@ -366,6 +366,9 @@ function useAgents({ api, showToast, showConfirm, onEvent }) {
             selectedAgent.value.learning_enabled = agentProfileLearningEnabled.value;
             selectedAgent.value.storage_quota = quotaBytes;
             selectedAgent.value.realms = [...agentProfileRealms.value];
+            if (agentProfileApiKey.value) {
+                selectedAgent.value.has_api_key = true;
+            }
             agentProfileEditing.value = false;
             showToast('Profile updated', 'success');
         } catch (err) {

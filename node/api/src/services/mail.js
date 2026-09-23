@@ -46,6 +46,14 @@ async function mailSend(toAgent, fromAgent, subject, body, inReplyTo) {
                 const hasAccess = await canAccessVirtualAgent(fromActor.id, toActor.id);
                 if (!hasAccess) {
                     logMail('virtual-agent-access-denied', { from_agent: fromAgent, to_agent: toAgent });
+                    // Tell the sender instead of going silent (LLM-669). Sent
+                    // AS the virtual agent, so the sender reads it as that
+                    // agent's reply; the VA-sender check above keeps this
+                    // from triggering another dispatch.
+                    const { unanswerableNotice } = require('./virtual-agent');
+                    const errSubject = subject.startsWith('Re: ') ? subject : `Re: ${subject}`;
+                    await mailSend(fromAgent, toAgent, errSubject,
+                        unanswerableNotice(toAgent, 'no-access'), result.rows[0].id);
                     return;
                 }
                 const { handleDirectMail } = require('./virtual-agent');

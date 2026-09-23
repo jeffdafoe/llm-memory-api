@@ -378,6 +378,7 @@ router.post('/admin/agents', requirePerm('agents', 'read'), adminRoute('agents-l
     // Subqueries for visibility and VA access summaries shown in the agent list
     let sql = `SELECT s.agent, s.actor_id, s.status, s.last_seen, s.passphrase_rotated_at, s.registered_at, s.provider, s.model, s.virtual, s.personality, s.active_since,
                 s.cost_budget_daily, s.cost_budget_monthly, s.cache_prompts, s.learning_enabled, s.max_tokens, s.temperature, s.dream_mode, ac.dream_source, s.storage_quota, ac.configuration,
+                ac.api_key IS NOT NULL AS has_api_key,
                 a.realms,
                 COALESCE(vis.summary, 'self only') AS visibility_summary,
                 va.summary AS va_access_summary

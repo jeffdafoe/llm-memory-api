@@ -87,8 +87,10 @@
 
                     <!-- Virtual agent fields — API key for create -->
                     <template v-if="newActorVirtual || createSource === 'agents'">
-                        <label>API Key
-                            <input type="password" v-model="editAgentApiKey" placeholder="Provider API key (encrypted at rest)">
+                        <label>API Key <span style="color: var(--error);">(required)</span>
+                            <input type="password" v-model="editAgentApiKey" placeholder="Paste the API key for the provider above">
+                            <small v-if="!editAgentApiKey" style="color: var(--error); display: block;">Without a key this agent cannot reply to anyone. You can also add it later from the agent's Edit form.</small>
+                            <small v-else class="ts" style="display: block;">Encrypted at rest and never shown again.</small>
                         </label>
 
                         <label class="checkbox-label">

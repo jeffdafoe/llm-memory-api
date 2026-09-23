@@ -2617,6 +2617,31 @@ function trimHeadToUserMessage(messages) {
 // Returns `{ text, tool_calls }` so wait-mode HTTP callers can read the
 // reply inline. Throws on failure (the legacy fire-and-forget callers in
 // chatSend swallow the rejection; wait-mode awaiters surface it as 502).
+// Which of the three settings a VA needs before it can call its provider are
+// missing. Empty array = fully configured.
+function missingConfigParts(agent) {
+    const missing = [];
+    if (!agent.api_key) missing.push('API key');
+    if (!agent.provider) missing.push('provider');
+    if (!agent.model) missing.push('model');
+    return missing;
+}
+
+// Text of the [Error] notice sent back when a VA cannot answer at all
+// (LLM-669). Before this, a message to a VA with no key, or to one the sender
+// may not use, was delivered and then nothing happened, so the sender could
+// not tell a broken agent from a quiet one. Provider errors, rate limits and
+// budget stops already send their own [Error] reply; these are the two silent
+// cases. reason: 'no-access' | 'missing-config'.
+function unanswerableNotice(agentName, reason, missing) {
+    if (reason === 'no-access') {
+        return `[Error] You do not have access to ${agentName}, so it will not reply. `
+            + `Its owner can grant access in the dashboard (Agents → ${agentName} → Permissions).`;
+    }
+    return `[Error] ${agentName} cannot reply: it has no ${missing.join(', ')} set. `
+        + `Its owner can add ${missing.length === 1 ? 'it' : 'them'} in the dashboard (Agents → ${agentName}).`;
+}
+
 async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId, opts) {
     const toolsOffered = opts && opts.toolsOffered ? opts.toolsOffered : null;
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
@@ -2681,6 +2706,14 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // arrival, sit forever, no error surfaced. Non-wait callers in
         // chat.js already swallow rejections with .catch(() => {}).
         logVA('direct-chat-skip', { agent: virtualAgentName, reason: 'missing config' });
+        // chat.js sets notifyUnanswerable only for a non-wait message sent to
+        // this one agent — a "*" broadcast reaches every VA and must not come
+        // back as a pile of notices, and wait-mode callers get the 502 instead.
+        if (opts && opts.notifyUnanswerable) {
+            await chatSend(virtualAgentName, [fromAgent], null,
+                unanswerableNotice(virtualAgentName, 'missing-config', missingConfigParts(agent)), { isError: true })
+                .catch(err => logVA('error-feedback-failed', { agent: virtualAgentName, error: err.message }));
+        }
         throw new Error('Agent ' + virtualAgentName + ' missing provider/model/api_key');
     }
 
@@ -3127,11 +3160,6 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
     const agent = await loadAgent(virtualAgentName);
     if (!agent || !agent.virtual) return;
 
-    if (!agent.api_key || !agent.provider || !agent.model) {
-        logVA('direct-mail-skip', { agent: virtualAgentName, reason: 'missing config' });
-        return;
-    }
-
     // Load the incoming mail — JOIN with actors to get from/to names
     const mailResult = await pool.query(
         `SELECT m.*, fa.name AS from_agent, ta.name AS to_agent
@@ -3143,6 +3171,19 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
     );
     if (mailResult.rows.length === 0) return;
     const mail = mailResult.rows[0];
+
+    // Checked after the mail load (it used to come first) so the notice can
+    // thread onto the sender's subject. Mail is always one-to-one, so there
+    // is no broadcast case to guard against here.
+    if (!agent.api_key || !agent.provider || !agent.model) {
+        logVA('direct-mail-skip', { agent: virtualAgentName, reason: 'missing config' });
+        const { mailSend: mailSendErr } = require('./mail');
+        const errSubject = mail.subject.startsWith('Re: ') ? mail.subject : `Re: ${mail.subject}`;
+        await mailSendErr(fromAgent, virtualAgentName, errSubject,
+            unanswerableNotice(virtualAgentName, 'missing-config', missingConfigParts(agent)), mailId)
+            .catch(err => logVA('error-feedback-failed', { agent: virtualAgentName, error: err.message }));
+        return;
+    }
 
     logVA('direct-mail-processing', { agent: virtualAgentName, from: fromAgent, mailId, subject: mail.subject });
 
@@ -3279,4 +3320,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages, stabilizeHistoryWindow, buildCurrentTurnContext };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, unanswerableNotice, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages, stabilizeHistoryWindow, buildCurrentTurnContext };
