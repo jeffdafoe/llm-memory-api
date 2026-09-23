@@ -2989,10 +2989,13 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         }
         const callProvider = () =>
             withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, providerCallOpts));
-        // A salem-engine wait=true tick is abandoned after the engine's 90s HTTP
-        // timeout and re-ticked by its reactor, so a server-side retry (first one
-        // at 5 minutes on the live cadence) bills a call nobody reads and persists
-        // an undispatched tool_call into the NPC's history. Fail fast instead.
+        // No server-side retry for a salem-engine wait=true tick: the engine
+        // abandons it after its 90s HTTP timeout and its reactor re-ticks, so a
+        // retry (first one at 5 minutes on the live cadence) would bill a call
+        // nobody reads and persist an undispatched tool_call into the NPC's
+        // history. This does not cover a FIRST call that itself outruns the 90s
+        // (no abort is propagated to the provider) — rare enough (1 in ~15k calls
+        // over 7 days, 2026-09) not to warrant cancellation plumbing.
         const simWaitTick = isSimChat && opts && opts.ackReplyOnInsert;
         const providerResult = simWaitTick
             ? await callProvider()
