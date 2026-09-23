@@ -23,7 +23,7 @@ const { requireByName, resolveByName, resolveById, checkNameAvailability, modera
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
-const { createAttemptLimiter } = require('../services/attempt-limiter');
+const { createAttemptLimiter, acquireAttempt } = require('../services/attempt-limiter');
 const { hasPermission, requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
 const notePerms = require('../services/note-permissions');
 const { apiRoute } = require('../middleware/route-wrapper');
@@ -194,11 +194,11 @@ router.post('/admin/logout', async (req, res) => {
     }
 });
 
-// Failed-password throttles for /admin/link-account (LLM-670). Keyed per
+// Password-attempt throttles for /admin/link-account (LLM-670). Keyed per
 // caller AND per target: the caller key stops one session hammering, the
 // target key stops an attacker spreading guesses across many signups.
-const linkCallerLimiter = createAttemptLimiter({ maxFailures: 5, windowMs: 15 * 60 * 1000 });
-const linkTargetLimiter = createAttemptLimiter({ maxFailures: 10, windowMs: 15 * 60 * 1000 });
+const linkCallerLimiter = createAttemptLimiter({ maxAttempts: 5, windowMs: 15 * 60 * 1000 });
+const linkTargetLimiter = createAttemptLimiter({ maxAttempts: 10, windowMs: 15 * 60 * 1000 });
 
 // POST /admin/link-account — link the logged-in user's account with another
 // account they control, so the two can see each other (LLM-670).
@@ -227,10 +227,11 @@ router.post('/admin/link-account', async (req, res) => {
         });
     }
 
-    const callerBlock = linkCallerLimiter.check(callerId);
-    const targetBlock = linkTargetLimiter.check(username);
-    if (callerBlock.blocked || targetBlock.blocked) {
-        const retryAfter = Math.max(callerBlock.retryAfterSeconds || 0, targetBlock.retryAfterSeconds || 0);
+    // Reserve the attempt BEFORE any await, so parallel requests cannot all
+    // pass on the same remaining quota. A correct password clears it below.
+    const attempt = acquireAttempt([[linkCallerLimiter, callerId], [linkTargetLimiter, username]]);
+    if (!attempt.allowed) {
+        const retryAfter = attempt.retryAfterSeconds;
         res.set('Retry-After', String(retryAfter));
         return res.status(429).json({
             error: { code: 'RATE_LIMITED', message: 'Too many failed attempts. Try again in ' + Math.ceil(retryAfter / 60) + ' minutes.' }
@@ -254,16 +255,14 @@ router.post('/admin/link-account', async (req, res) => {
         }
 
         if (!valid) {
-            linkCallerLimiter.recordFailure(callerId);
-            linkTargetLimiter.recordFailure(username);
             logAdmin('account_link_failed', { user_id: callerId, username });
             return res.status(400).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Username or password is incorrect' }
             });
         }
 
-        linkCallerLimiter.recordSuccess(callerId);
-        linkTargetLimiter.recordSuccess(username);
+        linkCallerLimiter.reset(callerId);
+        linkTargetLimiter.reset(username);
 
         if (target.id === callerId) {
             return res.status(400).json({
