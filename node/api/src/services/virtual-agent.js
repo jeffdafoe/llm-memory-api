@@ -2987,13 +2987,21 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             providerCallOpts.tools = toolsOffered;
             providerCallOpts.messages = toolUseMessages;
         }
-        const providerResult = await retryWithBackoff(agent.agent, () =>
-            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, providerCallOpts)),
-            async (err, retryInfo) => {
-                await chatSend(virtualAgentName, [fromAgent], null,
-                    `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, { sceneId, conversationId, isError: true });
-            }
-        );
+        const callProvider = () =>
+            withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, providerCallOpts));
+        // A salem-engine wait=true tick is abandoned after the engine's 90s HTTP
+        // timeout and re-ticked by its reactor, so a server-side retry (first one
+        // at 5 minutes on the live cadence) bills a call nobody reads and persists
+        // an undispatched tool_call into the NPC's history. Fail fast instead.
+        const simWaitTick = isSimChat && opts && opts.ackReplyOnInsert;
+        const providerResult = simWaitTick
+            ? await callProvider()
+            : await retryWithBackoff(agent.agent, callProvider,
+                async (err, retryInfo) => {
+                    await chatSend(virtualAgentName, [fromAgent], null,
+                        `[Retrying] Initial attempt failed: ${err.message}. Retrying ${retryInfo.retriesRemaining} more time(s) over the next ~${formatDuration(retryInfo.totalSeconds)}.`, { sceneId, conversationId, isError: true });
+                }
+            );
         const response = providerResult.text || '';
         const usage = providerResult.usage;
         const replyToolCalls = Array.isArray(providerResult.tool_calls) ? providerResult.tool_calls : [];
