@@ -9,6 +9,9 @@ function logProvider(action, details) {
     log('provider', action, details);
 }
 
+// Models that reject sampling parameters (temperature/top_p/top_k) with a 400.
+const SAMPLING_PARAMS_REJECTED = new Set(['claude-opus-4-7']);
+
 // ── Model registry ──────────────────────────────────────────────────────────
 
 const models = {
@@ -19,15 +22,7 @@ const models = {
         // Pricing: dollars per million tokens. Source: claude.com/pricing, 2026-04-20.
         pricing: { input: 5, output: 25, cache_write: 6.25, cache_read: 0.50 },
         capabilities: {
-            temperature: {
-                type: 'number',
-                label: 'Temperature',
-                description: 'Controls randomness. Lower values are more focused and deterministic, higher values are more creative. Ignored when thinking is enabled.',
-                default: 1.0,
-                min: 0,
-                max: 1.0,
-                step: 0.1
-            },
+            // No temperature: Opus 4.7 rejects temperature/top_p/top_k with a 400.
             max_tokens: {
                 type: 'number',
                 label: 'Max Output Tokens',
@@ -290,12 +285,11 @@ function createCall(model, apiKey, configuration) {
         };
 
         // Adaptive thinking — omit temperature entirely when thinking is active.
+        // Effort is a sibling of thinking, under output_config — not a key inside it.
         if (useThinking) {
-            body.thinking = {
-                type: 'adaptive',
-                effort: conf.thinking_effort
-            };
-        } else {
+            body.thinking = { type: 'adaptive' };
+            body.output_config = { effort: conf.thinking_effort };
+        } else if (!SAMPLING_PARAMS_REJECTED.has(model)) {
             const t = asNumber(conf.temperature);
             if (t !== undefined) {
                 body.temperature = t;
