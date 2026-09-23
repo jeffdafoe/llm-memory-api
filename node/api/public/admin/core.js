@@ -330,6 +330,14 @@ function useCore() {
         return false;
     }
 
+    // Superadmin = holds the global *:* grant. Mirrors the server's
+    // hasPermission(actorId, '*', '*') gate on the namespace-permission and
+    // admin-permission saves, so the UI never offers a save the server refuses.
+    function isSuperadmin() {
+        const perms = permissions.value;
+        return !!(perms && perms['*'] && perms['*'].includes('*'));
+    }
+
     // Discussion display helpers
     const statusIcons = {
         active: 'icon-circle',
@@ -408,7 +416,7 @@ function useCore() {
     }
 
     return {
-        authenticated, sessionToken, user, permissions, canDo,
+        authenticated, sessionToken, user, permissions, canDo, isSuperadmin,
         loginForm, loginError, loggingIn,
         showProfile, showChangePassword, closeProfile, changePasswordForm, changePasswordError, changePasswordSaving, changePassword, visibleToOthers, loadVisibility, toggleVisibleToOthers,
         login, logout, restoreSession, setOnSessionExpired: (fn) => { onSessionExpired = fn; },

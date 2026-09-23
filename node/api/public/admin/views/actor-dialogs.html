@@ -249,8 +249,8 @@
                 </div>
             </template>
 
-            <!-- ─── Namespace Permissions ─── -->
-            <template v-if="actorDialogMode === 'edit'">
+            <!-- ─── Namespace Permissions (superadmin only — the server refuses anyone else) ─── -->
+            <template v-if="actorDialogMode === 'edit' && isSuperadmin()">
                 <div class="agent-card">
                     <div class="agent-card-header">
                         <div>
@@ -304,11 +304,13 @@
                         </div>
                     </div>
                 </div>
+            </template>
 
-                <!-- Save permissions + visibility -->
+            <!-- Save visibility (+ namespace permissions for a superadmin) -->
+            <template v-if="actorDialogMode === 'edit'">
                 <div style="margin-bottom: 16px;">
                     <button class="btn btn-primary" @click="saveActorConfig" :disabled="actorConfigSaving">
-                        {{ actorConfigSaving ? 'Saving...' : 'Save Permissions' }}
+                        {{ actorConfigSaving ? 'Saving...' : (isSuperadmin() ? 'Save Permissions' : 'Save Visibility') }}
                     </button>
                 </div>
             </template>
@@ -385,8 +387,8 @@
                 </div>
             </template>
 
-            <!-- ─── Admin Permissions (edit mode, UI users only) ─── -->
-            <template v-if="actorDialogMode === 'edit' && selectedActorConfig.is_user">
+            <!-- ─── Admin Permissions (edit mode, UI users only, superadmin only) ─── -->
+            <template v-if="actorDialogMode === 'edit' && selectedActorConfig.is_user && isSuperadmin()">
                 <div class="agent-card">
                     <div class="agent-card-header">
                         <div>

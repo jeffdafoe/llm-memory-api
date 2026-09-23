@@ -159,7 +159,7 @@ createApp({
         const apiLogModule = useApiLog(deps);
         const errorLogModule = useErrorLog(deps);
         const configModule = useConfig(deps);
-        const actorsConfigModule = useActorsConfig({ ...deps, agentsModule, user: core.user, permissions: core.permissions });
+        const actorsConfigModule = useActorsConfig({ ...deps, agentsModule, user: core.user, permissions: core.permissions, canDo: core.canDo, isSuperadmin: core.isSuperadmin });
         const accessModule = useAccess(deps);
 
         // Dashboard API log: deduplicate consecutive /mcp entries

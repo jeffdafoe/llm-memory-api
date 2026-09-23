@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { useSortable } from './core.js';
 import { safeInt } from './util.js';
 
-function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, permissions }) {
+function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, permissions, canDo, isSuperadmin }) {
     const actorsConfigList = ref([]);
     const actorsConfigLoading = ref(false);
 
@@ -338,12 +338,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
                 });
             }
 
-            // Build admin permissions list (only for UI users)
             const savePromises = [
-                api('/admin/actors/permissions/save', {
-                    actor_id: selectedActorConfig.value.id,
-                    permissions: nsPerms
-                }),
                 api('/admin/actors/visibility/save', {
                     actor_id: selectedActorConfig.value.id,
                     wildcard: actorHasWildcardVis.value,
@@ -351,7 +346,19 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
                 })
             ];
 
-            if (selectedActorConfig.value.is_user) {
+            // Namespace and admin permission saves are superadmin-only on the
+            // server. Sending them for anyone else 403s, and Promise.all then
+            // reports the whole save as failed even though visibility landed.
+            if (isSuperadmin()) {
+                savePromises.push(api('/admin/actors/permissions/save', {
+                    actor_id: selectedActorConfig.value.id,
+                    permissions: nsPerms
+                }));
+            }
+
+            // Admin permissions (only for UI users) go last: the self-edit
+            // refresh below reads the final result.
+            if (isSuperadmin() && selectedActorConfig.value.is_user) {
                 const adminPerms = [];
                 if (actorHasWildcardAdmin.value) {
                     adminPerms.push({ resource: '*', action: '*' });
@@ -371,7 +378,7 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
             const results = await Promise.all(savePromises);
 
             // If we edited our own admin permissions, refresh the client-side permission cache
-            if (selectedActorConfig.value.is_user && user && user.value && selectedActorConfig.value.id === user.value.id) {
+            if (isSuperadmin() && selectedActorConfig.value.is_user && user && user.value && selectedActorConfig.value.id === user.value.id) {
                 const adminPermResult = results[results.length - 1];
                 if (adminPermResult && adminPermResult.updated_permissions) {
                     permissions.value = adminPermResult.updated_permissions;
@@ -579,7 +586,9 @@ function useActorsConfig({ api, showToast, showConfirm, agentsModule, user, perm
 
     function startCreateActor(source) {
         agentsModule.loadProviderRegistry();
-        agentsModule.loadTemplates();
+        if (canDo('templates', 'read')) {
+            agentsModule.loadTemplates();
+        }
         actorDialogMode.value = 'create';
         createSource.value = source || 'config';
         const isAgentMode = createSource.value === 'agents';
