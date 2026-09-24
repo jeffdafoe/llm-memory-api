@@ -283,8 +283,11 @@ router.post('/admin/change-password', async (req, res) => {
         );
         const row = result.rows[0];
 
+        // 400, not 401: the dashboard's api() helper treats any 401 as an
+        // expired session and logs the user out, so a typo in the current
+        // password must not answer 401 (same reasoning as link-account).
         if (!row || !row.password_hash || !(await verify(current_password, row.password_salt, row.password_hash))) {
-            return res.status(401).json({
+            return res.status(400).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect' }
             });
         }
