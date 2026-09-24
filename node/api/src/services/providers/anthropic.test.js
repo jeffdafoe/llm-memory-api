@@ -68,6 +68,12 @@ for (const model of ['claude-opus-5', 'claude-sonnet-5']) {
         assert.equal('temperature' in body, false);
     });
 
+    test(model + ', no effort setting: thinking omitted so the model default (adaptive) applies', async () => {
+        const body = await bodyFor(model, {});
+        assert.equal('thinking' in body, false, 'no setting must not disable thinking');
+        assert.equal('output_config' in body, false);
+    });
+
     test(model + ', thinking on: adaptive + effort, xhigh accepted', async () => {
         const body = await bodyFor(model, { thinking_effort: 'xhigh' });
         assert.deepEqual(body.thinking, { type: 'adaptive' });
@@ -83,10 +89,10 @@ for (const model of ['claude-opus-5-5', 'claude-fable-5-1']) {
         assert.equal('temperature' in body, false);
     });
 
-    test(model + ', no effort setting at all still sends a valid body', async () => {
+    test(model + ', no effort setting: no effort sent, so Anthropic\'s default for the model applies', async () => {
         const body = await bodyFor(model, {});
         assert.deepEqual(body.thinking, { type: 'adaptive' });
-        assert.deepEqual(body.output_config, { effort: 'low' });
+        assert.equal('output_config' in body, false, 'absent must not be treated as a stale "off"');
     });
 
     test(model + ', chosen effort passes through', async () => {

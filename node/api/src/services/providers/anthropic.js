@@ -392,17 +392,29 @@ function createCall(model, apiKey, configuration) {
 
         // Adaptive thinking — omit temperature entirely when thinking is active.
         // Effort is a sibling of thinking, under output_config — not a key inside it.
+        // An explicit "off" and NO setting are different states: only an
+        // explicit "off" turns thinking down; no setting leaves the model's
+        // own default in place.
+        const thinkingOff = conf.thinking_effort === 'off';
         if (THINKING_ALWAYS_ON.has(model)) {
-            // Cannot be disabled. A stored "off" (or no setting) becomes the
-            // lowest effort rather than a 400.
+            // Cannot be disabled. A stale "off" becomes the lowest effort
+            // rather than a 400; no setting sends no effort, so Anthropic's
+            // default for the model applies.
             body.thinking = { type: 'adaptive' };
-            body.output_config = { effort: useThinking ? conf.thinking_effort : 'low' };
+            if (useThinking) {
+                body.output_config = { effort: conf.thinking_effort };
+            } else if (thinkingOff) {
+                body.output_config = { effort: 'low' };
+            }
         } else if (useThinking) {
             body.thinking = { type: 'adaptive' };
             body.output_config = { effort: conf.thinking_effort };
         } else if (THINKING_ON_BY_DEFAULT.has(model)) {
-            // Omitting `thinking` would run adaptive thinking on these models.
-            body.thinking = { type: 'disabled' };
+            // Omitting `thinking` runs adaptive thinking on these models, so
+            // "off" must say so explicitly. No setting: leave it omitted.
+            if (thinkingOff) {
+                body.thinking = { type: 'disabled' };
+            }
         } else if (!SAMPLING_PARAMS_REJECTED.has(model)) {
             const t = asNumber(conf.temperature);
             if (t !== undefined) {
