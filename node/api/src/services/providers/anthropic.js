@@ -10,11 +10,116 @@ function logProvider(action, details) {
 }
 
 // Models that reject sampling parameters (temperature/top_p/top_k) with a 400.
-const SAMPLING_PARAMS_REJECTED = new Set(['claude-opus-4-7']);
+const SAMPLING_PARAMS_REJECTED = new Set([
+    'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-5', 'claude-opus-5-5',
+    'claude-sonnet-5', 'claude-fable-5-1'
+]);
+
+// How a model treats an OMITTED `thinking` parameter differs by generation
+// (LLM-672). Older models (Opus 4.6-4.8, Sonnet 4.6) run WITHOUT thinking when
+// it is omitted, so "off" means leaving it out. These two run adaptive
+// thinking when it is omitted, so "off" must send {type: "disabled"}:
+const THINKING_ON_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
+// And these cannot turn thinking off at all — {type: "disabled"} is a 400.
+// Effort is the only control, so they offer no "off" option.
+const THINKING_ALWAYS_ON = new Set(['claude-opus-5-5', 'claude-fable-5-1']);
+
+// Shared capability blocks for the Claude 5-generation entries below.
+const CACHE_PROMPTS_CAPABILITY = {
+    type: 'boolean',
+    label: 'Prompt Caching',
+    description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+    default: false
+};
+
+function maxTokensCapability() {
+    return {
+        type: 'number',
+        label: 'Max Output Tokens',
+        description: 'Maximum number of tokens the model will generate (thinking + response combined). Thinking counts against this, so leave headroom.',
+        default: 16384,
+        min: 1,
+        max: 128000
+    };
+}
+
+function thinkingEffortCapability(canTurnOff, defaultEffort, note) {
+    const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
+    return {
+        type: 'select',
+        label: 'Thinking Effort',
+        description: 'Controls how much the model thinks before responding. Higher effort produces better results on complex tasks but costs more tokens and time. ' + note,
+        default: defaultEffort,
+        options: canTurnOff ? ['off'].concat(levels) : levels
+    };
+}
 
 // ── Model registry ──────────────────────────────────────────────────────────
 
 const models = {
+    // Claude 5 generation (LLM-672). None accept temperature. Pricing: dollars
+    // per million tokens from the Anthropic model table, 2026-09-24; cache_write
+    // is the 5-minute rate (1.25x input).
+    'claude-fable-5-1': {
+        label: 'Fable 5.1',
+        apiId: 'claude-fable-5-1',
+        configVersion: 1,
+        pricing: { input: 10, output: 50, cache_write: 12.50, cache_read: 0.25 },
+        capabilities: {
+            max_tokens: maxTokensCapability(),
+            thinking_effort: thinkingEffortCapability(false, 'medium',
+                'Thinking is always on for Fable 5.1 and cannot be turned off. Requires an Anthropic organization with 30-day data retention; long requests can exceed the request timeout at high effort.'),
+            cache_prompts: CACHE_PROMPTS_CAPABILITY
+        }
+    },
+    'claude-opus-5-5': {
+        label: 'Opus 5.5',
+        apiId: 'claude-opus-5-5',
+        configVersion: 1,
+        pricing: { input: 4, output: 20, cache_write: 5, cache_read: 0.20 },
+        capabilities: {
+            max_tokens: maxTokensCapability(),
+            thinking_effort: thinkingEffortCapability(false, 'medium',
+                'Thinking is always on for Opus 5.5 and cannot be turned off; "medium" matches Anthropic\'s own default for this model.'),
+            cache_prompts: CACHE_PROMPTS_CAPABILITY
+        }
+    },
+    'claude-opus-5': {
+        label: 'Opus 5',
+        apiId: 'claude-opus-5',
+        configVersion: 1,
+        pricing: { input: 5, output: 25, cache_write: 6.25, cache_read: 0.50 },
+        capabilities: {
+            max_tokens: maxTokensCapability(),
+            thinking_effort: thinkingEffortCapability(true, 'low',
+                'Opus 5 thinks by default. "off" disables it, but Anthropic recommends low effort over off: with thinking off the model sometimes writes a tool call as text instead of calling it.'),
+            cache_prompts: CACHE_PROMPTS_CAPABILITY
+        }
+    },
+    'claude-sonnet-5': {
+        label: 'Sonnet 5',
+        apiId: 'claude-sonnet-5',
+        configVersion: 1,
+        pricing: { input: 2, output: 10, cache_write: 2.50, cache_read: 0.20 },
+        capabilities: {
+            max_tokens: maxTokensCapability(),
+            thinking_effort: thinkingEffortCapability(true, 'low',
+                'Sonnet 5 thinks by default. "off" disables it; the model is then less eager to use tools.'),
+            cache_prompts: CACHE_PROMPTS_CAPABILITY
+        }
+    },
+    'claude-opus-4-8': {
+        label: 'Opus 4.8',
+        apiId: 'claude-opus-4-8',
+        configVersion: 1,
+        pricing: { input: 5, output: 25, cache_write: 6.25, cache_read: 0.50 },
+        capabilities: {
+            max_tokens: maxTokensCapability(),
+            thinking_effort: thinkingEffortCapability(true, 'off',
+                '"off" disables thinking entirely. Opus 4.8 does not accept temperature.'),
+            cache_prompts: CACHE_PROMPTS_CAPABILITY
+        }
+    },
     'claude-opus-4-7': {
         label: 'Opus 4.7',
         apiId: 'claude-opus-4-7',
@@ -36,7 +141,8 @@ const models = {
                 label: 'Thinking Effort',
                 description: 'Controls how much the model thinks before responding. Higher effort produces better results on complex tasks but costs more tokens. "off" disables thinking entirely. Opus 4.7 uses adaptive thinking — extended thinking is not supported on this model.',
                 default: 'off',
-                options: ['off', 'low', 'medium', 'high', 'max']
+                // xhigh arrived with Opus 4.7; adding an option keeps stored configs valid, so no configVersion bump.
+                options: ['off', 'low', 'medium', 'high', 'xhigh', 'max']
             },
             cache_prompts: {
                 type: 'boolean',
@@ -286,9 +392,17 @@ function createCall(model, apiKey, configuration) {
 
         // Adaptive thinking — omit temperature entirely when thinking is active.
         // Effort is a sibling of thinking, under output_config — not a key inside it.
-        if (useThinking) {
+        if (THINKING_ALWAYS_ON.has(model)) {
+            // Cannot be disabled. A stored "off" (or no setting) becomes the
+            // lowest effort rather than a 400.
+            body.thinking = { type: 'adaptive' };
+            body.output_config = { effort: useThinking ? conf.thinking_effort : 'low' };
+        } else if (useThinking) {
             body.thinking = { type: 'adaptive' };
             body.output_config = { effort: conf.thinking_effort };
+        } else if (THINKING_ON_BY_DEFAULT.has(model)) {
+            // Omitting `thinking` would run adaptive thinking on these models.
+            body.thinking = { type: 'disabled' };
         } else if (!SAMPLING_PARAMS_REJECTED.has(model)) {
             const t = asNumber(conf.temperature);
             if (t !== undefined) {
@@ -313,7 +427,7 @@ function createCall(model, apiKey, configuration) {
             }));
         }
 
-        logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!useThinking, tools: useTools });
+        logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!(body.thinking && body.thinking.type === 'adaptive'), tools: useTools });
 
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
