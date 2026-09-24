@@ -2699,6 +2699,10 @@ router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('
 
             // Usage & sync
             await client.query('DELETE FROM virtual_agent_usage WHERE actor_id = $1', [id]);
+            // LLM call log for this agent. actor_id is NOT NULL with no ON DELETE,
+            // so it can't be detached like the logs below; without this, deleting
+            // any VA that has ever made a call failed on the FK (LLM-673).
+            await client.query('DELETE FROM virtual_agent_calls WHERE actor_id = $1', [id]);
             await client.query('DELETE FROM note_synchronization WHERE actor_id = $1', [id]);
 
             // Logs — SET NULL (keep log history, just detach the actor)
