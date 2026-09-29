@@ -454,7 +454,7 @@
         </div>
 
         <div class="dream-mode-description" style="margin-top: 12px;">
-            You can change this anytime in the dashboard. Dream processing runs at 4 AM UTC and only processes conversations uploaded since the last run. It requires a tool with file system access (Claude Code, Claude Desktop, Cursor, Windsurf) — it's not available when using claude.ai or the Claude mobile app.
+            You can change this anytime in the dashboard. Dream processing runs at 4 AM UTC. With a tool that has file system access (Claude Code, Claude Desktop, Cursor, Windsurf), it works from the conversations uploaded since the last run. On claude.ai or the Claude mobile app, where conversations can't be uploaded, it works from the notes your agent saves instead.
         </div>
 
         <button class="btn btn-primary" id="registerBtn" onclick="register()">Create Account</button>
@@ -564,14 +564,14 @@
 
             <div class="guide-step">
                 <span class="guide-step-num">3</span>
-                <h3>Read your instructions</h3>
-                <p>Your agent has onboarding instructions waiting. In your new conversation, say:</p>
-                <div class="config-block">"Read your instructions using the llm-memory tools"</div>
-                <p>Your agent will introduce itself, learn about you, and set up its memory. From then on:</p>
+                <h3>Make it automatic</h3>
+                <p>Claude only uses LLM Memory when something tells it to. Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>, so every new chat loads your memory first:</p>
+                <div class="config-block" id="claudeInstructionsBlock"></div>
+                <button class="copy-btn" onclick="copyClaudeInstructions()">Copy instructions</button>
+                <p>Then start a new chat and say anything. Your agent will load its instructions, introduce itself, learn about you, and set up its memory. From then on:</p>
                 <ul class="usage-tips">
-                    <li><strong>Start each session</strong> with "check your instructions" — this reloads context and checks for messages</li>
-                    <li><strong>During sessions</strong> — whenever something noteworthy comes up, save it to your notes so it's there next time</li>
-                    <li><strong>End each session</strong> with "update your notes" — this saves your work so the next session can pick up where you left off</li>
+                    <li><strong>During chats</strong> — whenever something noteworthy comes up, save it to your notes so it's there next time</li>
+                    <li><strong>End each chat</strong> with "update your notes" — this saves your work so the next chat can pick up where you left off</li>
                 </ul>
             </div>
 
@@ -836,8 +836,25 @@ function copyMcpUrl() {
     setTimeout(() => event.target.textContent = 'Copy URL', 2000);
 }
 
+// claude.ai drops the MCP server's own instructions, so without this block in
+// the user's Claude instructions nothing tells Claude to load its memory.
+// The getting-started note and welcome template carry the same text.
+const CLAUDE_INSTRUCTIONS = [
+    '# llm-memory',
+    'My long-term memory is the llm-memory connector.',
+    'At the start of every chat, call its read_instructions tool before you answer, and follow what it returns.',
+    'If the chat gets compacted, call read_instructions again.'
+].join('\n');
+
+function copyClaudeInstructions() {
+    navigator.clipboard.writeText(CLAUDE_INSTRUCTIONS);
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy instructions', 2000);
+}
+
 // Set dynamic URLs based on current hostname
 document.getElementById('mcpUrlBlock').textContent = location.origin + '/mcp';
+document.getElementById('claudeInstructionsBlock').textContent = CLAUDE_INSTRUCTIONS;
 document.getElementById('dashboardLink').textContent = location.hostname;
 document.getElementById('dashboardLink').href = location.origin;
 
