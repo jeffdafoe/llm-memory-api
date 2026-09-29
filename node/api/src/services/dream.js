@@ -1027,6 +1027,9 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
         // feed back on itself (the same spiral that bloated the technical
         // souls). conversations/% is excluded because dream_source selects
         // ONE source — agents with real conversation logs use the default.
+        // A notes fallback run (see decideNotesFallback) narrows to kind
+        // 'note' so the reads match the eligibility test; an explicit notes
+        // agent passes NULL and reads every kind, as before.
         logs = await pool.query(
             `SELECT slug, content, updated_at FROM documents
              WHERE namespace = $1 AND deleted_at IS NULL
@@ -1034,9 +1037,10 @@ async function processDreamChunk(agent, agentNames, chunk, scope) {
              AND slug NOT LIKE 'dreams/%'
              AND slug NOT LIKE 'context/%'
              AND slug NOT LIKE 'learnings/%'
+             AND ($4::text IS NULL OR kind = $4)
              AND updated_at > $2 AND updated_at <= $3
              ORDER BY updated_at ASC`,
-            [agent.name, from, to]
+            [agent.name, from, to, agent.dream_notes_kind || null]
         );
     } else {
         logs = await pool.query(
@@ -1901,9 +1905,15 @@ async function runDream() {
 // to include the note stamped at `timestamp` itself. Coerce defensively — a
 // custom pg type parser could hand back a string instead of a Date (same guard
 // buildNotesLog applies to updated_at).
+// An unparseable value throws rather than letting an Invalid Date reach the
+// chunk queries and the cursor write; the per-agent catch records it.
 function windowStartIncluding(timestamp) {
     const asDate = timestamp instanceof Date ? timestamp : new Date(timestamp);
-    return new Date(asDate.getTime() - 1);
+    const time = asDate.getTime();
+    if (!Number.isFinite(time)) {
+        throw new Error('invalid note timestamp: ' + timestamp);
+    }
+    return new Date(time - 1);
 }
 
 // Decide whether a conversation-source agent should dream from its notes this
@@ -2041,7 +2051,7 @@ async function runDreamAgents(lock) {
                 const fallback = await decideNotesFallback(agent.name);
                 if (fallback.useNotes) {
                     logDream('source-fallback', { agent: agent.name, from: 'conversation', to: 'notes' });
-                    agent = Object.assign({}, agent, { dream_source: 'notes' });
+                    agent = Object.assign({}, agent, { dream_source: 'notes', dream_notes_kind: 'note' });
                     backfillFrom = fallback.backfillFrom;
                 }
             }

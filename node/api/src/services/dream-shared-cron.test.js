@@ -983,6 +983,8 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
         // cursor, which has only walked empty conversation days.
         assert.equal(stub.notesChunkParams[0][1].getTime(), earliestNote.getTime() - 1);
         assert.equal(stub.notesChunkParams[0][0], 'prometheus');
+        // The reads use the same kind filter as the eligibility test.
+        assert.ok(stub.notesChunkParams.every(p => p[3] === 'note'));
         const noLogs = eventsNamed('chunk-no-logs');
         assert.ok(noLogs.length >= 3);
         assert.ok(noLogs.every(e => e.source === 'notes'));
@@ -1046,6 +1048,63 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
 
         assert.equal(eventsNamed('source-fallback').length, 0);
         assert.ok(stub.chunkQueryCount() >= 1);
+    });
+
+    test('an explicit notes agent is not probed and reads every kind', async () => {
+        const row = dedicatedAgentRow('companion', midnightAlignedSince(1));
+        row.dream_source = 'notes';
+        const stub = makeQueryStub({
+            agentRows: [row],
+            rosterRows: [],
+            chunkResponder: () => {
+                throw new Error('the conversation-log query must not run for a notes agent');
+            },
+            fallbackRow: { has_conversations: false, has_dreams: false, min_note_updated: midnightAlignedSince(5) },
+            notesChunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.equal(stub.fallbackQueryCount(), 0);
+        assert.equal(eventsNamed('source-fallback').length, 0);
+        assert.ok(stub.notesChunkParams.length >= 1);
+        assert.ok(stub.notesChunkParams.every(p => p[3] === null));
+    });
+
+    test('a string timestamp from the driver is accepted', async () => {
+        const earliestNote = new Date(midnightAlignedSince(2).getTime() + 60 * 60 * 1000);
+        const stub = makeQueryStub({
+            agentRows: [dedicatedAgentRow('technical', midnightAlignedSince(1))],
+            rosterRows: [],
+            chunkResponder: () => [],
+            fallbackRow: { has_conversations: false, has_dreams: false, min_note_updated: earliestNote.toISOString() },
+            notesChunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.equal(stub.notesChunkParams[0][1].getTime(), earliestNote.getTime() - 1);
+    });
+
+    test('an unparseable timestamp fails that agent without a chunk or cursor write', async () => {
+        const stub = makeQueryStub({
+            agentRows: [dedicatedAgentRow('technical', midnightAlignedSince(1))],
+            rosterRows: [],
+            chunkResponder: () => [],
+            fallbackRow: { has_conversations: false, has_dreams: false, min_note_updated: 'not a date' },
+            notesChunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        const result = await runDream();
+
+        const failed = result.results.find(r => r.agent === 'prometheus');
+        assert.match(failed.error, /invalid note timestamp/);
+        assert.equal(stub.notesChunkParams.length, 0);
+        assert.equal(stub.chunkQueryCount(), 0);
+        assert.equal(stub.agentCursorUpdates.length, 0);
     });
 
     test('a sim agent is never probed for the fallback', async () => {
