@@ -1897,6 +1897,52 @@ async function runDream() {
     }
 }
 
+// The chunk window is exclusive on `from` (updated_at > from), so back off 1ms
+// to include the note stamped at `timestamp` itself. Coerce defensively — a
+// custom pg type parser could hand back a string instead of a Date (same guard
+// buildNotesLog applies to updated_at).
+function windowStartIncluding(timestamp) {
+    const asDate = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    return new Date(asDate.getTime() - 1);
+}
+
+// Decide whether a conversation-source agent should dream from its notes this
+// run: it has no live conversation log, and it has at least one note of its
+// own. "Of its own" is kind = 'note' — every account is seeded at signup with
+// an instructions/getting-started document (kind 'instruction'), and counting
+// it would dream the signup template for every idle account. The source
+// prefixes excluded match processDreamChunk's notes-mode query.
+//
+// backfillFrom is set only while the agent has no dream yet: the window then
+// starts at its earliest own note rather than at the cursor.
+async function decideNotesFallback(agentName) {
+    const result = await pool.query(
+        `SELECT
+             EXISTS (SELECT 1 FROM documents
+                     WHERE namespace = $1 AND deleted_at IS NULL
+                     AND slug LIKE 'conversations/%') AS has_conversations,
+             EXISTS (SELECT 1 FROM documents
+                     WHERE namespace = $1 AND deleted_at IS NULL
+                     AND slug LIKE 'dreams/%') AS has_dreams,
+             (SELECT MIN(updated_at) FROM documents
+              WHERE namespace = $1 AND deleted_at IS NULL AND kind = 'note'
+              AND slug NOT LIKE 'conversations/%'
+              AND slug NOT LIKE 'dreams/%'
+              AND slug NOT LIKE 'context/%'
+              AND slug NOT LIKE 'learnings/%') AS min_note_updated`,
+        [agentName]
+    );
+    const row = result.rows[0];
+    if (!row || row.has_conversations || !row.min_note_updated) {
+        return { useNotes: false, backfillFrom: null };
+    }
+    let backfillFrom = null;
+    if (!row.has_dreams) {
+        backfillFrom = windowStartIncluding(row.min_note_updated);
+    }
+    return { useNotes: true, backfillFrom };
+}
+
 // The run itself — every cursor read and write below is serialized by the
 // caller's run lock, and aborts if that lock is lost mid-run.
 async function runDreamAgents(lock) {
@@ -1937,7 +1983,8 @@ async function runDreamAgents(lock) {
 
     const results = [];
 
-    for (const agent of agents.rows) {
+    // let, not const: the notes fallback below swaps in a copy of the row.
+    for (let agent of agents.rows) {
         // Before the try: a lost lock ends the run rather than being recorded
         // as this agent's error (see runChunkLoop).
         throwIfRunLockLost(lock);
@@ -1980,6 +2027,25 @@ async function runDreamAgents(lock) {
             }
             const agentNames = { dreamAgentName, soulAgentName, peopleAgentName, learningsAgentName };
 
+            // Notes fallback: an account left on the default conversation
+            // source that has never uploaded a conversation log dreams nothing
+            // every night (chunk-no-logs forever) — most outside users run no
+            // memory-sync. If it keeps notes of its own, dream from those for
+            // this run only. The stored flag is untouched, so the first
+            // uploaded log puts it back on conversations with no admin step.
+            // Sim NPCs are left out: their conversations are pushed by the
+            // engine, and their namespaces hold engine-written notes.
+            let backfillFrom = null;
+            if (agent.dream_source === 'conversation'
+                && (agent.dream_mode === 'companion' || agent.dream_mode === 'technical')) {
+                const fallback = await decideNotesFallback(agent.name);
+                if (fallback.useNotes) {
+                    logDream('source-fallback', { agent: agent.name, from: 'conversation', to: 'notes' });
+                    agent = Object.assign({}, agent, { dream_source: 'notes' });
+                    backfillFrom = fallback.backfillFrom;
+                }
+            }
+
             // Split the work since last_dream_at into per-UTC-day chunks so an
             // agent that's fallen behind doesn't try to fit weeks of logs into
             // one model call (which is what tripped home with deepseek's 163K
@@ -1989,7 +2055,13 @@ async function runDreamAgents(lock) {
             // order. (Day-chunks with no notes skip cheaply, so a long span
             // costs only the days that actually have material.)
             let since = agent.last_dream_at;
-            if (!since && agent.dream_source === 'notes') {
+            if (backfillFrom) {
+                // A fallback account's cursor has been walking over empty
+                // conversation days, so it says nothing about what has been
+                // dreamed. Until its first dream exists, start at its earliest
+                // own note, like a first notes-mode run.
+                since = backfillFrom;
+            } else if (!since && agent.dream_source === 'notes') {
                 const earliest = await pool.query(
                     `SELECT MIN(updated_at) AS min_updated FROM documents
                      WHERE namespace = $1 AND deleted_at IS NULL
@@ -2004,15 +2076,7 @@ async function runDreamAgents(lock) {
                     results.push({ agent: agent.name, skipped: true, reason: 'dream_source=notes but namespace has no source notes' });
                     continue;
                 }
-                // The chunk window is exclusive on `from` (updated_at > from),
-                // so back off 1ms to include the earliest note itself.
-                // Coerce defensively — a custom pg type parser could hand
-                // back a string instead of a Date (same guard buildNotesLog
-                // applies to updated_at).
-                const minUpdated = earliest.rows[0].min_updated instanceof Date
-                    ? earliest.rows[0].min_updated
-                    : new Date(earliest.rows[0].min_updated);
-                since = new Date(minUpdated.getTime() - 1);
+                since = windowStartIncluding(earliest.rows[0].min_updated);
             }
             if (!since) {
                 since = new Date(Date.now() - 24 * 60 * 60 * 1000);

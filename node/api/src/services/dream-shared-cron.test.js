@@ -110,10 +110,18 @@ function sharedAgentRow() {
 // queries in dream.js — deliberately so: an unmatched query THROWS rather than
 // returning empty rows, which turns a production query change into a loud test
 // failure instead of a silently wrong result.
-function makeQueryStub({ agentRows, rosterRows, chunkResponder, errorLogResponder }) {
+//
+// The dedicated-agent notes fallback adds three surfaces: `fallbackRow` answers
+// decideNotesFallback's probe (left out, the probe throws like any unmatched
+// query), `notesChunkResponder` answers the notes-mode chunk query, and the
+// dedicated cursor advances are recorded in agentCursorUpdates.
+function makeQueryStub({ agentRows, rosterRows, chunkResponder, errorLogResponder, fallbackRow, notesChunkResponder }) {
     const cursorUpdates = [];
+    const agentCursorUpdates = [];
     const errorLogInserts = [];
+    const notesChunkParams = [];
     let chunkQueryCount = 0;
+    let fallbackQueryCount = 0;
 
     async function query(sql, params) {
         // isTrustedCreator's system-actor lookup. Must precede the general
@@ -145,6 +153,18 @@ function makeQueryStub({ agentRows, rosterRows, chunkResponder, errorLogResponde
         if (sql.includes('UPDATE sim_shared_actor SET last_dream_at')) {
             cursorUpdates.push({ to: params[0], actorId: params[1], prefix: params[2] });
             return { rows: [], rowCount: 1 };
+        }
+        if (sql.includes('UPDATE agent_configuration SET last_dream_at')) {
+            agentCursorUpdates.push({ to: params[0], actorId: params[1] });
+            return { rows: [], rowCount: 1 };
+        }
+        if (sql.includes('AS has_conversations') && fallbackRow) {
+            fallbackQueryCount++;
+            return { rows: [fallbackRow] };
+        }
+        if (sql.includes('FROM documents') && sql.includes('updated_at > $2') && notesChunkResponder) {
+            notesChunkParams.push(params);
+            return { rows: notesChunkResponder(notesChunkParams.length - 1, params) };
         }
         // The per-chunk conversation-log query — the one surface each test
         // scripts to decide which chunks succeed and which blow up.
@@ -179,8 +199,11 @@ function makeQueryStub({ agentRows, rosterRows, chunkResponder, errorLogResponde
     return {
         query,
         cursorUpdates,
+        agentCursorUpdates,
         errorLogInserts,
+        notesChunkParams,
         chunkQueryCount: () => chunkQueryCount,
+        fallbackQueryCount: () => fallbackQueryCount,
     };
 }
 
@@ -919,5 +942,148 @@ describe('shared-VA dream cron', { concurrency: 1 }, () => {
         // The roster is never even read — the whole agent is rejected up front so
         // a notes-mode read can't write cross-villager material into one subtree.
         assert.equal(stub.chunkQueryCount(), 0);
+    });
+
+    // --- Notes fallback for dedicated conversation-source agents ---------------
+
+    const DEDICATED_ACTOR_ID = 73;
+
+    function dedicatedAgentRow(dreamMode, lastDreamAt) {
+        return {
+            name: 'prometheus',
+            actor_id: DEDICATED_ACTOR_ID,
+            dream_mode: dreamMode,
+            dream_source: 'conversation',
+            last_dream_at: lastDreamAt,
+            startup_instructions: null,
+        };
+    }
+
+    function eventsNamed(action) {
+        return dreamEvents.filter(e => e.action === action).map(e => e.details);
+    }
+
+    test('an agent with no conversation logs dreams from its own notes, backfilling from the earliest one', async () => {
+        const earliestNote = new Date(midnightAlignedSince(3).getTime() + 5 * 60 * 60 * 1000);
+        const stub = makeQueryStub({
+            agentRows: [dedicatedAgentRow('technical', midnightAlignedSince(1))],
+            rosterRows: [],
+            chunkResponder: () => {
+                throw new Error('the conversation-log query must not run in fallback');
+            },
+            fallbackRow: { has_conversations: false, has_dreams: false, min_note_updated: earliestNote },
+            notesChunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.deepEqual(eventsNamed('source-fallback'), [{ agent: 'prometheus', from: 'conversation', to: 'notes' }]);
+        // The window starts 1ms before the earliest own note — not at the
+        // cursor, which has only walked empty conversation days.
+        assert.equal(stub.notesChunkParams[0][1].getTime(), earliestNote.getTime() - 1);
+        assert.equal(stub.notesChunkParams[0][0], 'prometheus');
+        const noLogs = eventsNamed('chunk-no-logs');
+        assert.ok(noLogs.length >= 3);
+        assert.ok(noLogs.every(e => e.source === 'notes'));
+        assert.equal(stub.chunkQueryCount(), 0);
+        assert.equal(stub.agentCursorUpdates.length, noLogs.length);
+    });
+
+    test('a fallback agent that already has a dream keeps its cursor', async () => {
+        const cursor = midnightAlignedSince(1);
+        const stub = makeQueryStub({
+            agentRows: [dedicatedAgentRow('companion', cursor)],
+            rosterRows: [],
+            chunkResponder: () => {
+                throw new Error('the conversation-log query must not run in fallback');
+            },
+            fallbackRow: { has_conversations: false, has_dreams: true, min_note_updated: midnightAlignedSince(20) },
+            notesChunkResponder: () => [],
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.equal(eventsNamed('source-fallback').length, 1);
+        assert.equal(stub.notesChunkParams[0][1].getTime(), cursor.getTime());
+    });
+
+    test('an agent with conversation logs is not switched', async () => {
+        const stub = makeQueryStub({
+            agentRows: [dedicatedAgentRow('technical', midnightAlignedSince(1))],
+            rosterRows: [],
+            chunkResponder: () => [],
+            fallbackRow: { has_conversations: true, has_dreams: true, min_note_updated: midnightAlignedSince(5) },
+            notesChunkResponder: () => {
+                throw new Error('the notes query must not run for an agent with logs');
+            },
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.equal(eventsNamed('source-fallback').length, 0);
+        assert.ok(stub.chunkQueryCount() >= 1);
+        assert.ok(eventsNamed('chunk-no-logs').every(e => e.source === 'conversation'));
+    });
+
+    test('an agent whose only note is the signup template is not switched', async () => {
+        // min_note_updated is NULL when the namespace holds no kind='note'
+        // document — the seeded instructions/getting-started is kind 'instruction'.
+        const stub = makeQueryStub({
+            agentRows: [dedicatedAgentRow('technical', midnightAlignedSince(1))],
+            rosterRows: [],
+            chunkResponder: () => [],
+            fallbackRow: { has_conversations: false, has_dreams: false, min_note_updated: null },
+            notesChunkResponder: () => {
+                throw new Error('the notes query must not run for an account with no notes of its own');
+            },
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.equal(eventsNamed('source-fallback').length, 0);
+        assert.ok(stub.chunkQueryCount() >= 1);
+    });
+
+    test('a sim agent is never probed for the fallback', async () => {
+        const row = dedicatedAgentRow('sim', midnightAlignedSince(1));
+        row.name = 'zbbs-john-ellis';
+        const stub = makeQueryStub({
+            agentRows: [row],
+            rosterRows: [],
+            chunkResponder: () => [],
+            fallbackRow: { has_conversations: false, has_dreams: false, min_note_updated: midnightAlignedSince(5) },
+            notesChunkResponder: () => {
+                throw new Error('the notes query must not run for a sim agent');
+            },
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.equal(stub.fallbackQueryCount(), 0);
+        assert.equal(eventsNamed('source-fallback').length, 0);
+        assert.ok(stub.chunkQueryCount() >= 1);
+    });
+
+    test('a sim-shared agent is never probed for the fallback', async () => {
+        const stub = makeQueryStub({
+            agentRows: [sharedAgentRow()],
+            rosterRows: [rosterRow('constance-scott/', 'Constance Scott', midnightAlignedSince(1))],
+            chunkResponder: () => [],
+            fallbackRow: { has_conversations: false, has_dreams: false, min_note_updated: midnightAlignedSince(5) },
+            notesChunkResponder: () => {
+                throw new Error('the notes query must not run for a sim-shared agent');
+            },
+        });
+        pool.query = stub.query;
+
+        await runDream();
+
+        assert.equal(stub.fallbackQueryCount(), 0);
+        assert.equal(eventsNamed('source-fallback').length, 0);
     });
 });
