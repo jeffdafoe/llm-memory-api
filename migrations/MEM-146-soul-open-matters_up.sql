@@ -14,14 +14,18 @@
 -- search, questioning Constance Scott), each day's dream was about the ledger,
 -- and the next soul rewrite kept it. Nothing in the world could ever close it.
 --
--- The rule: the soul keeps what an unsettled matter taught the NPC about a
--- person or about themself, never the matter as a task; talk is a claim, not a
--- fact; an open case already in the soul is rewritten the same way even on a
--- quiet day.
+-- The rule: the soul keeps at most how an unsettled matter changed the NPC's
+-- own outlook, never the matter as a task and never a lasting verdict on
+-- another person from one unproven claim; talk is a claim, not a fact; an open
+-- case already in the soul is rewritten the same way even on a quiet day. The
+-- "Concrete details" example no longer models an accusation against a named
+-- villager (it read "Josiah tried to sell me a shoddy Birmingham anvil").
 --
 -- This migration is the authority for this prompt's text. Edit it here (with a
 -- follow-up migration) rather than in the admin UI, as MEM-143 does for
--- dream-sim-people.
+-- dream-sim-people. Like MEM-143, the UPDATE matches zero rows on an install
+-- with no dream-sim-soul agent (no migration creates it; an admin does), so a
+-- fresh install migrates cleanly.
 
 BEGIN;
 
@@ -53,7 +57,7 @@ Focus on:
 The NPC reads this document at the start of every turn, so anything in it, the NPC acts on all day. An open matter written here never closes: the NPC wakes to it, chases it, and the next snapshot is full of it again.
 
 - Never carry a task, promise, search, deadline, summons, accusation or unsolved question forward as something to do or to find out. Write no plans for tomorrow.
-- From an unsettled matter, keep only what it taught the NPC — one short line about that person or about themself (for example, "a neighbor whose promises come to nothing").
+- From an unsettled matter, keep at most one short line about how it changed the NPC's own outlook or conduct (for example, "I have learned not to treat a promise as settled until I have seen it fulfilled"). Do not turn an unverified claim or a single unresolved incident into a lasting judgment of another person's character.
 - Talk is not proof. A thing someone only spoke of — an object, a debt, a theft, a hiding place — is their claim, not a fact the NPC knows.
 - If the current soul already holds an open case, rewrite it this way, even when the snapshot has nothing new.
 
@@ -70,7 +74,7 @@ Rules:
 - Replace outdated content rather than appending. If something changed, update it.
 - Keep the document under 1000 words. Brevity forces honesty.
 - Write in first person, in the NPC's voice and manner of speaking.
-- Concrete details over abstractions. "Josiah tried to sell me a shoddy Birmingham anvil" not "commercial tensions persist."
+- Concrete details over abstractions, but do not keep an unresolved incident just to add detail. "I trust work I can inspect with my own hands" not "I value reliability."
 - If the snapshot contains nothing new, return the existing soul unchanged — unless it holds an open case (see above).
 - Output ONLY the updated soul document, no preamble or explanation.
 $prompt$
