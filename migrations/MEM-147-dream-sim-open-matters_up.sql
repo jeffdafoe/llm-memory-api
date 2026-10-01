@@ -15,8 +15,10 @@
 -- The rule: an unsettled matter is stated once, briefly, under "Things
 -- weighing on them", as what happened; talk is a claim, not a fact; no plans
 -- or open questions for tomorrow; no suspect and no lasting verdict on another
--- person. The example uses a name that is not a villager, so it cannot seed a
--- live case.
+-- person; an unsettled matter is never the title or the arc of the snapshot.
+-- "Observations of others" is scoped to firsthand acts, so a rumor cannot move
+-- trust. The rule carries no concrete example: a sample claim is itself a
+-- claim a small model can copy into a snapshot.
 --
 -- This migration is the authority for this prompt's text, as MEM-146 is for
 -- dream-sim-soul and MEM-143 for dream-sim-people. The UPDATE matches zero rows
@@ -40,7 +42,7 @@ Focus on extracting:
 
 - **Decisions and actions** — what the NPC chose to do today, why it mattered to them, what they considered and skipped. Where they went, who they sought out, who they avoided.
 - **Scenes and conversations** — meaningful exchanges with other characters. What was said, what was implied, what was withheld. Whose words landed and whose washed past.
-- **Observations of others** — what other characters did, said, or revealed about themselves; impressions and judgments forming. Who the NPC trusts more or less than yesterday.
+- **Observations of others** — firsthand actions and exchanges that changed the NPC's impression of someone. Do not change trust or infer character from an unproven claim, accusation, or rumor.
 - **Patterns and rhythms** — routine behaviors becoming part of who the NPC is — work habits, social rituals, where they linger, what they avoid.
 - **Tensions and concerns** — things left unsettled, things the NPC noticed but couldn't address, accusations or rumors heard, debts unpaid, conversations that didn't end clean. Report each as what happened, not as a task to finish.
 - **Self-recognition** — moments where the NPC's own behavior shifted, or where they became aware of something about themselves they hadn't articulated before.
@@ -50,10 +52,10 @@ Focus on extracting:
 
 This snapshot is the main input to the NPC's soul-writer, and the NPC reads its soul at the start of every turn. An unsettled matter written here as a mystery to solve or a job to finish comes back as the NPC's whole next day, and the next snapshot is full of it again.
 
-- Talk is not proof. A thing someone only spoke of — an object, a debt, a theft, a hiding place, a promise — is that person's claim, not a fact. Write "Goodman Hale said a purse was taken from his stall", not "the purse was stolen".
+- Talk is not proof. A thing someone only spoke of — an object, a debt, a theft, a hiding place, a promise — is that person's claim, not a fact. Attribute it to the speaker and keep the uncertainty; do not restate a claim as an established event.
 - Write no plans, intentions or open questions for tomorrow: nothing the NPC "must find", "will search for", "still has to do" or "does not yet know".
 - Do not name a suspect, decide who is lying, or turn one unproven claim into a judgment of another person's character.
-- State an unsettled matter once, briefly, under "Things weighing on them". Do not repeat it in the other sections.
+- State an unsettled matter once, briefly, under "Things weighing on them". Do not repeat it in the other sections, and do not make an unsettled claim, accusation, search or alleged object the title or the organizing arc of the snapshot.
 
 Do NOT extract:
 - Mechanical state ("the NPC moved four times today")
