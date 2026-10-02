@@ -394,6 +394,34 @@ function narrateEvent(event, actorName) {
             const worker = sanitizeLabel(p.worker || p.recipient || '') || 'someone';
             return '(hired ' + worker + ' for ' + formatLaborReward(p) + ')';
         }
+        case 'brought_case': {
+            // LLM-695: the constable brought a matter before the magistrates in
+            // Salem Town (bring_before_magistrates). Filer-side row. payload:
+            // { case_id, parties: [names], complaint }. Narrated so the night's
+            // dream records the matter as SENT to the court — the step that leads
+            // to the ruling below, rather than another day of an open case.
+            const complaint = sanitizeNarration(p.complaint || '');
+            const parties = Array.isArray(p.parties)
+                ? p.parties.map(sanitizeLabel).filter(Boolean)
+                : [];
+            const concerning = parties.length > 0 ? ', concerning ' + parties.join(', ') : '';
+            return '(brought a matter before the magistrates in Salem Town' + concerning
+                + (complaint ? ': ' + complaint : '') + ')';
+        }
+        case 'ruled': {
+            // LLM-695: the magistrates' ruling reached this actor — a party to
+            // the matter or the constable who brought it. payload.text is the
+            // engine's per-recipient line: which matter, the magistrate's words
+            // as given, any pay order as carried out, and "The matter is closed."
+            // That last sentence is the point — it is what the dream should
+            // record in place of an open matter, so the line is passed through
+            // whole rather than rebuilt from the fields.
+            const text = sanitizeNarration(p.text || '');
+            if (!text) {
+                return null;
+            }
+            return '(' + text + ')';
+        }
         case 'enter_huddle':
             // Membership marker (ZBBS-094). The engine writes one of
             // these whenever an actor's current_huddle_id is updated,

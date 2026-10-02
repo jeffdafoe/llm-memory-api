@@ -1310,6 +1310,13 @@ const DIRECTIVE_SIM_CONTEXT = 'You are a character inside a village simulation. 
 
 const DIRECTIVE_SIM_REFLECTION = 'You are a character inside a village simulation. This turn is a private reflection, not a scene or an action tick — the user message says what to reflect on. No tools are available this turn: respond with prose only, written in your own voice as the character. Do not call tools, and do not address the engine, the narrator, or "the user". Treat the material you are given as authoritative — do not invent people, places, or events it does not support.';
 
+// LLM-695: the magistrate is not a character in a scene, so the NPC SimContext
+// (speak / move_to / done) would be wrong for him. He hears one matter per
+// session and works only through his tools.
+const DIRECTIVE_COURT = 'You sit as the magistrate of the court in Salem Town. The village simulation brings you one matter at a time; the matter, the village roster and your bench book are set out in the Matter block. The user messages come from the court\'s clerk, not from a person — do not address them. Work only through the tools provided: read what you need from the record, then give your ruling with the rule tool, which ends the hearing. Do not reply with ordinary prose.';
+
+const DIRECTIVE_MATTER = 'The matter before the court this session, who lives in the village, and your bench book. Authoritative for this session.';
+
 const DIRECTIVE_VOTE = 'A vote has been proposed. Reply with ONLY a JSON object: {"choice": 1, "reason": "..."} to approve or {"choice": 2, "reason": "..."} to reject.';
 
 // wrapBlock returns a typed XML block around `content`, or an empty string
@@ -1595,6 +1602,29 @@ function buildSimChatSystemPrompt(agent, ragContext, soul, peopleContext) {
     return {
         static: staticBlocks.join('\n\n'),
         dynamic: dynamicBlocks.join('\n\n'),
+    };
+}
+
+// Virtual agents that sit as the Salem court (LLM-695). The engine drives them
+// like an NPC (sender salem-engine, tools offered), but they are not characters
+// in a scene: they get the court framing instead of SimContext, no soul or
+// impressions, and history scoped to the session's scene_id so one case's
+// reading never replays into the next.
+const SIM_COURT_AGENTS = new Set(['salem-magistrate']);
+
+// Build the system prompt for a court session. The engine sends the matter,
+// the roster and the bench book as stable_context; it goes in the cached
+// system prompt (never into history), so a long session can never push the
+// case itself out of the 50-row history replay.
+function buildSimCourtSystemPrompt(agent, matter) {
+    const staticBlocks = [
+        wrapBlock('Instructions', 'operating-rules', DIRECTIVE_INSTRUCTIONS, agent.startup_instructions),
+        wrapStandalone('CourtContext', 'court-context', DIRECTIVE_COURT),
+        wrapBlock('Matter', 'the-matter-before-the-court', DIRECTIVE_MATTER, matter),
+    ].filter(Boolean);
+    return {
+        static: staticBlocks.join('\n\n'),
+        dynamic: '',
     };
 }
 
@@ -2767,11 +2797,14 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // for misconfigured callers and is intentionally fail-closed.
         const isSharedVA = agent.agent === 'salem-visitor' || agent.agent === 'salem-vendor'
             || agent.agent === 'salem-generic';
+        // The court (LLM-695) is a dedicated VA, not a shared one, but each
+        // session is its own case, so its history is scoped the same way.
+        const isSceneScoped = isSharedVA || SIM_COURT_AGENTS.has(agent.agent);
         let history;
-        if (isSharedVA && !sceneId) {
+        if (isSceneScoped && !sceneId) {
             history = [];
         } else {
-            const historyScene = isSharedVA ? sceneId : null;
+            const historyScene = isSceneScoped ? sceneId : null;
             history = await loadDirectChatHistory(virtualAgentName, fromAgent, historyScene);
         }
 
@@ -2852,7 +2885,11 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // history (tool_calls + tool_call_id flow through assistant/tool
         // roles); plain-text path uses the legacy timestamp-prefixed wrap.
         let systemPrompt;
-        if (isSimNpc && isToolUse) {
+        if (isSimNpc && SIM_COURT_AGENTS.has(agent.agent)) {
+            // LLM-695: a court session — the court framing and the matter, not
+            // a character's SimContext, soul or impressions.
+            systemPrompt = buildSimCourtSystemPrompt(agent, stableContext);
+        } else if (isSimNpc && isToolUse) {
             // Action tick: tools_offered is non-empty, so SimContext's push toward
             // tool-call output is correct.
             //

@@ -376,3 +376,27 @@ test('normalizeSlugPrefix rejects an oversized raw value before normalizing (LLM
     // Raw length over the canonical cap but under the raw ceiling still normalizes.
     assert.equal(normalizeSlugPrefix('a'.repeat(99) + '/'.repeat(500)), 'a'.repeat(99) + '/');
 });
+
+// LLM-695 — the magistrates. The filing and the ruling both reach the night's
+// dream; the ruling's engine-authored line passes through whole, because its
+// closing "The matter is closed." is what the dream must keep in place of an
+// open matter.
+test('brought_case narrates the matter sent to the court, with its parties', () => {
+    const payload = { case_id: 'case-0000ab01', parties: ['Josiah Thorne', 'Constable Gideon Marsh'], complaint: 'The ledger was taken\nfrom the Store.' };
+    assert.equal(
+        narrateEvent({ kind: 'brought_case', payload }, 'Constable Gideon Marsh'),
+        '(brought a matter before the magistrates in Salem Town, concerning Josiah Thorne, Constable Gideon Marsh: The ledger was taken from the Store.)'
+    );
+    assert.equal(
+        narrateEvent({ kind: 'brought_case', payload: { complaint: 'x' } }, 'Constable Gideon Marsh'),
+        '(brought a matter before the magistrates in Salem Town: x)'
+    );
+});
+
+test('ruled passes the engine line through whole, ending with the matter closed', () => {
+    const text = 'Word has come from the magistrates in Salem Town on the matter Constable Gideon Marsh brought before them ("The ledger was taken"): "No ledger was ever kept." The matter is closed.';
+    const line = narrateEvent({ kind: 'ruled', payload: { text, result: 'no_case' } }, 'Josiah Thorne');
+    assert.equal(line, '(' + text + ')');
+    assert.ok(line.endsWith('The matter is closed.)'));
+    assert.equal(narrateEvent({ kind: 'ruled', payload: {} }, 'Josiah Thorne'), null);
+});
