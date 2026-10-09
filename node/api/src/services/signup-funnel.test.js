@@ -21,12 +21,22 @@ pool.query = async (sql, params) => {
     queries.push({ sql, params });
     return { rows: nextRows };
 };
+// failOn: SQL verbs ('INSERT', 'ROLLBACK') the stub client throws on.
+// released: the argument each release() got (true = destroy the client).
+let failOn = [];
+let released = [];
 pool.connect = async () => ({
     query: async (sql, params) => {
         queries.push({ sql, params });
-        return { rows: /^INSERT/.test(sql.trim()) ? nextRows : [] };
+        const verb = sql.trim().split(/\s+/)[0];
+        if (failOn.includes(verb)) {
+            throw new Error('simulated ' + verb + ' failure');
+        }
+        return { rows: verb === 'INSERT' ? nextRows : [] };
     },
-    release: () => {}
+    release: (destroy) => {
+        released.push(destroy);
+    }
 });
 
 const funnel = require('./signup-funnel');
@@ -38,6 +48,8 @@ beforeEach(() => {
     configValues = { signup_funnel_since: SINCE };
     queries = [];
     nextRows = [];
+    failOn = [];
+    released = [];
 });
 
 test('trackingSince reads the config row, and is null when missing or not a date', () => {
@@ -59,6 +71,7 @@ test('recordSignupEvent refuses an unknown event or a malformed value', async ()
 test('recordSignupEvent stores a valid event under the per-account lock, and reports a dropped one without failing', async () => {
     nextRows = [{ id: 9 }];
     assert.deepEqual(await funnel.recordSignupEvent(5, 'copy', 'mcp_url'), { recorded: true });
+    assert.deepEqual(released, [false]);
     // The lock is taken before the count-and-insert, inside one transaction.
     assert.deepEqual(queries.map((q) => q.sql.trim().split(/\s+/)[0]), ['BEGIN', 'SELECT', 'INSERT', 'COMMIT']);
     assert.match(queries[1].sql, /pg_advisory_xact_lock/);
@@ -68,6 +81,19 @@ test('recordSignupEvent stores a valid event under the per-account lock, and rep
     nextRows = [];
     const dropped = await funnel.recordSignupEvent(5, 'copy', 'mcp_url');
     assert.equal(dropped.recorded, false);
+});
+
+test('recordSignupEvent rolls back on error and returns the client to the pool', async () => {
+    failOn = ['INSERT'];
+    await assert.rejects(funnel.recordSignupEvent(5, 'copy', 'mcp_url'), /simulated INSERT failure/);
+    assert.ok(queries.some((q) => q.sql === 'ROLLBACK'));
+    assert.deepEqual(released, [false]);
+});
+
+test('recordSignupEvent destroys the client when ROLLBACK fails, and keeps the original error', async () => {
+    failOn = ['INSERT', 'ROLLBACK'];
+    await assert.rejects(funnel.recordSignupEvent(5, 'copy', 'mcp_url'), /simulated INSERT failure/);
+    assert.deepEqual(released, [true]);
 });
 
 test('stampToolCall passes the tracking start, and skips an unknown actor', async () => {

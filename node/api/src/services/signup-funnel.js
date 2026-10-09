@@ -87,6 +87,9 @@ async function recordSignupEvent(actorId, event, value) {
     // advisory lock rather than FOR UPDATE on the actor row, because the MCP
     // heartbeat updates that row on every request.
     const client = await pool.connect();
+    // Set when ROLLBACK itself fails: the connection's state is then unknown,
+    // so release(true) destroys it instead of returning it to the pool.
+    let discardClient = false;
     try {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock($1, $2)', [SIGNUP_EVENT_LOCK_CLASS, actorId]);
@@ -107,10 +110,12 @@ async function recordSignupEvent(actorId, event, value) {
         return { recorded: true };
     } catch (err) {
         // A failed ROLLBACK must not hide the original error.
-        await client.query('ROLLBACK').catch(() => {});
+        await client.query('ROLLBACK').catch(() => {
+            discardClient = true;
+        });
         throw err;
     } finally {
-        client.release();
+        client.release(discardClient);
     }
 }
 
