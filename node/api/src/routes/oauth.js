@@ -30,13 +30,14 @@ const ALLOWED_REDIRECT_URIS = [
 const authCodes = new Map();
 const AUTH_CODE_TTL_MS = 60000;
 
-// Clean up expired codes periodically
+// Clean up expired codes periodically. unref() so this timer alone does not
+// keep a process alive (the HTTP server does that in production; tests exit).
 setInterval(() => {
     const now = Date.now();
     for (const [code, data] of authCodes) {
         if (now > data.expiresAt) authCodes.delete(code);
     }
-}, 30000);
+}, 30000).unref();
 
 function getBaseUrl(req) {
     if (process.env.BASE_URL) {
@@ -318,5 +319,8 @@ async function handleAuthorizationCode(req, res) {
         });
     }
 }
+
+// Exposed for oauth.test.js, which checks when codes are minted.
+router.authCodes = authCodes;
 
 module.exports = router;

@@ -141,9 +141,17 @@ function renderConnectPage({ agent, continueUrl }) {
 </div>
 <script>
 document.getElementById('copyButton').addEventListener('click', function (event) {
-    navigator.clipboard.writeText(document.getElementById('claudeInstructionsBlock').textContent);
-    event.target.textContent = 'Copied!';
-    setTimeout(function () { event.target.textContent = 'Copy instructions'; }, 2000);
+    var button = event.currentTarget;
+    var text = document.getElementById('claudeInstructionsBlock').textContent;
+    var failed = function () { button.textContent = 'Copy failed — select the text and copy it'; };
+    if (!navigator.clipboard) {
+        failed();
+        return;
+    }
+    navigator.clipboard.writeText(text).then(function () {
+        button.textContent = 'Copied!';
+        setTimeout(function () { button.textContent = 'Copy instructions'; }, 2000);
+    }, failed);
 });
 </script>
 </body>
