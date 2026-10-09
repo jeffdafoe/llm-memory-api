@@ -831,7 +831,17 @@ const TOOL_HANDLERS = {
                 );
             }
         }
-        const doc = await saveNote(targetNs, sanitize.content(args.title), sanitize.content(args.content), sanitize.identifier(args.slug), agent);
+        let doc;
+        try {
+            doc = await saveNote(targetNs, sanitize.content(args.title), sanitize.content(args.content), sanitize.identifier(args.slug), agent);
+        } catch (err) {
+            // The service's message also offers upsert:true, which only the
+            // REST route accepts. MCP save_note is insert-only.
+            if (err.code === 'DUPLICATE_SLUG') {
+                err.message = `Note already exists at slug "${err.slug}" in namespace "${err.namespace}". save_note only creates new notes; use edit_note to change an existing one.`;
+            }
+            throw err;
+        }
         // Refresh activity indicator
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
@@ -1780,3 +1790,4 @@ module.exports = router;
 module.exports.validateToolArgs = validateToolArgs;
 module.exports.TOOL_SCHEMAS = TOOL_SCHEMAS;
 module.exports.TOOLS = TOOLS;
+module.exports.TOOL_HANDLERS = TOOL_HANDLERS;
