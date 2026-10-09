@@ -27,6 +27,7 @@ const { createAttemptLimiter, acquireAttempt } = require('../services/attempt-li
 const { linkAccount } = require('../services/account-link');
 const { hasPermission, requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
 const notePerms = require('../services/note-permissions');
+const signupFunnel = require('../services/signup-funnel');
 const { apiRoute } = require('../middleware/route-wrapper');
 const sanitize = require('../sanitize');
 
@@ -2866,6 +2867,21 @@ router.post('/admin/access-requests/reject', requirePerm('access', 'write'), adm
 
     logAdmin('access_request_rejected', { request_id: id, user_id: req.authenticatedUser.id });
     res.json({ ok: true });
+}));
+
+// POST /admin/funnel — signup funnel for outside accounts (LLM-734).
+// summary counts only accounts created since tracking began
+// (config.signup_funnel_since): older accounts have no first-connection or
+// first-tool-call date and no guide events, so mixing them in would undercount
+// every stage. summary_all includes them, for what partial data there is.
+router.post('/admin/funnel', requirePerm('access', 'read'), adminRoute('funnel', async (req, res) => {
+    const accounts = await signupFunnel.funnelRows();
+    res.json({
+        since: signupFunnel.trackingSince(),
+        summary: signupFunnel.funnelSummary(accounts.filter((a) => a.tracked)),
+        summary_all: signupFunnel.funnelSummary(accounts),
+        accounts
+    });
 }));
 
 // ═══════════════════════════════════════════════════════════════════

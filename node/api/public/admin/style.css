@@ -969,6 +969,11 @@ tr.scene-row .icon-cell { position: relative; }
 .status-badge.used { background: rgba(113, 113, 122, 0.15); color: var(--text-muted); }
 .status-badge.expired { background: var(--error-subtle); color: var(--error); }
 
+/* Signup funnel sub-tab (LLM-734): seven stages wrap on narrow screens. */
+.funnel-note { margin: 0 0 12px; font-size: 12px; }
+.funnel-strip { flex-wrap: wrap; }
+.funnel-strip .stat-item { min-width: 110px; }
+
 .approved-info {
     display: flex;
     flex-direction: column;
