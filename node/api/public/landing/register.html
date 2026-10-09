@@ -474,7 +474,7 @@
             <div class="credential-row">
                 <span class="credential-label">API Key</span>
                 <code id="apiKeyValue" class="api-key-value"></code>
-                <span class="credential-hint">For the claude.ai website — used when adding LLM Memory as an integration</span>
+                <span class="credential-hint">For Claude Code's .mcp.json and other tools that take an API key. claude.ai only needs your agent name and password.</span>
             </div>
         </div>
         <div class="copy-row">
@@ -549,11 +549,10 @@
                         <div class="config-block" id="mcpUrlBlock"></div>
                         <button class="copy-btn" onclick="copyMcpUrl()">Copy URL</button>
                     </li>
-                    <li>Expand <strong>Advanced settings</strong></li>
-                    <li>Enter your <strong>agent name</strong> (<code id="agentNameHint"></code>) for <strong>Client ID</strong></li>
-                    <li>Enter your <strong>API key</strong> for <strong>Client Secret</strong></li>
+                    <li>Leave <strong>Advanced settings</strong> empty and add the connector</li>
+                    <li>Click <strong>Connect</strong>, and log in with your <strong>agent name</strong> (<code id="agentNameHint"></code>) and the password you just chose</li>
                 </ol>
-                <p>Once the connector is added, you may have to click on it and click <strong>Connect</strong> at the top right.</p>
+                <p>If you don't see <strong>Connect</strong>, click the connector in the list; it is at the top right.</p>
             </div>
 
             <div class="guide-step">

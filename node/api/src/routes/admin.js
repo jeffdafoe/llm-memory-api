@@ -25,6 +25,7 @@ const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
 const { createAttemptLimiter, acquireAttempt } = require('../services/attempt-limiter');
 const { linkAccount } = require('../services/account-link');
+const { verifyPasswordLogin } = require('../services/password-login');
 const { hasPermission, requirePerm, getPermissionMap, clearCache: clearAdminPermissionsCache } = require('../services/admin-permissions');
 const notePerms = require('../services/note-permissions');
 const signupFunnel = require('../services/signup-funnel');
@@ -116,28 +117,15 @@ router.post('/admin/login', async (req, res) => {
     }
 
     try {
-        const result = await pool.query(
-            "SELECT id, name AS username, password_hash, password_salt FROM actors WHERE name = $1 AND password_hash IS NOT NULL",
-            [username]
-        );
-
-        const row = result.rows[0];
-
-        // Compute hash even when row is missing (timing-safe rejection)
-        if (!row) {
-            await hashToken(password, DUMMY_SALT);
+        // Timing-safe for unknown names; shared with the connector login on /authorize.
+        const login = await verifyPasswordLogin(username, password);
+        if (!login) {
             logAdmin('login_failed', { username });
             return res.status(401).json({
                 error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password' }
             });
         }
-
-        if (!(await verify(password, row.password_salt, row.password_hash))) {
-            logAdmin('login_failed', { username });
-            return res.status(401).json({
-                error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password' }
-            });
-        }
+        const row = { id: login.id, username: login.name };
 
         const sessionToken = generateSessionToken();
         const salt = generateSalt();
