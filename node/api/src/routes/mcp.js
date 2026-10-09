@@ -41,9 +41,12 @@ function hasPermission(req, permission) {
 // Tool definitions for the remote MCP server
 const TOOLS = [
     // --- Memory tools ---
+    // search, save_note and read_note end with a read_instructions nudge: a
+    // claude.ai chat that reaches for memory without the user's settings block
+    // otherwise never loads its instructions (see read_instructions below).
     {
         name: 'search',
-        description: 'Search memory for relevant notes using semantic similarity',
+        description: 'Search memory for relevant notes using semantic similarity. If you have not called read_instructions in this conversation, call it first.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -57,7 +60,7 @@ const TOOLS = [
     // --- Document tools ---
     {
         name: 'save_note',
-        description: 'Save a note to memory. Creates a new note — fails if slug already exists (use edit_note to update). Auto-indexes into vector DB.',
+        description: 'Save a note to memory. Creates a new note — fails if slug already exists (use edit_note to update). Auto-indexes into vector DB. If you have not called read_instructions in this conversation, call it first.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -84,7 +87,7 @@ const TOOLS = [
     },
     {
         name: 'read_note',
-        description: "Read a note's content. Returns the full content by default. For large notes, use `offset` (1-indexed line number) and `limit` (line count, default 2000 when offset is given, max 10000) to paginate; paginated responses are prefixed with `[lines N-M of TOTAL]\\n\\n` (or `[lines N- of TOTAL]\\n\\n` with an empty body when offset is past end).",
+        description: "Read a note's content. Returns the full content by default. For large notes, use `offset` (1-indexed line number) and `limit` (line count, default 2000 when offset is given, max 10000) to paginate; paginated responses are prefixed with `[lines N-M of TOTAL]\\n\\n` (or `[lines N- of TOTAL]\\n\\n` with an empty body when offset is past end). If you have not called read_instructions in this conversation, call it first.",
         inputSchema: {
             type: 'object',
             properties: {
@@ -828,7 +831,17 @@ const TOOL_HANDLERS = {
                 );
             }
         }
-        const doc = await saveNote(targetNs, sanitize.content(args.title), sanitize.content(args.content), sanitize.identifier(args.slug), agent);
+        let doc;
+        try {
+            doc = await saveNote(targetNs, sanitize.content(args.title), sanitize.content(args.content), sanitize.identifier(args.slug), agent);
+        } catch (err) {
+            // The service's message also offers upsert:true, which only the
+            // REST route accepts. MCP save_note is insert-only.
+            if (err.code === 'DUPLICATE_SLUG') {
+                err.message = `Note already exists at slug "${err.slug}" in namespace "${err.namespace}". save_note only creates new notes; use edit_note to change an existing one.`;
+            }
+            throw err;
+        }
         // Refresh activity indicator
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [actorId])
             .then(() => broadcast('agent_activity', { agent, active: true }))
@@ -1777,3 +1790,4 @@ module.exports = router;
 module.exports.validateToolArgs = validateToolArgs;
 module.exports.TOOL_SCHEMAS = TOOL_SCHEMAS;
 module.exports.TOOLS = TOOLS;
+module.exports.TOOL_HANDLERS = TOOL_HANDLERS;

@@ -267,7 +267,7 @@ async function saveNote(namespace, title, content, slug, createdBy, metadata, ex
             if (err.code === '23505') {
                 throw Object.assign(
                     new Error(`Note already exists at slug "${resolvedSlug}" in namespace "${namespace}". Use edit_note to update existing notes, or pass upsert:true to overwrite.`),
-                    { statusCode: 409, code: 'DUPLICATE_SLUG' }
+                    { statusCode: 409, code: 'DUPLICATE_SLUG', slug: resolvedSlug, namespace }
                 );
             }
             throw err;
