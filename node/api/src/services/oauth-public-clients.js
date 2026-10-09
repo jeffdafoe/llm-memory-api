@@ -24,6 +24,13 @@ const crypto = require('crypto');
 const config = require('./config');
 
 const CIMD_ORIGINS = ['https://claude.ai', 'https://claude.com'];
+
+// Every redirect_uri any authorization_code client may use. Anthropic's
+// connector docs give the claude.ai callback and say it may move to claude.com.
+const ALLOWED_REDIRECT_URIS = [
+    'https://claude.ai/api/mcp/auth_callback',
+    'https://claude.com/api/mcp/auth_callback'
+];
 const DCR_PREFIX = 'dcr.';
 // Keeps a DCR signature from ever matching an HMAC made with the same secret
 // for something else (the per-agent bearer token).
@@ -87,10 +94,23 @@ function verifyDcrClientId(clientId) {
     } catch (err) {
         return null;
     }
-    if (!decoded || !Array.isArray(decoded.r) || !decoded.r.every((uri) => typeof uri === 'string')) {
+    // Hold the payload to exactly what issueDcrClientId writes, not only to the
+    // signature: a later issuer or a leaked key must not widen what a client
+    // may do. Every callback is re-checked against today's allowlist.
+    if (!decoded || typeof decoded !== 'object') {
         return null;
     }
-    return { redirectUris: decoded.r, issuedAt: decoded.t };
+    const { r: redirectUris, t: issuedAt } = decoded;
+    if (!Number.isSafeInteger(issuedAt) || issuedAt < 0) {
+        return null;
+    }
+    if (!Array.isArray(redirectUris) || redirectUris.length === 0 || redirectUris.length > ALLOWED_REDIRECT_URIS.length) {
+        return null;
+    }
+    if (new Set(redirectUris).size !== redirectUris.length || !redirectUris.every((uri) => ALLOWED_REDIRECT_URIS.includes(uri))) {
+        return null;
+    }
+    return { redirectUris, issuedAt };
 }
 
 // 'cimd' | 'dcr' | null — null means "not a public client" (an agent name, or garbage).
@@ -106,6 +126,7 @@ function publicClientKind(clientId) {
 
 module.exports = {
     CIMD_ORIGINS,
+    ALLOWED_REDIRECT_URIS,
     isCimdClientId,
     issueDcrClientId,
     verifyDcrClientId,

@@ -23,20 +23,12 @@ const { log, logError } = require('../services/logger');
 const { findApiKeyByToken } = require('../services/api-keys');
 const { verifyPasswordLogin } = require('../services/password-login');
 const { createAttemptLimiter, acquireAttempt } = require('../services/attempt-limiter');
-const { publicClientKind, verifyDcrClientId, issueDcrClientId } = require('../services/oauth-public-clients');
+const { publicClientKind, verifyDcrClientId, issueDcrClientId, ALLOWED_REDIRECT_URIS } = require('../services/oauth-public-clients');
 const { renderConnectPage, renderLoginPage } = require('./oauth-connect-page');
 
 const router = Router();
 
 const TOKEN_TTL_SECONDS = 86400; // 24 hours (cosmetic — token never actually expires server-side)
-
-// Allowlist of permitted redirect URIs for authorization_code flow, for every
-// kind of client. Anthropic's connector docs give the claude.ai callback and
-// say it may move to claude.com.
-const ALLOWED_REDIRECT_URIS = [
-    'https://claude.ai/api/mcp/auth_callback',
-    'https://claude.com/api/mcp/auth_callback'
-];
 
 // Password guessing on the connector login: at most 5 tries per agent name and
 // 20 per client address in 15 minutes. Every try counts, right or wrong. The
