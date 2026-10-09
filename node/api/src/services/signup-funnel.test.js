@@ -21,6 +21,13 @@ pool.query = async (sql, params) => {
     queries.push({ sql, params });
     return { rows: nextRows };
 };
+pool.connect = async () => ({
+    query: async (sql, params) => {
+        queries.push({ sql, params });
+        return { rows: /^INSERT/.test(sql.trim()) ? nextRows : [] };
+    },
+    release: () => {}
+});
 
 const funnel = require('./signup-funnel');
 
@@ -49,10 +56,14 @@ test('recordSignupEvent refuses an unknown event or a malformed value', async ()
     assert.equal(queries.length, 0, 'nothing reaches the database');
 });
 
-test('recordSignupEvent stores a valid event, and reports a dropped one without failing', async () => {
+test('recordSignupEvent stores a valid event under the per-account lock, and reports a dropped one without failing', async () => {
     nextRows = [{ id: 9 }];
     assert.deepEqual(await funnel.recordSignupEvent(5, 'copy', 'mcp_url'), { recorded: true });
-    assert.deepEqual(queries[0].params, [5, 'copy', 'mcp_url', funnel.SIGNUP_WINDOW_HOURS, funnel.MAX_EVENTS_PER_ACCOUNT]);
+    // The lock is taken before the count-and-insert, inside one transaction.
+    assert.deepEqual(queries.map((q) => q.sql.trim().split(/\s+/)[0]), ['BEGIN', 'SELECT', 'INSERT', 'COMMIT']);
+    assert.match(queries[1].sql, /pg_advisory_xact_lock/);
+    assert.equal(queries[1].params[1], 5);
+    assert.deepEqual(queries[2].params, [5, 'copy', 'mcp_url', funnel.SIGNUP_WINDOW_HOURS, funnel.MAX_EVENTS_PER_ACCOUNT]);
 
     nextRows = [];
     const dropped = await funnel.recordSignupEvent(5, 'copy', 'mcp_url');

@@ -59,6 +59,9 @@ const VALUE_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
 const SIGNUP_WINDOW_HOURS = 24;
 // A page left open could send copy clicks without end; this bounds the rows.
 const MAX_EVENTS_PER_ACCOUNT = 100;
+// First key of the two-key advisory lock that serializes one account's event
+// inserts (the second key is the actor id). Any fixed int4 unique to this use.
+const SIGNUP_EVENT_LOCK_CLASS = 734001;
 
 function badRequest(message) {
     const err = new Error(message);
@@ -76,23 +79,39 @@ async function recordSignupEvent(actorId, event, value) {
     if (typeof value !== 'string' || !VALUE_PATTERN.test(value)) {
         throw badRequest('value must be 1-32 lowercase letters, digits, hyphens or underscores, starting with a letter');
     }
-    // One statement: the window and the cap are checked against the same row
-    // the insert reads, so two fast clicks cannot both slip past the cap check
-    // in a way that matters (at worst the cap is exceeded by a few rows).
-    const result = await pool.query(
-        `INSERT INTO signup_events (actor_id, event, value)
-         SELECT a.id, $2, $3
-         FROM actors a
-         WHERE a.id = $1
-           AND a.created_at > NOW() - make_interval(hours => $4)
-           AND (SELECT COUNT(*) FROM signup_events s WHERE s.actor_id = a.id) < $5
-         RETURNING id`,
-        [actorId, event, value, SIGNUP_WINDOW_HOURS, MAX_EVENTS_PER_ACCOUNT]
-    );
-    if (result.rows.length === 0) {
-        return { recorded: false, reason: 'outside the signup window or over the event cap' };
+    // Concurrent inserts for one account would each count the same rows and all
+    // pass the cap, so they are serialized per account: a transaction-scoped
+    // advisory lock (released at COMMIT/ROLLBACK), then the count-and-insert as
+    // a fresh statement. Under READ COMMITTED that statement's snapshot is taken
+    // after the lock, so it sees every row the previous holder committed. An
+    // advisory lock rather than FOR UPDATE on the actor row, because the MCP
+    // heartbeat updates that row on every request.
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock($1, $2)', [SIGNUP_EVENT_LOCK_CLASS, actorId]);
+        const result = await client.query(
+            `INSERT INTO signup_events (actor_id, event, value)
+             SELECT a.id, $2, $3
+             FROM actors a
+             WHERE a.id = $1
+               AND a.created_at > NOW() - make_interval(hours => $4)
+               AND (SELECT COUNT(*) FROM signup_events s WHERE s.actor_id = a.id) < $5
+             RETURNING id`,
+            [actorId, event, value, SIGNUP_WINDOW_HOURS, MAX_EVENTS_PER_ACCOUNT]
+        );
+        await client.query('COMMIT');
+        if (result.rows.length === 0) {
+            return { recorded: false, reason: 'outside the signup window or over the event cap' };
+        }
+        return { recorded: true };
+    } catch (err) {
+        // A failed ROLLBACK must not hide the original error.
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
     }
-    return { recorded: true };
 }
 
 // Outside accounts: self-registered people, not the owner, the salem sim

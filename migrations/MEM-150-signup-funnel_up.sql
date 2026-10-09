@@ -47,7 +47,9 @@ ALTER TABLE actors
     ADD COLUMN tool_call_count INTEGER NOT NULL DEFAULT 0;
 
 INSERT INTO config (key, value, description) VALUES
-    ('signup_funnel_since', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    -- Microseconds kept: truncating to the second would move the boundary back
+    -- and let an account created earlier in that second count as tracked.
+    ('signup_funnel_since', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
      'When per-account first-connection / first-tool-call tracking began (MEM-150). Accounts created earlier never get first_* stamps, since their true first use is unknown. Do not edit.');
 
 -- request_log.path is '/mcp → <tool>' for a tools/call (request-log.js) and
