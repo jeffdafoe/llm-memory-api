@@ -15,6 +15,7 @@ const { apiRoute } = require('../middleware/route-wrapper');
 const { invokeAgent, effectiveRateLimit } = require('../services/virtual-agent');
 const { deleteSessionByToken } = require('../services/sessions');
 const { getVisibleActorIds } = require('../services/actor-visibility');
+const signupFunnel = require('../services/signup-funnel');
 // actors service no longer needed — all routes use req.actorId from auth middleware
 
 const router = Router();
@@ -436,6 +437,22 @@ router.post('/agent/activity/stop', apiRoute('agent', 'activity-stop', async (re
     logAgent('activity_stop', { agent });
     broadcast('agent_activity', { agent, active: false });
     res.json({ agent, active: false, message: 'Activity stopped' });
+}));
+
+// POST /agent/signup-event — record what a new account did on the signup
+// guide (LLM-734): {event: 'guide_shown' | 'client' | 'copy', value}.
+// Auth: the API key the guide was just handed (Bearer, same-origin page).
+// Events past the account's first 24 hours, or over its cap, are dropped with
+// recorded: false rather than refused — the page has nothing to show for them.
+router.post('/agent/signup-event', apiRoute('agent', 'signup-event', async (req, res) => {
+    if (!req.authenticatedAgent) {
+        return res.status(401).json({
+            error: { code: 'UNAUTHORIZED', message: 'Agent session required' }
+        });
+    }
+    const { event, value } = req.body || {};
+    const result = await signupFunnel.recordSignupEvent(req.actorId, event, value);
+    res.json(result);
 }));
 
 // POST /agent/instructions/read — read the authenticated agent's startup instructions.

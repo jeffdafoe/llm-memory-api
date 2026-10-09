@@ -3,6 +3,8 @@ import { ref, reactive } from 'vue';
 export function useAccess({ api, showToast }) {
     const accessRequests = ref([]);
     const inviteCodes = ref([]);
+    // Signup funnel (LLM-734): { since, summary, summary_all, accounts } from /admin/funnel.
+    const funnel = ref(null);
     const accessSubTab = ref('requests');
     // Track which usage cells are expanded (by request id)
     const expandedUsage = reactive(new Set());
@@ -25,8 +27,13 @@ export function useAccess({ api, showToast }) {
         if (res && res.codes) inviteCodes.value = res.codes;
     }
 
+    async function loadFunnel() {
+        const res = await api('/admin/funnel', {});
+        if (res && res.accounts) funnel.value = res;
+    }
+
     async function loadAccess() {
-        await Promise.all([loadAccessRequests(), loadInviteCodes()]);
+        await Promise.all([loadAccessRequests(), loadInviteCodes(), loadFunnel()]);
     }
 
     async function approveRequest(id) {
@@ -72,8 +79,8 @@ export function useAccess({ api, showToast }) {
     }
 
     return {
-        accessRequests, inviteCodes, accessSubTab, expandedUsage, toggleUsage,
-        loadAccess, loadAccessRequests, loadInviteCodes,
+        accessRequests, inviteCodes, funnel, accessSubTab, expandedUsage, toggleUsage,
+        loadAccess, loadAccessRequests, loadInviteCodes, loadFunnel,
         approveRequest, rejectRequest, generateCodes, copyCode, copyUrl, deleteCode
     };
 }

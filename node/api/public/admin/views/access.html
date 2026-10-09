@@ -11,6 +11,99 @@
             </span>
         </button>
         <button :class="{ active: accessSubTab === 'codes' }" @click="accessSubTab = 'codes'">Invite Codes</button>
+        <button :class="{ active: accessSubTab === 'funnel' }" @click="accessSubTab = 'funnel'">Signup Funnel</button>
+    </div>
+
+    <!-- Signup Funnel (LLM-734) -->
+    <div v-if="accessSubTab === 'funnel'">
+        <div v-if="!funnel" class="empty-state">Loading…</div>
+        <template v-else>
+            <p class="muted funnel-note">
+                Counts cover accounts created since tracking began ({{ funnel.since ? formatShortDate(funnel.since) : 'not set' }}).
+                Older accounts are in the table with partial data: no guide events and no first dates.
+            </p>
+            <div class="stat-strip funnel-strip">
+                <div class="stat-item">
+                    <div class="stat-label">Signed up</div>
+                    <div class="stat-value">{{ funnel.summary.signed_up }}</div>
+                    <div class="stat-meta">{{ funnel.summary_all.signed_up }} all time</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Saw guide</div>
+                    <div class="stat-value">{{ funnel.summary.saw_guide }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Picked client</div>
+                    <div class="stat-value">{{ funnel.summary.picked_client }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Connected</div>
+                    <div class="stat-value">{{ funnel.summary.connected }}</div>
+                    <div class="stat-meta">{{ funnel.summary_all.connected }} all time</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Used a tool</div>
+                    <div class="stat-value">{{ funnel.summary.first_tool_call }}</div>
+                    <div class="stat-meta">{{ funnel.summary_all.first_tool_call }} all time</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Active 7d on</div>
+                    <div class="stat-value">{{ funnel.summary.active_after_7_days }}</div>
+                    <div class="stat-meta">of {{ funnel.summary.old_enough_for_7_days }} old enough</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Active 30d on</div>
+                    <div class="stat-value">{{ funnel.summary.active_after_30_days }}</div>
+                    <div class="stat-meta">of {{ funnel.summary.old_enough_for_30_days }} old enough</div>
+                </div>
+            </div>
+            <div v-if="!funnel.accounts.length" class="empty-state">No outside accounts yet.</div>
+            <table v-else class="data-table">
+                <thead>
+                    <tr>
+                        <th>Account</th>
+                        <th>Signed up</th>
+                        <th>Client</th>
+                        <th>Copied</th>
+                        <th>Connected</th>
+                        <th>First tool call</th>
+                        <th>Last tool call</th>
+                        <th>Calls</th>
+                        <th>7d / 30d</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="a in funnel.accounts" :key="a.name">
+                        <td>
+                            <div>{{ a.name }}</div>
+                            <div class="muted">{{ a.email || '—' }}</div>
+                        </td>
+                        <td class="nowrap">
+                            {{ formatShortDate(a.created_at) }}
+                            <div v-if="!a.tracked" class="muted">before tracking</div>
+                        </td>
+                        <td>
+                            <template v-if="a.client">{{ a.client }}<span v-if="!a.client_picked" class="muted"> (default)</span></template>
+                            <span v-else class="muted">{{ a.tracked ? 'no guide' : '—' }}</span>
+                        </td>
+                        <td>{{ a.copies.length ? a.copies.join(', ') : '—' }}</td>
+                        <td class="nowrap">
+                            <template v-if="a.first_connected_at">{{ formatShortDate(a.first_connected_at) }}</template>
+                            <template v-else-if="a.connected">yes <span class="muted">(key used {{ timeAgo(a.key_last_used_at) }})</span></template>
+                            <span v-else class="muted">no</span>
+                        </td>
+                        <td class="nowrap">{{ a.first_tool_call_at ? formatShortDate(a.first_tool_call_at) : (a.tracked ? '—' : 'unknown') }}</td>
+                        <td class="nowrap">{{ a.last_tool_call_at ? timeAgo(a.last_tool_call_at) : '—' }}</td>
+                        <td>{{ a.tool_call_count }}</td>
+                        <td class="nowrap">
+                            {{ a.active_after_7_days === null ? '…' : (a.active_after_7_days ? 'yes' : 'no') }}
+                            /
+                            {{ a.active_after_30_days === null ? '…' : (a.active_after_30_days ? 'yes' : 'no') }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </template>
     </div>
 
     <!-- Access Requests -->

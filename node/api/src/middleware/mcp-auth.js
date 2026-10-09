@@ -11,20 +11,23 @@ const config = require('../services/config');
 const { broadcast } = require('../services/events');
 const { resolveByName } = require('../services/actors');
 const { findApiKeyByToken } = require('../services/api-keys');
+const signupFunnel = require('../services/signup-funnel');
 
 // Opportunistic heartbeat — update last_seen on every authenticated MCP request.
 // Also refreshes active_since if already set, so the activity spinner stays alive
 // as long as the agent is making tool calls (without requiring explicit re-calls).
 // Re-broadcasts the agent_activity event so the admin UI keeps the spinner visible.
-// Combined into a single query for efficiency.
+// Combined into a single query for efficiency. The same UPDATE stamps the
+// account's first MCP connection for the signup funnel (LLM-734).
 function heartbeat(actorId, agentName) {
     pool.query(
         `UPDATE actors
          SET last_seen = NOW(),
-             active_since = CASE WHEN active_since IS NOT NULL THEN NOW() ELSE active_since END
+             active_since = CASE WHEN active_since IS NOT NULL THEN NOW() ELSE active_since END,
+             ${signupFunnel.connectedSql}
          WHERE id = $1
          RETURNING (active_since IS NOT NULL) AS was_active`,
-        [actorId]
+        [actorId, signupFunnel.trackingSince()]
     ).then((result) => {
         if (result.rows.length > 0 && result.rows[0].was_active) {
             broadcast('agent_activity', { agent: agentName, active: true });

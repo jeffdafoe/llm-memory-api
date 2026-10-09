@@ -493,8 +493,8 @@
         <div class="client-selector">
             <label>How will you connect?</label>
             <div class="client-options">
-                <button class="client-option active" onclick="selectClient('claude-code')">Claude Code</button>
-                <button class="client-option" onclick="selectClient('claude-ai')">claude.ai</button>
+                <button class="client-option active" data-client="claude-code" onclick="selectClient('claude-code')">Claude Code</button>
+                <button class="client-option" data-client="claude-ai" onclick="selectClient('claude-ai')">claude.ai</button>
             </div>
         </div>
 
@@ -754,18 +754,37 @@ async function register() {
         document.getElementById('configBlockAi').textContent =
             'Agent name (Client ID): ' + data.agent + '\nAPI Key (Client Secret): ' + data.api_key;
         showStep('guide');
+        const shownTab = document.querySelector('.client-option.active');
+        signupEvent('guide_shown', shownTab ? shownTab.dataset.client : 'none');
     } catch (err) {
         showError('dream', 'Something went wrong. Try again.');
     }
 }
 
+// Signup funnel (LLM-734): tell the server what the new user did on this guide,
+// using the API key the page was just handed. Fire-and-forget — a lost event
+// must never get in the way of the guide.
+function signupEvent(event, value) {
+    if (!registeredApiKey) return;
+    fetch('/v1/agent/signup-event', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + registeredApiKey
+        },
+        body: JSON.stringify({ event, value })
+    }).catch(() => {});
+}
+
 function copyPassphrase() {
+    signupEvent('copy', 'passphrase');
     navigator.clipboard.writeText(registeredPassphrase);
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy Passphrase', 2000);
 }
 
 function copyMcp() {
+    signupEvent('copy', 'mcp_json');
     const mcp = JSON.stringify({
         mcpServers: {
             'llm-memory': {
@@ -783,6 +802,7 @@ function copyMcp() {
 }
 
 function copyConfig() {
+    signupEvent('copy', 'credentials');
     const config = JSON.stringify({
         agent: registeredAgent,
         passphrase: registeredPassphrase,
@@ -794,12 +814,14 @@ function copyConfig() {
 }
 
 function copyApiKey() {
+    signupEvent('copy', 'api_key');
     navigator.clipboard.writeText(registeredApiKey);
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy API Key', 2000);
 }
 
 function selectClient(client) {
+    signupEvent('client', client);
     document.querySelectorAll('.client-option').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active');
     document.querySelectorAll('.client-instructions').forEach(el => el.style.display = 'none');
@@ -831,6 +853,7 @@ async function goToDashboard() {
 }
 
 function copyMcpUrl() {
+    signupEvent('copy', 'mcp_url');
     navigator.clipboard.writeText(location.origin + '/mcp');
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy URL', 2000);
@@ -847,6 +870,7 @@ const CLAUDE_INSTRUCTIONS = [
 ].join('\n');
 
 function copyClaudeInstructions() {
+    signupEvent('copy', 'instructions');
     navigator.clipboard.writeText(CLAUDE_INSTRUCTIONS);
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy instructions', 2000);

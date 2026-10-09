@@ -23,6 +23,7 @@ const {
     votePropose, voteCast, voteStatus
 } = require('../services/discussion');
 const { broadcast } = require('../services/events');
+const { stampToolCall } = require('../services/signup-funnel');
 const { requireByName, resolveByName } = require('../services/actors');
 const { requireAccess, hasAccess, getReadableNamespaces, validateNamespace } = require('../services/namespace-permissions');
 const { hasNoteAccess, listSharesByOwner, listSharedDocuments } = require('../services/note-permissions');
@@ -1542,6 +1543,11 @@ async function createMcpServer(req) {
                 isError: true
             };
         }
+
+        // Signup funnel (LLM-734): only a real tool call counts as use —
+        // initialize / tools/list never reach this handler. Stamped before the
+        // handler runs so a call that errors still counts as an attempt to use it.
+        stampToolCall(req.mcpActorId);
 
         try {
             // Fail fast on malformed input — bad args must never reach the
