@@ -493,13 +493,13 @@
         <div class="client-selector">
             <label>How will you connect?</label>
             <div class="client-options">
-                <button class="client-option active" data-client="claude-code" onclick="selectClient('claude-code')">Claude Code</button>
-                <button class="client-option" data-client="claude-ai" onclick="selectClient('claude-ai')">claude.ai</button>
+                <button class="client-option active" data-client="claude-ai" onclick="selectClient('claude-ai')">claude.ai</button>
+                <button class="client-option" data-client="claude-code" onclick="selectClient('claude-code')">Claude Code</button>
             </div>
         </div>
 
         <!-- Claude Code instructions -->
-        <div id="instructions-claude-code" class="client-instructions">
+        <div id="instructions-claude-code" class="client-instructions" style="display:none">
             <div class="guide-step">
                 <span class="guide-step-num">1</span>
                 <h3>Add the MCP server</h3>
@@ -537,7 +537,7 @@
         </div>
 
         <!-- claude.ai instructions -->
-        <div id="instructions-claude-ai" class="client-instructions" style="display:none">
+        <div id="instructions-claude-ai" class="client-instructions">
             <div class="guide-step">
                 <span class="guide-step-num">1</span>
                 <h3>Add the MCP integration</h3>
@@ -558,17 +558,16 @@
 
             <div class="guide-step">
                 <span class="guide-step-num">2</span>
-                <h3>Start a new conversation</h3>
-                <p>The integration needs a fresh conversation to load. <strong>Start a new chat</strong> after adding the integration.</p>
+                <h3>Make it automatic (required)</h3>
+                <p>Claude only uses LLM Memory when something tells it to. <strong>Without this step, Claude ignores the connector in your later chats.</strong> Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>, so every new chat loads your memory first:</p>
+                <div class="config-block" id="claudeInstructionsBlock"></div>
+                <button class="copy-btn" onclick="copyClaudeInstructions()">Copy instructions</button>
             </div>
 
             <div class="guide-step">
                 <span class="guide-step-num">3</span>
-                <h3>Make it automatic</h3>
-                <p>Claude only uses LLM Memory when something tells it to. Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>, so every new chat loads your memory first:</p>
-                <div class="config-block" id="claudeInstructionsBlock"></div>
-                <button class="copy-btn" onclick="copyClaudeInstructions()">Copy instructions</button>
-                <p>Then start a new chat and say anything. Your agent will load its instructions, introduce itself, learn about you, and set up its memory. From then on:</p>
+                <h3>Start a new conversation</h3>
+                <p>The integration needs a fresh conversation to load. <strong>Start a new chat</strong> and say anything. Your agent will load its instructions, introduce itself, learn about you, and set up its memory. From then on:</p>
                 <ul class="usage-tips">
                     <li><strong>During chats</strong> — whenever something noteworthy comes up, save it to your notes so it's there next time</li>
                     <li><strong>End each chat</strong> with "update your notes" — this saves your work so the next chat can pick up where you left off</li>
