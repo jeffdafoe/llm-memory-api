@@ -23,11 +23,13 @@ const PAST = new Date(Date.now() - 86400000).toISOString();
 
 // Invite rows by code. 'raced' is unused at the Phase 1 read and used by the
 // time the Phase 3 FOR UPDATE read runs, as if a concurrent signup took it.
+// Each invite carries a realm other than the host's ('llm-memory', the
+// realmFromHost default) so a test can tell which one the actor got.
 const INVITES = {
-    good: { id: 1, used_by: null, expires_at: FUTURE, realm: 'llm-memory', access_request_id: 7 },
-    used: { id: 2, used_by: 'someone', expires_at: FUTURE, realm: 'llm-memory', access_request_id: 8 },
-    stale: { id: 3, used_by: null, expires_at: PAST, realm: 'llm-memory', access_request_id: 9 },
-    raced: { id: 4, used_by: null, expires_at: FUTURE, realm: 'llm-memory', access_request_id: 10 }
+    good: { id: 1, used_by: null, expires_at: FUTURE, realm: 'invite-realm', access_request_id: 7 },
+    used: { id: 2, used_by: 'someone', expires_at: FUTURE, realm: 'invite-realm', access_request_id: 8 },
+    stale: { id: 3, used_by: null, expires_at: PAST, realm: 'invite-realm', access_request_id: 9 },
+    raced: { id: 4, used_by: null, expires_at: FUTURE, realm: 'invite-realm', access_request_id: 10 }
 };
 const RACED_AT_LOCK = { ...INVITES.raced, used_by: 'someone-else' };
 
@@ -104,11 +106,20 @@ async function register(code) {
     return { status: res.status, body: await res.json() };
 }
 
-// The email the INSERT INTO actors carried (its 7th parameter).
-function actorEmail() {
+function actorInsert() {
     const insert = statements.find((s) => /INSERT INTO actors/.test(s.sql));
     assert.ok(insert, 'an actor row was inserted');
-    return insert.params[6];
+    return insert;
+}
+
+// The email the INSERT INTO actors carried (its 7th parameter).
+function actorEmail() {
+    return actorInsert().params[6];
+}
+
+// The realm the INSERT INTO actors carried (its 6th parameter, an array).
+function actorRealm() {
+    return actorInsert().params[5][0];
 }
 
 function inviteMarkedUsed() {
@@ -121,6 +132,7 @@ test('open registration with a good code links the account to its request', asyn
     assert.equal(res.status, 200);
     assert.equal(inviteMarkedUsed(), 1);
     assert.equal(actorEmail(), 'request-7@example.com');
+    assert.equal(actorRealm(), 'invite-realm');
 });
 
 test('open registration drops a used, expired or unknown code instead of refusing', async () => {
@@ -130,6 +142,7 @@ test('open registration drops a used, expired or unknown code instead of refusin
         assert.equal(res.status, 200, `code ${code}`);
         assert.equal(inviteMarkedUsed(), null, `code ${code}`);
         assert.equal(actorEmail(), null, `code ${code}`);
+        assert.equal(actorRealm(), 'llm-memory', `code ${code}`);
     }
 });
 
@@ -138,6 +151,7 @@ test('open registration that loses the code under the row lock registers code-le
     assert.equal(res.status, 200);
     assert.equal(inviteMarkedUsed(), null);
     assert.equal(actorEmail(), null);
+    assert.equal(actorRealm(), 'llm-memory');
     assert.ok(!statements.some((s) => /access_requests/.test(s.sql)), 'no email read for a lost code');
 });
 
