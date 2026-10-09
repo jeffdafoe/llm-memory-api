@@ -6,6 +6,12 @@
 -- The live template was last edited by hand in the admin UI, so this patches
 -- the one sentence in place rather than rewriting the whole template, and
 -- fails if the sentence is not there exactly.
+--
+-- Signup copies the template into agent_configuration.startup_instructions,
+-- so existing accounts carry the same sentence. Those copies are patched too:
+-- only the exact sentence is replaced, so anything an account changed in its
+-- own instructions is kept. Accounts whose copy no longer has the sentence
+-- word for word are left alone.
 
 BEGIN;
 
@@ -25,6 +31,12 @@ BEGIN
     IF updated <> 1 THEN
         RAISE EXCEPTION 'MEM-149: expected 1 default welcome template with the save_note sentence, found %', updated;
     END IF;
+
+    UPDATE agent_configuration
+       SET startup_instructions = replace(startup_instructions, old_text, new_text)
+     WHERE position(old_text IN startup_instructions) > 0;
+    GET DIAGNOSTICS updated = ROW_COUNT;
+    RAISE NOTICE 'MEM-149: patched startup_instructions for % accounts', updated;
 END
 $MIGRATION$;
 
