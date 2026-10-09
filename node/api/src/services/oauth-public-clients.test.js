@@ -46,7 +46,10 @@ test('a DCR client_id round-trips', () => {
 test('a tampered DCR client_id is refused', () => {
     const id = issueDcrClientId([CALLBACK], 1760000000);
     const [prefix, payload, signature] = id.split('.');
-    assert.equal(verifyDcrClientId(`${prefix}.${payload}.${signature.slice(0, -1)}A`), null);
+    // Change the first character: it always carries signature bits, and the
+    // swap always differs from the original.
+    const badSignature = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1);
+    assert.equal(verifyDcrClientId(`${prefix}.${payload}.${badSignature}`), null);
     assert.equal(verifyDcrClientId(`${prefix}.${payload}x.${signature}`), null);
     assert.equal(verifyDcrClientId(`${prefix}.${payload}`), null);
     assert.equal(verifyDcrClientId(id.replace('dcr.', 'xyz.')), null);
