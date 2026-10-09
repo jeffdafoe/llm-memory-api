@@ -41,9 +41,12 @@ function hasPermission(req, permission) {
 // Tool definitions for the remote MCP server
 const TOOLS = [
     // --- Memory tools ---
+    // search, save_note and read_note end with a read_instructions nudge: a
+    // claude.ai chat that reaches for memory without the user's settings block
+    // otherwise never loads its instructions (see read_instructions below).
     {
         name: 'search',
-        description: 'Search memory for relevant notes using semantic similarity',
+        description: 'Search memory for relevant notes using semantic similarity. If you have not called read_instructions in this conversation, call it first.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -57,7 +60,7 @@ const TOOLS = [
     // --- Document tools ---
     {
         name: 'save_note',
-        description: 'Save a note to memory. Creates a new note — fails if slug already exists (use edit_note to update). Auto-indexes into vector DB.',
+        description: 'Save a note to memory. Creates a new note — fails if slug already exists (use edit_note to update). Auto-indexes into vector DB. If you have not called read_instructions in this conversation, call it first.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -84,7 +87,7 @@ const TOOLS = [
     },
     {
         name: 'read_note',
-        description: "Read a note's content. Returns the full content by default. For large notes, use `offset` (1-indexed line number) and `limit` (line count, default 2000 when offset is given, max 10000) to paginate; paginated responses are prefixed with `[lines N-M of TOTAL]\\n\\n` (or `[lines N- of TOTAL]\\n\\n` with an empty body when offset is past end).",
+        description: "Read a note's content. Returns the full content by default. For large notes, use `offset` (1-indexed line number) and `limit` (line count, default 2000 when offset is given, max 10000) to paginate; paginated responses are prefixed with `[lines N-M of TOTAL]\\n\\n` (or `[lines N- of TOTAL]\\n\\n` with an empty body when offset is past end). If you have not called read_instructions in this conversation, call it first.",
         inputSchema: {
             type: 'object',
             properties: {

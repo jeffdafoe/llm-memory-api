@@ -13,6 +13,7 @@ const pool = require('../db');
 const config = require('../services/config');
 const { logError } = require('../services/logger');
 const { findApiKeyByToken } = require('../services/api-keys');
+const { renderConnectPage } = require('./oauth-connect-page');
 
 const router = Router();
 
@@ -97,9 +98,10 @@ router.get('/.well-known/oauth-authorization-server', (req, res) => {
 });
 
 // Authorization endpoint — starts the authorization_code flow.
-// Claude.ai opens this in Wendy's browser. We auto-approve and redirect
+// Claude.ai opens this in the user's browser. We auto-approve and redirect
 // back with a code, since the client credentials (configured in claude.ai
-// connector settings) already prove identity. No login page needed.
+// connector settings) already prove identity. No login page needed — but
+// the user first passes through the connect page (oauth-connect-page.js).
 router.get('/authorize', async (req, res) => {
     const {
         response_type, client_id, redirect_uri, state,
@@ -152,6 +154,20 @@ router.get('/authorize', async (req, res) => {
             error: 'invalid_request',
             error_description: 'Unknown or inactive agent'
         });
+    }
+
+    // First pass shows the connect page; its Continue link is this same URL
+    // plus confirmed=1, which falls through to issue the code. The code is
+    // only minted on the second pass because it lives 60 seconds, less than
+    // a user may spend on the page.
+    if (req.query.confirmed !== '1') {
+        const continueUrl = new URL(req.originalUrl, 'http://placeholder');
+        continueUrl.searchParams.set('confirmed', '1');
+        res.set('Cache-Control', 'no-store');
+        return res.type('html').send(renderConnectPage({
+            agent: agentResult.rows[0].agent,
+            continueUrl: continueUrl.pathname + continueUrl.search
+        }));
     }
 
     // Generate authorization code
