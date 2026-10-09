@@ -56,6 +56,15 @@ function realmFromHost(req) {
     return 'llm-memory';
 }
 
+// Why an invite row can't be redeemed, or null if it can. Checked twice per
+// registration: once cheaply up front, once under the row lock.
+function inviteProblem(invite) {
+    if (!invite) return 'Invalid invite code';
+    if (invite.used_by) return 'This invite code has already been used';
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) return 'This invite code has expired';
+    return null;
+}
+
 // POST /api/register — create agent via invite code or open registration
 router.post('/api/register', async (req, res) => {
     const { code, name } = req.body;
@@ -94,19 +103,19 @@ router.post('/api/register', async (req, res) => {
             `SELECT id, used_by, expires_at, realm FROM invite_codes WHERE code = $1`,
             [code.trim()]
         );
-        if (invite.rows.length === 0) {
-            return res.status(400).json({ error: 'Invalid invite code' });
-        }
         const inv = invite.rows[0];
-        if (inv.used_by) {
-            return res.status(400).json({ error: 'This invite code has already been used' });
+        const problem = inviteProblem(inv);
+        // With open registration the code only links the account to its access
+        // request (LLM-735), so a bad or stale one is dropped, not refused.
+        if (problem && !openRegistration) {
+            return res.status(400).json({ error: problem });
         }
-        if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
-            return res.status(400).json({ error: 'This invite code has expired' });
+        if (!problem) {
+            realm = inv.realm || 'llm-memory';
+            inviteId = inv.id;
         }
-        realm = inv.realm || 'llm-memory';
-        inviteId = inv.id;
-    } else {
+    }
+    if (inviteId === null) {
         // Open registration — derive realm from request host
         realm = realmFromHost(req);
     }
@@ -161,26 +170,26 @@ router.post('/api/register', async (req, res) => {
                 `SELECT used_by, expires_at, realm, access_request_id FROM invite_codes WHERE id = $1 FOR UPDATE`,
                 [inviteId]
             );
-            if (relock.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Invalid invite code' });
-            }
             const r = relock.rows[0];
-            if (r.used_by) {
+            const problem = inviteProblem(r);
+            if (problem && !openRegistration) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'This invite code has already been used' });
+                return res.status(400).json({ error: problem });
             }
-            if (r.expires_at && new Date(r.expires_at) < new Date()) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'This invite code has expired' });
+            if (problem) {
+                // Lost the race for the code under open registration: register
+                // code-less, the same as Phase 1 does for a bad code.
+                inviteId = null;
+                realm = realmFromHost(req);
+            } else {
+                // Take realm from the locked row — authoritative if an admin edited
+                // the invite between the Phase 1 read and now.
+                realm = r.realm || 'llm-memory';
             }
-            // Take realm from the locked row — authoritative if an admin edited
-            // the invite between the Phase 1 read and now.
-            realm = r.realm || 'llm-memory';
             // Carry the registrant's email forward from the access request this
             // invite came from, so the account self-describes. Plain read (no
             // lock) — the email is set at request-approval time and immutable.
-            if (r.access_request_id) {
+            if (!problem && r.access_request_id) {
                 const areq = await client.query(
                     `SELECT email FROM access_requests WHERE id = $1`,
                     [r.access_request_id]

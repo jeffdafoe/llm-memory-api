@@ -863,7 +863,10 @@ fetch('/api/registration-mode')
     .then(r => r.json())
     .then(data => {
         if (data.open) {
-            // Skip the invite code step entirely
+            // Skip the invite code step, but still send a code from the access
+            // form so the account links to its request (LLM-735). The server
+            // drops a bad or stale code rather than refusing open signup.
+            validatedCode = (new URLSearchParams(window.location.search).get('code') || '').trim();
             document.getElementById('step-code').style.display = 'none';
             showStep('name');
             document.getElementById('agentName').focus();
