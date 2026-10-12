@@ -22,6 +22,10 @@ const simRoutes = require('./routes/sim');
 
 const app = express();
 const port = process.env.PORT || 3100;
+// Listen on loopback only by default: nginx and the salem engine reach us on
+// 127.0.0.1. The login rate limit trusts the X-Forwarded-For hop nginx appends,
+// so a request that reached this port directly could forge its client address.
+const host = process.env.HOST || '127.0.0.1';
 
 app.use(express.json({ limit: '5mb' }));
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin', 'dist'), {
@@ -181,8 +185,8 @@ pool.init().then(() => config.init()).then(() => {
     const { startWatchdog } = require('./services/watchdog');
     startWatchdog();
 
-    const server = app.listen(port, () => {
-        console.log(`Memory API listening on port ${port}`);
+    const server = app.listen(port, host, () => {
+        console.log(`Memory API listening on ${host}:${port}`);
     });
 
     // Clear stale activity spinners — if an agent hasn't made any API request
