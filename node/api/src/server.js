@@ -25,7 +25,7 @@ const port = process.env.PORT || 3100;
 // Listen on loopback only by default: nginx and the salem engine reach us on
 // 127.0.0.1. The login rate limit trusts the X-Forwarded-For hop nginx appends,
 // so a request that reached this port directly could forge its client address.
-const host = process.env.HOST || '127.0.0.1';
+const host = process.env.MEMORY_API_HOST || '127.0.0.1';
 
 app.use(express.json({ limit: '5mb' }));
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin', 'dist'), {
