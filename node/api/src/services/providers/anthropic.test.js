@@ -81,7 +81,7 @@ for (const model of ['claude-opus-5', 'claude-sonnet-5']) {
     });
 }
 
-for (const model of ['claude-opus-5-5', 'claude-fable-5-1']) {
+for (const model of ['claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-5-5']) {
     test(model + ', stale "off" becomes low effort, never disabled', async () => {
         const body = await bodyFor(model, { thinking_effort: 'off', temperature: 0.4 });
         assert.deepEqual(body.thinking, { type: 'adaptive' });
@@ -119,7 +119,7 @@ test('every model entry is complete: API id, pricing, config version, no tempera
             assert.ok(effort.options.includes(effort.default), key + ' default effort is a listed option');
         }
     }
-    for (const key of ['claude-opus-4-8', 'claude-opus-5', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-fable-5-1', 'claude-opus-4-7']) {
+    for (const key of ['claude-opus-4-8', 'claude-opus-5', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-fable-5-1', 'claude-opus-4-7', 'claude-haiku-5-5']) {
         assert.equal('temperature' in anthropic.models[key].capabilities, false, key + ' must not offer temperature');
     }
 });
