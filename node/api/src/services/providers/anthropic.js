@@ -12,7 +12,7 @@ function logProvider(action, details) {
 // Models that reject sampling parameters (temperature/top_p/top_k) with a 400.
 const SAMPLING_PARAMS_REJECTED = new Set([
     'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-5', 'claude-opus-5-5',
-    'claude-sonnet-5', 'claude-fable-5-1'
+    'claude-sonnet-5', 'claude-fable-5-1', 'claude-haiku-5-5'
 ]);
 
 // How a model treats an OMITTED `thinking` parameter differs by generation
@@ -21,8 +21,10 @@ const SAMPLING_PARAMS_REJECTED = new Set([
 // thinking when it is omitted, so "off" must send {type: "disabled"}:
 const THINKING_ON_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
 // And these cannot turn thinking off at all — {type: "disabled"} is a 400.
-// Effort is the only control, so they offer no "off" option.
-const THINKING_ALWAYS_ON = new Set(['claude-opus-5-5', 'claude-fable-5-1']);
+// Effort is the only control, so they offer no "off" option. Haiku 5.5 is
+// here because Anthropic documents effort as its only thinking control and
+// never documents "disabled" for it (LLM-815).
+const THINKING_ALWAYS_ON = new Set(['claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-5-5']);
 
 // Shared capability blocks for the Claude 5-generation entries below.
 const CACHE_PROMPTS_CAPABILITY = {
@@ -105,6 +107,21 @@ const models = {
             max_tokens: maxTokensCapability(),
             thinking_effort: thinkingEffortCapability(true, 'low',
                 'Sonnet 5 thinks by default. "off" disables it; the model is then less eager to use tools.'),
+            cache_prompts: CACHE_PROMPTS_CAPABILITY
+        }
+    },
+    // Pricing is the tier for prompts up to 100k tokens (Haiku 5.5 overview,
+    // 2026-10-20). Longer prompts bill 5x on every field; the registry holds
+    // one flat price, so their cost is under-recorded.
+    'claude-haiku-5-5': {
+        label: 'Haiku 5.5',
+        apiId: 'claude-haiku-5-5',
+        configVersion: 1,
+        pricing: { input: 0.10, output: 0.50, cache_write: 0.125, cache_read: 0.01 },
+        capabilities: {
+            max_tokens: maxTokensCapability(),
+            thinking_effort: thinkingEffortCapability(false, 'low',
+                'Haiku 5.5 thinks by default; effort is the only control. At "low" it can skip thinking on simple requests. Anthropic\'s own default is "medium".'),
             cache_prompts: CACHE_PROMPTS_CAPABILITY
         }
     },
