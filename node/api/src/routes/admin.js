@@ -2674,7 +2674,6 @@ router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('
 
             // Sessions & keys
             await client.query('DELETE FROM sessions WHERE actor_id = $1', [id]);
-            await client.query('DELETE FROM mcp_sessions WHERE actor_id = $1', [id]);
             await client.query('DELETE FROM agent_api_keys WHERE actor_id = $1', [id]);
 
             // Permissions

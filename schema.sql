@@ -616,20 +616,6 @@ CREATE TABLE public.mail (
 ALTER TABLE public.mail OWNER TO postgres;
 
 --
--- Name: mcp_sessions; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.mcp_sessions (
-    session_id text NOT NULL,
-    tools_hash text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    actor_id integer NOT NULL
-);
-
-
-ALTER TABLE public.mcp_sessions OWNER TO postgres;
-
---
 -- Name: migrations_applied; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1175,14 +1161,6 @@ ALTER TABLE ONLY public.mail
 
 
 --
--- Name: mcp_sessions mcp_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.mcp_sessions
-    ADD CONSTRAINT mcp_sessions_pkey PRIMARY KEY (session_id);
-
-
---
 -- Name: migrations_applied migrations_applied_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1392,13 +1370,6 @@ CREATE INDEX idx_error_log_subsystem ON public.error_log USING btree (subsystem)
 --
 
 CREATE INDEX idx_mail_to_actor_acked ON public.mail USING btree (to_actor_id, acked_at);
-
-
---
--- Name: idx_mcp_sessions_actor; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_mcp_sessions_actor ON public.mcp_sessions USING btree (actor_id);
 
 
 --
@@ -1619,14 +1590,6 @@ ALTER TABLE ONLY public.mail
 
 ALTER TABLE ONLY public.mail
     ADD CONSTRAINT fk_mail_to_actor FOREIGN KEY (to_actor_id) REFERENCES public.actors(id);
-
-
---
--- Name: mcp_sessions fk_mcp_actor; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.mcp_sessions
-    ADD CONSTRAINT fk_mcp_actor FOREIGN KEY (actor_id) REFERENCES public.actors(id);
 
 
 --
@@ -1878,14 +1841,6 @@ GRANT SELECT,USAGE ON SEQUENCE public.error_log_id_seq TO claude;
 
 GRANT ALL ON TABLE public.mail TO memory_api;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.mail TO claude;
-
-
---
--- Name: TABLE mcp_sessions; Type: ACL; Schema: public; Owner: postgres
---
-
-GRANT ALL ON TABLE public.mcp_sessions TO memory_api;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.mcp_sessions TO claude;
 
 
 --

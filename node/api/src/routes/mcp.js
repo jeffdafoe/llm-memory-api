@@ -1,12 +1,18 @@
 // MCP Streamable HTTP endpoint.
 // Exposes all memory API tools over the MCP protocol via HTTP.
 // Auth is via HMAC bearer tokens issued by /oauth/token, or API keys.
+//
+// Built on the v2 MCP SDK (LLM-731), which serves two protocol eras from one
+// handler: 2026-07-28 clients (server/discover, then a self-describing _meta
+// envelope on every request) and 2025-era clients (the initialize handshake).
+// Both eras are stateless here — every HTTP request gets a fresh Server from
+// createMcpServer, so there is no session to persist or rebuild after a restart.
 
 const { Router } = require('express');
-const crypto = require('crypto');
-const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
-const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
-const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
+const {
+    Server, createMcpHandler, LATEST_PROTOCOL_VERSION, PROTOCOL_VERSION_META_KEY, CLIENT_INFO_META_KEY
+} = require('@modelcontextprotocol/server');
+const { toNodeHandler } = require('@modelcontextprotocol/node');
 const mcpAuth = require('../middleware/mcp-auth');
 const pool = require('../db');
 const { logError } = require('../services/logger');
@@ -31,8 +37,6 @@ const { getVisibleActorIds } = require('../services/actor-visibility');
 const sanitize = require('../sanitize');
 
 const router = Router();
-
-const MCP_PROTOCOL_VERSION = '2025-03-26';
 
 // Permission check — does the token include the required permission?
 function hasPermission(req, permission) {
@@ -601,13 +605,6 @@ const TOOL_PERMISSIONS = {
     discussion_vote_cast: 'mcp_discussion_vote_cast',
     discussion_vote_status: 'mcp_discussion_vote_status'
 };
-
-// Hash of tool definitions — changes when tools are added/modified/removed.
-// Used to detect stale sessions after deploys that changed the MCP tools.
-const TOOLS_HASH = crypto.createHash('sha256')
-    .update(JSON.stringify(TOOLS))
-    .digest('hex')
-    .slice(0, 16);
 
 // Validate that an identity parameter matches the authenticated agent.
 // Keeps params in schemas for visibility but prevents impersonation.
@@ -1499,6 +1496,7 @@ async function createMcpServer(req) {
     // read_instructions and silently missed the dream bootstrap + soul, which only
     // ride the tool. claude.ai drops this field entirely (anthropics/claude-ai-mcp#93);
     // the read_instructions tool description carries the same pointer for those clients.
+    // 2026-07-28 clients receive the same field in the server/discover result.
     const instructions = 'At the start of every conversation, call the read_instructions tool to load your context and instructions. Follow whatever it returns.';
 
     const server = new Server(
@@ -1510,7 +1508,7 @@ async function createMcpServer(req) {
     );
     const defaultNamespace = agent;
 
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler('tools/list', async () => {
         const allowedTools = TOOLS.filter(tool => {
             const permission = TOOL_PERMISSIONS[tool.name];
             return hasPermission(req, permission);
@@ -1518,7 +1516,7 @@ async function createMcpServer(req) {
         return { tools: allowedTools };
     });
 
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.setRequestHandler('tools/call', async (request) => {
         const { name, arguments: args } = request.params;
         const permission = TOOL_PERMISSIONS[name];
 
@@ -1580,214 +1578,141 @@ async function createMcpServer(req) {
     return server;
 }
 
-// Map of session ID -> { server, transport }
-const sessions = new Map();
-
-// Rehydrate a session from the database after a server restart.
-// Creates fresh transport + server objects and marks the transport as initialized
-// so it can handle non-initialize requests with the existing session ID.
-async function rehydrateSession(sessionId, req) {
-    const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => sessionId
+// Per-request server factory for createMcpHandler. The SDK calls it once per
+// HTTP request (and once more for a server/discover probe), passing through the
+// authInfo the route below sets on req.auth. It is rebuilt into the req-shaped
+// principal createMcpServer has always read.
+async function mcpServerFactory(ctx) {
+    const authInfo = ctx.authInfo;
+    // mcpAuth runs before every /mcp request, so a missing principal means the
+    // route wiring is broken — fail closed rather than serve tools unauthenticated.
+    if (!authInfo || !authInfo.extra) {
+        throw new Error('MCP request reached the server factory without authInfo');
+    }
+    return createMcpServer({
+        mcpAgent: authInfo.clientId,
+        mcpActorId: authInfo.extra.actorId,
+        mcpPermissions: authInfo.scopes
     });
+}
 
-    const server = await createMcpServer(req);
-    await server.connect(transport);
+function reportHandlerError(err) {
+    logError('mcp', 'handler', { message: err.message, detail: err.stack, statusCode: 500 });
+}
 
-    // Mark the transport as initialized with the existing session ID.
-    // Normally this happens when handleRequest processes an initialize message,
-    // but rehydrated sessions skip that — the client already initialized before the restart.
-    const inner = transport._webStandardTransport;
-    inner.sessionId = sessionId;
-    inner._initialized = true;
+// `legacy` is left at its default ('stateless'): 2025-era requests are each
+// answered by a fresh server with no Mcp-Session-Id, so GET and DELETE (the
+// 2025 session operations) get 405, and a client still holding a session ID
+// from before a restart or deploy keeps working without re-initializing.
+const mcpHandler = createMcpHandler(mcpServerFactory, { onerror: reportHandlerError });
 
-    sessions.set(sessionId, { server, transport });
+// Express speaks Node's req/res; the SDK handler speaks web-standard
+// Request/Response. toNodeHandler converts between them and forwards req.auth
+// to the handler as authInfo.
+const nodeHandler = toNodeHandler(mcpHandler, { onerror: reportHandlerError });
 
-    transport.onclose = () => {
-        sessions.delete(sessionId);
-        pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId]).catch(() => {});
-    };
+// Cap on client-supplied strings in the connect log line. The MCP body is
+// client-controlled under a 5mb express.json limit.
+const CONNECT_LOG_VALUE_MAX_LENGTH = 200;
 
-    return { server, transport };
+function capString(value) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    return value.slice(0, CONNECT_LOG_VALUE_MAX_LENGTH);
+}
+
+// The caller's address. nginx appends the real client to X-Forwarded-For, so
+// the LAST hop is the one nginx saw; earlier hops are whatever the client sent.
+// Same rule as middleware/request-log.js.
+function clientAddress(req) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) {
+        const hops = String(forwarded).split(',');
+        const last = hops[hops.length - 1].trim();
+        if (last) {
+            return last;
+        }
+    }
+    return req.ip || null;
+}
+
+// Describes a POST that opens a client connection: `initialize` opens a
+// 2025-era one, `server/discover` a 2026-07-28 one. A 2026-07-28 client
+// carries its protocol version and client info in params._meta; a 2025-era
+// client sends them as initialize params. Returns null for anything else —
+// including a server/discover without the _meta claim, which is a 2025-era
+// client poking the method (the SDK answers it -32601).
+function describeConnect(req) {
+    if (req.method !== 'POST' || !req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return null;
+    }
+    const method = req.body.method;
+    const params = req.body.params || {};
+    const meta = params._meta || {};
+    if (method === 'initialize') {
+        const clientInfo = params.clientInfo || {};
+        return { era: 'legacy', method, protocolVersion: params.protocolVersion, clientInfo };
+    }
+    if (method === 'server/discover' && meta[PROTOCOL_VERSION_META_KEY] !== undefined) {
+        const clientInfo = meta[CLIENT_INFO_META_KEY] || {};
+        return { era: 'modern', method, protocolVersion: meta[PROTOCOL_VERSION_META_KEY], clientInfo };
+    }
+    return null;
+}
+
+// One journal line per client connect.
+function logConnect(req, connect) {
+    console.log('[mcp] connect', JSON.stringify({
+        agent: req.mcpAgent,
+        ip: capString(clientAddress(req)),
+        era: connect.era,
+        method: connect.method,
+        protocolVersion: capString(connect.protocolVersion),
+        clientName: capString(connect.clientInfo.name),
+        clientVersion: capString(connect.clientInfo.version),
+        userAgent: capString(req.headers['user-agent'])
+    }));
 }
 
 // Handle HEAD /mcp (protocol discovery — no auth required)
 router.head('/mcp', (req, res) => {
-    res.setHeader('Mcp-Protocol-Version', MCP_PROTOCOL_VERSION);
+    res.setHeader('Mcp-Protocol-Version', LATEST_PROTOCOL_VERSION);
     res.status(200).end();
 });
 
-// Cap a client-supplied value before it goes into the journal (DIAG-001).
-// The MCP body is client-controlled and express.json allows 5mb, so logging
-// these objects verbatim lets one client write multi-megabyte log lines on a
-// reconnect loop. A real clientInfo/capabilities pair is a few hundred bytes,
-// so anything past the cap is a malformed or hostile client and the prefix is
-// all the diagnostic needs.
-// This bounds log VOLUME only, not the work: an oversized body is still parsed
-// by express.json and serialized here before being cut. Acceptable for a
-// temporary diagnostic on an authenticated endpoint; it would not be for a
-// permanent one.
-const DIAG_VALUE_MAX_LENGTH = 2000;
+// POST, GET and DELETE /mcp all go to the SDK handler, which routes by era.
+router.all('/mcp', mcpAuth, async (req, res) => {
+    // The SDK's AuthInfo shape. Permissions ride in `scopes`. The bearer itself
+    // is not needed past mcpAuth, so it is kept out of SDK objects.
+    req.auth = {
+        token: '',
+        clientId: req.mcpAgent,
+        scopes: req.mcpPermissions,
+        extra: { actorId: req.mcpActorId }
+    };
 
-function capForLog(value) {
-    const serialized = JSON.stringify(value);
-    // undefined for a missing field, and also for values JSON drops entirely.
-    if (serialized === undefined) {
-        return null;
-    }
-    if (serialized.length <= DIAG_VALUE_MAX_LENGTH) {
-        return value;
-    }
-    return { truncated: true, length: serialized.length, prefix: serialized.slice(0, DIAG_VALUE_MAX_LENGTH) };
-}
+    // express.json has already drained the request stream, so the parsed body
+    // is passed through. Without it (GET, DELETE, a non-JSON POST) the adapter
+    // reads the stream itself, and the SDK answers a non-JSON POST with 415.
+    await nodeHandler(req, res, req.body);
 
-// Handle POST /mcp (new request or existing session message)
-router.post('/mcp', mcpAuth, async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'];
+    // Connect side effects run only once the SDK has answered 200, so a
+    // rejected handshake neither logs a connect nor lights the spinner.
+    // (A JSON-RPC error inside a 200 body is not visible here; describeConnect
+    // already filters the one such case a real client sends, the claim-less
+    // server/discover.)
+    const connect = describeConnect(req);
+    if (connect && res.statusCode === 200) {
+        logConnect(req, connect);
 
-    // Fast path — session is already in memory
-    if (sessionId && sessions.has(sessionId)) {
-        const session = sessions.get(sessionId);
-        await session.transport.handleRequest(req, res, req.body);
-        return;
-    }
-
-    // Session ID provided but not in memory — rehydrate it.
-    // Works whether the session is in the DB or not, and whether tools changed or not.
-    // The client is already authenticated, so we just rebuild the server-side state.
-    if (sessionId) {
-        try {
-            const session = await rehydrateSession(sessionId, req);
-
-            // Persist session to DB (replace any stale row)
-            pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId])
-                .then(() => pool.query(
-                    'INSERT INTO mcp_sessions (session_id, actor_id, tools_hash) VALUES ($1, $2, $3)',
-                    [sessionId, req.mcpActorId, TOOLS_HASH]
-                )).catch(() => {});
-
-            await session.transport.handleRequest(req, res, req.body);
-            return;
-        } catch (err) {
-            logError('mcp', 'session-rehydrate', { agent: req.mcpAgent, message: err.message, detail: err.stack, statusCode: 500 });
-            return res.status(500).json({
-                jsonrpc: '2.0',
-                error: { code: -32000, message: 'Session rehydration failed' },
-                id: null
-            });
-        }
-    }
-
-    // No session ID — new session (initialize request)
-    // Diagnostic: log headers on new MCP session to differentiate connectors (DIAG-001)
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
-    console.log('[DIAG-001] New MCP session', JSON.stringify({
-        agent: req.mcpAgent,
-        ip,
-        userAgent: req.headers['user-agent'] || null,
-        origin: req.headers['origin'] || null,
-        referer: req.headers['referer'] || null,
-        host: req.headers['host'] || null,
-        allHeaders: Object.keys(req.headers).sort(),
-        // DIAG: which protocol revision and capabilities each client negotiates.
-        // A sessionless request is normally initialize, but may be a retry or a
-        // batch, so log method — otherwise missing fields read the same whether
-        // the client declared nothing or never sent an initialize.
-        // ?? rather than || so a present-but-falsy value stays distinguishable
-        // from an absent one.
-        method: req.body?.method ?? null,
-        protocolVersion: req.body?.params?.protocolVersion ?? null,
-        clientInfo: capForLog(req.body?.params?.clientInfo),
-        capabilities: capForLog(req.body?.params?.capabilities)
-    }));
-
-    const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => crypto.randomUUID()
-    });
-
-    const server = await createMcpServer(req);
-
-    await server.connect(transport);
-
-    // handleRequest processes the initialize and generates the session ID
-    await transport.handleRequest(req, res, req.body);
-
-    // Store session in memory and database
-    const newSessionId = transport.sessionId;
-    if (newSessionId) {
-        sessions.set(newSessionId, { server, transport });
-
-        transport.onclose = () => {
-            sessions.delete(newSessionId);
-            pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [newSessionId]).catch(() => {});
-        };
-
-        // Persist to DB for rehydration after restart
-        pool.query(
-            'INSERT INTO mcp_sessions (session_id, actor_id, tools_hash) VALUES ($1, $2, $3)',
-            [newSessionId, req.mcpActorId, TOOLS_HASH]
-        ).catch(err => logError('mcp', 'session-persist', { agent: req.mcpAgent, message: err.message, detail: err.stack, statusCode: 500 }));
-
-        // Activate the activity spinner on new MCP session.
+        // Activate the activity spinner on connect.
         // Agents that don't explicitly call activity_start (e.g. ChatGPT, third-party clients)
         // still show as active when they connect.
         pool.query('UPDATE actors SET active_since = NOW() WHERE id = $1', [req.mcpActorId])
             .then(() => broadcast('agent_activity', { agent: req.mcpAgent, active: true }))
             .catch(() => {});
     }
-});
-
-// Handle GET /mcp (SSE stream for server-initiated messages)
-router.get('/mcp', mcpAuth, async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'];
-
-    if (!sessionId) {
-        return res.status(400).json({
-            jsonrpc: '2.0',
-            error: { code: -32000, message: 'Bad Request: Mcp-Session-Id header is required' },
-            id: null
-        });
-    }
-
-    // Try in-memory first, then rehydrate unconditionally
-    if (!sessions.has(sessionId)) {
-        try {
-            await rehydrateSession(sessionId, req);
-
-            pool.query(`
-                INSERT INTO mcp_sessions (session_id, actor_id, tools_hash) VALUES ($1, $2, $3)
-                ON CONFLICT (session_id) DO UPDATE SET tools_hash = $3
-            `, [sessionId, req.mcpActorId, TOOLS_HASH]).catch(() => {});
-        } catch (err) {
-            logError('mcp', 'session-rehydrate-sse', { agent: req.mcpAgent, message: err.message, detail: err.stack, statusCode: 500 });
-            return res.status(500).json({
-                jsonrpc: '2.0',
-                error: { code: -32000, message: 'Session rehydration failed' },
-                id: null
-            });
-        }
-    }
-
-    const session = sessions.get(sessionId);
-    await session.transport.handleRequest(req, res);
-});
-
-// Handle DELETE /mcp (session termination)
-router.delete('/mcp', mcpAuth, async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'];
-
-    if (sessionId && sessions.has(sessionId)) {
-        const session = sessions.get(sessionId);
-        await session.transport.close();
-        sessions.delete(sessionId);
-    }
-
-    // Clean up DB row regardless of whether it was in memory
-    if (sessionId) {
-        pool.query('DELETE FROM mcp_sessions WHERE session_id = $1', [sessionId]).catch(() => {});
-    }
-
-    res.status(200).end();
 });
 
 module.exports = router;

@@ -698,18 +698,6 @@ CREATE TABLE public.mail (
 
 
 --
--- Name: mcp_sessions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.mcp_sessions (
-    session_id text NOT NULL,
-    tools_hash text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    actor_id integer NOT NULL
-);
-
-
---
 -- Name: migrations_applied; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1465,14 +1453,6 @@ ALTER TABLE ONLY public.mail
 
 
 --
--- Name: mcp_sessions mcp_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.mcp_sessions
-    ADD CONSTRAINT mcp_sessions_pkey PRIMARY KEY (session_id);
-
-
---
 -- Name: migrations_applied migrations_applied_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1820,13 +1800,6 @@ CREATE INDEX idx_mail_to_actor_acked ON public.mail USING btree (to_actor_id, ac
 
 
 --
--- Name: idx_mcp_sessions_actor; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_mcp_sessions_actor ON public.mcp_sessions USING btree (actor_id);
-
-
---
 -- Name: idx_note_permissions_grantee; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2147,14 +2120,6 @@ ALTER TABLE ONLY public.mail
 
 ALTER TABLE ONLY public.mail
     ADD CONSTRAINT fk_mail_to_actor FOREIGN KEY (to_actor_id) REFERENCES public.actors(id);
-
-
---
--- Name: mcp_sessions fk_mcp_actor; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.mcp_sessions
-    ADD CONSTRAINT fk_mcp_actor FOREIGN KEY (actor_id) REFERENCES public.actors(id);
 
 
 --
@@ -2512,14 +2477,6 @@ GRANT SELECT,USAGE ON SEQUENCE public.invite_codes_id_seq TO claude;
 
 GRANT ALL ON TABLE public.mail TO memory_api;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.mail TO claude;
-
-
---
--- Name: TABLE mcp_sessions; Type: ACL; Schema: public; Owner: -
---
-
-GRANT ALL ON TABLE public.mcp_sessions TO memory_api;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.mcp_sessions TO claude;
 
 
 --
