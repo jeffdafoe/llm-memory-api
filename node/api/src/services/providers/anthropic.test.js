@@ -130,3 +130,144 @@ test('existing models keep their config versions (a bump would mark every saved 
     assert.equal(anthropic.models['claude-sonnet-4-6'].configVersion, 2);
     assert.equal(anthropic.models['claude-haiku-4-5'].configVersion, 1);
 });
+
+// ── Conversation cache breakpoint (LLM-816) ─────────────────────────────────
+
+const CACHED_CONF = { cache_prompts: true };
+const SYSTEM = { static: 'static rules', dynamic: '' };
+
+async function bodyForCall(conf, opts) {
+    const stub = stubFetch();
+    try {
+        const call = anthropic.createCall('claude-opus-5-5', 'k', conf);
+        await call(SYSTEM, '', opts);
+        return stub.lastBody();
+    } finally {
+        stub.restore();
+    }
+}
+
+// A court-style tool loop in the neutral (OpenAI) shape: opener, one round of
+// a tool call and its result.
+function historyAfterRounds(rounds) {
+    const messages = [{ role: 'user', content: 'The court is in session.' }];
+    for (let i = 1; i <= rounds; i++) {
+        messages.push({
+            role: 'assistant',
+            content: 'Reading record ' + i + '.',
+            tool_calls: [{ id: 'call_' + i, type: 'function', function: { name: 'read_record', arguments: '{"n":' + i + '}' } }],
+        });
+        messages.push({ role: 'tool', tool_call_id: 'call_' + i, content: 'record ' + i + ' text' });
+    }
+    return messages;
+}
+
+// Every cache_control location in the request messages, as "msgIndex:blockIndex".
+function markerPositions(body) {
+    const found = [];
+    body.messages.forEach((msg, i) => {
+        if (Array.isArray(msg.content)) {
+            msg.content.forEach((block, j) => {
+                if (block.cache_control) found.push(i + ':' + j);
+            });
+        }
+    });
+    return found;
+}
+
+test('tool loop with caching on: marker on the last tool_result, system breakpoint kept, no top-level marker', async () => {
+    const body = await bodyForCall(CACHED_CONF, { cache: true, messages: historyAfterRounds(2) });
+    const last = body.messages[body.messages.length - 1];
+    assert.equal(last.role, 'user');
+    assert.equal(last.content[last.content.length - 1].type, 'tool_result');
+    assert.deepEqual(markerPositions(body), [(body.messages.length - 1) + ':' + (last.content.length - 1)]);
+    assert.deepEqual(body.system[0].cache_control, { type: 'ephemeral' });
+    assert.equal('cache_control' in body, false);
+});
+
+test('fresh perception + turnContext: marker on the perception block, context after it unmarked', async () => {
+    const messages = historyAfterRounds(1).concat([{ role: 'user', content: 'A new perception.' }]);
+    const body = await bodyForCall(CACHED_CONF, { cache: true, messages, turnContext: 'volatile now' });
+    const last = body.messages[body.messages.length - 1];
+    assert.deepEqual(last.content, [
+        { type: 'text', text: 'A new perception.', cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: 'volatile now' },
+    ]);
+});
+
+test('tool results + turnContext: context is a text block after the marked tool_result', async () => {
+    const body = await bodyForCall(CACHED_CONF, { cache: true, messages: historyAfterRounds(1), turnContext: 'volatile now' });
+    const last = body.messages[body.messages.length - 1];
+    assert.equal(last.content.length, 2);
+    assert.equal(last.content[0].type, 'tool_result');
+    assert.deepEqual(last.content[0].cache_control, { type: 'ephemeral' });
+    assert.deepEqual(last.content[1], { type: 'text', text: 'volatile now' });
+});
+
+test('caching off: no marker in messages, turnContext still a separate block', async () => {
+    const messages = [{ role: 'user', content: 'A perception.' }];
+    const body = await bodyForCall({}, { cache: true, messages, turnContext: 'volatile now' });
+    assert.deepEqual(markerPositions(body), []);
+    assert.deepEqual(body.messages[0].content, [
+        { type: 'text', text: 'A perception.' },
+        { type: 'text', text: 'volatile now' },
+    ]);
+});
+
+test('single-message call with caching on: no marker on the message, system breakpoint kept', async () => {
+    const stub = stubFetch();
+    try {
+        const call = anthropic.createCall('claude-opus-5-5', 'k', CACHED_CONF);
+        await call(SYSTEM, 'one-off question', { cache: true });
+        const body = stub.lastBody();
+        assert.deepEqual(body.messages, [{ role: 'user', content: 'one-off question' }]);
+        assert.deepEqual(body.system[0].cache_control, { type: 'ephemeral' });
+    } finally {
+        stub.restore();
+    }
+});
+
+test('caching on and no opts at all: the call still goes out, with only the system breakpoint', async () => {
+    const stub = stubFetch();
+    try {
+        const call = anthropic.createCall('claude-opus-5-5', 'k', CACHED_CONF);
+        const result = await call(SYSTEM, 'one-off question');
+        assert.equal(result.text, 'ok');
+        assert.deepEqual(stub.lastBody().messages, [{ role: 'user', content: 'one-off question' }]);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('an empty last text is never marked (Anthropic rejects cache_control on an empty text block)', async () => {
+    const body = await bodyForCall(CACHED_CONF, { cache: true, messages: [{ role: 'user', content: '' }] });
+    assert.deepEqual(markerPositions(body), []);
+});
+
+// The property the cache depends on: what round N sent (minus its turn
+// context) is a prefix of what round N+1 sends. Markers are stripped and
+// string content is normalized to its documented one-text-block form first.
+function normalize(messages) {
+    return messages.map((msg) => {
+        let content = msg.content;
+        if (typeof content === 'string') {
+            content = [{ type: 'text', text: content }];
+        }
+        content = content.map((block) => {
+            const copy = { ...block };
+            delete copy.cache_control;
+            return copy;
+        });
+        return { role: msg.role, content };
+    });
+}
+
+test('round N history is a prefix of round N+1 (the cached entry is reachable)', async () => {
+    const roundN = await bodyForCall(CACHED_CONF, { cache: true, messages: historyAfterRounds(2), turnContext: 'ctx N' });
+    const roundNext = await bodyForCall(CACHED_CONF, { cache: true, messages: historyAfterRounds(3), turnContext: 'ctx N+1' });
+    const prev = normalize(roundN.messages);
+    // Drop the turn context block from round N's last message: it is never replayed.
+    prev[prev.length - 1].content = prev[prev.length - 1].content.filter(b => b.text !== 'ctx N');
+    const next = normalize(roundNext.messages);
+    assert.deepEqual(next.slice(0, prev.length), prev);
+});
