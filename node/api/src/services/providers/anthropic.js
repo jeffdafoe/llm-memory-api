@@ -30,7 +30,7 @@ const THINKING_ALWAYS_ON = new Set(['claude-opus-5-5', 'claude-fable-5-1', 'clau
 const CACHE_PROMPTS_CAPABILITY = {
     type: 'boolean',
     label: 'Prompt Caching',
-    description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+    description: 'Caches the static system prompt and, on tool-use calls, the conversation history across calls. 5-minute TTL, 25% write premium, 90% read discount.',
     default: false
 };
 
@@ -164,7 +164,7 @@ const models = {
             cache_prompts: {
                 type: 'boolean',
                 label: 'Prompt Caching',
-                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                description: 'Caches the static system prompt and, on tool-use calls, the conversation history across calls. 5-minute TTL, 25% write premium, 90% read discount.',
                 default: false
             }
         }
@@ -203,7 +203,7 @@ const models = {
             cache_prompts: {
                 type: 'boolean',
                 label: 'Prompt Caching',
-                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                description: 'Caches the static system prompt and, on tool-use calls, the conversation history across calls. 5-minute TTL, 25% write premium, 90% read discount.',
                 default: false
             }
         }
@@ -242,7 +242,7 @@ const models = {
             cache_prompts: {
                 type: 'boolean',
                 label: 'Prompt Caching',
-                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                description: 'Caches the static system prompt and, on tool-use calls, the conversation history across calls. 5-minute TTL, 25% write premium, 90% read discount.',
                 default: false
             }
         }
@@ -274,7 +274,7 @@ const models = {
             cache_prompts: {
                 type: 'boolean',
                 label: 'Prompt Caching',
-                description: 'Caches the static portion of the system prompt across calls. 5-minute TTL, 25% write premium, 90% read discount.',
+                description: 'Caches the static system prompt and, on tool-use calls, the conversation history across calls. 5-minute TTL, 25% write premium, 90% read discount.',
                 default: false
             }
         }
@@ -360,6 +360,57 @@ function translateMessagesToAnthropic(openaiMessages) {
     return out;
 }
 
+// ── Conversation cache breakpoint (LLM-816) ─────────────────────────────────
+
+// Put cache_control on the last block of the replayed history. Anthropic
+// caches the whole prefix up to a marked block, and the next call's marker
+// walks back (at most 20 positions) to find that entry, so round N+1 reads
+// everything round N sent. A run of tool_use or tool_result blocks counts as
+// one position, but buildToolUseMessages splits parallel calls into one
+// assistant message per call with its result after it (LLM-237), so a round
+// of k parallel calls adds about 2k positions: a round with 10 or more
+// parallel calls misses once, and the next round caches again.
+//
+// A string content becomes a one-block array to carry the marker; Anthropic
+// documents string content as shorthand for one text block, so the next
+// call's plain-string copy of this message is the same prefix.
+function markHistoryCacheBreakpoint(messages) {
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (typeof last.content === 'string') {
+        // Anthropic rejects cache_control on an empty text block.
+        if (last.content.length === 0) return;
+        last.content = [{ type: 'text', text: last.content, cache_control: { type: 'ephemeral' } }];
+        return;
+    }
+    if (Array.isArray(last.content) && last.content.length > 0) {
+        const block = last.content[last.content.length - 1];
+        if (block.type === 'text' && !block.text) return;
+        block.cache_control = { type: 'ephemeral' };
+    }
+}
+
+// Add the per-call turn context as its own text block AFTER the history, so
+// the marked history block keeps the bytes the next call replays. The context
+// changes every call; a marker after it would write an entry nothing reads.
+// A latest user turn (a perception, or tool results) takes it as a trailing
+// block; after an assistant turn it becomes a new user turn.
+function appendTurnContext(messages, turnContext) {
+    const block = { type: 'text', text: turnContext };
+    const last = messages[messages.length - 1];
+    if (last && last.role === 'user') {
+        if (Array.isArray(last.content)) {
+            last.content.push(block);
+        } else if (last.content) {
+            last.content = [{ type: 'text', text: last.content }, block];
+        } else {
+            last.content = [block];
+        }
+    } else {
+        messages.push({ role: 'user', content: [block] });
+    }
+}
+
 // ── API call factory ────────────────────────────────────────────────────────
 
 function createCall(model, apiKey, configuration) {
@@ -399,6 +450,17 @@ function createCall(model, apiKey, configuration) {
         const messages = (opts && Array.isArray(opts.messages) && opts.messages.length > 0)
             ? translateMessagesToAnthropic(opts.messages)
             : [{ role: 'user', content: userMessage }];
+
+        // A replayed conversation gets its own cache breakpoint (LLM-816), so
+        // each round of a tool loop reads the previous round's prefix instead
+        // of paying full price for it. A single-message call gets none: its
+        // only message is never sent again, so a write there is pure cost.
+        if (useCache && opts.messages) {
+            markHistoryCacheBreakpoint(messages);
+        }
+        if (opts && opts.turnContext) {
+            appendTurnContext(messages, opts.turnContext);
+        }
 
         const body = {
             model: model,
@@ -506,4 +568,6 @@ function createCall(model, apiKey, configuration) {
     };
 }
 
-module.exports = { name: 'anthropic', label: 'Anthropic', models, createCall, flattenPrompt };
+// acceptsTurnContext: createCall places opts.turnContext itself (after the
+// history cache breakpoint), so the provider wrapper must not merge it.
+module.exports = { name: 'anthropic', label: 'Anthropic', models, createCall, flattenPrompt, acceptsTurnContext: true };

@@ -66,6 +66,14 @@ function resolveProvider(providerName) {
 //                       their native formats. Use to continue a tool-use session
 //                       across calls (engine appends prior assistant tool_use +
 //                       user tool_result messages and re-calls the provider).
+//   turnContext: string — volatile context for THIS call only (sim Impressions +
+//                       ephemeral_context), kept apart from `messages` so a
+//                       provider can place a cache breakpoint on the replayed
+//                       history before it (LLM-816). Requires `messages`. A
+//                       provider module that exports `acceptsTurnContext: true`
+//                       receives it as-is; for every other provider this wrapper
+//                       merges it into `messages` (attachTurnContext), so their
+//                       request bodies are the same as before the field existed.
 //
 // Unknown opts fields are dropped at this boundary so providers never see them.
 function createProvider(provider, model, apiKey, configuration) {
@@ -85,7 +93,11 @@ function createProvider(provider, model, apiKey, configuration) {
         const timeoutSeconds = parseInt(config.get('virtual_agent_request_timeout')) || 120;
         const timeoutMs = timeoutSeconds * 1000;
 
-        const sanitizedOpts = sanitizeOpts(opts);
+        let sanitizedOpts = sanitizeOpts(opts);
+        if (sanitizedOpts && sanitizedOpts.turnContext && !mod.acceptsTurnContext) {
+            const { turnContext, ...rest } = sanitizedOpts;
+            sanitizedOpts = { ...rest, messages: attachTurnContext(rest.messages, turnContext) };
+        }
 
         return Promise.race([
             callFn(systemPrompt, userMessage, sanitizedOpts),
@@ -130,7 +142,34 @@ function sanitizeOpts(opts) {
             out.messages = messages;
         }
     }
+    // turnContext only rides with a conversation to attach it to.
+    if (out.messages && typeof opts.turnContext === 'string' && opts.turnContext.length > 0) {
+        out.turnContext = opts.turnContext;
+    }
     if (Object.keys(out).length === 0) return undefined;
+    return out;
+}
+
+// Merge the per-call turn context into an OpenAI-shape conversation, for
+// providers that take it inside `messages`. A latest user turn (a fresh
+// perception) gets it appended to its text; after tool results it becomes a
+// trailing user turn, so the model still sees its current options. Returns a
+// new array; the caller's messages are not changed.
+function attachTurnContext(messages, turnContext) {
+    if (!turnContext) {
+        return messages;
+    }
+    const out = messages.slice();
+    const last = out[out.length - 1];
+    if (last && last.role === 'user') {
+        let content = turnContext;
+        if (last.content) {
+            content = last.content + '\n\n' + turnContext;
+        }
+        out[out.length - 1] = { ...last, content: content };
+    } else {
+        out.push({ role: 'user', content: turnContext });
+    }
     return out;
 }
 
@@ -314,6 +353,8 @@ function encryptApiKey(plaintext) {
 
 module.exports = {
     createProvider,
+    attachTurnContext,
+    sanitizeOpts,
     flattenPrompt,
     encryptApiKey,
     decryptApiKey,

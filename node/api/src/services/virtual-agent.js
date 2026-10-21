@@ -7,7 +7,7 @@
 const pool = require('../db');
 const { log, logError } = require('./logger');
 const { searchMemory } = require('./memory');
-const { createProvider, decryptApiKey, calculateCost, getModelConfigVersion } = require('./provider');
+const { createProvider, attachTurnContext, decryptApiKey, calculateCost, getModelConfigVersion } = require('./provider');
 const { broadcast } = require('./events');
 const { chatSend } = require('./chat');
 const { saveNote, readNote } = require('./documents');
@@ -2926,6 +2926,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // perceptions (Recent: grows on each event-tick) and the latest
         // subsumes the earlier ones.
         let toolUseMessages = null;
+        let currentTurnContext = '';
         if (isToolUse) {
             let toolUseHistory = history;
             if (isSimChat) {
@@ -2953,9 +2954,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
                 }];
             }
 
-            // Attach the per-tick volatile context to the CURRENT turn, AFTER
-            // history assembly so it never becomes part of the persisted /
-            // replayed conversation:
+            // The per-tick volatile context for the CURRENT turn. It never
+            // becomes part of the persisted / replayed conversation:
             //   - the Impressions block (private notes on co-located people) —
             //     moved here from the sim action-tick system prompt (LLM-501):
             //     it changes whenever co-location changes, and a byte change in
@@ -2964,21 +2964,12 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             //   - ephemeral_context (lean sim-history) — the per-tick
             //     affordances / world-state the model needs to decide NOW. It
             //     ends with the engine's triage coda, so it stays last.
-            // Append to the last user message when the latest turn is a fresh
-            // perception; for a tool-result follow-up (latest messages are tool
-            // results) push a trailing user turn so the model still sees its
-            // current options.
-            const currentTurnContext = buildCurrentTurnContext(isSimNpc, peopleContext, ephemeralContext);
-            if (currentTurnContext) {
-                const lastMsg = toolUseMessages[toolUseMessages.length - 1];
-                if (lastMsg && lastMsg.role === 'user') {
-                    lastMsg.content = lastMsg.content
-                        ? lastMsg.content + '\n\n' + currentTurnContext
-                        : currentTurnContext;
-                } else {
-                    toolUseMessages.push({ role: 'user', content: currentTurnContext });
-                }
-            }
+            // It goes to the provider as opts.turnContext, apart from the
+            // history (LLM-816): Anthropic puts its cache breakpoint on the last
+            // history block and adds the context after it; the provider wrapper
+            // merges it into messages for every other provider, the same way
+            // this function used to.
+            currentTurnContext = buildCurrentTurnContext(isSimNpc, peopleContext, ephemeralContext);
         }
         const userMessage = isToolUse ? '' : buildDirectChatUserMessage(history, fromAgent, messageText);
 
@@ -2991,7 +2982,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // userMessage already carries the conversation block.
         let loggedUserMessage;
         if (isToolUse) {
-            loggedUserMessage = JSON.stringify(toolUseMessages, null, 2);
+            loggedUserMessage = JSON.stringify(attachTurnContext(toolUseMessages, currentTurnContext), null, 2);
         } else {
             loggedUserMessage = userMessage;
         }
@@ -3056,6 +3047,9 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (isToolUse) {
             providerCallOpts.tools = toolsOffered;
             providerCallOpts.messages = toolUseMessages;
+            if (currentTurnContext) {
+                providerCallOpts.turnContext = currentTurnContext;
+            }
         }
         const callProvider = () =>
             withActivityIndicator(agent.agent, () => providerFn(systemPrompt, userMessage, providerCallOpts));
