@@ -1,16 +1,28 @@
 ---
 # Install Node.js from NodeSource when it is missing OR when the installed
-# major version differs from nodejs_version. Changing nodejs_version in
+# major version is older than nodejs_version. Raising nodejs_version in
 # group_vars therefore moves an existing host to the new major on the next
 # setup run. Patch releases within the same major are NOT applied here —
 # those stay a deliberate `apt upgrade`.
+#
+# Under --check the NodeSource setup script does not run, so apt still sees
+# the old repository: check mode shows THAT an install would happen, not
+# which package version it would pick.
 - name: Read installed Node.js major version
-  command: node -p "process.versions.node.split('.')[0]"
+  # The apt-managed binary, not whatever `node` is first on PATH.
+  command: /usr/bin/node -p "process.versions.node.split('.')[0]"
   register: nodejs_installed_major
   changed_when: false
   failed_when: false
   # Read-only, so run it in --check mode too; the tasks below depend on it.
   check_mode: false
+
+# apt will not downgrade a newer major, so stop instead of silently leaving
+# the host on a version other than nodejs_version.
+- name: Refuse to downgrade Node.js
+  fail:
+    msg: "Installed Node.js major {{ nodejs_installed_major.stdout | trim }} is newer than nodejs_version {{ nodejs_version }}. Downgrade by hand or raise nodejs_version."
+  when: nodejs_installed_major.rc == 0 and nodejs_installed_major.stdout | trim | int > nodejs_version | int
 
 - name: Decide whether Node.js needs installing
   set_fact:
