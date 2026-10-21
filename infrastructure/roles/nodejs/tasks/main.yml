@@ -1,29 +1,57 @@
 ---
-- name: Check if Node.js is already installed
-  stat:
-    path: /usr/bin/node
-  register: nodejs_installed
+# Install Node.js from NodeSource when it is missing OR when the installed
+# major version is older than nodejs_version. Raising nodejs_version in
+# group_vars therefore moves an existing host to the new major on the next
+# setup run. Patch releases within the same major are NOT applied here —
+# those stay a deliberate `apt upgrade`.
+#
+# Under --check the NodeSource setup script does not run, so apt still sees
+# the old repository: check mode shows THAT an install would happen, not
+# which package version it would pick.
+- name: Read installed Node.js major version
+  # The apt-managed binary, not whatever `node` is first on PATH.
+  command: /usr/bin/node -p "process.versions.node.split('.')[0]"
+  register: nodejs_installed_major
+  changed_when: false
+  failed_when: false
+  # Read-only, so run it in --check mode too; the tasks below depend on it.
+  check_mode: false
+
+# apt will not downgrade a newer major, so stop instead of silently leaving
+# the host on a version other than nodejs_version.
+- name: Refuse to downgrade Node.js
+  fail:
+    msg: "Installed Node.js major {{ nodejs_installed_major.stdout | trim }} is newer than nodejs_version {{ nodejs_version }}. Downgrade by hand or raise nodejs_version."
+  when: nodejs_installed_major.rc == 0 and nodejs_installed_major.stdout | trim | int > nodejs_version | int
+
+- name: Decide whether Node.js needs installing
+  set_fact:
+    nodejs_needs_install: "{{ nodejs_installed_major.rc != 0 or nodejs_installed_major.stdout | trim != nodejs_version | string }}"
 
 - name: Download NodeSource setup script
   get_url:
     url: "https://deb.nodesource.com/setup_{{ nodejs_version }}.x"
     dest: /tmp/nodesource_setup.sh
     mode: "0755"
-  when: not nodejs_installed.stat.exists
+  when: nodejs_needs_install
 
+# Rewrites /etc/apt/sources.list.d/nodesource.sources to point at the
+# node_<nodejs_version>.x repository.
 - name: Run NodeSource setup script
   command: /tmp/nodesource_setup.sh
-  when: not nodejs_installed.stat.exists
+  when: nodejs_needs_install
 
+# state: latest so a host on an older major is upgraded; `present` would
+# leave the already-installed package alone.
 - name: Install Node.js
   apt:
     name: nodejs
-    state: present
+    state: latest
     update_cache: yes
-  when: not nodejs_installed.stat.exists
+  when: nodejs_needs_install
 
 - name: Remove NodeSource setup script
   file:
     path: /tmp/nodesource_setup.sh
     state: absent
-  when: not nodejs_installed.stat.exists
+  when: nodejs_needs_install
