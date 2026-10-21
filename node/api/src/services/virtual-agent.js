@@ -989,10 +989,25 @@ async function loadChatHistory(discussionId, limit) {
 // Row cap for direct-chat history. Module-scope because the sim tick path
 // also needs it to tell "the fetch hit the cap" (see stabilizeHistoryWindow).
 const MAX_DIRECT_CHAT_HISTORY = 50;
+// Court sessions replay the whole hearing (LLM-819). A hearing is bounded (the
+// engine's court runner stops at 24 rounds; each round writes one assistant
+// row plus one row per tool result), and a window that slides inside it drops
+// the records the magistrate already read. The head trim then removes every
+// leading tool row, since the only user rows are the opener and the nudges,
+// and can leave nothing at all. 500 covers 24 rounds of up to 19 parallel
+// calls each.
+const MAX_COURT_CHAT_HISTORY = 500;
 
-async function loadDirectChatHistory(agent1, agent2, sceneId) {
+// The row cap for one agent's direct-chat history.
+function historyCapFor(agentName) {
+    if (SIM_COURT_AGENTS.has(agentName)) {
+        return MAX_COURT_CHAT_HISTORY;
+    }
+    return MAX_DIRECT_CHAT_HISTORY;
+}
+
+async function loadDirectChatHistory(agent1, agent2, sceneId, maxMessages = MAX_DIRECT_CHAT_HISTORY) {
     const hours = parseInt(config.get('virtual_agent_chat_history_hours')) || 4;
-    const maxMessages = MAX_DIRECT_CHAT_HISTORY;
 
     const actor1 = await requireByName(agent1);
     const actor2 = await requireByName(agent2);
@@ -2800,12 +2815,13 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // The court (LLM-695) is a dedicated VA, not a shared one, but each
         // session is its own case, so its history is scoped the same way.
         const isSceneScoped = isSharedVA || SIM_COURT_AGENTS.has(agent.agent);
+        const historyCap = historyCapFor(agent.agent);
         let history;
         if (isSceneScoped && !sceneId) {
             history = [];
         } else {
             const historyScene = isSceneScoped ? sceneId : null;
-            history = await loadDirectChatHistory(virtualAgentName, fromAgent, historyScene);
+            history = await loadDirectChatHistory(virtualAgentName, fromAgent, historyScene, historyCap);
         }
 
         // Sim mode: when the sender is 'salem-engine' (the Salem village
@@ -2935,7 +2951,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
                 // prune consecutive perceptions as before — both steps are
                 // deterministic over the same row set, so the replayed byte
                 // prefix stays stable between head jumps.
-                toolUseHistory = pruneSimHistory(stabilizeHistoryWindow(history, MAX_DIRECT_CHAT_HISTORY));
+                toolUseHistory = pruneSimHistory(stabilizeHistoryWindow(history, historyCap));
             }
             toolUseMessages = buildToolUseMessages(toolUseHistory, virtualAgentName);
             toolUseMessages = trimHeadToUserMessage(toolUseMessages);
@@ -3351,4 +3367,4 @@ async function handleDirectMail(virtualAgentName, fromAgent, mailId) {
 const systemHandler = require('./system-handler');
 systemHandler.register('virtual-agent', handleVirtualAgent);
 
-module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, unanswerableNotice, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages, stabilizeHistoryWindow, buildCurrentTurnContext };
+module.exports = { handleVirtualAgent, handleDirectChat, handleDirectMail, unanswerableNotice, resolveEffectiveLimits, effectiveRateLimit, startErrorPing, invokeAgent, loadAgent, extractCoLocatedNames, paraphraseToolCall, buildToolUseMessages, stabilizeHistoryWindow, buildCurrentTurnContext, historyCapFor, trimHeadToUserMessage };
