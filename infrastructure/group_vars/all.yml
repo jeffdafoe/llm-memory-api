@@ -4,7 +4,7 @@
 postgresql_version: "17"
 
 # Node.js
-nodejs_version: "20"
+nodejs_version: "24"
 
 # Memory API
 memory_api_port: 3100
