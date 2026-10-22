@@ -95,6 +95,10 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // NULL outside sim ticks and for village-level cascades.
     const simActorId = opts && opts.simActorId !== undefined ? opts.simActorId : null;
     const simActorName = opts && opts.simActorName !== undefined ? opts.simActorName : null;
+    // historyScope (LLM-687): 'scene' or null, validated by the route. Forwarded
+    // to handleDirectChat, which uses it to pick the history the turn replays.
+    // Not persisted.
+    const historyScope = opts && opts.historyScope !== undefined ? opts.historyScope : null;
     // ephemeralContext (lean sim-history): per-tick scratch context (current
     // affordances / world-state) forwarded to handleDirectChat to attach to
     // the model's current turn. NOT persisted — it never enters rowSpecs, so
@@ -433,7 +437,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
                         pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                            toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ackReplyOnInsert: wait, ephemeralContext, stableContext,
+                            toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, historyScope, ackReplyOnInsert: wait, ephemeralContext, stableContext,
                             notifyUnanswerable,
                         });
                         // Swallow rejection for non-wait callers so unhandled-promise
@@ -445,7 +449,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // stays false here.
                         for (const d of dispatches) {
                             handleDirectChat(d.agent, fromAgent, message, d.msgId, {
-                                toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, ephemeralContext, stableContext,
+                                toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, historyScope, ephemeralContext, stableContext,
                             }).catch(() => {});
                         }
                     }
