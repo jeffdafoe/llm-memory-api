@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// staleness-check.js — weekly report of pending apt upgrades and runtimes near
-// end of life. Installed as a root cron job by the memory-api Ansible role.
+// staleness-check.js — weekly report of pending apt upgrades, runtimes near
+// end of life, and TLS certificates near expiry. Installed as a root cron job
+// by the memory-api Ansible role.
 //
 // Usage: node scripts/staleness-check.js <recipient>
 //
@@ -12,9 +13,14 @@
 
 const fs = require('fs');
 const os = require('os');
+const path = require('path');
+const { X509Certificate } = require('crypto');
 const { execFileSync } = require('child_process');
 
 const ENV_FILE = '/etc/memory-api/env';
+// certbot keeps one directory per certificate here, each with cert.pem (the
+// site's own certificate) linked to the current issue. Only root can read it.
+const LETSENCRYPT_LIVE_DIR = '/etc/letsencrypt/live';
 const LOOKUP_TIMEOUT_MS = 15000;
 
 const recipient = process.argv[2];
@@ -62,7 +68,7 @@ async function main() {
 
 async function check(pool) {
     const { mailSend } = require('../src/services/mail');
-    const { parseAptSimulation, assessEol, assessReboot, buildReport } = require('../src/services/staleness');
+    const { parseAptSimulation, assessEol, assessCertificate, assessReboot, buildReport } = require('../src/services/staleness');
 
     const today = new Date();
     const failures = [];
@@ -118,6 +124,31 @@ async function check(pool) {
         failures.push(`Could not check whether a reboot is needed: ${err.message}`);
     }
 
+    // A server with no Let's Encrypt directory has no certificates to check;
+    // that is not a failure. Any certificate that cannot be read is.
+    const certFindings = [];
+    let certCount = 0;
+    if (fs.existsSync(LETSENCRYPT_LIVE_DIR)) {
+        try {
+            const names = fs.readdirSync(LETSENCRYPT_LIVE_DIR, { withFileTypes: true })
+                .filter((entry) => entry.isDirectory())
+                .map((entry) => entry.name);
+            for (const name of names) {
+                try {
+                    // X509Certificate reads the first certificate in the file.
+                    const cert = new X509Certificate(fs.readFileSync(path.join(LETSENCRYPT_LIVE_DIR, name, 'cert.pem')));
+                    const finding = assessCertificate(name, new Date(cert.validFrom), new Date(cert.validTo), today);
+                    certCount++;
+                    if (finding) certFindings.push(finding);
+                } catch (err) {
+                    failures.push(`Could not read the TLS certificate \`${name}\`: ${err.message}`);
+                }
+            }
+        } catch (err) {
+            failures.push(`Could not list the TLS certificates in ${LETSENCRYPT_LIVE_DIR}: ${err.message}`);
+        }
+    }
+
     const eolFindings = [];
     for (const runtime of runtimes) {
         try {
@@ -136,9 +167,13 @@ async function check(pool) {
         heldBack: apt.heldBack,
         eolFindings,
         reboot,
+        certFindings,
         failures,
     });
-    const checked = runtimes.map((r) => `${r.label} ${r.cycle}`).join(', ');
+    const checked = [
+        ...runtimes.map((r) => `${r.label} ${r.cycle}`),
+        `${certCount} TLS certificate${certCount === 1 ? '' : 's'}`,
+    ].join(', ');
     if (!report) {
         stamp(`nothing to report (0 pending upgrades; checked ${checked})`);
     } else {

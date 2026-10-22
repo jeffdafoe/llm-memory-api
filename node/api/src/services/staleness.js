@@ -1,6 +1,6 @@
-// Weekly server staleness check: pending apt upgrades and end-of-life
+// Weekly server staleness check: pending apt upgrades, end-of-life
 // warnings for the runtimes this service depends on (Node.js, Debian,
-// PostgreSQL).
+// PostgreSQL), and TLS certificates near expiry.
 //
 // This module is pure — no shell, network or database. The cron entry point
 // (scripts/staleness-check.js) gathers the facts and hands them in here, so
@@ -111,6 +111,51 @@ function assessEol(label, cycle, eol, today, warnDays = EOL_WARN_DAYS) {
     return { label, cycle, eol, daysLeft, ended: daysLeft < 0 };
 }
 
+// Warn when a TLS certificate has at most this many days left. certbot renews
+// a 90-day certificate at 30 days left, so one inside this window means its
+// renewal has been failing for over a week.
+const CERT_WARN_DAYS = 21;
+// For a shorter-lived certificate the window shrinks with its lifetime
+// (21 of 90 days), because certbot renews those later than 30 days out and a
+// fixed 21 days would warn on every healthy renewal.
+const CERT_WARN_FRACTION = CERT_WARN_DAYS / 90;
+const DAY_MS = 86400000;
+
+// `validFrom` and `validTo` are the certificate's notBefore / notAfter as
+// Dates. Returns a finding, or null when there is nothing to warn about.
+function assessCertificate(name, validFrom, validTo, now) {
+    for (const date of [validFrom, validTo]) {
+        if (!(date instanceof Date) || !Number.isFinite(date.getTime())) {
+            throw new Error(`certificate ${name} has no readable validity dates`);
+        }
+    }
+    const lifetimeDays = (validTo.getTime() - validFrom.getTime()) / DAY_MS;
+    const warnDays = Math.min(CERT_WARN_DAYS, lifetimeDays * CERT_WARN_FRACTION);
+    const msLeft = validTo.getTime() - now.getTime();
+    if (msLeft / DAY_MS > warnDays) return null;
+    return {
+        name,
+        expires: validTo.toISOString().slice(0, 10),
+        expired: msLeft <= 0,
+        // Whole days, rounded toward the expiry: "0" means under a day left
+        // (or under a day since it expired).
+        days: Math.floor(Math.abs(msLeft) / DAY_MS),
+    };
+}
+
+function plural(count, word) {
+    return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
+
+function describeCertificate(finding) {
+    if (finding.expired) {
+        if (finding.days === 0) return `\`${finding.name}\`: EXPIRED today (${finding.expires}).`;
+        return `\`${finding.name}\`: EXPIRED on ${finding.expires}, ${plural(finding.days, 'day')} ago.`;
+    }
+    if (finding.days === 0) return `\`${finding.name}\`: expires in under a day (${finding.expires}).`;
+    return `\`${finding.name}\`: expires ${finding.expires}, in ${plural(finding.days, 'day')}.`;
+}
+
 function describeEol(finding) {
     const name = `${finding.label} ${finding.cycle}`;
     if (finding.eol === null) return `${name}: no longer supported (end date not recorded).`;
@@ -200,10 +245,10 @@ function describeUpgrade(upgrade) {
 // run (apt, a lookup); they are reported, because a check that silently fails
 // would read as "all clear".
 // `upgrades`, `removals` and `heldBack` come from parseAptSimulation;
-// `reboot` from assessReboot.
-function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFindings = [], reboot = null, failures = [] }) {
+// `reboot` from assessReboot; `certFindings` from assessCertificate.
+function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFindings = [], reboot = null, certFindings = [], failures = [] }) {
     if (upgrades.length === 0 && removals.length === 0 && heldBack === 0
-        && eolFindings.length === 0 && !reboot && failures.length === 0) {
+        && eolFindings.length === 0 && !reboot && certFindings.length === 0 && failures.length === 0) {
         return null;
     }
 
@@ -212,6 +257,7 @@ function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFind
     const other = upgrades.filter((u) => !u.security && u.name !== 'nodejs');
 
     const counts = [];
+    if (certFindings.length) counts.push(`${certFindings.length} certificate warning${certFindings.length === 1 ? '' : 's'}`);
     if (eolFindings.length) counts.push(`${eolFindings.length} end-of-life warning${eolFindings.length === 1 ? '' : 's'}`);
     if (reboot) counts.push('reboot needed');
     if (security.length) counts.push(`${security.length} security update${security.length === 1 ? '' : 's'}`);
@@ -225,6 +271,12 @@ function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFind
         `Weekly staleness check for **${host}**. Nothing was installed.`,
         '',
     ];
+    // First, because an expired certificate takes a site down at once.
+    if (certFindings.length) {
+        lines.push('## TLS certificates', '');
+        for (const finding of certFindings) lines.push(`- ${describeCertificate(finding)}`);
+        lines.push('', 'certbot renews well before this point, so its renewal is failing: `sudo certbot renew --dry-run` and `sudo journalctl -u certbot` show why. A certificate for a site no longer hosted here should be removed with `sudo certbot delete --cert-name <name>`.', '');
+    }
     if (eolFindings.length) {
         lines.push('## End of life', '');
         for (const finding of eolFindings) lines.push(`- ${describeEol(finding)}`);
@@ -281,8 +333,10 @@ function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFind
 
 module.exports = {
     EOL_WARN_DAYS,
+    CERT_WARN_DAYS,
     parseAptSimulation,
     assessEol,
+    assessCertificate,
     parseKernelRelease,
     compareKernelVersions,
     assessReboot,

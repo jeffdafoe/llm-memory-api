@@ -4,7 +4,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    parseAptSimulation, assessEol, parseKernelRelease, compareKernelVersions, assessReboot, buildReport, EOL_WARN_DAYS,
+    parseAptSimulation, assessEol, assessCertificate, parseKernelRelease, compareKernelVersions, assessReboot, buildReport,
+    EOL_WARN_DAYS, CERT_WARN_DAYS,
 } = require('./staleness');
 
 // Shaped like real `apt-get -s dist-upgrade` output on Debian 13: a summary
@@ -140,6 +141,51 @@ test('assessEol rejects an impossible calendar date', () => {
     assert.throws(() => assessEol('Node.js', '24', '2027-02-30', TODAY), /not a calendar date/);
 });
 
+const HOUR_MS = 3600000;
+const DAY_MS = 24 * HOUR_MS;
+
+// A certificate `lifetimeDays` long that expires `msLeft` from TODAY
+// (negative once expired). Let's Encrypt issues 90-day certificates.
+function certDates(msLeft, lifetimeDays = 90) {
+    const validTo = new Date(TODAY.getTime() + msLeft);
+    return [new Date(validTo.getTime() - lifetimeDays * DAY_MS), validTo];
+}
+
+test('assessCertificate: a certificate far from expiry is not a finding', () => {
+    assert.equal(assessCertificate('example.org', ...certDates(50 * DAY_MS), TODAY), null);
+});
+
+test('assessCertificate: the warn window is inclusive at CERT_WARN_DAYS', () => {
+    assert.deepEqual(assessCertificate('example.org', ...certDates(CERT_WARN_DAYS * DAY_MS), TODAY),
+        { name: 'example.org', expires: '2026-11-11', expired: false, days: 21 });
+    assert.equal(assessCertificate('example.org', ...certDates(CERT_WARN_DAYS * DAY_MS + HOUR_MS), TODAY), null);
+});
+
+test('assessCertificate: an expired certificate counts whole days since expiry', () => {
+    assert.deepEqual(assessCertificate('example.org', ...certDates(-129.5 * DAY_MS), TODAY),
+        { name: 'example.org', expires: '2026-06-14', expired: true, days: 129 });
+    assert.deepEqual(assessCertificate('example.org', ...certDates(-HOUR_MS), TODAY),
+        { name: 'example.org', expires: '2026-10-21', expired: true, days: 0 });
+});
+
+test('assessCertificate: a shorter-lived certificate gets a proportionally shorter window', () => {
+    // 45 days long: the window is 10.5 days, so 14 days left is a healthy
+    // certificate certbot has not renewed yet, and 10 days left is not.
+    assert.equal(assessCertificate('example.org', ...certDates(14 * DAY_MS, 45), TODAY), null);
+    assert.equal(assessCertificate('example.org', ...certDates(10 * DAY_MS, 45), TODAY).days, 10);
+});
+
+test('assessCertificate: a longer-lived certificate still warns at CERT_WARN_DAYS', () => {
+    assert.equal(assessCertificate('example.org', ...certDates(30 * DAY_MS, 365), TODAY), null);
+    assert.equal(assessCertificate('example.org', ...certDates(20 * DAY_MS, 365), TODAY).days, 20);
+});
+
+test('assessCertificate rejects missing or unreadable dates', () => {
+    const [validFrom, validTo] = certDates(10 * DAY_MS);
+    assert.throws(() => assessCertificate('example.org', validFrom, new Date('not a date'), TODAY), /no readable validity dates/);
+    assert.throws(() => assessCertificate('example.org', undefined, validTo, TODAY), /no readable validity dates/);
+});
+
 test('buildReport sends nothing on a clean week', () => {
     assert.equal(buildReport({ host: 'host5' }), null);
     assert.equal(buildReport({ host: 'host5', upgrades: [], eolFindings: [], failures: [] }), null);
@@ -177,6 +223,32 @@ test('buildReport mails an end-of-life warning on its own', () => {
     assert.equal(report.subject, 'Staleness check (host5): 1 end-of-life warning');
     assert.match(report.body, /Node\.js 20: support ENDED on 2026-04-30, 174 days ago\./);
     assert.doesNotMatch(report.body, /full-upgrade/);
+});
+
+test('buildReport mails a certificate warning on its own', () => {
+    const finding = assessCertificate('example.org', ...certDates(5.5 * DAY_MS), TODAY);
+    const report = buildReport({ host: 'host5', certFindings: [finding] });
+    assert.equal(report.subject, 'Staleness check (host5): 1 certificate warning');
+    assert.match(report.body, /## TLS certificates\n\n- `example\.org`: expires 2026-10-27, in 5 days\./);
+    assert.match(report.body, /certbot renew --dry-run/);
+    assert.doesNotMatch(report.body, /full-upgrade/);
+});
+
+test('buildReport words expired and nearly-expired certificates, and lists them first', () => {
+    const certFindings = [
+        assessCertificate('example.org', ...certDates(-130.5 * DAY_MS), TODAY),
+        assessCertificate('example.net', ...certDates(-HOUR_MS), TODAY),
+        assessCertificate('example.com', ...certDates(2 * HOUR_MS), TODAY),
+        assessCertificate('example.edu', ...certDates(1.5 * DAY_MS), TODAY),
+    ];
+    const eolFindings = [assessEol('Node.js', '20', '2026-04-30', TODAY)];
+    const report = buildReport({ host: 'host5', certFindings, eolFindings });
+    assert.equal(report.subject, 'Staleness check (host5): 4 certificate warnings, 1 end-of-life warning');
+    assert.match(report.body, /- `example\.org`: EXPIRED on 2026-06-13, 130 days ago\./);
+    assert.match(report.body, /- `example\.net`: EXPIRED today \(2026-10-21\)\./);
+    assert.match(report.body, /- `example\.com`: expires in under a day \(2026-10-21\)\./);
+    assert.match(report.body, /- `example\.edu`: expires 2026-10-23, in 1 day\./);
+    assert.ok(report.body.indexOf('## TLS certificates') < report.body.indexOf('## End of life'));
 });
 
 test('buildReport mails a failed check, so a broken check never reads as clean', () => {
