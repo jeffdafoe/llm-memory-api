@@ -19,7 +19,7 @@ const EOL_WARN_DAYS = 90;
 // Several origins are separated by ", " before the "[arch]"; a package from
 // a source with no release file can have no origin at all.
 const APT_INST_LINE = /^Inst (\S+)(?: \[([^\]]*)\])? \((\S+)(?: (.*?))? \[[^\]]+\]\)$/;
-const APT_REMV_LINE = /^Remv (\S+)(?: \[([^\]]*)\])?/;
+const APT_REMV_LINE = /^Remv (\S+)(?: \[([^\]]*)\])?$/;
 // "4 upgraded, 1 newly installed, 0 to remove and 2 not upgraded."
 const APT_SUMMARY_LINE = /^(\d+) upgraded, (\d+) newly installed, (\d+) to remove and (\d+) not upgraded\.$/;
 
@@ -71,8 +71,12 @@ function parseAptSimulation(output) {
     } else {
         const [upgraded, newlyInstalled, toRemove, notUpgraded] = summary;
         heldBack = notUpgraded;
-        if (upgraded + newlyInstalled !== upgrades.length || toRemove !== removals.length) {
-            problems.push(`apt's summary (${upgraded} upgraded, ${newlyInstalled} newly installed, ${toRemove} to remove) does not match the ${upgrades.length} install and ${removals.length} remove lines read`);
+        // An Inst line with an "[old]" version is an upgrade; without one it
+        // is a new package. Each category must match apt's own count.
+        const parsedUpgraded = upgrades.filter((u) => u.from !== null).length;
+        const parsedNew = upgrades.length - parsedUpgraded;
+        if (upgraded !== parsedUpgraded || newlyInstalled !== parsedNew || toRemove !== removals.length) {
+            problems.push(`apt's summary (${upgraded} upgraded, ${newlyInstalled} newly installed, ${toRemove} to remove) does not match the lines read (${parsedUpgraded} upgraded, ${parsedNew} newly installed, ${removals.length} to remove)`);
         }
     }
     return { upgrades, removals, heldBack, problems };

@@ -30,8 +30,8 @@ function loadDatabaseUrl() {
     if (process.env.DATABASE_URL) return;
     const line = fs.readFileSync(ENV_FILE, 'utf8').split('\n').find((l) => l.startsWith('DATABASE_URL='));
     if (!line) throw new Error(`DATABASE_URL not found in ${ENV_FILE}`);
-    // Ansible's env.j2 writes a bare value; also accept one quoted pair, as
-    // systemd's EnvironmentFile does.
+    // Ansible's env.j2 writes a bare value. One surrounding quote pair is
+    // also stripped; escapes inside a value are not handled.
     process.env.DATABASE_URL = line.slice('DATABASE_URL='.length).trim().replace(/^(["'])(.*)\1$/, '$2');
 }
 

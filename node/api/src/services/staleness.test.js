@@ -74,7 +74,22 @@ test('parseAptSimulation reports an Inst line it cannot read, and the count mism
     assert.deepEqual(upgrades, []);
     assert.equal(problems.length, 2);
     assert.match(problems[0], /unrecognised apt line: Inst foo something new/);
-    assert.match(problems[1], /does not match the 0 install and 0 remove lines/);
+    assert.match(problems[1], /does not match the lines read \(0 upgraded, 0 newly installed, 0 to remove\)/);
+});
+
+test('parseAptSimulation reports a Remv line it cannot read', () => {
+    const output = 'Remv foo unexpected new format\n0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.\n';
+    const { removals, problems } = parseAptSimulation(output);
+    assert.deepEqual(removals, []);
+    assert.match(problems[0], /unrecognised apt line: Remv foo unexpected new format/);
+});
+
+test('parseAptSimulation checks the upgraded / newly-installed split, not just the total', () => {
+    // One new package (no "[old]"), but apt says it is an upgrade.
+    const output = 'Inst foo (1.1 Debian:13.2/stable [amd64])\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n';
+    const { problems } = parseAptSimulation(output);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /\(0 upgraded, 1 newly installed, 0 to remove\)/);
 });
 
 test('parseAptSimulation reads removals and the held-back count', () => {
