@@ -23,26 +23,32 @@
     msg: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf does not exist; the cluster is not set up."
   when: not postgresql_conf_stat.stat.exists
 
-# The cluster directory belongs to postgres, so conf.d could be a symlink
-# planted there; root must not manage whatever it points at.
-- name: Check conf.d is not a symlink
+# The cluster directory belongs to postgres, so root must not create or
+# chown anything in it (postgres could swap conf.d for a symlink between a
+# check and the change). Create it AS postgres, the same command the drop-in
+# below runs, then check the result.
+- name: Ensure PostgreSQL conf.d directory exists
+  command: >-
+    /usr/sbin/runuser -u postgres -- /bin/sh -c
+    'if [ -d "$1" ]; then echo present; else mkdir -m 0755 "$1" && echo created; fi'
+    sh /etc/postgresql/{{ postgresql_version }}/main/conf.d
+  register: postgresql_confd_create
+  changed_when: postgresql_confd_create.stdout == 'created'
+
+- name: Check conf.d is a directory owned by postgres
   stat:
     path: /etc/postgresql/{{ postgresql_version }}/main/conf.d
     follow: no
   register: postgresql_confd_stat
 
-- name: Fail when conf.d is a symlink
+- name: Fail when conf.d is not a postgres-owned directory
   fail:
-    msg: "/etc/postgresql/{{ postgresql_version }}/main/conf.d is a symlink; refusing to manage it."
-  when: postgresql_confd_stat.stat.islnk | default(false)
-
-- name: Ensure PostgreSQL conf.d directory exists
-  file:
-    path: /etc/postgresql/{{ postgresql_version }}/main/conf.d
-    state: directory
-    owner: postgres
-    group: postgres
-    mode: '0755'
+    msg: "/etc/postgresql/{{ postgresql_version }}/main/conf.d is not a real directory owned by postgres (symlink: {{ postgresql_confd_stat.stat.islnk | default('?') }}, owner: {{ postgresql_confd_stat.stat.pw_name | default('?') }})."
+  when: >-
+    not postgresql_confd_stat.stat.exists
+    or postgresql_confd_stat.stat.islnk
+    or not postgresql_confd_stat.stat.isdir
+    or postgresql_confd_stat.stat.pw_name != 'postgres'
 
 - name: Create the postgresql@ drop-in directory
   file:
