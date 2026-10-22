@@ -21,16 +21,12 @@
       LLMNR=no
   register: resolved_llmnr_conf
 
-- name: Check whether systemd-resolved is running
-  command: systemctl is-active systemd-resolved
-  register: resolved_active
-  changed_when: false
-  failed_when: false
-
-# Only a running resolver is restarted, so this never starts one that was off.
-# The restart closes the LLMNR sockets; lookups pause for well under a second.
+# try-restart restarts the unit only if it is running at that moment, so this
+# never starts a resolver that was off. Exit 5 is "unit not found" (no
+# systemd-resolved on this host). The restart closes the LLMNR sockets;
+# lookups through 127.0.0.53 pause for well under a second.
 - name: Restart systemd-resolved to close the LLMNR listener
-  systemd:
-    name: systemd-resolved
-    state: restarted
-  when: resolved_llmnr_conf.changed and resolved_active.stdout == 'active'
+  command: systemctl try-restart systemd-resolved.service
+  register: resolved_restart
+  failed_when: resolved_restart.rc not in [0, 5]
+  when: resolved_llmnr_conf.changed
