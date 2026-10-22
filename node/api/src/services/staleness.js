@@ -119,35 +119,74 @@ function describeEol(finding) {
     return `${name}: support ends ${finding.eol}, in ${finding.daysLeft} days.`;
 }
 
-// Orders kernel release strings such as "6.12.113+deb13-amd64": digit runs
-// compare as numbers (so 113 > 99), everything else as text.
+// Splits a Debian kernel release (`uname -r`, or the part after "vmlinuz-")
+// into its version numbers and its flavour:
+//   "6.12.113+deb13-amd64"    → version [6, 12, 113],    flavour "amd64"
+//   "6.12.113+deb13-rt-amd64" → version [6, 12, 113],    flavour "rt-amd64"
+//   "6.16.3+bpo-cloud-amd64"  → version [6, 16, 3],      flavour "cloud-amd64"
+//   "6.1.0-25-amd64"          → version [6, 1, 0, 25],   flavour "amd64" (pre-trixie: ABI number)
+// The provenance tag after "+" (deb13, bpo) is dropped: it says where a kernel
+// was built, not which is newer. Returns null for anything else.
+function parseKernelRelease(release) {
+    const current = /^(\d+(?:\.\d+)+)\+[a-z0-9.~]+-([a-z0-9][a-z0-9-]*)$/.exec(release);
+    if (current) return { version: current[1].split('.'), flavour: current[2] };
+    const older = /^(\d+(?:\.\d+)+)-(\d+)-([a-z0-9][a-z0-9-]*)$/.exec(release);
+    if (older) return { version: [...older[1].split('.'), older[2]], flavour: older[3] };
+    return null;
+}
+
+// Compares two digit strings as whole numbers without converting them (no
+// precision limit): strip leading zeros, then the longer one is bigger, then
+// text order decides.
+function compareDigits(a, b) {
+    const x = a.replace(/^0+(?=\d)/, '');
+    const y = b.replace(/^0+(?=\d)/, '');
+    if (x.length !== y.length) return x.length - y.length;
+    return x < y ? -1 : x > y ? 1 : 0;
+}
+
+// Compares parsed version arrays part by part; a missing part counts as 0.
 function compareKernelVersions(a, b) {
-    const left = String(a).split(/(\d+)/);
-    const right = String(b).split(/(\d+)/);
-    for (let i = 0; i < Math.max(left.length, right.length); i++) {
-        const x = left[i] ?? '';
-        const y = right[i] ?? '';
-        if (x === y) continue;
-        const numeric = /^\d+$/.test(x) && /^\d+$/.test(y);
-        if (numeric) return Number(x) - Number(y);
-        return x < y ? -1 : 1;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const order = compareDigits(a[i] ?? '0', b[i] ?? '0');
+        if (order !== 0) return order;
     }
     return 0;
 }
 
 // Decides whether the server needs a reboot. Two signals, because Debian does
-// not always create /var/run/reboot-required: the flag file itself (its .pkgs
-// companion names the packages that asked for it), and a kernel in /boot newer
-// than the one running. Returns a finding, or null when no reboot is pending.
+// not always create /var/run/reboot-required:
+//   - the flag file itself; its .pkgs companion names the packages that asked
+//     for it, and is only read alongside the flag;
+//   - an installed kernel of the RUNNING kernel's flavour with a higher version.
+//     Other flavours (rt, cloud) are kept for other uses and never count.
+// This does not read which entry the bootloader will pick; Debian's GRUB boots
+// the newest kernel unless pinned, and a pinned older kernel keeps reporting
+// here until the newer one is removed.
+// Returns a finding, or null when no reboot is pending.
 function assessReboot({ flagExists = false, flagPackages = '', runningKernel = '', installedKernels = [] }) {
-    const newestKernel = [...installedKernels].sort(compareKernelVersions).pop() || null;
-    const newerKernel = Boolean(runningKernel && newestKernel && compareKernelVersions(newestKernel, runningKernel) > 0);
-    if (!flagExists && !newerKernel) return null;
+    const running = parseKernelRelease(runningKernel);
+    let newestKernel = null;
+    let newestVersion = null;
+    if (running) {
+        for (const release of installedKernels) {
+            const parsed = parseKernelRelease(release);
+            if (!parsed || parsed.flavour !== running.flavour) continue;
+            if (compareKernelVersions(parsed.version, running.version) <= 0) continue;
+            if (!newestVersion || compareKernelVersions(parsed.version, newestVersion) > 0) {
+                newestKernel = release;
+                newestVersion = parsed.version;
+            }
+        }
+    }
+    if (!flagExists && !newestKernel) return null;
 
     const reasons = [];
     if (flagExists) reasons.push('/var/run/reboot-required is set');
-    if (newerKernel) reasons.push(`kernel ${newestKernel} is installed but ${runningKernel} is running`);
-    const packages = String(flagPackages).split('\n').map((p) => p.trim()).filter(Boolean);
+    if (newestKernel) reasons.push(`kernel ${newestKernel} is installed but ${runningKernel} is running`);
+    const packages = flagExists
+        ? String(flagPackages).split('\n').map((p) => p.trim()).filter(Boolean)
+        : [];
     return { reasons, runningKernel, newestKernel, packages: [...new Set(packages)] };
 }
 
@@ -244,6 +283,7 @@ module.exports = {
     EOL_WARN_DAYS,
     parseAptSimulation,
     assessEol,
+    parseKernelRelease,
     compareKernelVersions,
     assessReboot,
     buildReport,

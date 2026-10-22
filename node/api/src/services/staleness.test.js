@@ -4,7 +4,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    parseAptSimulation, assessEol, compareKernelVersions, assessReboot, buildReport, EOL_WARN_DAYS,
+    parseAptSimulation, assessEol, parseKernelRelease, compareKernelVersions, assessReboot, buildReport, EOL_WARN_DAYS,
 } = require('./staleness');
 
 // Shaped like real `apt-get -s dist-upgrade` output on Debian 13: a summary
@@ -188,12 +188,48 @@ test('buildReport mails a failed check, so a broken check never reads as clean',
 // The VPS on 2026-10-21: apt installed 6.12.113, 6.12.111 still running.
 const KERNELS = ['6.12.101+deb13-amd64', '6.12.111+deb13-amd64', '6.12.113+deb13-amd64'];
 
-test('compareKernelVersions compares digit runs as numbers', () => {
+test('parseKernelRelease splits version from flavour and drops provenance', () => {
+    assert.deepEqual(parseKernelRelease('6.12.113+deb13-amd64'), { version: ['6', '12', '113'], flavour: 'amd64' });
+    assert.deepEqual(parseKernelRelease('6.12.113+deb13-rt-amd64'), { version: ['6', '12', '113'], flavour: 'rt-amd64' });
+    assert.deepEqual(parseKernelRelease('6.16.3+bpo-cloud-amd64'), { version: ['6', '16', '3'], flavour: 'cloud-amd64' });
+    assert.deepEqual(parseKernelRelease('6.1.0-25-amd64'), { version: ['6', '1', '0', '25'], flavour: 'amd64' });
+    assert.equal(parseKernelRelease('foo'), null);
+    assert.equal(parseKernelRelease('6.12.113+deb13-amd64.old'), null);
+    assert.equal(parseKernelRelease(''), null);
+});
+
+test('compareKernelVersions compares parts as whole numbers', () => {
+    const v = (release) => parseKernelRelease(release).version;
     // As plain text "6.12.99" sorts after "6.12.113"; as versions it is older.
-    assert.ok(compareKernelVersions('6.12.113+deb13-amd64', '6.12.99+deb13-amd64') > 0);
-    assert.ok(compareKernelVersions('6.12.99+deb13-amd64', '6.12.113+deb13-amd64') < 0);
-    assert.equal(compareKernelVersions('6.12.111+deb13-amd64', '6.12.111+deb13-amd64'), 0);
-    assert.ok(compareKernelVersions('7.0.1+deb14-amd64', '6.12.113+deb13-amd64') > 0);
+    assert.ok(compareKernelVersions(v('6.12.113+deb13-amd64'), v('6.12.99+deb13-amd64')) > 0);
+    assert.ok(compareKernelVersions(v('6.12.99+deb13-amd64'), v('6.12.113+deb13-amd64')) < 0);
+    assert.equal(compareKernelVersions(v('6.12.111+deb13-amd64'), v('6.12.111+bpo-amd64')), 0);
+    assert.ok(compareKernelVersions(v('7.0.1+deb14-amd64'), v('6.12.113+deb13-amd64')) > 0);
+    // Equal numbers written differently go on to the next part.
+    assert.ok(compareKernelVersions(['6', '012', '114'], ['6', '12', '113']) > 0);
+    // No precision loss on long digit runs.
+    assert.ok(compareKernelVersions(['90071992547409930'], ['90071992547409929']) > 0);
+});
+
+test('assessReboot: a newer kernel of another flavour never counts', () => {
+    const installed = [...KERNELS, '6.12.120+deb13-rt-amd64', '6.12.120+deb13-cloud-amd64'];
+    assert.equal(assessReboot({ runningKernel: '6.12.113+deb13-amd64', installedKernels: installed }), null);
+});
+
+test('assessReboot: unreadable /boot names are ignored', () => {
+    const installed = [...KERNELS, 'foo', '9.9.9-garbage'];
+    assert.equal(assessReboot({ runningKernel: '6.12.113+deb13-amd64', installedKernels: installed }), null);
+});
+
+test('assessReboot: a .pkgs list without the flag is not reported', () => {
+    const reboot = assessReboot({
+        flagExists: false,
+        flagPackages: 'libc6\n',
+        runningKernel: '6.12.111+deb13-amd64',
+        installedKernels: KERNELS,
+    });
+    assert.deepEqual(reboot.reasons, ['kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running']);
+    assert.deepEqual(reboot.packages, []);
 });
 
 test('assessReboot: nothing pending when the newest kernel runs and no flag is set', () => {

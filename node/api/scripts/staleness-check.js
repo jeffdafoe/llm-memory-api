@@ -107,7 +107,7 @@ async function check(pool) {
     let reboot = null;
     try {
         const flagExists = fs.existsSync('/var/run/reboot-required');
-        const flagPackages = fs.existsSync('/var/run/reboot-required.pkgs')
+        const flagPackages = flagExists && fs.existsSync('/var/run/reboot-required.pkgs')
             ? fs.readFileSync('/var/run/reboot-required.pkgs', 'utf8')
             : '';
         const installedKernels = fs.readdirSync('/boot')
