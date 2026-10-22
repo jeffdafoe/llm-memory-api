@@ -119,6 +119,38 @@ function describeEol(finding) {
     return `${name}: support ends ${finding.eol}, in ${finding.daysLeft} days.`;
 }
 
+// Orders kernel release strings such as "6.12.113+deb13-amd64": digit runs
+// compare as numbers (so 113 > 99), everything else as text.
+function compareKernelVersions(a, b) {
+    const left = String(a).split(/(\d+)/);
+    const right = String(b).split(/(\d+)/);
+    for (let i = 0; i < Math.max(left.length, right.length); i++) {
+        const x = left[i] ?? '';
+        const y = right[i] ?? '';
+        if (x === y) continue;
+        const numeric = /^\d+$/.test(x) && /^\d+$/.test(y);
+        if (numeric) return Number(x) - Number(y);
+        return x < y ? -1 : 1;
+    }
+    return 0;
+}
+
+// Decides whether the server needs a reboot. Two signals, because Debian does
+// not always create /var/run/reboot-required: the flag file itself (its .pkgs
+// companion names the packages that asked for it), and a kernel in /boot newer
+// than the one running. Returns a finding, or null when no reboot is pending.
+function assessReboot({ flagExists = false, flagPackages = '', runningKernel = '', installedKernels = [] }) {
+    const newestKernel = [...installedKernels].sort(compareKernelVersions).pop() || null;
+    const newerKernel = Boolean(runningKernel && newestKernel && compareKernelVersions(newestKernel, runningKernel) > 0);
+    if (!flagExists && !newerKernel) return null;
+
+    const reasons = [];
+    if (flagExists) reasons.push('/var/run/reboot-required is set');
+    if (newerKernel) reasons.push(`kernel ${newestKernel} is installed but ${runningKernel} is running`);
+    const packages = String(flagPackages).split('\n').map((p) => p.trim()).filter(Boolean);
+    return { reasons, runningKernel, newestKernel, packages: [...new Set(packages)] };
+}
+
 function describeUpgrade(upgrade) {
     const from = upgrade.from ? `${upgrade.from} → ` : 'new: ';
     return `\`${upgrade.name}\` ${from}${upgrade.to}`;
@@ -128,10 +160,11 @@ function describeUpgrade(upgrade) {
 // caller sends no mail on a clean week. `failures` are checks that could not
 // run (apt, a lookup); they are reported, because a check that silently fails
 // would read as "all clear".
-// `upgrades`, `removals` and `heldBack` come from parseAptSimulation.
-function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFindings = [], failures = [] }) {
+// `upgrades`, `removals` and `heldBack` come from parseAptSimulation;
+// `reboot` from assessReboot.
+function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFindings = [], reboot = null, failures = [] }) {
     if (upgrades.length === 0 && removals.length === 0 && heldBack === 0
-        && eolFindings.length === 0 && failures.length === 0) {
+        && eolFindings.length === 0 && !reboot && failures.length === 0) {
         return null;
     }
 
@@ -141,6 +174,7 @@ function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFind
 
     const counts = [];
     if (eolFindings.length) counts.push(`${eolFindings.length} end-of-life warning${eolFindings.length === 1 ? '' : 's'}`);
+    if (reboot) counts.push('reboot needed');
     if (security.length) counts.push(`${security.length} security update${security.length === 1 ? '' : 's'}`);
     if (node.length) counts.push('Node.js update');
     if (other.length) counts.push(`${other.length} other update${other.length === 1 ? '' : 's'}`);
@@ -156,6 +190,14 @@ function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFind
         lines.push('## End of life', '');
         for (const finding of eolFindings) lines.push(`- ${describeEol(finding)}`);
         lines.push('', 'Plan each move to a supported version before its date.', '');
+    }
+    if (reboot) {
+        lines.push('## Reboot needed', '');
+        for (const reason of reboot.reasons) lines.push(`- ${reason[0].toUpperCase()}${reason.slice(1)}.`);
+        if (reboot.packages.length) {
+            lines.push(`- Asked for by: ${reboot.packages.map((p) => `\`${p}\``).join(', ')}.`);
+        }
+        lines.push('', 'Installed fixes in these packages are not in effect until the server restarts. Reboot with `sudo reboot`; every service on the server stops for about a minute.', '');
     }
     if (security.length) {
         lines.push('## Security updates', '');
@@ -202,5 +244,7 @@ module.exports = {
     EOL_WARN_DAYS,
     parseAptSimulation,
     assessEol,
+    compareKernelVersions,
+    assessReboot,
     buildReport,
 };

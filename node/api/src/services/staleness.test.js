@@ -3,7 +3,9 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseAptSimulation, assessEol, buildReport, EOL_WARN_DAYS } = require('./staleness');
+const {
+    parseAptSimulation, assessEol, compareKernelVersions, assessReboot, buildReport, EOL_WARN_DAYS,
+} = require('./staleness');
 
 // Shaped like real `apt-get -s dist-upgrade` output on Debian 13: a summary
 // header, Inst lines (security, NodeSource, multi-origin, a brand-new
@@ -181,4 +183,67 @@ test('buildReport mails a failed check, so a broken check never reads as clean',
     const report = buildReport({ host: 'host5', failures: ['endoflife.date lookup for Debian 13 failed: HTTP 503'] });
     assert.equal(report.subject, 'Staleness check (host5): 1 failed check');
     assert.match(report.body, /## Checks that failed\n\n- endoflife\.date lookup for Debian 13 failed: HTTP 503/);
+});
+
+// The VPS on 2026-10-21: apt installed 6.12.113, 6.12.111 still running.
+const KERNELS = ['6.12.101+deb13-amd64', '6.12.111+deb13-amd64', '6.12.113+deb13-amd64'];
+
+test('compareKernelVersions compares digit runs as numbers', () => {
+    // As plain text "6.12.99" sorts after "6.12.113"; as versions it is older.
+    assert.ok(compareKernelVersions('6.12.113+deb13-amd64', '6.12.99+deb13-amd64') > 0);
+    assert.ok(compareKernelVersions('6.12.99+deb13-amd64', '6.12.113+deb13-amd64') < 0);
+    assert.equal(compareKernelVersions('6.12.111+deb13-amd64', '6.12.111+deb13-amd64'), 0);
+    assert.ok(compareKernelVersions('7.0.1+deb14-amd64', '6.12.113+deb13-amd64') > 0);
+});
+
+test('assessReboot: nothing pending when the newest kernel runs and no flag is set', () => {
+    assert.equal(assessReboot({ runningKernel: '6.12.113+deb13-amd64', installedKernels: KERNELS }), null);
+    assert.equal(assessReboot({}), null);
+});
+
+test('assessReboot: a newer installed kernel alone means a reboot', () => {
+    const reboot = assessReboot({ runningKernel: '6.12.111+deb13-amd64', installedKernels: KERNELS });
+    assert.deepEqual(reboot, {
+        reasons: ['kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running'],
+        runningKernel: '6.12.111+deb13-amd64',
+        newestKernel: '6.12.113+deb13-amd64',
+        packages: [],
+    });
+});
+
+test('assessReboot: the flag alone means a reboot, with its packages listed once each', () => {
+    const reboot = assessReboot({
+        flagExists: true,
+        flagPackages: 'libc6\nlibc6\nlibssl3t64\n',
+        runningKernel: '6.12.113+deb13-amd64',
+        installedKernels: KERNELS,
+    });
+    assert.deepEqual(reboot.reasons, ['/var/run/reboot-required is set']);
+    assert.deepEqual(reboot.packages, ['libc6', 'libssl3t64']);
+});
+
+test('assessReboot: flag and newer kernel give both reasons', () => {
+    const reboot = assessReboot({
+        flagExists: true,
+        flagPackages: 'linux-image-6.12.113+deb13-amd64\n',
+        runningKernel: '6.12.111+deb13-amd64',
+        installedKernels: KERNELS,
+    });
+    assert.equal(reboot.reasons.length, 2);
+    assert.deepEqual(reboot.packages, ['linux-image-6.12.113+deb13-amd64']);
+});
+
+test('buildReport mails a pending reboot on its own', () => {
+    const reboot = assessReboot({
+        flagExists: true,
+        flagPackages: 'linux-image-6.12.113+deb13-amd64\n',
+        runningKernel: '6.12.111+deb13-amd64',
+        installedKernels: KERNELS,
+    });
+    const report = buildReport({ host: 'host5', reboot });
+    assert.equal(report.subject, 'Staleness check (host5): reboot needed');
+    assert.match(report.body, /## Reboot needed\n\n- \/var\/run\/reboot-required is set\.\n- Kernel 6\.12\.113\+deb13-amd64 is installed but 6\.12\.111\+deb13-amd64 is running\./);
+    assert.match(report.body, /Asked for by: `linux-image-6\.12\.113\+deb13-amd64`/);
+    assert.match(report.body, /sudo reboot/);
+    assert.doesNotMatch(report.body, /full-upgrade/);
 });
