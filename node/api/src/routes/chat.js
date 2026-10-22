@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { chatSend, chatReceive, chatAck, chatStatus, resolveDiscussionId } = require('../services/chat');
 const { apiRoute } = require('../middleware/route-wrapper');
+const { parseHistoryScope } = require('../services/virtual-agent-history-scope');
 const sanitize = require('../sanitize');
 
 const router = Router();
@@ -228,6 +229,16 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
         }
     }
 
+    // history_scope (LLM-687) — optional; 'scene' limits the direct-chat
+    // history this turn replays to the rows of scene_id. The salem engine sends
+    // it for the VAs where one agent backs many personas or cases. Absent means
+    // the default agent-pair history. See services/virtual-agent-history-scope.js.
+    const parsedHistoryScope = parseHistoryScope(req.body.history_scope);
+    if (parsedHistoryScope.error) {
+        return res.status(400).json({ error: { code: 'BAD_REQUEST', message: parsedHistoryScope.error } });
+    }
+    const historyScope = parsedHistoryScope.value;
+
     const wait = req.body.wait === true;
 
     if (persistOnly && wait) {
@@ -235,7 +246,7 @@ router.post('/chat/send', apiRoute('chat', 'send', async (req, res) => {
     }
 
     const result = await chatSend(from_agent, to_agents, discussionId, message, {
-        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, conversationId, simActorId, simActorName, wait, ephemeralContext, stableContext,
+        toolCalls, toolCallId, toolsOffered, toolCallResults, persistOnly, sceneId, sceneStructure, conversationId, simActorId, simActorName, historyScope, wait, ephemeralContext, stableContext,
     });
 
     // wait=true: hold the connection open until the VA reply lands inline.

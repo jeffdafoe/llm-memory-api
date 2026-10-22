@@ -16,6 +16,7 @@ const { requireByName } = require('./actors');
 const { canonicalSpeakerId, renderSpeakerLabel, escapeRegExp } = require('./virtual-agent-labels');
 const { personContextSlug } = require('./people-slug');
 const { mergeRateLimit } = require('./virtual-agent-rate-limit');
+const { isSceneScopedHistory, historyLoadFor } = require('./virtual-agent-history-scope');
 
 const MIN_ACTIVITY_MS = 3000;
 
@@ -979,8 +980,9 @@ async function loadChatHistory(discussionId, limit) {
 // honoring assistant/tool roles. Plain-text callers ignore them.
 //
 // sceneId (optional): when non-null, restricts history to rows in that
-// scene. Used by shared-VA callers (salem-visitor, salem-vendor) where
-// one actor row backs multiple personas — without this, Caleb's tick
+// scene. Used for scene-scoped turns (see virtual-agent-history-scope.js):
+// the shared VAs, where one actor row backs multiple personas, and the
+// court, where each session is its own case. Without this, Caleb's tick
 // would see Elias's earlier tool_call rows because both sit on actor 54.
 // Cross-tick continuity for shared VAs comes from the engine's continuity
 // layer (actor_narrative_state, actor_relationship), not from chat
@@ -2709,6 +2711,9 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
     // outside sim ticks and for village-level cascades.
     const simActorId = opts && opts.simActorId !== undefined ? opts.simActorId : null;
     const simActorName = opts && opts.simActorName !== undefined ? opts.simActorName : null;
+    // historyScope (LLM-687): 'scene' when the caller asks for scene-scoped
+    // history (see the history load below), else null.
+    const historyScope = opts && opts.historyScope !== undefined ? opts.historyScope : null;
     // ephemeralContext (lean sim-history): per-tick scratch context (current
     // affordances / world-state) attached to the model's CURRENT turn below.
     // Never persisted — it only shapes this one provider call, so it can't
@@ -2799,9 +2804,10 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // cross-tick continuity channel, which is why this can't simply
         // scope on sceneId presence (sim ticks always carry one).
         //
-        // This slug list is acknowledged tech debt: the classification
-        // belongs on the agent row as configuration, not in code. See
-        // shared/tasks/icebox/memory-api-config-driven-shared-va-classification.
+        // The caller states the scope: the engine sends history_scope 'scene'
+        // for these agents (LLM-687), because it owns the knowledge of which
+        // of its VAs are switchboards. isSceneScopedHistory also keeps a slug
+        // list for an engine build that does not send the field yet.
         //
         // Defensive: if a shared-VA call arrives with no sceneId, do NOT
         // fall through to unscoped history (that's the cross-persona
@@ -2810,18 +2816,16 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // user message, the model just gets no prior context. The engine
         // always passes a sceneId for sim ticks, so this branch only fires
         // for misconfigured callers and is intentionally fail-closed.
-        const isSharedVA = agent.agent === 'salem-visitor' || agent.agent === 'salem-vendor'
-            || agent.agent === 'salem-generic';
         // The court (LLM-695) is a dedicated VA, not a shared one, but each
         // session is its own case, so its history is scoped the same way.
-        const isSceneScoped = isSharedVA || SIM_COURT_AGENTS.has(agent.agent);
+        const isSceneScoped = isSceneScopedHistory(agent.agent, historyScope, SIM_COURT_AGENTS.has(agent.agent));
         const historyCap = historyCapFor(agent.agent);
+        const historyLoad = historyLoadFor(isSceneScoped, sceneId);
         let history;
-        if (isSceneScoped && !sceneId) {
+        if (historyLoad.skip) {
             history = [];
         } else {
-            const historyScene = isSceneScoped ? sceneId : null;
-            history = await loadDirectChatHistory(virtualAgentName, fromAgent, historyScene, historyCap);
+            history = await loadDirectChatHistory(virtualAgentName, fromAgent, historyLoad.sceneId, historyCap);
         }
 
         // Sim mode: when the sender is 'salem-engine' (the Salem village
