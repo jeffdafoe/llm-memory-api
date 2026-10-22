@@ -7,9 +7,34 @@
 # needs it crash-looping. The directory has gone missing on this kind of
 # server before, cause unknown.
 #
-# Two layers: the directory is created now, and a systemd drop-in recreates
+# Two layers: the directory is checked now, and a systemd drop-in recreates
 # it before EVERY PostgreSQL start, so a later deletion cannot stop a cold
 # boot. Runs from the role (setup.yml) and from deploy.yml.
+
+# Only guard a cluster that exists: creating conf.d for a cluster whose
+# config is gone would hide the real problem.
+- name: Check the PostgreSQL cluster config exists
+  stat:
+    path: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
+  register: postgresql_conf_stat
+
+- name: Fail when the PostgreSQL cluster config is missing
+  fail:
+    msg: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf does not exist; the cluster is not set up."
+  when: not postgresql_conf_stat.stat.exists
+
+# The cluster directory belongs to postgres, so conf.d could be a symlink
+# planted there; root must not manage whatever it points at.
+- name: Check conf.d is not a symlink
+  stat:
+    path: /etc/postgresql/{{ postgresql_version }}/main/conf.d
+    follow: no
+  register: postgresql_confd_stat
+
+- name: Fail when conf.d is a symlink
+  fail:
+    msg: "/etc/postgresql/{{ postgresql_version }}/main/conf.d is a symlink; refusing to manage it."
+  when: postgresql_confd_stat.stat.islnk | default(false)
 
 - name: Ensure PostgreSQL conf.d directory exists
   file:
@@ -25,8 +50,11 @@
     state: directory
     mode: '0755'
 
-# %I is the unescaped instance: postgresql@17-main → "17/main", so this
-# covers every cluster on the host.
+# The pre-start step runs as postgres (not root) and makes conf.d only, never
+# its parents: a cluster whose directory is gone is left alone, and the
+# leading "-" means this step can never be what stops PostgreSQL starting.
+# %I is the unescaped instance: postgresql@17-main → "17/main", so this covers
+# every cluster on the host. $$ is systemd's escape for a literal $.
 - name: Recreate conf.d before every PostgreSQL start
   copy:
     dest: /etc/systemd/system/postgresql@.service.d/ensure-confd.conf
@@ -36,12 +64,10 @@
       # PostgreSQL will not start without conf.d (include_dir in
       # postgresql.conf), and Debian's unit never retries a failed start.
       [Service]
-      ExecStartPre=/usr/bin/install -d -o postgres -g postgres -m 0755 /etc/postgresql/%I/conf.d
-  register: postgresql_confd_dropin
+      ExecStartPre=-/usr/sbin/runuser -u postgres -- /bin/sh -c 'test -d "$$1" || mkdir -m 0755 "$$1"' sh /etc/postgresql/%I/conf.d
 
-# Immediately, not via a handler: the drop-in must be live before anything
-# later in the play (or a reboot right after it) starts PostgreSQL.
+# Every run, not only when the file changed: a run interrupted between the
+# write and the reload would otherwise never load the drop-in.
 - name: Reload systemd for the conf.d drop-in
   systemd:
     daemon_reload: yes
-  when: postgresql_confd_dropin.changed
