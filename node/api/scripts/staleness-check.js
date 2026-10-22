@@ -62,7 +62,7 @@ async function main() {
 
 async function check(pool) {
     const { mailSend } = require('../src/services/mail');
-    const { parseAptSimulation, assessEol, buildReport } = require('../src/services/staleness');
+    const { parseAptSimulation, assessEol, assessReboot, buildReport } = require('../src/services/staleness');
 
     const today = new Date();
     const failures = [];
@@ -102,6 +102,22 @@ async function check(pool) {
         failures.push(`Could not read the PostgreSQL version: ${err.message}`);
     }
 
+    // Reboot: the flag file Debian packages may leave, plus the running
+    // kernel against the kernels installed in /boot (vmlinuz-<release>).
+    let reboot = null;
+    try {
+        const flagExists = fs.existsSync('/var/run/reboot-required');
+        const flagPackages = flagExists && fs.existsSync('/var/run/reboot-required.pkgs')
+            ? fs.readFileSync('/var/run/reboot-required.pkgs', 'utf8')
+            : '';
+        const installedKernels = fs.readdirSync('/boot')
+            .filter((name) => name.startsWith('vmlinuz-'))
+            .map((name) => name.slice('vmlinuz-'.length));
+        reboot = assessReboot({ flagExists, flagPackages, runningKernel: os.release(), installedKernels });
+    } catch (err) {
+        failures.push(`Could not check whether a reboot is needed: ${err.message}`);
+    }
+
     const eolFindings = [];
     for (const runtime of runtimes) {
         try {
@@ -119,6 +135,7 @@ async function check(pool) {
         removals: apt.removals,
         heldBack: apt.heldBack,
         eolFindings,
+        reboot,
         failures,
     });
     const checked = runtimes.map((r) => `${r.label} ${r.cycle}`).join(', ');

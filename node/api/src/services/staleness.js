@@ -119,6 +119,77 @@ function describeEol(finding) {
     return `${name}: support ends ${finding.eol}, in ${finding.daysLeft} days.`;
 }
 
+// Splits a Debian kernel release (`uname -r`, or the part after "vmlinuz-")
+// into its version numbers and its flavour:
+//   "6.12.113+deb13-amd64"    → version [6, 12, 113],    flavour "amd64"
+//   "6.12.113+deb13-rt-amd64" → version [6, 12, 113],    flavour "rt-amd64"
+//   "6.16.3+bpo-cloud-amd64"  → version [6, 16, 3],      flavour "cloud-amd64"
+//   "6.1.0-25-amd64"          → version [6, 1, 0, 25],   flavour "amd64" (pre-trixie: ABI number)
+// The provenance tag after "+" (deb13, bpo) is dropped: it says where a kernel
+// was built, not which is newer. Returns null for anything else.
+function parseKernelRelease(release) {
+    const current = /^(\d+(?:\.\d+)+)\+[a-z0-9.~]+-([a-z0-9][a-z0-9-]*)$/.exec(release);
+    if (current) return { version: current[1].split('.'), flavour: current[2] };
+    const older = /^(\d+(?:\.\d+)+)-(\d+)-([a-z0-9][a-z0-9-]*)$/.exec(release);
+    if (older) return { version: [...older[1].split('.'), older[2]], flavour: older[3] };
+    return null;
+}
+
+// Compares two digit strings as whole numbers without converting them (no
+// precision limit): strip leading zeros, then the longer one is bigger, then
+// text order decides.
+function compareDigits(a, b) {
+    const x = a.replace(/^0+(?=\d)/, '');
+    const y = b.replace(/^0+(?=\d)/, '');
+    if (x.length !== y.length) return x.length - y.length;
+    return x < y ? -1 : x > y ? 1 : 0;
+}
+
+// Compares parsed version arrays part by part; a missing part counts as 0.
+function compareKernelVersions(a, b) {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const order = compareDigits(a[i] ?? '0', b[i] ?? '0');
+        if (order !== 0) return order;
+    }
+    return 0;
+}
+
+// Decides whether the server needs a reboot. Two signals, because Debian does
+// not always create /var/run/reboot-required:
+//   - the flag file itself; its .pkgs companion names the packages that asked
+//     for it, and is only read alongside the flag;
+//   - an installed kernel of the RUNNING kernel's flavour with a higher version.
+//     Other flavours (rt, cloud) are kept for other uses and never count.
+// This does not read which entry the bootloader will pick; Debian's GRUB boots
+// the newest kernel unless pinned, and a pinned older kernel keeps reporting
+// here until the newer one is removed.
+// Returns a finding, or null when no reboot is pending.
+function assessReboot({ flagExists = false, flagPackages = '', runningKernel = '', installedKernels = [] }) {
+    const running = parseKernelRelease(runningKernel);
+    let newestKernel = null;
+    let newestVersion = null;
+    if (running) {
+        for (const release of installedKernels) {
+            const parsed = parseKernelRelease(release);
+            if (!parsed || parsed.flavour !== running.flavour) continue;
+            if (compareKernelVersions(parsed.version, running.version) <= 0) continue;
+            if (!newestVersion || compareKernelVersions(parsed.version, newestVersion) > 0) {
+                newestKernel = release;
+                newestVersion = parsed.version;
+            }
+        }
+    }
+    if (!flagExists && !newestKernel) return null;
+
+    const reasons = [];
+    if (flagExists) reasons.push('/var/run/reboot-required is set');
+    if (newestKernel) reasons.push(`kernel ${newestKernel} is installed but ${runningKernel} is running`);
+    const packages = flagExists
+        ? String(flagPackages).split('\n').map((p) => p.trim()).filter(Boolean)
+        : [];
+    return { reasons, runningKernel, newestKernel, packages: [...new Set(packages)] };
+}
+
 function describeUpgrade(upgrade) {
     const from = upgrade.from ? `${upgrade.from} → ` : 'new: ';
     return `\`${upgrade.name}\` ${from}${upgrade.to}`;
@@ -128,10 +199,11 @@ function describeUpgrade(upgrade) {
 // caller sends no mail on a clean week. `failures` are checks that could not
 // run (apt, a lookup); they are reported, because a check that silently fails
 // would read as "all clear".
-// `upgrades`, `removals` and `heldBack` come from parseAptSimulation.
-function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFindings = [], failures = [] }) {
+// `upgrades`, `removals` and `heldBack` come from parseAptSimulation;
+// `reboot` from assessReboot.
+function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFindings = [], reboot = null, failures = [] }) {
     if (upgrades.length === 0 && removals.length === 0 && heldBack === 0
-        && eolFindings.length === 0 && failures.length === 0) {
+        && eolFindings.length === 0 && !reboot && failures.length === 0) {
         return null;
     }
 
@@ -141,6 +213,7 @@ function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFind
 
     const counts = [];
     if (eolFindings.length) counts.push(`${eolFindings.length} end-of-life warning${eolFindings.length === 1 ? '' : 's'}`);
+    if (reboot) counts.push('reboot needed');
     if (security.length) counts.push(`${security.length} security update${security.length === 1 ? '' : 's'}`);
     if (node.length) counts.push('Node.js update');
     if (other.length) counts.push(`${other.length} other update${other.length === 1 ? '' : 's'}`);
@@ -156,6 +229,14 @@ function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFind
         lines.push('## End of life', '');
         for (const finding of eolFindings) lines.push(`- ${describeEol(finding)}`);
         lines.push('', 'Plan each move to a supported version before its date.', '');
+    }
+    if (reboot) {
+        lines.push('## Reboot needed', '');
+        for (const reason of reboot.reasons) lines.push(`- ${reason[0].toUpperCase()}${reason.slice(1)}.`);
+        if (reboot.packages.length) {
+            lines.push(`- Asked for by: ${reboot.packages.map((p) => `\`${p}\``).join(', ')}.`);
+        }
+        lines.push('', 'Installed fixes in these packages are not in effect until the server restarts. Reboot with `sudo reboot`; every service on the server stops for about a minute.', '');
     }
     if (security.length) {
         lines.push('## Security updates', '');
@@ -202,5 +283,8 @@ module.exports = {
     EOL_WARN_DAYS,
     parseAptSimulation,
     assessEol,
+    parseKernelRelease,
+    compareKernelVersions,
+    assessReboot,
     buildReport,
 };
