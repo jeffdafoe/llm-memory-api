@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './comms.html?raw';
+import { render } from './comms.html?render';
 
 export default {
     name: 'CommsView',
-    template,
+    render,
     setup() {
         return inject('app');
     }

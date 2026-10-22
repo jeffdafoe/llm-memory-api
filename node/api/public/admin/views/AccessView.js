@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './access.html?raw';
+import { render } from './access.html?render';
 
 export default {
     name: 'AccessView',
-    template,
+    render,
     setup() {
         return inject('app');
     }

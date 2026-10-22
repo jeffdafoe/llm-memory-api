@@ -63,69 +63,13 @@
 //
 // Usage: <tool-call-display :tc="toolCall" />
 
-const template = `
-<template v-if="!tc || !tc.name"></template>
-<em v-else-if="tc.name === 'speak'" class="tool-speak">&ldquo;{{ inputText }}&rdquo;</em>
-<template v-else-if="tc.name === 'set_environment'">
-    <span class="tool-chip">[set_environment]</span>
-    <span v-if="inputText" class="tool-prose">{{ inputText }}</span>
-</template>
-<template v-else-if="tc.name === 'record_event'">
-    <span class="tool-chip">[record_event<span v-if="nonDefaultScope"> · {{ inputScope }}</span>]</span>
-    <span v-if="inputText" class="tool-prose">{{ inputText }}</span>
-</template>
-<template v-else-if="tc.name === 'recall'">
-    <span class="tool-chip">[recall]</span>
-    <span v-if="inputQuery" class="tool-prose">&ldquo;{{ inputQuery }}&rdquo;</span>
-</template>
-<template v-else-if="tc.name === 'move_to'">
-    <span class="tool-chip">[move_to]</span>
-    <span v-if="inputDestination" class="tool-prose">{{ inputDestination }}</span>
-</template>
-<template v-else-if="tc.name === 'chore'">
-    <span class="tool-chip">[chore]</span>
-    <span v-if="inputType" class="tool-prose">{{ inputType }}</span>
-</template>
-<template v-else-if="tc.name === 'consume'">
-    <span class="tool-chip">[consume]</span>
-    <span v-if="consumeLabel" class="tool-prose">{{ consumeLabel }}</span>
-</template>
-<template v-else-if="tc.name === 'gather'">
-    <span class="tool-chip">[gather]</span>
-    <span v-if="gatherLabel" class="tool-prose">{{ gatherLabel }}</span>
-</template>
-<template v-else-if="tc.name === 'pay'">
-    <span class="tool-chip">[pay]</span>
-    <span v-if="payLabel" class="tool-prose">{{ payLabel }}</span>
-</template>
-<template v-else-if="tc.name === 'attend_to'">
-    <span class="tool-chip">[attend_to]</span>
-    <span v-if="inputVillager" class="tool-prose">{{ inputVillager }}</span>
-</template>
-<template v-else-if="tc.name === 'accept_pay'">
-    <span class="tool-chip">[accept_pay]</span>
-</template>
-<template v-else-if="tc.name === 'decline_pay'">
-    <span class="tool-chip">[decline_pay]</span>
-    <span v-if="inputReason" class="tool-prose">&ldquo;{{ inputReason }}&rdquo;</span>
-</template>
-<template v-else-if="tc.name === 'counter_pay'">
-    <span class="tool-chip">[counter_pay]</span>
-    <span v-if="counterPayLabel" class="tool-prose">{{ counterPayLabel }}</span>
-</template>
-<template v-else-if="tc.name === 'take_break'">
-    <span class="tool-chip">[take_break]</span>
-    <span v-if="takeBreakLabel" class="tool-prose">{{ takeBreakLabel }}</span>
-</template>
-<span v-else class="tool-chip">[{{ tc.name }}]</span>
-`;
-
 import { computed } from 'vue';
 import { safeInt, stringOrEmpty } from '../util.js';
+import { render } from './tool-call-display.html?render';
 
 export default {
     name: 'ToolCallDisplay',
-    template,
+    render,
     props: {
         tc: { type: Object, required: true }
     },

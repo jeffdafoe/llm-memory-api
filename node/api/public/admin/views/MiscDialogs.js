@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './misc-dialogs.html?raw';
+import { render } from './misc-dialogs.html?render';
 
 export default {
     name: 'MiscDialogs',
-    template,
+    render,
     setup() {
         return inject('app');
     }

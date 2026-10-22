@@ -1,9 +1,9 @@
 import { inject, computed } from 'vue';
-import template from './help.html?raw';
+import { render } from './help.html?render';
 
 export default {
     name: 'HelpView',
-    template,
+    render,
     setup() {
         const app = inject('app');
         const mcpUrl = computed(() => location.origin + '/mcp');

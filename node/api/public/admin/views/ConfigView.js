@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './config.html?raw';
+import { render } from './config.html?render';
 
 export default {
     name: 'ConfigView',
-    template,
+    render,
     setup() {
         return inject('app');
     }

@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './dashboard.html?raw';
+import { render } from './dashboard.html?render';
 
 export default {
     name: 'DashboardView',
-    template,
+    render,
     setup() {
         return inject('app');
     }

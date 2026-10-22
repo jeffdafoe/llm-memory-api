@@ -4,6 +4,7 @@ const config = require('./services/config');
 const auth = require('./middleware/auth');
 const opportunisticHeartbeat = require('./middleware/heartbeat');
 const { requestLog } = require('./middleware/request-log');
+const { adminCsp } = require('./middleware/admin-csp');
 const { handleUpgrade, broadcast } = require('./services/events');
 const pool = require('./db');
 const oauthRoutes = require('./routes/oauth');
@@ -28,6 +29,9 @@ const port = process.env.PORT || 3100;
 const host = process.env.MEMORY_API_HOST || '127.0.0.1';
 
 app.use(express.json({ limit: '5mb' }));
+// Mounted ahead of express.static so every /admin response carries the CSP,
+// including the index.html the browser enforces it from.
+app.use('/admin', adminCsp);
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin', 'dist'), {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {

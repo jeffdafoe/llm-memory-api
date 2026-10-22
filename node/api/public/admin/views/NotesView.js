@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './memory.html?raw';
+import { render } from './memory.html?render';
 
 export default {
     name: 'NotesView',
-    template,
+    render,
     setup() {
         return inject('app');
     }

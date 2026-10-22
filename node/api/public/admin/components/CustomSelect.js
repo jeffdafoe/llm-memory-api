@@ -14,52 +14,11 @@
 // Useful for providers like OpenRouter where the model list is open-ended.
 
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-
-const template = `
-<div class="custom-select" :class="{ 'custom-select--open': open, 'custom-select--disabled': disabled }" ref="root">
-    <button type="button" class="custom-select__trigger" @click="toggle" @keydown="onTriggerKeydown" :disabled="disabled">
-        <span class="custom-select__value" :class="{ 'custom-select__placeholder': !hasSelection }">
-            {{ displayLabel }}
-        </span>
-        <i class="icon-chevron-down custom-select__chevron"></i>
-    </button>
-    <div v-if="open" class="custom-select__dropdown" ref="dropdown">
-        <div v-if="filterable || allowCustom" class="custom-select__search">
-            <input ref="searchInput" type="text" v-model="search" @keydown="onSearchKeydown"
-                :placeholder="allowCustom ? 'Filter or type model ID...' : 'Filter...'" class="custom-select__search-input">
-        </div>
-        <div class="custom-select__options" ref="optionsList">
-            <div v-if="allowCustom && search && !exactMatch" class="custom-select__option custom-select__option--custom"
-                :class="{ 'custom-select__option--focused': focusedIndex === -2 }"
-                @click="select(search)"
-                @mouseenter="focusedIndex = -2">
-                Use "{{ search }}"
-            </div>
-            <div v-for="(opt, idx) in filteredOptions" :key="opt.value"
-                class="custom-select__option"
-                :class="{
-                    'custom-select__option--selected': isSelected(opt.value),
-                    'custom-select__option--focused': idx === focusedIndex
-                }"
-                @click="select(opt.value)"
-                @mouseenter="focusedIndex = idx"
-                :ref="el => { if (idx === focusedIndex) focusedEl = el; }">
-                <i v-if="multiple" :class="isSelected(opt.value) ? 'icon-check-square' : 'icon-square'" class="custom-select__multi-icon"></i>
-                {{ opt.label }}
-                <span v-if="opt.sublabel" class="custom-select__sublabel">{{ opt.sublabel }}</span>
-                <i v-if="!multiple && isSelected(opt.value)" class="icon-check custom-select__check"></i>
-            </div>
-            <div v-if="filteredOptions.length === 0 && !(allowCustom && search)" class="custom-select__empty">
-                No matches
-            </div>
-        </div>
-    </div>
-</div>
-`;
+import { render } from './custom-select.html?render';
 
 export default {
     name: 'CustomSelect',
-    template,
+    render,
     props: {
         modelValue: { default: '' },
         options: { type: Array, default: () => [] },
