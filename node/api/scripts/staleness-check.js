@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// staleness-check.js — weekly report of pending apt upgrades and runtimes near
-// end of life. Installed as a root cron job by the memory-api Ansible role.
+// staleness-check.js — weekly report of pending apt upgrades, runtimes near
+// end of life, and TLS certificates near expiry. Installed as a root cron job
+// by the memory-api Ansible role.
 //
 // Usage: node scripts/staleness-check.js <recipient>
 //
@@ -15,6 +16,8 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const ENV_FILE = '/etc/memory-api/env';
+// certbot's directory; its private parts are readable by root only.
+const LETSENCRYPT_DIR = '/etc/letsencrypt';
 const LOOKUP_TIMEOUT_MS = 15000;
 
 const recipient = process.argv[2];
@@ -63,6 +66,7 @@ async function main() {
 async function check(pool) {
     const { mailSend } = require('../src/services/mail');
     const { parseAptSimulation, assessEol, assessReboot, buildReport } = require('../src/services/staleness');
+    const { collectCertificates } = require('../src/services/staleness-certificates');
 
     const today = new Date();
     const failures = [];
@@ -118,6 +122,10 @@ async function check(pool) {
         failures.push(`Could not check whether a reboot is needed: ${err.message}`);
     }
 
+    const certificates = collectCertificates({ letsencryptDir: LETSENCRYPT_DIR, now: today });
+    failures.push(...certificates.failures);
+    const certCount = certificates.checked;
+
     const eolFindings = [];
     for (const runtime of runtimes) {
         try {
@@ -136,9 +144,13 @@ async function check(pool) {
         heldBack: apt.heldBack,
         eolFindings,
         reboot,
+        certFindings: certificates.findings,
         failures,
     });
-    const checked = runtimes.map((r) => `${r.label} ${r.cycle}`).join(', ');
+    const checked = [
+        ...runtimes.map((r) => `${r.label} ${r.cycle}`),
+        `${certCount} TLS certificate${certCount === 1 ? '' : 's'}`,
+    ].join(', ');
     if (!report) {
         stamp(`nothing to report (0 pending upgrades; checked ${checked})`);
     } else {
