@@ -124,10 +124,13 @@ const DAY_MS = 86400000;
 // `validFrom` and `validTo` are the certificate's notBefore / notAfter as
 // Dates. Returns a finding, or null when there is nothing to warn about.
 function assessCertificate(name, validFrom, validTo, now) {
-    for (const date of [validFrom, validTo]) {
+    for (const date of [validFrom, validTo, now]) {
         if (!(date instanceof Date) || !Number.isFinite(date.getTime())) {
             throw new Error(`certificate ${name} has no readable validity dates`);
         }
+    }
+    if (validTo.getTime() <= validFrom.getTime()) {
+        throw new Error(`certificate ${name} has an invalid validity period`);
     }
     const lifetimeDays = (validTo.getTime() - validFrom.getTime()) / DAY_MS;
     const warnDays = Math.min(CERT_WARN_DAYS, lifetimeDays * CERT_WARN_FRACTION);

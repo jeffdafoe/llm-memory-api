@@ -184,6 +184,9 @@ test('assessCertificate rejects missing or unreadable dates', () => {
     const [validFrom, validTo] = certDates(10 * DAY_MS);
     assert.throws(() => assessCertificate('example.org', validFrom, new Date('not a date'), TODAY), /no readable validity dates/);
     assert.throws(() => assessCertificate('example.org', undefined, validTo, TODAY), /no readable validity dates/);
+    assert.throws(() => assessCertificate('example.org', validFrom, validTo, new Date(NaN)), /no readable validity dates/);
+    assert.throws(() => assessCertificate('example.org', validTo, validTo, TODAY), /invalid validity period/);
+    assert.throws(() => assessCertificate('example.org', validTo, validFrom, TODAY), /invalid validity period/);
 });
 
 test('buildReport sends nothing on a clean week', () => {
