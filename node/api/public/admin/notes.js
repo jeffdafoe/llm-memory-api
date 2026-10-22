@@ -79,6 +79,28 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         } catch { /* ignore — may not have access */ }
     }
 
+    // Load the shares of every namespace in the tree with one request. The
+    // server returns only shares in namespaces this user can read. Results are
+    // merged per namespace, as loadSharesForNamespace does, rather than
+    // replacing the cache, so entries for namespaces outside this load survive.
+    // The map has no prototype: namespace names are data, and a name such as
+    // "__proto__" must not hit an inherited property.
+    async function loadTreeShares(namespaces) {
+        try {
+            const data = await api('/admin/shares/list', { all: true });
+            const byNamespace = Object.create(null);
+            for (const ns of namespaces) {
+                byNamespace[ns.namespace] = [];
+            }
+            for (const share of data.shares || []) {
+                if (Object.hasOwn(byNamespace, share.owner_namespace)) {
+                    byNamespace[share.owner_namespace].push(share);
+                }
+            }
+            sharesCache.value = { ...sharesCache.value, ...byNamespace };
+        } catch { /* ignore — the tree just shows no share markers */ }
+    }
+
     // Check if a slug in a namespace has any active shares
     // Returns: null (not shared), 'specific' (yellow), or 'all' (orange)
     function getShareType(namespace, slug) {
@@ -399,20 +421,20 @@ function useNotes({ api, showToast, showConfirm, onEvent }) {
         try {
             const data = await api('/admin/notes/namespaces');
             notesNamespaces.value = data.namespaces;
-            const results = await Promise.all(
-                data.namespaces.map(ns =>
-                    api('/admin/notes/list', { namespace: ns.namespace, limit: 500 })
-                        .then(notesData => ({ namespace: ns.namespace, notes: notesData.notes }))
-                )
-            );
-            for (const { namespace, notes } of results) {
+            // One request for every tree and one for every share (LLM-829). A
+            // request per namespace (~160 at once) tripped nginx's per-address
+            // burst limit, and the calls that came after it, such as opening a
+            // linked note, failed with 429.
+            const listData = await api('/admin/notes/list', {
+                namespaces: data.namespaces.map(ns => ns.namespace),
+                limit: 500
+            });
+            for (const { namespace, notes } of listData.results) {
                 notesTreesRaw.value[namespace] = buildTree(notes);
             }
             // Load sync mappings, shares, and shared-with-me data
             await loadAllSyncMappings();
-            for (const ns of data.namespaces) {
-                loadSharesForNamespace(ns.namespace);
-            }
+            loadTreeShares(data.namespaces);
             loadSharedWithMe();
         } catch (err) {
             console.error('Failed to load notes:', err);
