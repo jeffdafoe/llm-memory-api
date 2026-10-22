@@ -13,6 +13,11 @@
       debug:
         msg: "Deploying to {{ deploy_environment }} environment"
 
+    # The rest of the postgresql role runs only from setup.yml; this part runs
+    # on every deploy so a server that already exists keeps the guard.
+    - name: Guard PostgreSQL against a missing conf.d
+      include_tasks: ../roles/postgresql/tasks/confd-guard.yml
+
   roles:
     - role: ../roles/nginx
     - role: ../roles/memory-api
