@@ -155,5 +155,15 @@
     hour: "2"
     job: "{{ project_root }}/scripts/pg-backup.sh >> /var/log/llm-memory-api/pg-backup.log 2>&1"
 
+# Weekly report of pending apt upgrades and runtimes near end of life, mailed
+# inside this instance. It only reports; it never installs anything.
+- name: Configure weekly staleness check cron job
+  cron:
+    name: "memory-api staleness check"
+    weekday: "1"
+    minute: "30"
+    hour: "12"
+    job: "/usr/bin/node {{ project_root }}/scripts/staleness-check.js {{ (staleness_check_recipient | default(admin_username | default('admin'), true)) | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
+
 - name: Deploy tools (Go client binaries)
   include_tasks: deploy-tools.yml
