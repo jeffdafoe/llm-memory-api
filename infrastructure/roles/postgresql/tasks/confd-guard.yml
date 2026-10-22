@@ -4,8 +4,9 @@
 # directory PG fails with "could not open configuration directory" + a FATAL
 # config error, and Debian's postgresql@.service deliberately never retries
 # (Restart= is commented out), so a reboot leaves PG down and every app that
-# needs it crash-looping. The directory has gone missing on this kind of
-# server before, cause unknown.
+# needs it crash-looping. The directory has gone missing before: a package
+# purge's deb-systemd-helper removed every empty directory on the disk because
+# a name under /etc/systemd/system contained whitespace (2026-04 and 2026-10).
 #
 # Two layers: the directory is checked now, and a systemd drop-in recreates
 # it before EVERY PostgreSQL start, so a later deletion cannot stop a cold

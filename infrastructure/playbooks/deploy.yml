@@ -18,6 +18,10 @@
     - name: Guard PostgreSQL against a missing conf.d
       include_tasks: ../roles/postgresql/tasks/confd-guard.yml
 
+    # The rest of the common role runs only from setup.yml, as above.
+    - name: Turn off systemd-resolved's LLMNR listener
+      include_tasks: ../roles/common/tasks/resolved-llmnr.yml
+
   roles:
     - role: ../roles/nginx
     - role: ../roles/memory-api

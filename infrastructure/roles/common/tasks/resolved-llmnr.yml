@@ -1,0 +1,36 @@
+---
+# Turn off systemd-resolved's LLMNR responder. It listens on 0.0.0.0:5355 and
+# [::]:5355 and answers name lookups from the local network; a server resolves
+# names through DNS only and needs none of it. Runs from the role (setup.yml)
+# and from deploy.yml.
+
+- name: Create the systemd-resolved drop-in directory
+  file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: '0755'
+
+# Harmless on a host without systemd-resolved: nothing reads the file.
+- name: Turn off LLMNR in systemd-resolved
+  copy:
+    dest: /etc/systemd/resolved.conf.d/no-llmnr.conf
+    mode: '0644'
+    content: |
+      # Managed by Ansible (roles/common/tasks/resolved-llmnr.yml).
+      [Resolve]
+      LLMNR=no
+  register: resolved_llmnr_conf
+
+- name: Check whether systemd-resolved is running
+  command: systemctl is-active systemd-resolved
+  register: resolved_active
+  changed_when: false
+  failed_when: false
+
+# Only a running resolver is restarted, so this never starts one that was off.
+# The restart closes the LLMNR sockets; lookups pause for well under a second.
+- name: Restart systemd-resolved to close the LLMNR listener
+  systemd:
+    name: systemd-resolved
+    state: restarted
+  when: resolved_llmnr_conf.changed and resolved_active.stdout == 'active'

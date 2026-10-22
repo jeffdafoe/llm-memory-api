@@ -53,6 +53,11 @@
   ufw:
     state: enabled
 
+# --- systemd-resolved ---
+
+- name: Turn off LLMNR
+  include_tasks: resolved-llmnr.yml
+
 # --- SSH hardening ---
 
 - name: Disable SSH password authentication
