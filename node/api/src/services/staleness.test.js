@@ -189,6 +189,14 @@ test('assessCertificate rejects missing or unreadable dates', () => {
     assert.throws(() => assessCertificate('example.org', validTo, validFrom, TODAY), /invalid validity period/);
 });
 
+test('assessCertificate rejects a certificate that is not valid yet', () => {
+    const validFrom = new Date(TODAY.getTime() + HOUR_MS);
+    const validTo = new Date(validFrom.getTime() + 90 * DAY_MS);
+    assert.throws(() => assessCertificate('example.org', validFrom, validTo, TODAY), /not valid until 2026-10-21T13:30:00\.000Z/);
+    // From the first moment of validity it is assessed normally.
+    assert.equal(assessCertificate('example.org', validFrom, validTo, validFrom), null);
+});
+
 test('buildReport sends nothing on a clean week', () => {
     assert.equal(buildReport({ host: 'host5' }), null);
     assert.equal(buildReport({ host: 'host5', upgrades: [], eolFindings: [], failures: [] }), null);

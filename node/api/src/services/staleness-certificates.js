@@ -9,13 +9,13 @@ const { assessCertificate } = require('./staleness');
 
 // certbot keeps a renewal config `renewal/<name>.conf` for every certificate
 // it manages, and a directory `live/<name>/` whose cert.pem links to the
-// current issue. Both are listed, and every name found in either must have a
-// readable live/<name>/cert.pem — so a certificate missing from one side is a
-// failed check, never a certificate silently left out.
-const SOURCES = [
-    { dir: 'renewal', pick: (entry) => (entry.isFile() && entry.name.endsWith('.conf') ? entry.name.slice(0, -'.conf'.length) : null) },
-    { dir: 'live', pick: (entry) => (entry.isDirectory() ? entry.name : null) },
-];
+// current issue. Both are listed. A name in renewal/ with no readable
+// live/<name>/cert.pem fails on the read; a name in live/ with no renewal
+// config is reported too, because certbot will never renew it.
+const SOURCES = {
+    renewal: (entry) => (entry.isFile() && entry.name.endsWith('.conf') ? entry.name.slice(0, -'.conf'.length) : null),
+    live: (entry) => (entry.isDirectory() ? entry.name : null),
+};
 
 // Returns { findings, failures, checked }: findings from assessCertificate,
 // failed checks as report lines, and how many certificates were read.
@@ -24,26 +24,38 @@ const SOURCES = [
 function collectCertificates({ letsencryptDir, now }) {
     const findings = [];
     const failures = [];
-    const names = new Set();
-    let listed = false;
-
-    for (const source of SOURCES) {
-        const dir = path.join(letsencryptDir, source.dir);
+    // Per source: a Set of names, or null when the directory does not exist
+    // or could not be listed.
+    const found = {};
+    let renewalUnlisted = false;
+    for (const [source, pick] of Object.entries(SOURCES)) {
+        const dir = path.join(letsencryptDir, source);
+        found[source] = null;
         let entries;
         try {
             entries = fs.readdirSync(dir, { withFileTypes: true });
         } catch (err) {
-            if (err.code !== 'ENOENT') failures.push(`Could not list the TLS certificates in ${dir}: ${err.message}`);
+            if (err.code !== 'ENOENT') {
+                failures.push(`Could not list the TLS certificates in ${dir}: ${err.message}`);
+                if (source === 'renewal') renewalUnlisted = true;
+            }
             continue;
         }
-        listed = true;
-        for (const entry of entries) {
-            const name = source.pick(entry);
-            if (name) names.add(name);
-        }
+        found[source] = new Set(entries.map(pick).filter(Boolean));
     }
-    if (listed && names.size === 0) {
+
+    const names = new Set([...(found.renewal || []), ...(found.live || [])]);
+    if ((found.renewal || found.live) && names.size === 0) {
         failures.push(`${letsencryptDir} holds no certificates, so none were checked.`);
+    }
+    // When renewal/ could not be listed, that failure already covers every
+    // certificate; naming each one again would only repeat it.
+    if (found.live && !renewalUnlisted) {
+        for (const name of [...found.live].sort()) {
+            if (!found.renewal || !found.renewal.has(name)) {
+                failures.push(`The TLS certificate \`${name}\` has no renewal config in ${path.join(letsencryptDir, 'renewal')}, so certbot will not renew it.`);
+            }
+        }
     }
 
     let checked = 0;

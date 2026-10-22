@@ -132,6 +132,11 @@ function assessCertificate(name, validFrom, validTo, now) {
     if (validTo.getTime() <= validFrom.getTime()) {
         throw new Error(`certificate ${name} has an invalid validity period`);
     }
+    // Not valid yet is as broken as expired for the sites using it; the caller
+    // reports the error as a failed check.
+    if (now.getTime() < validFrom.getTime()) {
+        throw new Error(`certificate ${name} is not valid until ${validFrom.toISOString()}`);
+    }
     const lifetimeDays = (validTo.getTime() - validFrom.getTime()) / DAY_MS;
     const warnDays = Math.min(CERT_WARN_DAYS, lifetimeDays * CERT_WARN_FRACTION);
     const msLeft = validTo.getTime() - now.getTime();

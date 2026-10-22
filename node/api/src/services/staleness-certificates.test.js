@@ -79,10 +79,41 @@ test('collectCertificates: a missing live directory fails every renewal config',
 });
 
 test('collectCertificates: a live directory with no cert.pem, or a bad one, is a failure', () => {
-    const root = letsencrypt({ live: { 'example.org': null, 'example.net': 'not a certificate' } });
+    const root = letsencrypt({ renewal: ['example.org', 'example.net'], live: { 'example.org': null, 'example.net': 'not a certificate' } });
     const result = collectCertificates({ letsencryptDir: root, now: HEALTHY });
     assert.equal(result.checked, 0);
-    assert.deepEqual(result.failures.map((f) => f.match(/`([^`]+)`/)[1]), ['example.net', 'example.org']);
+    assert.deepEqual(result.failures.map((f) => f.match(/^Could not read the TLS certificate `([^`]+)`/)[1]), ['example.net', 'example.org']);
+});
+
+test('collectCertificates: a healthy certificate with no renewal config is a failure', () => {
+    const root = letsencrypt({ renewal: ['example.org'], live: { 'example.org': CERT_PEM, 'example.net': CERT_PEM } });
+    const result = collectCertificates({ letsencryptDir: root, now: HEALTHY });
+    assert.equal(result.checked, 2);
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.failures.length, 1);
+    assert.match(result.failures[0], /^The TLS certificate `example\.net` has no renewal config in .*renewal, so certbot will not renew it\.$/);
+});
+
+test('collectCertificates: with no renewal directory, every live certificate lacks a renewal config', () => {
+    const root = letsencrypt({ live: { 'example.org': CERT_PEM } });
+    const result = collectCertificates({ letsencryptDir: root, now: HEALTHY });
+    assert.equal(result.checked, 1);
+    assert.match(result.failures.join('\n'), /`example\.org` has no renewal config/);
+});
+
+test('collectCertificates: an unlistable renewal directory is reported once, not per certificate', () => {
+    const root = letsencrypt({ live: { 'example.org': CERT_PEM } });
+    fs.writeFileSync(path.join(root, 'renewal'), '');
+    const result = collectCertificates({ letsencryptDir: root, now: HEALTHY });
+    assert.equal(result.failures.length, 1);
+    assert.match(result.failures[0], /Could not list the TLS certificates in .*renewal/);
+});
+
+test('collectCertificates: a certificate not valid yet is a failure', () => {
+    const root = letsencrypt({ renewal: ['example.org'], live: { 'example.org': CERT_PEM } });
+    const result = collectCertificates({ letsencryptDir: root, now: new Date(new Date(CERT.validFrom).getTime() - DAY_MS) });
+    assert.equal(result.checked, 0);
+    assert.match(result.failures.join('\n'), /`example\.org`: certificate example\.org is not valid until /);
 });
 
 test('collectCertificates: directories that exist but hold no certificates are a failure', () => {
