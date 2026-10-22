@@ -1,0 +1,47 @@
+---
+# Keep PostgreSQL startable when /etc/postgresql/<version>/main/conf.d is
+# missing. Debian's postgresql.conf has `include_dir = 'conf.d'`; without the
+# directory PG fails with "could not open configuration directory" + a FATAL
+# config error, and Debian's postgresql@.service deliberately never retries
+# (Restart= is commented out), so a reboot leaves PG down and every app that
+# needs it crash-looping. The directory has gone missing on this kind of
+# server before, cause unknown.
+#
+# Two layers: the directory is created now, and a systemd drop-in recreates
+# it before EVERY PostgreSQL start, so a later deletion cannot stop a cold
+# boot. Runs from the role (setup.yml) and from deploy.yml.
+
+- name: Ensure PostgreSQL conf.d directory exists
+  file:
+    path: /etc/postgresql/{{ postgresql_version }}/main/conf.d
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
+- name: Create the postgresql@ drop-in directory
+  file:
+    path: /etc/systemd/system/postgresql@.service.d
+    state: directory
+    mode: '0755'
+
+# %I is the unescaped instance: postgresql@17-main → "17/main", so this
+# covers every cluster on the host.
+- name: Recreate conf.d before every PostgreSQL start
+  copy:
+    dest: /etc/systemd/system/postgresql@.service.d/ensure-confd.conf
+    mode: '0644'
+    content: |
+      # Managed by Ansible (roles/postgresql/tasks/confd-guard.yml).
+      # PostgreSQL will not start without conf.d (include_dir in
+      # postgresql.conf), and Debian's unit never retries a failed start.
+      [Service]
+      ExecStartPre=/usr/bin/install -d -o postgres -g postgres -m 0755 /etc/postgresql/%I/conf.d
+  register: postgresql_confd_dropin
+
+# Immediately, not via a handler: the drop-in must be live before anything
+# later in the play (or a reboot right after it) starts PostgreSQL.
+- name: Reload systemd for the conf.d drop-in
+  systemd:
+    daemon_reload: yes
+  when: postgresql_confd_dropin.changed
