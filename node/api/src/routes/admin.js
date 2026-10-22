@@ -36,6 +36,9 @@ const router = Router();
 
 const SESSION_TTL_HOURS = 24;
 const DUMMY_SALT = generateSalt();
+// Upper bound on one batched /admin/notes/list call. Each namespace is one
+// listNotes query, so this caps the DB work a single request can ask for.
+const MAX_LIST_NAMESPACES = 500;
 
 function generateSessionToken() {
     return crypto.randomBytes(48).toString('base64url');
@@ -1039,9 +1042,38 @@ router.post('/admin/config/update', requirePerm('config', 'write'), adminRoute('
     res.json({ success: true });
 }));
 
-// POST /admin/notes/list — list notes in a namespace
+// POST /admin/notes/list — list notes in a namespace, or in several at once.
+// `namespaces` (an array) lets the Memories view load every tree in one request
+// instead of one per namespace: ~80 parallel calls tripped nginx's per-address
+// burst limit and 429'd the rest of the page load (LLM-829). Every namespace is
+// access-checked before any is read, so a list holding one unreadable namespace
+// fails as a whole with 403, the same answer the single form gives for it.
 router.post('/admin/notes/list', requirePerm('notes', 'read'), adminRoute('notes-list', async (req, res) => {
-    const { namespace, limit, offset, prefix } = req.body;
+    const { namespace, namespaces, limit, offset, prefix } = req.body;
+    if (namespaces !== undefined) {
+        if (!Array.isArray(namespaces) || namespaces.some(ns => typeof ns !== 'string' || ns === '')) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: 'namespaces must be an array of namespace names' }
+            });
+        }
+        if (namespaces.length > MAX_LIST_NAMESPACES) {
+            return res.status(400).json({
+                error: { code: 'BAD_REQUEST', message: `At most ${MAX_LIST_NAMESPACES} namespaces per request` }
+            });
+        }
+        for (const ns of namespaces) {
+            validateNamespace(ns);
+            await requireAccess(req.actorId, req.authenticatedUser.username, 'user', ns, 'read');
+        }
+        // One query per namespace, in sequence, so a single request holds at
+        // most one pool connection at a time.
+        const results = [];
+        for (const ns of namespaces) {
+            const data = await listNotes(ns, limit || 200, offset, prefix);
+            results.push({ namespace: ns, ...data });
+        }
+        return res.json({ results });
+    }
     if (!namespace) {
         return res.status(400).json({
             error: { code: 'BAD_REQUEST', message: 'Required field: namespace' }
@@ -3020,13 +3052,20 @@ router.post('/admin/shares/revoke', requirePerm('notes', 'write'), adminRoute('s
     res.json({ share });
 }));
 
-// POST /admin/shares/list — list shares (by owner namespace, or all for admin)
+// POST /admin/shares/list — list shares (by owner namespace, or every share the caller can see)
 router.post('/admin/shares/list', requirePerm('notes', 'read'), adminRoute('shares-list', async (req, res) => {
     const { owner_namespace, all } = req.body;
 
     if (all) {
-        // Admin view: list all shares
-        const shares = await notePerms.listAllShares();
+        // Every share in a namespace the caller can read: all of them for a
+        // wildcard reader (getReadableNamespaces returns null), otherwise only
+        // the readable namespaces' rows — the same rule the owner_namespace form
+        // enforces one namespace at a time with requireAccess.
+        let shares = await notePerms.listAllShares();
+        const readable = await getReadableNamespaces(req.actorId, req.authenticatedUser.username, 'user');
+        if (readable !== null) {
+            shares = shares.filter(s => readable.includes(s.owner_namespace));
+        }
         return res.json({ shares });
     }
 
