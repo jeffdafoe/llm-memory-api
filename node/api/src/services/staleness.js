@@ -10,35 +10,82 @@
 // Warn when a runtime's security support ends within this many days.
 const EOL_WARN_DAYS = 90;
 
-// `apt-get -s dist-upgrade` prints one line per package it would install, e.g.
+// `apt-get -s dist-upgrade` (run with LC_ALL=C) prints one line per package
+// it would install or remove, e.g.
 //   Inst libssl3t64 [3.5.1-1] (3.5.1-1+deb13u1 Debian-Security:13/stable-security [amd64])
 //   Inst nodejs [24.22.0-1nodesource1] (24.22.1-1nodesource1 Node Source:nodistro [amd64])
+//   Remv libold1 [1.0-1]
 // A package that is new (pulled in as a dependency) has no "[old]" part.
-// Several origins are separated by ", " before the "[arch]".
-const APT_INST_LINE = /^Inst (\S+)(?: \[([^\]]*)\])? \((\S+) (.*) \[[^\]]+\]\)/;
+// Several origins are separated by ", " before the "[arch]"; a package from
+// a source with no release file can have no origin at all.
+const APT_INST_LINE = /^Inst (\S+)(?: \[([^\]]*)\])? \((\S+)(?: (.*?))? \[[^\]]+\]\)$/;
+const APT_REMV_LINE = /^Remv (\S+)(?: \[([^\]]*)\])?/;
+// "4 upgraded, 1 newly installed, 0 to remove and 2 not upgraded."
+const APT_SUMMARY_LINE = /^(\d+) upgraded, (\d+) newly installed, (\d+) to remove and (\d+) not upgraded\.$/;
 
+// Returns { upgrades, removals, heldBack, problems }. `problems` lists output
+// the parser could not account for — an unrecognised Inst/Remv line, a missing
+// summary, or a summary whose counts disagree with the lines parsed. The
+// caller reports those as failed checks, so a change in apt's output format
+// can never look like a clean system.
 function parseAptSimulation(output) {
     const upgrades = [];
-    for (const line of String(output || '').split('\n')) {
-        const match = APT_INST_LINE.exec(line.trim());
-        if (!match) continue;
-        const origins = match[4];
-        upgrades.push({
-            name: match[1],
-            from: match[2] || null,
-            to: match[3],
-            origins,
-            // Debian publishes security fixes from the "<codename>-security"
-            // suite, which apt shows as "Debian-Security:13/stable-security".
-            security: /security/i.test(origins),
-        });
+    const removals = [];
+    const problems = [];
+    let summary = null;
+
+    for (const raw of String(output || '').split('\n')) {
+        const line = raw.trim();
+        if (line.startsWith('Inst ')) {
+            const match = APT_INST_LINE.exec(line);
+            if (!match) {
+                problems.push(`unrecognised apt line: ${line}`);
+                continue;
+            }
+            const origins = match[4] || '';
+            upgrades.push({
+                name: match[1],
+                from: match[2] || null,
+                to: match[3],
+                origins,
+                // Debian publishes security fixes from the "<codename>-security"
+                // suite, which apt shows as "Debian-Security:13/stable-security".
+                security: /security/i.test(origins),
+            });
+        } else if (line.startsWith('Remv ')) {
+            const match = APT_REMV_LINE.exec(line);
+            if (!match) {
+                problems.push(`unrecognised apt line: ${line}`);
+                continue;
+            }
+            removals.push({ name: match[1], from: match[2] || null });
+        } else {
+            const match = APT_SUMMARY_LINE.exec(line);
+            if (match) summary = match.slice(1, 5).map(Number);
+        }
     }
-    return upgrades;
+
+    let heldBack = 0;
+    if (!summary) {
+        problems.push('apt printed no "N upgraded, N newly installed, ..." summary line');
+    } else {
+        const [upgraded, newlyInstalled, toRemove, notUpgraded] = summary;
+        heldBack = notUpgraded;
+        if (upgraded + newlyInstalled !== upgrades.length || toRemove !== removals.length) {
+            problems.push(`apt's summary (${upgraded} upgraded, ${newlyInstalled} newly installed, ${toRemove} to remove) does not match the ${upgrades.length} install and ${removals.length} remove lines read`);
+        }
+    }
+    return { upgrades, removals, heldBack, problems };
 }
 
 // Whole days from `today` to an ISO date (YYYY-MM-DD), negative once passed.
 function daysUntil(isoDate, today) {
     const target = Date.parse(`${isoDate}T00:00:00Z`);
+    // Date.parse accepts some impossible dates by rolling them over, so also
+    // require the parsed date to read back as the same string.
+    if (!Number.isFinite(target) || new Date(target).toISOString().slice(0, 10) !== isoDate) {
+        throw new Error(`not a calendar date: ${isoDate}`);
+    }
     const start = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
     return Math.round((target - start) / 86400000);
 }
@@ -77,8 +124,10 @@ function describeUpgrade(upgrade) {
 // caller sends no mail on a clean week. `failures` are checks that could not
 // run (apt, a lookup); they are reported, because a check that silently fails
 // would read as "all clear".
-function buildReport({ host, upgrades = [], eolFindings = [], failures = [] }) {
-    if (upgrades.length === 0 && eolFindings.length === 0 && failures.length === 0) {
+// `upgrades`, `removals` and `heldBack` come from parseAptSimulation.
+function buildReport({ host, upgrades = [], removals = [], heldBack = 0, eolFindings = [], failures = [] }) {
+    if (upgrades.length === 0 && removals.length === 0 && heldBack === 0
+        && eolFindings.length === 0 && failures.length === 0) {
         return null;
     }
 
@@ -91,6 +140,8 @@ function buildReport({ host, upgrades = [], eolFindings = [], failures = [] }) {
     if (security.length) counts.push(`${security.length} security update${security.length === 1 ? '' : 's'}`);
     if (node.length) counts.push('Node.js update');
     if (other.length) counts.push(`${other.length} other update${other.length === 1 ? '' : 's'}`);
+    if (removals.length) counts.push(`${removals.length} removal${removals.length === 1 ? '' : 's'}`);
+    if (heldBack) counts.push(`${heldBack} held back`);
     if (failures.length) counts.push(`${failures.length} failed check${failures.length === 1 ? '' : 's'}`);
 
     const lines = [
@@ -117,13 +168,24 @@ function buildReport({ host, upgrades = [], eolFindings = [], failures = [] }) {
         for (const upgrade of other) lines.push(`- ${describeUpgrade(upgrade)}`);
         lines.push('');
     }
+    if (removals.length) {
+        lines.push('## Packages the upgrade would remove', '');
+        for (const removal of removals) lines.push(`- \`${removal.name}\`${removal.from ? ` ${removal.from}` : ''}`);
+        lines.push('');
+    }
+    if (heldBack) {
+        lines.push('## Held back', '',
+            `${heldBack} package${heldBack === 1 ? ' has an update' : 's have updates'} that the upgrade would not install (held with \`apt-mark hold\`, or blocked by dependencies). \`apt list --upgradable\` and \`apt-mark showhold\` show which.`, '');
+    }
     if (failures.length) {
         lines.push('## Checks that failed', '');
         for (const failure of failures) lines.push(`- ${failure}`);
         lines.push('');
     }
-    if (upgrades.length) {
-        lines.push('To install the updates, run `sudo apt upgrade` on the server.');
+    if (upgrades.length || removals.length) {
+        // full-upgrade follows the same plan as the dist-upgrade simulation
+        // above, removals included; plain `apt upgrade` would not.
+        lines.push('To apply this plan, run `sudo apt full-upgrade` on the server.');
     }
 
     return {

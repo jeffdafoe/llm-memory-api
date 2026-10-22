@@ -30,7 +30,9 @@ function loadDatabaseUrl() {
     if (process.env.DATABASE_URL) return;
     const line = fs.readFileSync(ENV_FILE, 'utf8').split('\n').find((l) => l.startsWith('DATABASE_URL='));
     if (!line) throw new Error(`DATABASE_URL not found in ${ENV_FILE}`);
-    process.env.DATABASE_URL = line.slice('DATABASE_URL='.length).trim();
+    // Ansible's env.j2 writes a bare value; also accept one quoted pair, as
+    // systemd's EnvironmentFile does.
+    process.env.DATABASE_URL = line.slice('DATABASE_URL='.length).trim().replace(/^(["'])(.*)\1$/, '$2');
 }
 
 function stamp(message) {
@@ -64,7 +66,7 @@ async function check(pool) {
 
     const today = new Date();
     const failures = [];
-    let upgrades = [];
+    let apt = { upgrades: [], removals: [], heldBack: 0 };
 
     // Refreshing the lists is what makes the simulation current; it changes
     // no installed package.
@@ -75,7 +77,8 @@ async function check(pool) {
     }
     try {
         const output = execFileSync('apt-get', ['-s', 'dist-upgrade'], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
-        upgrades = parseAptSimulation(output);
+        apt = parseAptSimulation(output);
+        for (const problem of apt.problems) failures.push(`Reading the apt simulation: ${problem}`);
     } catch (err) {
         failures.push(`\`apt-get -s dist-upgrade\` failed: ${String(err.stderr || err.message).trim()}`);
     }
@@ -110,7 +113,14 @@ async function check(pool) {
         }
     }
 
-    const report = buildReport({ host: os.hostname(), upgrades, eolFindings, failures });
+    const report = buildReport({
+        host: os.hostname(),
+        upgrades: apt.upgrades,
+        removals: apt.removals,
+        heldBack: apt.heldBack,
+        eolFindings,
+        failures,
+    });
     const checked = runtimes.map((r) => `${r.label} ${r.cycle}`).join(', ');
     if (!report) {
         stamp(`nothing to report (0 pending upgrades; checked ${checked})`);

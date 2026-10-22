@@ -157,13 +157,25 @@
 
 # Weekly report of pending apt upgrades and runtimes near end of life, mailed
 # inside this instance. It only reports; it never installs anything.
+- name: Pick the staleness check recipient
+  set_fact:
+    staleness_recipient: "{{ staleness_check_recipient | default(admin_username | default('admin'), true) }}"
+
+# The name goes on a cron command line, where shell quoting does not protect
+# `%` (cron turns it into a newline) — so allow only plain name characters.
+- name: Check the staleness check recipient is a plain actor name
+  assert:
+    # \Z, not $: Python's $ also matches before a trailing newline.
+    that: staleness_recipient is match('^[A-Za-z0-9][A-Za-z0-9._@-]*\Z')
+    fail_msg: "staleness_check_recipient (or admin_username) '{{ staleness_recipient }}' must be a plain actor name: letters, digits, . _ @ -"
+
 - name: Configure weekly staleness check cron job
   cron:
     name: "memory-api staleness check"
     weekday: "1"
     minute: "30"
     hour: "12"
-    job: "/usr/bin/node {{ project_root }}/scripts/staleness-check.js {{ (staleness_check_recipient | default(admin_username | default('admin'), true)) | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
+    job: "/usr/bin/node {{ (project_root ~ '/scripts/staleness-check.js') | quote }} {{ staleness_recipient | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
 
 - name: Deploy tools (Go client binaries)
   include_tasks: deploy-tools.yml
