@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './actor-dialogs.html?raw';
+import { render } from './actor-dialogs.html?render';
 
 export default {
     name: 'ActorDialogs',
-    template,
+    render,
     setup() {
         return inject('app');
     }

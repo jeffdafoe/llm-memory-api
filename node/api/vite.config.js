@@ -2,36 +2,47 @@ import { defineConfig } from 'vite';
 import { readFileSync } from 'fs';
 import { compile } from '@vue/compiler-dom';
 
-// The admin uses in-DOM templates (Vue directives in index.html), which requires
-// the template compiler at runtime. vue/dist/vue.esm-bundler.js includes it and
-// registers it, but @vue/* packages declare sideEffects:false so Rollup
-// tree-shakes the compiler out. Fix: alias 'vue' to the full build and mark it
-// as having side effects so the compiler registration survives.
-
-// Validate Vue templates imported via ?raw using Vue's own compiler.
-// Catches syntax errors at build time (and dev serve) instead of at runtime.
-function htmlTemplateValidator() {
+// Compile Vue templates at build time (LLM-27). `import { render } from
+// './x.html?render'` loads x.html and returns the ES module Vue's compiler
+// emits: an exported render function that imports its helpers from 'vue'.
+// Nothing is compiled in the browser, so the app runs on Vue's runtime-only
+// build. The full build compiles templates with Function(), which a
+// Content-Security-Policy without 'unsafe-eval' blocks (see src/server.js).
+// A template syntax error fails the build instead of showing up at runtime.
+function vueTemplateCompiler() {
     return {
-        name: 'html-template-validator',
+        name: 'vue-template-compiler',
         enforce: 'pre',
-        transform(code, id) {
-            if (!id.endsWith('.html?raw')) return;
+        load(id) {
+            if (!id.endsWith('.html?render')) return;
 
-            const filePath = id.replace('?raw', '');
-            let html;
-            try {
-                html = readFileSync(filePath, 'utf8');
-            } catch { return; }
+            const filePath = id.slice(0, -'?render'.length);
+            this.addWatchFile(filePath);
+            const html = readFileSync(filePath, 'utf8');
 
             const errors = [];
-            compile(html, {
+            // prefixIdentifiers rewrites `foo` to `_ctx.foo`, the module-mode
+            // equivalent of the runtime compiler's with(_ctx) scope. Globals
+            // Vue allows in templates (Math, Date, JSON, ...) are left alone,
+            // same as at runtime. hoistStatic matches the runtime compiler's
+            // setting.
+            const { code } = compile(html, {
+                mode: 'module',
+                prefixIdentifiers: true,
+                hoistStatic: true,
                 onError(err) { errors.push(err); }
             });
 
             if (errors.length > 0) {
-                const messages = errors.map(e => e.message).join('\n  ');
+                const messages = errors.map(e => {
+                    if (e.loc) {
+                        return `line ${e.loc.start.line}: ${e.message}`;
+                    }
+                    return e.message;
+                }).join('\n  ');
                 this.error(`Vue template errors in ${filePath}:\n  ${messages}`);
             }
+            return code;
         }
     };
 }
@@ -39,25 +50,8 @@ function htmlTemplateValidator() {
 export default defineConfig({
     root: 'public/admin',
     base: '/admin/',
-    resolve: {
-        alias: {
-            vue: 'vue/dist/vue.esm-bundler.js'
-        }
-    },
     plugins: [
-        htmlTemplateValidator(),
-        {
-            name: 'vue-compiler-side-effects',
-            enforce: 'pre',
-            async resolveId(source, importer, options) {
-                if (source === 'vue/dist/vue.esm-bundler.js') {
-                    const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                    if (resolved) {
-                        return { ...resolved, moduleSideEffects: true };
-                    }
-                }
-            }
-        }
+        vueTemplateCompiler()
     ],
     define: {
         __VUE_OPTIONS_API__: true,

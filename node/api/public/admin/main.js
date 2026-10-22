@@ -39,9 +39,11 @@ import AccessView from './views/AccessView.js';
 import HelpView from './views/HelpView.js';
 import CustomSelect from './components/CustomSelect.js';
 import ToolCallDisplay from './components/ToolCallDisplay.js';
+import { render } from './views/app.html?render';
 
 createApp({
-    components: { DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView, HelpView },
+    render,
+    components:{ DashboardView, AgentsView, CommsView, ConfigView, NotesView, ActorDialogs, AgentDialog, MiscDialogs, AccessView, HelpView },
     setup() {
         const currentView = ref('dashboard');
 

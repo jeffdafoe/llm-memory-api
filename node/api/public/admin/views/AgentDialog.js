@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './agent-dialog.html?raw';
+import { render } from './agent-dialog.html?render';
 
 export default {
     name: 'AgentDialog',
-    template,
+    render,
     setup() {
         return inject('app');
     }

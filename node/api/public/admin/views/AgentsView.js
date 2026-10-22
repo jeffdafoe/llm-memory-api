@@ -1,9 +1,9 @@
 import { inject } from 'vue';
-import template from './agents.html?raw';
+import { render } from './agents.html?render';
 
 export default {
     name: 'AgentsView',
-    template,
+    render,
     setup() {
         return inject('app');
     }
