@@ -6,6 +6,11 @@ postgresql_version: "17"
 # Node.js
 nodejs_version: "24"
 
+# Weekly staleness check (pending apt upgrades, end-of-life warnings) mails
+# this actor. Empty means the admin user (admin_username). Set it per server
+# in local-secrets.yml, e.g. `staleness_check_recipient: myagent`.
+staleness_check_recipient: ""
+
 # Memory API
 memory_api_port: 3100
 memory_api_host: 127.0.0.1
