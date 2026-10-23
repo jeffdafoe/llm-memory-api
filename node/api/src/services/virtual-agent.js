@@ -2805,9 +2805,9 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // scope on sceneId presence (sim ticks always carry one).
         //
         // The caller states the scope: the engine sends history_scope 'scene'
-        // for these agents (LLM-687), because it owns the knowledge of which
-        // of its VAs are switchboards. isSceneScopedHistory also keeps a slug
-        // list for an engine build that does not send the field yet.
+        // for these agents and for the court (LLM-687), because it owns the
+        // knowledge of which of its VAs are switchboards. memory-api keeps no
+        // list of them.
         //
         // Defensive: if a shared-VA call arrives with no sceneId, do NOT
         // fall through to unscoped history (that's the cross-persona
@@ -2817,8 +2817,8 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // always passes a sceneId for sim ticks, so this branch only fires
         // for misconfigured callers and is intentionally fail-closed.
         // The court (LLM-695) is a dedicated VA, not a shared one, but each
-        // session is its own case, so its history is scoped the same way.
-        const isSceneScoped = isSceneScopedHistory(agent.agent, historyScope, SIM_COURT_AGENTS.has(agent.agent));
+        // session is its own case, so the engine asks for scene scope there too.
+        const isSceneScoped = isSceneScopedHistory(historyScope);
         const historyCap = historyCapFor(agent.agent);
         const historyLoad = historyLoadFor(isSceneScoped, sceneId);
         let history;

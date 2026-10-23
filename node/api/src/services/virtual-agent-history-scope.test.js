@@ -26,24 +26,14 @@ test('any other history_scope value is an error', () => {
     }
 });
 
-test('a request for scene scope scopes any agent', () => {
-    assert.equal(isSceneScopedHistory('zbbs-new-switchboard', 'scene', false), true);
+test('a request for scene scope is scene-scoped', () => {
+    assert.equal(isSceneScopedHistory('scene'), true);
 });
 
-test('a stateful NPC with no history_scope keeps agent-pair history', () => {
-    assert.equal(isSceneScopedHistory('zbbs-prudence-ward', null, false), false);
+test('no history_scope keeps agent-pair history', () => {
+    assert.equal(isSceneScopedHistory(null), false);
+    assert.equal(isSceneScopedHistory(undefined), false);
 });
-
-test('the shared VAs stay scene-scoped when the caller sends no history_scope', () => {
-    for (const agent of ['salem-visitor', 'salem-vendor', 'salem-generic']) {
-        assert.equal(isSceneScopedHistory(agent, null, false), true, agent);
-    }
-});
-
-test('the court stays scene-scoped when the caller sends no history_scope', () => {
-    assert.equal(isSceneScopedHistory('salem-magistrate', null, true), true);
-});
-
 test('a scene-scoped turn with a scene_id loads that scene only', () => {
     assert.deepEqual(historyLoadFor(true, SCENE), { skip: false, sceneId: SCENE });
 });
