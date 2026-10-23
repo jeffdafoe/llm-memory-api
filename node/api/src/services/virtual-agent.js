@@ -2813,9 +2813,10 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         // do NOT fall through to unscoped history (that's the cross-persona
         // contamination bug). Use empty history instead; handleDirectChat
         // will still send the inbound messageText as the user message, the
-        // model just gets no prior context. The engine always passes a
-        // sceneId for sim ticks, so this branch only fires for misconfigured
-        // callers and is intentionally fail-closed. It protects only a call
+        // model just gets no prior context. The engine passes a sceneId for
+        // sim ticks; the scene-scoped calls without one are by design (the
+        // engine's private relationship reflections, "This is not a scene")
+        // and correctly get no history. Intentionally fail-closed. It protects only a call
         // that sends history_scope 'scene': a caller that omits the field
         // gets agent-pair history whatever the agent, so an engine older
         // than LLM-687 step 2 (salem 2c0c021c) must never run against this.
