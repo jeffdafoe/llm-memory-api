@@ -12,19 +12,16 @@
 //     stateful NPC with its own VA, so it must stay the default.
 //
 // The caller states the scope with the optional history_scope field of
-// POST /v1/chat/send. The salem engine owns the knowledge of which of its VAs
-// are switchboards, so it sends 'scene' for them. The field can only narrow the
-// history a turn replays, never widen it, so any authenticated caller may send it.
+// POST /v1/chat/send, and nothing here knows any agent by name. The salem
+// engine owns the knowledge of which of its VAs are switchboards or the court
+// (sim.IsSceneScopedAgent), so it sends 'scene' for them. The field can only
+// narrow the history a turn replays, never widen it, so any authenticated
+// caller may send it.
 //
 // Lives in its own pure module so the route validation and the scope decision
 // can be unit-tested without loading the DB pool or the virtual-agent stack.
 
 const HISTORY_SCOPE_SCENE = 'scene';
-
-// Agents that get scene-scoped history even when the caller does not send
-// history_scope. This keeps their scope for an engine build that does not send
-// the field yet; it is removed once the engine sends it for all of them.
-const LEGACY_SCENE_SCOPED_AGENTS = new Set(['salem-visitor', 'salem-vendor', 'salem-generic']);
 
 // Validate the optional history_scope request field. Returns { value } with
 // 'scene' or null, or { error } with the 400 message for any other value.
@@ -38,17 +35,10 @@ function parseHistoryScope(raw) {
     return { value: HISTORY_SCOPE_SCENE };
 }
 
-// Whether this turn replays only its own scene's history. isCourtAgent is
-// passed in because the court agent set lives with the court framing in
-// virtual-agent.js.
-function isSceneScopedHistory(agentName, historyScope, isCourtAgent) {
-    if (historyScope === HISTORY_SCOPE_SCENE) {
-        return true;
-    }
-    if (LEGACY_SCENE_SCOPED_AGENTS.has(agentName)) {
-        return true;
-    }
-    return isCourtAgent === true;
+// Whether this turn replays only its own scene's history: exactly when the
+// caller asked for it.
+function isSceneScopedHistory(historyScope) {
+    return historyScope === HISTORY_SCOPE_SCENE;
 }
 
 // How to load the history of one turn. A scene-scoped turn with no scene_id
