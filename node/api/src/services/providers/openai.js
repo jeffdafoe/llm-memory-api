@@ -92,6 +92,38 @@ function gpt5Capabilities() {
     };
 }
 
+// gpt-6.x differs from gpt-5.x in two ways that change the capability shape:
+// OpenAI's default reasoning effort is "medium" (not "none"), and the
+// accepted levels vary per model (gpt-6.1-sol has no "none"; all of them
+// add "max"). There is no temperature entry — the /v1/responses path never
+// sends temperature, so exposing it in the admin UI would be a dead control.
+const GPT6_REASONING_ALL = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
+const GPT6_REASONING_NO_NONE = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+function gpt6Capabilities(reasoningOptions) {
+    return {
+        reasoning_effort: {
+            ...REASONING_EFFORT_CAP,
+            description: 'Controls how much time the model spends thinking. Supports ' + reasoningOptions.join(', ') + '. OpenAI default is medium.',
+            default: 'medium',
+            options: [...reasoningOptions]
+        },
+        max_completion_tokens: { ...MAX_OUTPUT_TOKENS_CAP },
+        service_tier: {
+            ...SERVICE_TIER_CAP,
+            options: [...SERVICE_TIER_CAP.options]
+        }
+    };
+}
+
+// gpt-6.x long-context surcharge: when a request's input exceeds the
+// threshold, OpenAI bills the WHOLE request (not just the overflow) at
+// higher rates — input and cached input 2x, output 1.5x. Applied in
+// computeCost on the provider-reported prompt token count.
+function gpt6LongContext() {
+    return { threshold: 272000, input: 2, cache_read: 2, output: 1.5 };
+}
+
 // Lineup last reconciled against https://developers.openai.com/api/docs/pricing
 // on 2026-05-01. The gpt-4.x family and the o-series (o3, o3-mini, o4-mini)
 // were dropped in that pass — none were in active use and OpenAI no longer
@@ -100,8 +132,33 @@ function gpt5Capabilities() {
 // 1/10-of-input convention since the pricing page omits an explicit cached
 // rate for them — conservative for caching that does happen, and consistent
 // with the rest of the family.
+//
+// gpt-6.x entries added 2026-10-26 (LLM-871) from the same pricing page and
+// the per-model docs pages. There is no gpt-6.1-luna; Luna is gpt-6-luna.
+// Their cached rate is 1/20 of input (not 1/10), per the published prices.
 
 const models = {
+    'gpt-6.1-sol': {
+        label: 'GPT-6.1 Sol',
+        configVersion: 3,
+        pricing: { input: 2.00, output: 10, cache_read: 0.10 },
+        longContext: gpt6LongContext(),
+        capabilities: gpt6Capabilities(GPT6_REASONING_NO_NONE)
+    },
+    'gpt-6.1-terra': {
+        label: 'GPT-6.1 Terra',
+        configVersion: 3,
+        pricing: { input: 1.00, output: 5, cache_read: 0.05 },
+        longContext: gpt6LongContext(),
+        capabilities: gpt6Capabilities(GPT6_REASONING_ALL)
+    },
+    'gpt-6-luna': {
+        label: 'GPT-6 Luna',
+        configVersion: 3,
+        pricing: { input: 0.10, output: 0.50, cache_read: 0.01 },
+        longContext: gpt6LongContext(),
+        capabilities: gpt6Capabilities(GPT6_REASONING_ALL)
+    },
     'gpt-5.6-sol': {
         label: 'GPT-5.6 Sol',
         configVersion: 2,
@@ -171,7 +228,14 @@ function isReasoningModel(modelId) {
     return modelId.startsWith('o');
 }
 
-// ── Detect gpt-5.x family (uses /v1/responses) ──────────────────────────────
+// ── Detect gpt-6.x family ───────────────────────────────────────────────────
+// IDs are gpt-6-<name> and gpt-6.<minor>-<name>.
+
+function isGpt6(modelId) {
+    return modelId.startsWith('gpt-6');
+}
+
+// ── Detect gpt-5.x / gpt-6.x families (use /v1/responses) ───────────────────
 // gpt-5.x models reject function tools on /v1/chat/completions with the error:
 //   "Function tools with reasoning_effort are not supported for gpt-5.5 in
 //    /v1/chat/completions. Please use /v1/responses instead."
@@ -180,9 +244,10 @@ function isReasoningModel(modelId) {
 // triggers the constraint regardless of whether reasoning_effort is set in
 // the request body. Route gpt-5.x calls through /v1/responses unconditionally;
 // the endpoint accepts the same calls without tools too, so there's no need
-// to branch on tool presence per call.
+// to branch on tool presence per call. gpt-6.x has the same constraint — its
+// model docs say "Tool calling requires the Responses API."
 function usesResponsesEndpoint(modelId) {
-    return modelId.startsWith('gpt-5.');
+    return modelId.startsWith('gpt-5.') || isGpt6(modelId);
 }
 
 // ── Convert chat-completions messages to /v1/responses input ────────────────
@@ -289,10 +354,21 @@ function computeCost(modelId, serviceTier, promptTokens, cachedTokens, completio
     const pricing = modelEntry.pricing;
     const flexMultiplier = (serviceTier === 'flex') ? 0.5 : 1.0;
 
+    // Long-context surcharge (gpt-6.x) — see gpt6LongContext.
+    let inputMultiplier = 1.0;
+    let cacheMultiplier = 1.0;
+    let outputMultiplier = 1.0;
+    const longContext = modelEntry.longContext;
+    if (longContext && promptTokens > longContext.threshold) {
+        inputMultiplier = longContext.input;
+        cacheMultiplier = longContext.cache_read;
+        outputMultiplier = longContext.output;
+    }
+
     const uncachedInput = promptTokens - cachedTokens;
-    const inputRate = (pricing.input || 0) * flexMultiplier;
-    const cacheRate = (pricing.cache_read || 0) * flexMultiplier;
-    const outputRate = (pricing.output || 0) * flexMultiplier;
+    const inputRate = (pricing.input || 0) * flexMultiplier * inputMultiplier;
+    const cacheRate = (pricing.cache_read || 0) * flexMultiplier * cacheMultiplier;
+    const outputRate = (pricing.output || 0) * flexMultiplier * outputMultiplier;
 
     let cost = 0;
     cost += uncachedInput * inputRate / 1_000_000;
@@ -325,7 +401,14 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
     // reasoning.effort is the gpt-5.x equivalent of the o-series
     // reasoning_effort top-level field. Send only when the operator
     // explicitly opted in to a non-default level.
-    if (conf.reasoning_effort && conf.reasoning_effort !== 'none') {
+    //
+    // gpt-6.x defaults to "medium", so "none" is a real choice there and
+    // must be sent explicitly — omitting it would get medium reasoning.
+    if (isGpt6(model)) {
+        if (conf.reasoning_effort) {
+            body.reasoning = { effort: conf.reasoning_effort };
+        }
+    } else if (conf.reasoning_effort && conf.reasoning_effort !== 'none') {
         body.reasoning = { effort: conf.reasoning_effort };
     }
 

@@ -113,3 +113,115 @@ test('chat-completions finish_reason "length" surfaces truncated:true', async ()
         globalThis.fetch = original;
     }
 });
+
+// LLM-871 — gpt-6.x entries. Pricing must be exact (cost tracking), calls
+// must use /v1/responses (tool calling needs it), and reasoning "none" must
+// be sent explicitly because the gpt-6.x default is "medium".
+
+// Captures the request body of one createCall round-trip.
+async function captureResponsesBody(modelId, conf, usage) {
+    const original = globalThis.fetch;
+    const captured = {};
+    globalThis.fetch = async function (url, init) {
+        captured.url = String(url);
+        captured.body = JSON.parse(init.body);
+        return {
+            ok: true,
+            json: async () => ({
+                status: 'completed',
+                output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }],
+                usage: usage || { input_tokens: 10, output_tokens: 2 },
+            }),
+        };
+    };
+    try {
+        captured.result = await openai.createCall(modelId, 'k', conf)('sys', 'hi', {});
+    } finally {
+        globalThis.fetch = original;
+    }
+    return captured;
+}
+
+test('gpt-6.1-sol, gpt-6.1-terra and gpt-6-luna are registered with the published pricing', () => {
+    assert.deepEqual(openai.models['gpt-6.1-sol'].pricing, { input: 2.00, output: 10, cache_read: 0.10 });
+    assert.deepEqual(openai.models['gpt-6.1-terra'].pricing, { input: 1.00, output: 5, cache_read: 0.05 });
+    assert.deepEqual(openai.models['gpt-6-luna'].pricing, { input: 0.10, output: 0.50, cache_read: 0.01 });
+    assert.equal(openai.models['gpt-6.1-luna'], undefined);
+});
+
+test('gpt-6.x capability shape: medium default, per-model reasoning options, no temperature', () => {
+    const all = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
+    const expected = {
+        'gpt-6.1-sol': ['low', 'medium', 'high', 'xhigh', 'max'],
+        'gpt-6.1-terra': all,
+        'gpt-6-luna': all,
+    };
+    for (const [id, options] of Object.entries(expected)) {
+        const model = openai.models[id];
+        assert.equal(model.configVersion, 3, id);
+        assert.equal(model.capabilities.reasoning_effort.default, 'medium', id);
+        assert.deepEqual(model.capabilities.reasoning_effort.options, options, id);
+        assert.equal(model.capabilities.temperature, undefined, id);
+        assert.ok(model.capabilities.service_tier, id);
+    }
+    // Per-model clones: changing one model's options must not leak to another.
+    openai.models['gpt-6.1-terra'].capabilities.reasoning_effort.options.push('leak');
+    assert.deepEqual(openai.models['gpt-6-luna'].capabilities.reasoning_effort.options, all);
+    openai.models['gpt-6.1-terra'].capabilities.reasoning_effort.options.pop();
+});
+
+test('gpt-6.x calls route through /v1/responses', async () => {
+    for (const id of ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna']) {
+        const { url, result } = await captureResponsesBody(id, {});
+        assert.equal(url, 'https://api.openai.com/v1/responses', id);
+        assert.equal(result.text, 'ok', id);
+    }
+});
+
+test('gpt-6.x sends reasoning effort "none" explicitly; gpt-5.x still omits it', async () => {
+    const gpt6 = await captureResponsesBody('gpt-6-luna', { reasoning_effort: 'none' });
+    assert.deepEqual(gpt6.body.reasoning, { effort: 'none' });
+
+    const gpt6Max = await captureResponsesBody('gpt-6.1-sol', { reasoning_effort: 'max' });
+    assert.deepEqual(gpt6Max.body.reasoning, { effort: 'max' });
+
+    // Unset leaves OpenAI's default (medium) in charge.
+    const gpt6Unset = await captureResponsesBody('gpt-6.1-terra', {});
+    assert.equal(gpt6Unset.body.reasoning, undefined);
+
+    const gpt5 = await captureResponsesBody('gpt-5.6-luna', { reasoning_effort: 'none' });
+    assert.equal(gpt5.body.reasoning, undefined);
+});
+
+test('gpt-6.x cost: standard rates at or below 272K input', async () => {
+    // 272,000 input (200,000 cached) + 10,000 output on gpt-6.1-sol:
+    // 72,000 * 2.00 + 200,000 * 0.10 + 10,000 * 10, all per 1M.
+    const { result } = await captureResponsesBody('gpt-6.1-sol', {}, {
+        input_tokens: 272000,
+        input_tokens_details: { cached_tokens: 200000 },
+        output_tokens: 10000,
+    });
+    const expected = (72000 * 2.00 + 200000 * 0.10 + 10000 * 10) / 1_000_000;
+    assert.ok(Math.abs(result.usage.cost - expected) < 1e-12, `cost ${result.usage.cost} != ${expected}`);
+});
+
+test('gpt-6.x cost: long-context surcharge above 272K applies to the whole request', async () => {
+    // 300,000 input (100,000 cached) + 10,000 output on gpt-6.1-terra:
+    // input and cache 2x, output 1.5x.
+    const { result } = await captureResponsesBody('gpt-6.1-terra', {}, {
+        input_tokens: 300000,
+        input_tokens_details: { cached_tokens: 100000 },
+        output_tokens: 10000,
+    });
+    const expected = (200000 * 1.00 * 2 + 100000 * 0.05 * 2 + 10000 * 5 * 1.5) / 1_000_000;
+    assert.ok(Math.abs(result.usage.cost - expected) < 1e-12, `cost ${result.usage.cost} != ${expected}`);
+});
+
+test('gpt-5.x cost is unchanged above 272K input (no long-context entry)', async () => {
+    const { result } = await captureResponsesBody('gpt-5.6-luna', {}, {
+        input_tokens: 300000,
+        output_tokens: 10000,
+    });
+    const expected = (300000 * 1.00 + 10000 * 6) / 1_000_000;
+    assert.ok(Math.abs(result.usage.cost - expected) < 1e-12, `cost ${result.usage.cost} != ${expected}`);
+});
