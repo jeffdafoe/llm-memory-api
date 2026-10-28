@@ -335,22 +335,9 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
          LIMIT 10`;
     const discussions = await pool.query(discussionsSql, discussionsParams);
 
-    let chatSql = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.discussion_id, cmt.message, cmt.sent_at, cm.acked_at
-         FROM chat_messages cm
-         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
-         JOIN actors fa ON fa.id = cmt.from_actor_id
-         JOIN actors ta ON ta.id = cm.to_actor_id
-         WHERE fa.name != 'system'
-           AND cm.deleted_at IS NULL
-           AND cmt.discussion_id IS NULL`;
-    const chatParams = [];
-    if (hasFilter) {
-        chatSql += ' AND (cmt.from_actor_id = ANY($1) OR cm.to_actor_id = ANY($1))';
-        chatParams.push(idsArray);
-    }
-    chatSql += ` ORDER BY CASE WHEN cm.acked_at IS NULL THEN 0 ELSE 1 END, cmt.sent_at DESC LIMIT 15`;
-    const chat = await pool.query(chatSql, chatParams);
-
+    // No chat or system-message panels here: the dashboard dropped those
+    // sections, and their queries walked the whole chat history (LLM-874).
+    // The Comms view loads chat itself through /admin/chat.
     let mailSql = `SELECT m.id, fa.name AS from_agent, ta.name AS to_agent, m.subject, m.body, m.sent_at, m.acked_at
          FROM mail m
          JOIN actors fa ON fa.id = m.from_actor_id
@@ -363,20 +350,6 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
     }
     mailSql += ` ORDER BY CASE WHEN m.acked_at IS NULL THEN 0 ELSE 1 END, m.sent_at DESC LIMIT 15`;
     const mail = await pool.query(mailSql, mailParams);
-
-    let sysMsgSql = `SELECT cm.id, ta.name AS to_agent, cmt.discussion_id, cmt.message, cmt.sent_at, cm.acked_at
-         FROM chat_messages cm
-         JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
-         JOIN actors fa ON fa.id = cmt.from_actor_id
-         JOIN actors ta ON ta.id = cm.to_actor_id
-         WHERE fa.name = 'system' AND cm.deleted_at IS NULL`;
-    const sysMsgParams = [];
-    if (hasFilter) {
-        sysMsgSql += ' AND cm.to_actor_id = ANY($1)';
-        sysMsgParams.push(idsArray);
-    }
-    sysMsgSql += ' ORDER BY cmt.sent_at DESC LIMIT 15';
-    const systemMessages = await pool.query(sysMsgSql, sysMsgParams);
 
     // Note counts by namespace, filtered by readable namespaces
     const noteCountsResult = await pool.query(
@@ -409,9 +382,7 @@ router.post('/admin/dashboard', requirePerm('dashboard', 'read'), adminRoute('da
     res.json({
         agents: agents.rows,
         discussions: discussions.rows,
-        chat: chat.rows,
         mail: mail.rows,
-        system_messages: systemMessages.rows,
         notes: { total: noteTotal, namespaces: noteCounts.length },
         error_count_24h: errorCount24h
     });

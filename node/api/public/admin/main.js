@@ -155,7 +155,7 @@ createApp({
         const agentsModule = useAgents(deps);
         const discussionsModule = useDiscussions(deps);
         const dashboardModule = useDashboard(deps);
-        const chatModule = useChat({ ...deps, dashboard: dashboardModule.dashboard });
+        const chatModule = useChat(deps);
         const mailModule = useMail({ ...deps, dashboard: dashboardModule.dashboard });
         const notesModule = useNotes(deps);
         const apiLogModule = useApiLog(deps);
