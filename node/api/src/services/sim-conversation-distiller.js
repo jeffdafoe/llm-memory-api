@@ -422,6 +422,21 @@ function narrateEvent(event, actorName) {
             }
             return '(' + text + ')';
         }
+        case 'noticed_omen': {
+            // LLM-843: the villager found an omen — the milk turned in the pail,
+            // the fire would not hold. payload: { kind, text, subject? }. text is
+            // the engine's plain past-tense line ("found the milk turned sour in
+            // the pail"), passed through so the dream records what happened and
+            // nothing more; the engine never calls it witchcraft and neither does
+            // this line. subject names whose omen it was when that is someone
+            // else (a hired hand stoking the owner's hearth).
+            const text = sanitizeNarration(p.text || '');
+            if (!text) {
+                return null;
+            }
+            const subject = sanitizeLabel(p.subject || '');
+            return '(' + text + (subject ? ', at ' + subject + "'s" : '') + ')';
+        }
         case 'enter_huddle':
             // Membership marker (ZBBS-094). The engine writes one of
             // these whenever an actor's current_huddle_id is updated,

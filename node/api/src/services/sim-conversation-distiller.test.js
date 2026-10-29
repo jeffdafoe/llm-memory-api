@@ -400,3 +400,17 @@ test('ruled passes the engine line through whole, ending with the matter closed'
     assert.ok(line.endsWith('The matter is closed.)'));
     assert.equal(narrateEvent({ kind: 'ruled', payload: {} }, 'Josiah Thorne'), null);
 });
+
+// LLM-843: an omen the villager found reaches the night's dream as the engine's
+// plain line, naming whose it was when it was someone else's.
+test('noticed_omen narrates what the villager found', () => {
+    assert.equal(
+        narrateEvent({ kind: 'noticed_omen', payload: { kind: 'sour_milk', text: 'found the milk turned sour in the pail' } }, 'Elizabeth Ellis'),
+        '(found the milk turned sour in the pail)',
+    );
+    assert.equal(
+        narrateEvent({ kind: 'noticed_omen', payload: { kind: 'cold_hearth', text: 'found the hearth fire would not stay lit', subject: 'Hannah Boggs' } }, 'Silence Walker'),
+        "(found the hearth fire would not stay lit, at Hannah Boggs's)",
+    );
+    assert.equal(narrateEvent({ kind: 'noticed_omen', payload: { kind: 'sour_milk' } }, 'Elizabeth Ellis'), null);
+});
