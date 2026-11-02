@@ -71,6 +71,43 @@ test('parseAptSimulation reads a package with no origin', () => {
     assert.deepEqual(problems, []);
 });
 
+// The host5 run of 2026-11-02: apt ended three security upgrades with its list
+// of still-broken packages (empty, or naming one), and the check reported them
+// as unreadable lines and a count mismatch instead of as security updates.
+test('parseAptSimulation reads Inst lines that end with apt\'s broken-packages list', () => {
+    const output = [
+        'Inst vim [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [amd64]) []',
+        'Inst vim-common [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [all]) [vim-tiny:amd64 ]',
+        'Inst vim-tiny [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [amd64]) []',
+        'Inst vim-runtime [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [all])',
+        'Inst tzdata [2026e-0+deb13u1] (2026f-0+deb13u1 Debian:13.2/stable-updates [all])',
+        '5 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.',
+    ].join('\n');
+    const { upgrades, problems } = parseAptSimulation(output);
+    assert.deepEqual(problems, []);
+    assert.deepEqual(upgrades[1], {
+        name: 'vim-common',
+        from: '2:9.1.1230-2',
+        to: '2:9.1.1230-2+deb13u1',
+        origins: 'Debian-Security:13/stable-security',
+        security: true,
+    });
+    assert.deepEqual(upgrades.filter((u) => u.security).map((u) => u.name), ['vim', 'vim-common', 'vim-tiny', 'vim-runtime']);
+});
+
+test('parseAptSimulation reads a Remv line that ends with apt\'s broken-packages list', () => {
+    const output = 'Remv libold1 [1.0-1] [libnew2:amd64 ]\n0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.\n';
+    const { removals, problems } = parseAptSimulation(output);
+    assert.deepEqual(removals, [{ name: 'libold1', from: '1.0-1' }]);
+    assert.deepEqual(problems, []);
+});
+
+test('parseAptSimulation still rejects text after the broken-packages list', () => {
+    const output = 'Inst foo [1.0] (1.1 Debian:13.2/stable [amd64]) [] extra\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n';
+    const { problems } = parseAptSimulation(output);
+    assert.match(problems[0], /unrecognised apt line: Inst foo/);
+});
+
 test('parseAptSimulation reports an Inst line it cannot read, and the count mismatch', () => {
     const output = 'Inst foo something new\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n';
     const { upgrades, problems } = parseAptSimulation(output);
