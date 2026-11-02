@@ -18,8 +18,13 @@ const EOL_WARN_DAYS = 90;
 // A package that is new (pulled in as a dependency) has no "[old]" part.
 // Several origins are separated by ", " before the "[arch]"; a package from
 // a source with no release file can have no origin at all.
-const APT_INST_LINE = /^Inst (\S+)(?: \[([^\]]*)\])? \((\S+)(?: (.*?))? \[[^\]]+\]\)$/;
-const APT_REMV_LINE = /^Remv (\S+)(?: \[([^\]]*)\])?$/;
+// While the simulated upgrade still has broken packages at that step, apt
+// ends an Inst or Remv line with the list of them, which can be empty:
+//   Inst vim [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [amd64]) []
+//   Inst vim-common [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [all]) [vim-tiny:amd64 ]
+// The list only describes the order apt works in, so it is matched and dropped.
+const APT_INST_LINE = /^Inst (\S+)(?: \[([^\]]*)\])? \((\S+)(?: (.*?))? \[[^\]]+\]\)(?: \[[^\]]*\])?$/;
+const APT_REMV_LINE = /^Remv (\S+)(?: \[([^\]]*)\])?(?: \[[^\]]*\])?$/;
 // "4 upgraded, 1 newly installed, 0 to remove and 2 not upgraded."
 const APT_SUMMARY_LINE = /^(\d+) upgraded, (\d+) newly installed, (\d+) to remove and (\d+) not upgraded\.$/;
 
