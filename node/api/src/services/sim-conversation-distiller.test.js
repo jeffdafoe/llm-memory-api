@@ -414,3 +414,13 @@ test('noticed_omen narrates what the villager found', () => {
     );
     assert.equal(narrateEvent({ kind: 'noticed_omen', payload: { kind: 'sour_milk' } }, 'Elizabeth Ellis'), null);
 });
+
+// LLM-900: a ward the villager put up at home reaches the night's dream as the
+// engine's plain line.
+test('placed_ward narrates the ward going up at home', () => {
+    assert.equal(
+        narrateEvent({ kind: 'placed_ward', payload: { item: 'horseshoe', text: 'nailed a horseshoe over the door at home' } }, 'Elizabeth Ellis'),
+        '(nailed a horseshoe over the door at home)',
+    );
+    assert.equal(narrateEvent({ kind: 'placed_ward', payload: { item: 'horseshoe' } }, 'Elizabeth Ellis'), null);
+});
