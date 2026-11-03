@@ -437,6 +437,19 @@ function narrateEvent(event, actorName) {
             const subject = sanitizeLabel(p.subject || '');
             return '(' + text + (subject ? ', at ' + subject + "'s" : '') + ')';
         }
+        case 'placed_ward': {
+            // LLM-900: after an omen in the household, the villager put a ward
+            // up at home. payload: { item, text }. text is the engine's plain
+            // past-tense line ("nailed a horseshoe over the door at home"),
+            // passed through as is — like noticed_omen, the line never says
+            // what the ward is for. Only villagers write this row; a player's
+            // ward at a tent writes none.
+            const text = sanitizeNarration(p.text || '');
+            if (!text) {
+                return null;
+            }
+            return '(' + text + ')';
+        }
         case 'enter_huddle':
             // Membership marker (ZBBS-094). The engine writes one of
             // these whenever an actor's current_huddle_id is updated,
