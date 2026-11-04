@@ -40,7 +40,8 @@
         "vite": "^8.3.5"
     },
     "overrides": {
-        "lodash-es": "^4.18.0"
+        "lodash-es": "^4.18.0",
+        "@hono/node-server": "^2.1.3"
     },
-    "comment:overrides": "lodash-es override forces CVE-2026-2950/CVE-2026-4800 fix. Remove once mermaid bumps past lodash-es 4.17.x."
+    "comment:overrides": "lodash-es override forces CVE-2026-2950/CVE-2026-4800 fix. Remove once mermaid bumps past lodash-es 4.17.x. @hono/node-server override forces GHSA-rmxm-3fg6-px4f fix (LLM-907): @modelcontextprotocol/node allows ^1.19.9 || ^2.1.3 but the 1.x line has no fix. Remove once @modelcontextprotocol/node requires ^2.1.3."
 }
