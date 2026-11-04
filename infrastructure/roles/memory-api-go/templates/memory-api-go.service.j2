@@ -1,0 +1,23 @@
+[Unit]
+Description=Memory API (Go)
+# Both servers listen on the same port. Starting this unit stops the Node
+# one, and the other way round. Conflicts= alone does not order the two; the
+# After= on memory-api.service makes systemd finish stopping Node before it
+# starts this one, so the port is free.
+After=network.target postgresql.service memory-api.service
+Conflicts=memory-api.service
+
+[Service]
+Type=simple
+User={{ app_user }}
+EnvironmentFile=/etc/memory-api/env
+ExecStart={{ go_server_bin }}
+Restart=on-failure
+RestartSec=5
+# The server sends "WATCHDOG=1" from its own process (internal/watchdog), so
+# the default NotifyAccess=main is enough.
+WatchdogSec=60
+NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target

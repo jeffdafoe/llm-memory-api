@@ -45,6 +45,39 @@ jobs:
       - name: Test
         run: go test ./...
 
+  # The Go port of the server (LLM-902). Built and tested on every PR; not
+  # deployed until the switch. Unit tests use pgxmock, so no database yet.
+  go-server:
+    name: Go Server
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go/server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go/server/go.mod
+          cache: false
+
+      # The VPS builds with go.mod's `toolchain` version; this line shows in
+      # the log which one CI ran.
+      - name: Go version
+        run: go version
+
+      - name: Format
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./cmd/memory-api
+
+      - name: Test
+        run: go test -race ./...
+
   node-api:
     name: Node API
     runs-on: ubuntu-latest

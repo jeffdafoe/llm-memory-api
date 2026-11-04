@@ -1,0 +1,50 @@
+---
+# Build the Go server (go/server) and install its systemd unit, NOT enabled
+# and NOT started. Node keeps serving until the switch (LLM-902); building on
+# every deploy now proves the build path before then. deploy.yml runs this
+# role before the Node one, so a failure here stops the deploy before it
+# changes anything of Node's.
+
+# go.mod's `toolchain` line is only a suggestion to Go, and the build below
+# runs GOTOOLCHAIN=local, so nothing in Go itself stops a PR that bumps go.mod
+# but not go_version. Hold the two equal here, before building.
+- name: Read the Go server's go.mod toolchain line
+  command: awk '$1 == "toolchain" { print $2 }' {{ repo_root }}/go/server/go.mod
+  register: go_server_toolchain
+  changed_when: false
+
+- name: Check go.mod's toolchain matches go_version
+  assert:
+    that: go_server_toolchain.stdout | trim == 'go' ~ go_version
+    fail_msg: "go/server/go.mod says 'toolchain {{ go_server_toolchain.stdout | trim }}' but group_vars go_version is {{ go_version }}. Change both together."
+
+# Built to a .new file and renamed over the old binary, so a failed build
+# leaves the previous binary in place.
+- name: Build the Go server
+  shell: |
+    set -eu
+    cd {{ repo_root }}/go/server
+    go build -trimpath -o {{ go_server_bin }}.new ./cmd/memory-api
+    mv -f {{ go_server_bin }}.new {{ go_server_bin }}
+  environment:
+    GOPATH: /root/go
+    PATH: "{{ go_install_dir }}/bin:/root/go/bin:{{ ansible_env.PATH }}"
+    # Build with the toolchain roles/golang installed; never fetch the one
+    # go.mod names.
+    GOTOOLCHAIN: local
+    GOFLAGS: -mod=readonly
+
+- name: Install the Go server's systemd unit
+  template:
+    src: memory-api-go.service.j2
+    dest: /etc/systemd/system/memory-api-go.service
+    mode: "0644"
+  notify: Reload systemd for memory-api-go
+
+# Stays off until the switch. The unit also Conflicts= with memory-api, so
+# starting it by hand stops Node rather than fighting it for the port.
+- name: Keep the Go server disabled until the switch
+  systemd:
+    name: memory-api-go
+    enabled: no
+    daemon_reload: yes
