@@ -6,11 +6,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/ttlcache"
 )
 
 // Namespace permissions change more often than actors, so their cache is
@@ -47,35 +47,26 @@ func (g grant) allows(op Operation) bool {
 	return false
 }
 
-type namespaceEntry struct {
-	grants  []grant // in row order, which getReadableNamespaces preserves
-	expires time.Time
-}
-
-// Namespaces checks namespace access.
+// Namespaces checks namespace access. Grants are cached per actor, in row
+// order, which ReadableNamespaces preserves.
 type Namespaces struct {
-	DB  db.DB
-	Now func() time.Time
-
-	mu    sync.Mutex
-	cache map[int]namespaceEntry
+	DB    db.DB
+	cache ttlcache.Cache[int, []grant]
 }
 
 func (n *Namespaces) now() time.Time {
-	if n.Now != nil {
-		return n.Now()
+	if n.cache.Now != nil {
+		return n.cache.Now()
 	}
 	return time.Now()
 }
 
 func (n *Namespaces) grants(ctx context.Context, actorID int) ([]grant, error) {
-	n.mu.Lock()
-	entry, ok := n.cache[actorID]
-	n.mu.Unlock()
-	if ok && entry.expires.After(n.now()) {
-		return entry.grants, nil
+	if grants, ok := n.cache.Get(actorID); ok {
+		return grants, nil
 	}
 
+	gen := n.cache.Generation()
 	rows, err := n.DB.Query(ctx,
 		"SELECT namespace, can_read, can_write, can_delete FROM namespace_permissions WHERE actor_id = $1",
 		actorID)
@@ -102,12 +93,7 @@ func (n *Namespaces) grants(ctx context.Context, actorID int) ([]grant, error) {
 		return nil, err
 	}
 
-	n.mu.Lock()
-	if n.cache == nil {
-		n.cache = map[int]namespaceEntry{}
-	}
-	n.cache[actorID] = namespaceEntry{grants: grants, expires: n.now().Add(namespaceCacheTTL)}
-	n.mu.Unlock()
+	n.cache.SetIfCurrent(gen, actorID, grants, n.now().Add(namespaceCacheTTL))
 	return grants, nil
 }
 
@@ -180,15 +166,14 @@ func (n *Namespaces) ReadableNamespaces(ctx context.Context, actorID int, actorN
 }
 
 // ClearCache drops one actor's cached grants, or every actor's when actorID
-// is 0. Call it after changing grants.
+// is 0. Call it after changing grants. A load already in flight is not
+// published afterwards.
 func (n *Namespaces) ClearCache(actorID int) {
-	n.mu.Lock()
 	if actorID == 0 {
-		n.cache = nil
+		n.cache.Clear()
 	} else {
-		delete(n.cache, actorID)
+		n.cache.Delete(actorID)
 	}
-	n.mu.Unlock()
 }
 
 // ValidateNamespace refuses the two reserved sentinels: "/" is the wildcard

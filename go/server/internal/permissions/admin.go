@@ -13,6 +13,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsonutil"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/ttlcache"
 )
 
 const adminCacheTTL = 2 * time.Minute
@@ -26,42 +27,33 @@ type AdminGrant struct {
 	Action   string
 }
 
-type adminEntry struct {
-	grants  []AdminGrant
-	expires time.Time
-}
-
 // Admin checks admin-dashboard permissions. The single grant '*:*' is
 // superadmin.
 type Admin struct {
-	DB  db.DB
-	Now func() time.Time
+	DB db.DB
 	// Errorf receives permission-check failures from RequirePerm.
 	Errorf func(format string, args ...any)
 
-	mu    sync.Mutex
-	cache map[int]adminEntry
+	cache ttlcache.Cache[int, []AdminGrant]
 
 	systemMu sync.Mutex
 	systemID *int
 }
 
 func (a *Admin) now() time.Time {
-	if a.Now != nil {
-		return a.Now()
+	if a.cache.Now != nil {
+		return a.cache.Now()
 	}
 	return time.Now()
 }
 
 // Grants returns the actor's admin grants in row order.
 func (a *Admin) Grants(ctx context.Context, actorID int) ([]AdminGrant, error) {
-	a.mu.Lock()
-	entry, ok := a.cache[actorID]
-	a.mu.Unlock()
-	if ok && entry.expires.After(a.now()) {
-		return entry.grants, nil
+	if grants, ok := a.cache.Get(actorID); ok {
+		return grants, nil
 	}
 
+	gen := a.cache.Generation()
 	rows, err := a.DB.Query(ctx, "SELECT resource, action FROM admin_permissions WHERE actor_id = $1", actorID)
 	if err != nil {
 		return nil, err
@@ -79,12 +71,7 @@ func (a *Admin) Grants(ctx context.Context, actorID int) ([]AdminGrant, error) {
 		return nil, err
 	}
 
-	a.mu.Lock()
-	if a.cache == nil {
-		a.cache = map[int]adminEntry{}
-	}
-	a.cache[actorID] = adminEntry{grants: grants, expires: a.now().Add(adminCacheTTL)}
-	a.mu.Unlock()
+	a.cache.SetIfCurrent(gen, actorID, grants, a.now().Add(adminCacheTTL))
 	return grants, nil
 }
 
@@ -232,13 +219,11 @@ func (a *Admin) systemActorID(ctx context.Context) (int, error) {
 }
 
 // ClearCache drops one actor's cached grants, or every actor's when actorID
-// is 0.
+// is 0. A load already in flight is not published afterwards.
 func (a *Admin) ClearCache(actorID int) {
-	a.mu.Lock()
 	if actorID == 0 {
-		a.cache = nil
+		a.cache.Clear()
 	} else {
-		delete(a.cache, actorID)
+		a.cache.Delete(actorID)
 	}
-	a.mu.Unlock()
 }

@@ -172,26 +172,35 @@ type recordingWriter struct {
 	wroteHeader bool
 }
 
+// WriteHeader records the status the client gets. An informational status
+// (1xx other than 101) is sent ahead of the final one, as net/http does, so
+// it is not recorded; a final status after the first is ignored by net/http
+// and here.
 func (rw *recordingWriter) WriteHeader(status int) {
-	if !rw.wroteHeader {
-		rw.status = status
-		rw.wroteHeader = true
+	if rw.wroteHeader {
+		return
 	}
+	if status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
+		rw.ResponseWriter.WriteHeader(status)
+		return
+	}
+	rw.status = status
+	rw.wroteHeader = true
 	rw.ResponseWriter.WriteHeader(status)
 }
 
 func (rw *recordingWriter) Write(b []byte) (int, error) {
-	if !rw.wroteHeader {
-		rw.wroteHeader = true
-	}
+	rw.wroteHeader = true
 	n, err := rw.ResponseWriter.Write(b)
 	rw.bytes += n
 	return n, err
 }
 
 // Flush and Hijack pass through so streaming responses (SSE) and the admin
-// WebSocket upgrade still work behind the request log.
+// WebSocket upgrade still work behind the request log. A flush sends the
+// headers, so it commits the status as it stands (200 if none was set).
 func (rw *recordingWriter) Flush() {
+	rw.wroteHeader = true
 	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}

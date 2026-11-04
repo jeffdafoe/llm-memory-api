@@ -10,6 +10,7 @@ import (
 	"github.com/pashagolub/pgxmock/v5"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/testutil"
 )
 
@@ -82,4 +83,22 @@ func TestBadJSONIsAnsweredAndNotLogged(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestPanicOutsideRouteIsLoggedAs500(t *testing.T) {
+	mock := testutil.NewMock(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/boom", func(w http.ResponseWriter, r *http.Request) { panic("boom") })
+	requestLog := &httpapi.RequestLog{DB: mock}
+	h := httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(mux)))))
+
+	mock.ExpectExec("INSERT INTO request_log").WithArgs(
+		"POST", "/boom", 500, pgxmock.AnyArg(), (*int)(nil), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+	).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/boom", nil))
+	if rec.Code != 500 || rec.Body.String() != `{"error":{"code":"INTERNAL_ERROR","message":"boom"}}` {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	testutil.WaitMet(t, mock)
 }

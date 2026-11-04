@@ -8,6 +8,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pashagolub/pgxmock/v5 v5.2.0
 	github.com/pgvector/pgvector-go/pgx v0.4.1
+	golang.org/x/text v0.36.0
 )
 
 require (
@@ -17,5 +18,4 @@ require (
 	github.com/pgvector/pgvector-go v0.4.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
 )

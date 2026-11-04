@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/ttlcache"
 )
 
 const cacheTTL = 5 * time.Minute
@@ -24,57 +24,46 @@ type Actor struct {
 	Name string `json:"name"`
 }
 
-type entry struct {
-	actor   Actor
-	expires time.Time
+// cacheKey holds either a name or an ID. Actor names are never empty, so
+// {id: n} cannot collide with a name key.
+type cacheKey struct {
+	name string
+	id   int
 }
 
 // Cache resolves actors by name or ID. A miss is not cached, so a newly
 // created actor is visible on the next lookup.
 type Cache struct {
-	db  db.DB
-	now func() time.Time
-
-	mu     sync.Mutex
-	byName map[string]entry
-	byID   map[int]entry
+	db      db.DB
+	entries ttlcache.Cache[cacheKey, Actor]
 }
 
 func NewCache(conn db.DB) *Cache {
-	return &Cache{
-		db:     conn,
-		now:    time.Now,
-		byName: map[string]entry{},
-		byID:   map[int]entry{},
-	}
+	return &Cache{db: conn}
 }
 
 func (c *Cache) cachedByName(name string) (Actor, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	e, ok := c.byName[name]
-	if ok && e.expires.After(c.now()) {
-		return e.actor, true
-	}
-	return Actor{}, false
+	return c.entries.Get(cacheKey{name: name})
 }
 
 func (c *Cache) cachedByID(id int) (Actor, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	e, ok := c.byID[id]
-	if ok && e.expires.After(c.now()) {
-		return e.actor, true
-	}
-	return Actor{}, false
+	return c.entries.Get(cacheKey{id: id})
 }
 
-func (c *Cache) store(actor Actor) {
-	e := entry{actor: actor, expires: c.now().Add(cacheTTL)}
-	c.mu.Lock()
-	c.byName[actor.Name] = e
-	c.byID[actor.ID] = e
-	c.mu.Unlock()
+// store caches the actor under its name and its ID, unless the cache was
+// cleared after gen was read.
+func (c *Cache) store(gen uint64, actor Actor) {
+	expires := c.now().Add(cacheTTL)
+	if c.entries.SetIfCurrent(gen, cacheKey{name: actor.Name}, actor, expires) {
+		c.entries.SetIfCurrent(gen, cacheKey{id: actor.ID}, actor, expires)
+	}
+}
+
+func (c *Cache) now() time.Time {
+	if c.entries.Now != nil {
+		return c.entries.Now()
+	}
+	return time.Now()
 }
 
 // ResolveByName returns the actor and true, or false when no actor has the name.
@@ -82,6 +71,7 @@ func (c *Cache) ResolveByName(ctx context.Context, name string) (Actor, bool, er
 	if actor, ok := c.cachedByName(name); ok {
 		return actor, true, nil
 	}
+	gen := c.entries.Generation()
 	var actor Actor
 	err := c.db.QueryRow(ctx, "SELECT id, name FROM actors WHERE name = $1", name).Scan(&actor.ID, &actor.Name)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -90,7 +80,7 @@ func (c *Cache) ResolveByName(ctx context.Context, name string) (Actor, bool, er
 	if err != nil {
 		return Actor{}, false, err
 	}
-	c.store(actor)
+	c.store(gen, actor)
 	return actor, true, nil
 }
 
@@ -99,6 +89,7 @@ func (c *Cache) ResolveByID(ctx context.Context, id int) (Actor, bool, error) {
 	if actor, ok := c.cachedByID(id); ok {
 		return actor, true, nil
 	}
+	gen := c.entries.Generation()
 	var actor Actor
 	err := c.db.QueryRow(ctx, "SELECT id, name FROM actors WHERE id = $1", id).Scan(&actor.ID, &actor.Name)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -107,7 +98,7 @@ func (c *Cache) ResolveByID(ctx context.Context, id int) (Actor, bool, error) {
 	if err != nil {
 		return Actor{}, false, err
 	}
-	c.store(actor)
+	c.store(gen, actor)
 	return actor, true, nil
 }
 
@@ -126,6 +117,7 @@ func (c *Cache) ResolveMultipleByName(ctx context.Context, names []string) (map[
 	if len(uncached) == 0 {
 		return result, nil
 	}
+	gen := c.entries.Generation()
 
 	rows, err := c.db.Query(ctx, "SELECT id, name FROM actors WHERE name = ANY($1)", uncached)
 	if err != nil {
@@ -137,7 +129,7 @@ func (c *Cache) ResolveMultipleByName(ctx context.Context, names []string) (map[
 		if err := rows.Scan(&actor.ID, &actor.Name); err != nil {
 			return nil, err
 		}
-		c.store(actor)
+		c.store(gen, actor)
 		result[actor.Name] = actor
 	}
 	if err := rows.Err(); err != nil {
@@ -158,12 +150,9 @@ func (c *Cache) RequireByName(ctx context.Context, name string) (Actor, error) {
 	return actor, nil
 }
 
-// Clear drops every cached actor.
+// Clear drops every cached actor, including any lookup still in flight.
 func (c *Cache) Clear() {
-	c.mu.Lock()
-	c.byName = map[string]entry{}
-	c.byID = map[int]entry{}
-	c.mu.Unlock()
+	c.entries.Clear()
 }
 
 // CanAccessVirtualAgent reports whether an actor may trigger a virtual agent

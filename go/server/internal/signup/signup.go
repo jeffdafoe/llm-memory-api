@@ -4,6 +4,8 @@
 package signup
 
 import (
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
@@ -16,14 +18,33 @@ import (
 const ConnectedSQL = `first_connected_at = COALESCE(first_connected_at,
                  CASE WHEN created_at >= $2::timestamptz THEN NOW() END)`
 
-// dateLayouts are the forms of config.signup_funnel_since that JavaScript's
-// Date.parse accepted and Postgres's timestamptz cast also reads.
-var dateLayouts = []string{
-	time.RFC3339Nano,
-	"2006-01-02T15:04:05",
-	"2006-01-02T15:04:05.999999999",
-	"2006-01-02T15:04",
-	"2006-01-02",
+// isoDate matches the ISO 8601 forms JavaScript's Date.parse accepts and
+// Postgres's timestamptz cast also reads: a date, optionally a T or space and
+// hh:mm, optional :ss and fraction, optional Z or offset (+hh, +hhmm,
+// +hh:mm). Migration MEM-150 writes "YYYY-MM-DDTHH:MM:SS.ffffffZ".
+//
+// V8 also accepts free-form dates ("10/09/2026", "Oct 9 2026"). Those are
+// not accepted here and read as "not a date", which stamps nothing.
+var isoDate = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?)?$`)
+
+func validISODate(value string) bool {
+	m := isoDate.FindStringSubmatch(value)
+	if m == nil {
+		return false
+	}
+	if _, err := time.Parse("2006-01-02", m[1]+"-"+m[2]+"-"+m[3]); err != nil {
+		return false
+	}
+	if m[4] == "" {
+		return true
+	}
+	hour, _ := strconv.Atoi(m[4])
+	minute, _ := strconv.Atoi(m[5])
+	second := 0
+	if m[6] != "" {
+		second, _ = strconv.Atoi(m[6])
+	}
+	return hour < 24 && minute < 60 && second < 60
 }
 
 // TrackingSince returns config.signup_funnel_since, or nil when it is blank or
@@ -34,13 +55,8 @@ func TrackingSince(store *config.Store) (*string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if value == "" {
+	if !validISODate(value) {
 		return nil, nil
 	}
-	for _, layout := range dateLayouts {
-		if _, err := time.Parse(layout, value); err == nil {
-			return &value, nil
-		}
-	}
-	return nil, nil
+	return &value, nil
 }

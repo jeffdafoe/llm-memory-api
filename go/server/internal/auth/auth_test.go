@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v5"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
@@ -131,11 +132,12 @@ func TestValidateLegacyFallback(t *testing.T) {
 // --- /v1 session middleware ---
 
 func newSessionAuth(mock pgxmock.PgxPoolIface, now func() time.Time) *SessionAuth {
-	return &SessionAuth{
+	a := &SessionAuth{
 		Sessions: &Sessions{DB: mock, Now: now},
 		APIKeys:  &APIKeys{DB: mock},
-		Now:      now,
 	}
+	a.cache.Now = now
+	return a
 }
 
 func serveV1(a *SessionAuth, header string, path string) (*httptest.ResponseRecorder, *httpapi.State, bool) {
@@ -494,5 +496,57 @@ func TestMCPAuthMissingSecretIs500(t *testing.T) {
 	want := `{"error":{"code":"INTERNAL_ERROR","message":"Config key \"mcp_oauth_bearer_secret\" not found. Was config.init() called?"}}`
 	if reached || rec.Code != 500 || rec.Body.String() != want {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// hookDB runs onQuery after each Query returns, standing in for work that
+// happens between a lookup's database read and its cache write.
+type hookDB struct {
+	pgxmock.PgxPoolIface
+	onQuery func()
+}
+
+func (h *hookDB) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	rows, err := h.PgxPoolIface.Query(ctx, sql, args...)
+	if h.onQuery != nil {
+		h.onQuery()
+	}
+	return rows, err
+}
+
+func TestLogoutDuringLookupIsNotUndone(t *testing.T) {
+	mock := testutil.NewMock(t)
+	now := time.Now()
+	hooked := &hookDB{PgxPoolIface: mock}
+	a := &SessionAuth{
+		Sessions: &Sessions{DB: hooked, Now: func() time.Time { return now }},
+		APIKeys:  &APIKeys{DB: hooked},
+	}
+
+	// Attempt 1 reads the live session; the logout lands right after.
+	mock.ExpectQuery(`token_lookup_hash = \$2`).WithArgs(SessionKindAPI, vectorSHA).
+		WillReturnRows(sessionRow(now.Add(20*time.Hour), 4, "work"))
+	first := true
+	hooked.onQuery = func() {
+		if first {
+			first = false
+			a.Forget(vectorToken)
+		}
+	}
+	// Attempt 2 finds the session gone.
+	mock.ExpectQuery(`token_lookup_hash = \$2`).WithArgs(SessionKindAPI, vectorSHA).WillReturnRows(noSessions())
+	mock.ExpectQuery("token_lookup_hash IS NULL").WithArgs(SessionKindAPI).WillReturnRows(noSessions())
+	mock.ExpectQuery(`token_lookup_hash = \$2`).WithArgs(SessionKindWeb, vectorSHA).WillReturnRows(noSessions())
+	mock.ExpectQuery("token_lookup_hash IS NULL").WithArgs(SessionKindWeb).WillReturnRows(noSessions())
+
+	rec, _, reached := serveV1(a, "Bearer "+vectorToken, "/v1/mail/check")
+	if reached || rec.Code != 403 {
+		t.Fatalf("revoked token: reached=%v code=%d", reached, rec.Code)
+	}
+	if a.cache.Len() != 0 {
+		t.Fatal("revoked session was cached")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

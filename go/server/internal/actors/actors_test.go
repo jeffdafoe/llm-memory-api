@@ -46,7 +46,7 @@ func TestResolveByNameExpires(t *testing.T) {
 
 	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	cache := NewCache(mock)
-	cache.now = func() time.Time { return now }
+	cache.entries.Now = func() time.Time { return now }
 	ctx := context.Background()
 	cache.ResolveByName(ctx, "work")
 	now = now.Add(cacheTTL + time.Second)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"sync"
@@ -111,11 +112,14 @@ func parseJSNumber(s string) (float64, bool) {
 	}
 	lower := strings.ToLower(s)
 	if strings.HasPrefix(lower, "0x") || strings.HasPrefix(lower, "0o") || strings.HasPrefix(lower, "0b") {
-		n, err := strconv.ParseUint(s, 0, 64)
-		if err != nil {
+		// big.Int, because JavaScript reads integers of any length here
+		// (as a float, possibly Infinity).
+		n, ok := new(big.Int).SetString(lower, 0)
+		if !ok {
 			return 0, false
 		}
-		return float64(n), true
+		f, _ := new(big.Float).SetInt(n).Float64()
+		return f, true
 	}
 	// strconv accepts "inf", "infinity" and "nan" in any case; JavaScript
 	// accepts only "Infinity". Both end up rejected as not finite, so the

@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/ttlcache"
 )
 
 // sessionCacheTTL bounds how long a validated token skips the database.
@@ -29,6 +29,10 @@ type cachedSession struct {
 	method  string
 }
 
+// lookupAttempts bounds the retries when invalidations keep landing during a
+// lookup. Past it the result is used for this request but not cached.
+const lookupAttempts = 3
+
 // SessionAuth guards /v1. A bearer token is tried, in order, as an agent API
 // session, an admin web session, and an API key. A hit is cached for up to
 // five minutes (never past the session's own expiry).
@@ -38,15 +42,14 @@ type SessionAuth struct {
 	// Errorf receives lookup errors, which are logged and then treated as a
 	// miss so the next credential type is still tried.
 	Errorf func(format string, args ...any)
-	Now    func() time.Time
 
-	mu    sync.Mutex
-	cache map[string]cachedSession
+	// cache.Now is also the clock for computing expiries; tests replace it.
+	cache ttlcache.Cache[string, cachedSession]
 }
 
 func (a *SessionAuth) now() time.Time {
-	if a.Now != nil {
-		return a.Now()
+	if a.cache.Now != nil {
+		return a.cache.Now()
 	}
 	return time.Now()
 }
@@ -58,30 +61,10 @@ func (a *SessionAuth) errorf(format string, args ...any) {
 }
 
 // Forget drops a token from the cache. Logout and passphrase rotation call it
-// so a revoked token stops working at once.
+// so a revoked token stops working at once. A lookup of any token that was in
+// flight when Forget ran is repeated rather than trusted.
 func (a *SessionAuth) Forget(token string) {
-	a.mu.Lock()
-	delete(a.cache, token)
-	a.mu.Unlock()
-}
-
-func (a *SessionAuth) cached(token string) (cachedSession, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	entry, ok := a.cache[token]
-	if ok && entry.expires.After(a.now()) {
-		return entry, true
-	}
-	return cachedSession{}, false
-}
-
-func (a *SessionAuth) remember(token string, entry cachedSession) {
-	a.mu.Lock()
-	if a.cache == nil {
-		a.cache = map[string]cachedSession{}
-	}
-	a.cache[token] = entry
-	a.mu.Unlock()
+	a.cache.Delete(token)
 }
 
 func earlier(a, b time.Time) time.Time {
@@ -89,6 +72,29 @@ func earlier(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+// resolve returns the session for a token, from the cache or the database.
+// A database result is cached only if no Forget ran during the lookup; if
+// one did, the lookup is repeated, because the result may describe a session
+// that was just revoked.
+func (a *SessionAuth) resolve(ctx context.Context, token string) (cachedSession, bool) {
+	if entry, ok := a.cache.Get(token); ok {
+		return entry, true
+	}
+	var entry cachedSession
+	var found bool
+	for attempt := 0; attempt < lookupAttempts; attempt++ {
+		gen := a.cache.Generation()
+		entry, found = a.lookup(ctx, token)
+		if !found {
+			return cachedSession{}, false
+		}
+		if a.cache.SetIfCurrent(gen, token, entry, entry.expires) {
+			return entry, true
+		}
+	}
+	return entry, found
 }
 
 // Middleware wraps the /v1 routes. prefix is the mount path ("/v1"); the
@@ -109,15 +115,10 @@ func (a *SessionAuth) Middleware(prefix string, next http.Handler) http.Handler 
 		// leading one, exactly as the Node code's header.replace did.
 		token := strings.Replace(header, "Bearer ", "", 1)
 
-		entry, ok := a.cached(token)
-		if !ok {
-			var found bool
-			entry, found = a.lookup(r.Context(), token)
-			if !found {
-				httpapi.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Invalid or expired session token")
-				return
-			}
-			a.remember(token, entry)
+		entry, found := a.resolve(r.Context(), token)
+		if !found {
+			httpapi.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Invalid or expired session token")
+			return
 		}
 
 		st := httpapi.StateOf(r)

@@ -23,7 +23,10 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/watchdog"
 )
 
-const shutdownGrace = 10 * time.Second
+const (
+	shutdownGrace   = 10 * time.Second
+	backgroundDrain = 5 * time.Second
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -90,7 +93,16 @@ func run() error {
 	case <-ctx.Done():
 	}
 
+	// Stop taking requests and let the running ones finish. Past the grace
+	// period the remaining connections are closed, which cancels their
+	// requests' contexts and so their queries. Then the background writes are
+	// drained, so nothing holds a connection when the deferred pool.Close runs.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	err = srv.Shutdown(shutdownCtx)
+	if err != nil {
+		srv.Close()
+	}
+	db.DrainBackground(backgroundDrain)
+	return err
 }

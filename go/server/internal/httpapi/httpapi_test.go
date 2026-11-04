@@ -327,3 +327,94 @@ func TestMCPDisplayPath(t *testing.T) {
 		t.Errorf("nil body: %q", got)
 	}
 }
+
+// Cases captured from the Express 5 probe (express.json, body-parser).
+func TestParseJSONBodyCharsets(t *testing.T) {
+	utf16le := func(s string) string {
+		var b []byte
+		for _, r := range s {
+			b = append(b, byte(r), byte(r>>8))
+		}
+		return string(b)
+	}
+	utf16be := func(s string) string {
+		var b []byte
+		for _, r := range s {
+			b = append(b, byte(r>>8), byte(r))
+		}
+		return string(b)
+	}
+	cases := []struct {
+		name, contentType, body string
+		status                  int
+		want                    string
+	}{
+		{"utf-8 BOM", "application/json", "\xef\xbb\xbf{\"a\":1}", 204, `{"a":1}`},
+		{"utf-16le", "application/json; charset=utf-16le", utf16le(`{"a":"é"}`), 204, `{"a":"é"}`},
+		{"utf-16 with BOM", "application/json; charset=utf-16", "\xff\xfe" + utf16le(`{"a":2}`), 204, `{"a":2}`},
+		{"utf-16 without BOM is LE", "application/json; charset=utf-16", utf16le(`{"a":3}`), 204, `{"a":3}`},
+		{"utf-16be", "application/json; charset=utf-16be", utf16be(`{"a":4}`), 204, `{"a":4}`},
+		{"invalid utf-8 becomes U+FFFD", "application/json", "{\"a\":\"\xff\"}", 204, "{\"a\":\"\uFFFD\"}"},
+		{"whitespace only", "application/json", "   \n", 400, `{"error":{"code":"BAD_REQUEST","message":"Unexpected end of JSON input"}}`},
+		{"unknown utf charset", "application/json; charset=utf-9", "{}", 415, `{"error":{"code":"BAD_REQUEST","message":"unsupported charset \"UTF-9\""}}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, seen := serveBody(bodyRequest(tc.contentType, tc.body, nil))
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d (%s)", rec.Code, tc.status, rec.Body.String())
+			}
+			if tc.status == 204 {
+				if string(seen.Body) != tc.want {
+					t.Fatalf("body = %q, want %q", seen.Body, tc.want)
+				}
+				return
+			}
+			if rec.Body.String() != tc.want {
+				t.Fatalf("response = %s, want %s", rec.Body.String(), tc.want)
+			}
+		})
+	}
+}
+
+func TestRecorderStatus(t *testing.T) {
+	// A flush commits 200; a later 500 is not what the client got.
+	rec := &recordingWriter{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
+	rec.Flush()
+	rec.WriteHeader(500)
+	if rec.status != 200 {
+		t.Fatalf("after flush: status = %d", rec.status)
+	}
+
+	// An informational status is not the final one.
+	rec = &recordingWriter{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
+	rec.WriteHeader(http.StatusEarlyHints)
+	rec.WriteHeader(201)
+	if rec.status != 201 {
+		t.Fatalf("after 103: status = %d", rec.status)
+	}
+
+	// 101 is final.
+	rec = &recordingWriter{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
+	rec.WriteHeader(http.StatusSwitchingProtocols)
+	rec.WriteHeader(200)
+	if rec.status != 101 {
+		t.Fatalf("after 101: status = %d", rec.status)
+	}
+}
+
+func TestRouteEncodeErrorIsA500(t *testing.T) {
+	mock := testutil.NewMock(t)
+	mock.ExpectExec("INSERT INTO error_log").WithArgs(anyArgs(8)...).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	rt := &Router{Log: logger.New(mock, actors.NewCache(mock), "")}
+
+	h := rt.Route("x", "encode", func(w http.ResponseWriter, r *http.Request) error {
+		return WriteJSON(w, 200, map[string]any{"bad": make(chan int)})
+	})
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest("POST", "/", nil))
+	if rec.Code != 500 || rec.Body.String() != `{"error":{"code":"INTERNAL","message":"Failed: encode"}}` {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	testutil.WaitMet(t, mock)
+}

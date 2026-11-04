@@ -5,6 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -52,13 +53,44 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+var (
+	background       sync.WaitGroup
+	backgroundCtx    context.Context
+	cancelBackground context.CancelFunc
+)
+
+func init() {
+	backgroundCtx, cancelBackground = context.WithCancel(context.Background())
+}
+
 // Background runs fn on its own goroutine with a fresh, bounded context. Use it
 // for writes whose failure must never affect the request that caused them.
 // The Node server did these as un-awaited promises with `.catch(() => {})`.
 func Background(fn func(ctx context.Context)) {
+	background.Add(1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), backgroundTimeout)
+		defer background.Done()
+		ctx, cancel := context.WithTimeout(backgroundCtx, backgroundTimeout)
 		defer cancel()
 		fn(ctx)
 	}()
+}
+
+// DrainBackground waits up to timeout for background writes to finish, then
+// cancels the rest and waits for them to return. Call it at shutdown, after
+// the HTTP server stops and before the pool closes, so no write is left
+// holding a connection.
+func DrainBackground(timeout time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		background.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return
+	case <-time.After(timeout):
+	}
+	cancelBackground()
+	<-done
 }

@@ -62,6 +62,8 @@ func TestParseNonNegativeFinite(t *testing.T) {
 		{"hex", "0x10", true, 7, 16},
 		{"binary", "0b101", true, 7, 5},
 		{"octal", "0o17", true, 7, 15},
+		{"hex above uint64", "0x10000000000000000", true, 7, 18446744073709551616},
+		{"upper-case prefix", "0XFF", true, 7, 255},
 		{"negative", "-1", true, 7, 7},
 		{"garbage", "12abc", true, 7, 7},
 		{"infinity", "Infinity", true, 7, 7},

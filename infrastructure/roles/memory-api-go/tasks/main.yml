@@ -1,7 +1,9 @@
 ---
 # Build the Go server (go/server) and install its systemd unit, NOT enabled
 # and NOT started. Node keeps serving until the switch (LLM-902); building on
-# every deploy now proves the build path before then.
+# every deploy now proves the build path before then. deploy.yml runs this
+# role before the Node one, so a failure here stops the deploy before it
+# changes anything of Node's.
 
 # go.mod's `toolchain` line is only a suggestion to Go, and the build below
 # runs GOTOOLCHAIN=local, so nothing in Go itself stops a PR that bumps go.mod

@@ -71,11 +71,14 @@ func LogDir() string {
 
 // Handler builds the full middleware chain, outermost first:
 //
-//	Recover → WithState → ParseJSONBody → RequestLog → routes
+//	Recover → WithState → ParseJSONBody → RequestLog → Recover → routes
 //
 // The order follows server.js: the JSON parser runs before the request log, so
 // a rejected body is answered and never logged, and the log sees the parsed
-// body for MCP method names.
+// body for MCP method names. The inner Recover turns a panic in auth or a
+// route into the 500 before the request log records the status, so the
+// request is still logged, as Express logged a request its error handler
+// answered. The outer one covers the layers above the log.
 func Handler(s *Services) http.Handler {
 	mux := http.NewServeMux()
 
@@ -92,5 +95,5 @@ func Handler(s *Services) http.Handler {
 	mux.HandleFunc("/", httpapi.NotFound)
 
 	requestLog := &httpapi.RequestLog{DB: s.DB}
-	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(mux))))
+	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(mux)))))
 }
