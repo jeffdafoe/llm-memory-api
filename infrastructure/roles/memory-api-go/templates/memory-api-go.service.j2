@@ -1,0 +1,21 @@
+[Unit]
+Description=Memory API (Go)
+After=network.target postgresql.service
+# Both servers listen on the same port. Starting this unit stops the Node
+# one, and the other way round.
+Conflicts=memory-api.service
+
+[Service]
+Type=simple
+User={{ app_user }}
+EnvironmentFile=/etc/memory-api/env
+ExecStart={{ go_server_bin }}
+Restart=on-failure
+RestartSec=5
+# The server sends "WATCHDOG=1" from its own process (internal/watchdog), so
+# the default NotifyAccess=main is enough.
+WatchdogSec=60
+NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target

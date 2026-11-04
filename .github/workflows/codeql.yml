@@ -36,8 +36,8 @@ jobs:
                 include:
                     - language: javascript
                     - language: actions
-                    # Only Go needs a build. The module lives at go/client, not
-                    # the repo root; autobuild locates it by finding go.mod.
+                    # Only Go needs a build. The modules live at go/client and
+                    # go/server, not the repo root; autobuild finds each go.mod.
                     # javascript and actions default to build-mode none, so they
                     # deliberately leave it unset — see the category note below.
                     - language: go

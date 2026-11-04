@@ -25,6 +25,8 @@
   roles:
     - role: ../roles/nginx
     - role: ../roles/memory-api
+    - role: ../roles/golang
+    - role: ../roles/memory-api-go
 
   tasks:
     - name: Run pending migrations

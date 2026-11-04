@@ -1,0 +1,4 @@
+---
+- name: Reload systemd for memory-api-go
+  systemd:
+    daemon_reload: yes

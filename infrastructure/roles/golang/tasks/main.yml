@@ -1,0 +1,141 @@
+---
+# Install the pinned Go toolchain (go_version) that builds the engine.
+#
+# Version-guarded like the godot role: when the installed toolchain already
+# matches go_version this is a single `go version` check, so routine deploys pay
+# nothing. A go_version bump in group_vars is a reviewed change that lands on
+# the next deploy; nothing here upgrades on its own. The deploy build runs with
+# GOTOOLCHAIN=local, so this toolchain is the one that compiles the engine.
+#
+# Layout: each version lives in its own directory next to go_install_dir
+# (/usr/local/go-1.27.3), and go_install_dir (/usr/local/go) is a symlink to the
+# active one. A new version is downloaded, checked and moved into place in full
+# before the symlink is switched, so a failure part-way leaves the old toolchain
+# working. The previous version's directory is kept for a quick rollback (set
+# go_version back).
+
+- name: Work out the versioned Go directory
+  set_fact:
+    go_parent_dir: "{{ go_install_dir | dirname }}"
+    go_version_dir: "{{ go_install_dir }}-{{ go_version }}"
+
+# GOTOOLCHAIN=local: run from a directory under a go.mod that names a newer
+# `toolchain`, `go version` would switch to that toolchain and report IT,
+# not the installed one.
+- name: Read the installed Go version
+  command: "{{ go_install_dir }}/bin/go version"
+  environment:
+    GOTOOLCHAIN: local
+  register: go_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# `go version` prints "go version go1.27.3 linux/amd64"; match the whole token
+# so 1.27.3 does not match 1.27.30.
+- name: Decide whether Go needs installing
+  set_fact:
+    go_needs_install: "{{ go_installed.rc != 0 or ('go' ~ go_version ~ ' ') not in (go_installed.stdout | default('')) }}"
+
+# A version directory left from an earlier install (a rollback target) is
+# reused only if its toolchain runs and reports go_version; anything else in
+# that path is removed and the version is installed fresh.
+- name: Check an existing {{ go_version_dir }}
+  command: "{{ go_version_dir }}/bin/go version"
+  environment:
+    GOTOOLCHAIN: local
+  register: go_version_dir_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: go_needs_install
+
+- name: Decide whether {{ go_version_dir }} can be reused
+  set_fact:
+    go_version_dir_ok: "{{ go_version_dir_check.rc == 0 and ('go' ~ go_version ~ ' ') in (go_version_dir_check.stdout | default('')) }}"
+  when: go_needs_install
+
+- name: Remove an unusable {{ go_version_dir }}
+  file:
+    path: "{{ go_version_dir }}"
+    state: absent
+  when: go_needs_install and not go_version_dir_ok
+
+- name: Download and stage Go {{ go_version }}
+  when: go_needs_install and not go_version_dir_ok
+  block:
+    # A private, root-only directory on the same filesystem as the target, so
+    # the final move is a rename and nobody else can touch the staged tree.
+    - name: Create a private staging directory
+      tempfile:
+        state: directory
+        path: "{{ go_parent_dir }}"
+        prefix: ".go-install-"
+      register: go_staging
+
+    # Google publishes the archive's SHA-256 next to it; get_url refuses a
+    # download that does not match.
+    - name: Download Go {{ go_version }}
+      get_url:
+        url: "https://dl.google.com/go/go{{ go_version }}.linux-amd64.tar.gz"
+        dest: "{{ go_staging.path }}/go.tar.gz"
+        checksum: "sha256:https://dl.google.com/go/go{{ go_version }}.linux-amd64.tar.gz.sha256"
+        mode: "0600"
+        timeout: 300
+
+    - name: Extract Go {{ go_version }}
+      unarchive:
+        src: "{{ go_staging.path }}/go.tar.gz"
+        dest: "{{ go_staging.path }}"
+        remote_src: yes
+
+    - name: Check the staged toolchain runs and is {{ go_version }}
+      command: "{{ go_staging.path }}/go/bin/go version"
+      environment:
+        GOTOOLCHAIN: local
+      register: go_staged
+      changed_when: false
+      failed_when: go_staged.rc != 0 or ('go' ~ go_version ~ ' ') not in (go_staged.stdout | default(''))
+
+    # -T: fail rather than nest the tree if the destination somehow exists.
+    - name: Move Go {{ go_version }} into {{ go_version_dir }}
+      command: mv -T "{{ go_staging.path }}/go" "{{ go_version_dir }}"
+
+  always:
+    - name: Remove the staging directory
+      file:
+        path: "{{ go_staging.path }}"
+        state: absent
+      when: go_staging.path is defined
+
+# The switch. First run on a host with a plain /usr/local/go directory (the old
+# setup.yml install) moves that directory aside, keeping it as go-previous, and
+# moves it back if the symlink cannot be put in its place. From then on the
+# symlink is replaced with a rename, which is atomic.
+- name: Point {{ go_install_dir }} at {{ go_version_dir }}
+  shell: |
+    set -eu
+    cd "{{ go_parent_dir }}"
+    name="{{ go_install_dir | basename }}"
+    ln -sfn "{{ go_version_dir | basename }}" "$name.new"
+    if [ -e "$name" ] && [ ! -L "$name" ]; then
+        rm -rf "$name-previous"
+        mv -T "$name" "$name-previous"
+        if ! mv -T "$name.new" "$name"; then
+            mv -T "$name-previous" "$name"
+            rm -f "$name.new"
+            exit 1
+        fi
+    else
+        mv -T "$name.new" "$name"
+    fi
+  when: go_needs_install
+
+- name: Confirm the installed Go version
+  command: "{{ go_install_dir }}/bin/go version"
+  environment:
+    GOTOOLCHAIN: local
+  register: go_confirmed
+  changed_when: false
+  failed_when: go_confirmed.rc != 0 or ('go' ~ go_version ~ ' ') not in (go_confirmed.stdout | default(''))
+  when: go_needs_install
