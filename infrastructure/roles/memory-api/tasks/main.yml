@@ -39,23 +39,25 @@
     mode: "0755"
   when: repo_root != project_root
 
-- name: Install build dependencies in repo
-  command: sfw npm install
-  args:
-    chdir: "{{ repo_root }}/node/api"
+# The admin UI is built in CI; roles/memory-api-go unpacks it into
+# public/admin/dist before this role runs. The repo side used to get a full
+# npm install for the Vite build, and the copy below carried that tree over.
+- name: Remove the old build dependencies in repo
+  file:
+    path: "{{ repo_root }}/node/api/node_modules"
+    state: absent
   when: repo_root != project_root
 
-- name: Build admin dashboard
-  command: npx vite build
-  args:
-    chdir: "{{ repo_root }}/node/api"
-  when: repo_root != project_root
-
+# node_modules is excluded, and an excluded path is not deleted on the
+# receiving side either: project_root keeps its own tree, which the
+# `npm install --omit=dev` below brings up to date.
 - name: Deploy application code
   synchronize:
     src: "{{ repo_root }}/node/api/"
     dest: "{{ project_root }}/"
     delete: yes
+    rsync_opts:
+      - "--exclude=/node_modules"
   delegate_to: "{{ inventory_hostname }}"
   when: repo_root != project_root
 

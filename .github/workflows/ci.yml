@@ -61,8 +61,7 @@ jobs:
           go-version-file: go/server/go.mod
           cache: false
 
-      # The VPS builds with go.mod's `toolchain` version; this line shows in
-      # the log which one CI ran.
+      # Shows in the log which toolchain ran (go.mod's `toolchain` line).
       - name: Go version
         run: go version
 
@@ -104,3 +103,130 @@ jobs:
       # support in the test runner postdates Node 20.
       - name: Test
         run: npm test
+
+  # Per-commit build of what the deploy installs (LLM-904): the Go server
+  # binary and the admin UI's Vite output, published with their checksums as
+  # the prerelease build-<sha>. infrastructure/roles/memory-api-go downloads
+  # the build for the commit it deploys, so the VPS compiles nothing. Runs
+  # only on main, and only once the server and Node tests pass.
+  build-artifacts:
+    name: Build Artifacts
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [go-server, node-api]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # No concurrency group: a group holds one pending job, and a newer one
+    # replaces it, so a commit between two quick merges would get no build.
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # The publish step runs outside the checkout, so gh needs the
+      # repository named.
+      GH_REPO: ${{ github.repository }}
+      TAG: build-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go/server/go.mod
+          cache: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      # Static linux/amd64 binary with no runtime dependencies.
+      - name: Build the Go server
+        working-directory: go/server
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          go version
+          go build -trimpath -o "$RUNNER_TEMP/out/memory-api" ./cmd/memory-api
+
+      # --ignore-scripts: no dependency install script runs in a job that can
+      # write releases.
+      - name: Build the admin UI
+        working-directory: node/api
+        run: |
+          npm ci --ignore-scripts
+          npx vite build
+          tar -czf "$RUNNER_TEMP/out/admin-dist.tar.gz" -C public/admin/dist .
+
+      - name: Write SHA256SUMS
+        working-directory: ${{ runner.temp }}/out
+        run: |
+          sha256sum memory-api admin-dist.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      # Never "latest": deploy-tools.yml reads releases/latest for the client
+      # binaries. gh keeps the release a draft until every file is uploaded,
+      # so a deploy never sees it half-published. A published build is never
+      # replaced, since a deploy may be downloading it: a re-run leaves it
+      # alone and only clears a draft or incomplete release left by a failed
+      # run.
+      - name: Publish the build
+        working-directory: ${{ runner.temp }}/out
+        run: |
+          if state=$(gh release view "$TAG" --json isDraft,assets \
+              --jq 'if .isDraft then "incomplete"
+                    elif ([.assets[].name] | sort) == ["SHA256SUMS", "admin-dist.tar.gz", "memory-api"] then "complete"
+                    else "incomplete" end' 2>view.err); then
+              :
+          elif grep -q "release not found" view.err; then
+              state=missing
+          else
+              cat view.err
+              exit 1
+          fi
+          rm -f view.err
+          if [ "$state" = complete ]; then
+              echo "$TAG is already published; leaving it as it is."
+              exit 0
+          fi
+          if [ "$state" = incomplete ]; then
+              echo "Removing the incomplete release $TAG"
+              gh release delete "$TAG" --cleanup-tag --yes
+          fi
+          gh release create "$TAG" memory-api admin-dist.tar.gz SHA256SUMS \
+              --target "$GITHUB_SHA" \
+              --title "Build ${GITHUB_SHA:0:12}" \
+              --notes "Per-commit server and admin UI build of $GITHUB_SHA. Deployed by infrastructure/roles/memory-api-go." \
+              --prerelease \
+              --latest=false
+
+  # Deletes all but the newest KEEP_BUILDS build releases and their tags. One
+  # at a time, so two prunes do not try to delete the same release. A newer
+  # prune replacing a pending one loses nothing: each prune covers them all.
+  prune-builds:
+    name: Prune Builds
+    needs: build-artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: prune-builds
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # No checkout in this job, so gh needs the repository named.
+      GH_REPO: ${{ github.repository }}
+      KEEP_BUILDS: 20
+    steps:
+      - name: Prune old builds
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '.[] | select(.tag_name | startswith("build-")) | [.created_at, .tag_name] | @tsv' \
+              | sort -r \
+              | tail -n +$((KEEP_BUILDS + 1)) \
+              | cut -f2 \
+              | while read -r old; do
+                  echo "Deleting $old"
+                  gh release delete "$old" --cleanup-tag --yes
+              done

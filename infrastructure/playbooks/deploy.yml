@@ -22,12 +22,11 @@
     - name: Turn off systemd-resolved's LLMNR listener
       include_tasks: ../roles/common/tasks/resolved-llmnr.yml
 
-  # The Go toolchain and the Go server build run before the Node deploy, so a
-  # failed Go build stops the deploy before anything of Node's changes and
-  # before migrations, not halfway through.
+  # memory-api-go downloads the CI build (Go server and admin UI) before the
+  # Node deploy, so a missing or corrupt build stops the deploy before
+  # anything of Node's changes and before migrations, not halfway through.
   roles:
     - role: ../roles/nginx
-    - role: ../roles/golang
     - role: ../roles/memory-api-go
     - role: ../roles/memory-api
 
