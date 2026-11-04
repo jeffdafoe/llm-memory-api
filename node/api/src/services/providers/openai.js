@@ -7,6 +7,7 @@
 // formula in index.js can't account for these without becoming OpenAI-aware.
 
 const { log } = require('../logger');
+const { apiBase } = require('../api-base');
 const { asNumber } = require('./coerce');
 const { normalizeOpenAIChatFinish, normalizeResponsesStatus, isTruncated } = require('./finish');
 
@@ -427,7 +428,7 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
 
     logProvider('api-call', { provider: 'openai', model, endpoint: 'responses', tools: useTools });
 
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await fetch(apiBase('OPENAI_API_BASE') + '/v1/responses', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -610,7 +611,7 @@ function createCall(model, apiKey, configuration) {
 
         logProvider('api-call', { provider: 'openai', model, reasoning, serviceTier: requestedServiceTier, tools: useTools });
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetch(apiBase('OPENAI_API_BASE') + '/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

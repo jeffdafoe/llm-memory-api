@@ -2,6 +2,7 @@
 // Uses the Generative Language API (generativelanguage.googleapis.com).
 
 const { log } = require('../logger');
+const { apiBase } = require('../api-base');
 const { asNumber } = require('./coerce');
 const { normalizeGoogleFinish, isTruncated } = require('./finish');
 
@@ -262,7 +263,7 @@ function createCall(model, apiKey, configuration) {
 
     return async function call(systemPrompt, userMessage, opts) {
         const prompt = flattenPrompt(systemPrompt);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const url = `${apiBase('GOOGLE_API_BASE')}/v1beta/models/${model}:generateContent`;
 
         const contents = (opts && Array.isArray(opts.messages) && opts.messages.length > 0)
             ? translateMessagesToGoogle(opts.messages)

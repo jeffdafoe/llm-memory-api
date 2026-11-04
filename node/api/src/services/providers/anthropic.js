@@ -2,6 +2,7 @@
 // Handles structured system prompts with optional cache_control markers.
 
 const { log } = require('../logger');
+const { apiBase } = require('../api-base');
 const { asNumber } = require('./coerce');
 const { normalizeAnthropicStop, isTruncated } = require('./finish');
 
@@ -520,7 +521,7 @@ function createCall(model, apiKey, configuration) {
 
         logProvider('api-call', { provider: 'anthropic', model, cached: useCache, thinking: !!(body.thinking && body.thinking.type === 'adaptive'), tools: useTools });
 
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await fetch(apiBase('ANTHROPIC_API_BASE') + '/v1/messages', {
             method: 'POST',
             headers,
             body: JSON.stringify(body)

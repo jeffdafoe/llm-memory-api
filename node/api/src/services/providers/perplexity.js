@@ -3,6 +3,7 @@
 // OpenAI-compatible format with additional response fields (citations, search_results).
 
 const { log } = require('../logger');
+const { apiBase } = require('../api-base');
 const { asNumber } = require('./coerce');
 const { normalizeOpenAIChatFinish, isTruncated } = require('./finish');
 
@@ -168,7 +169,7 @@ function createCall(model, apiKey, configuration) {
 
         logProvider('api-call', { provider: 'perplexity', model });
 
-        const response = await fetch('https://api.perplexity.ai/chat/completions', {
+        const response = await fetch(apiBase('PERPLEXITY_API_BASE') + '/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

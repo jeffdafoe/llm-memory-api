@@ -13,6 +13,7 @@
 // the response omits it. The catalog remains the source for display pricing.
 
 const { log } = require('../logger');
+const { apiBase } = require('../api-base');
 const { asNumber, coerceToolArgs } = require('./coerce');
 const { normalizeOpenAIChatFinish, isTruncated } = require('./finish');
 
@@ -36,7 +37,7 @@ async function fetchCatalog() {
     }
 
     try {
-        const response = await fetch('https://openrouter.ai/api/v1/models', {
+        const response = await fetch(apiBase('OPENROUTER_API_BASE') + '/api/v1/models', {
             headers: { 'Accept': 'application/json' }
         });
         if (!response.ok) {
@@ -273,7 +274,7 @@ function createCall(model, apiKey, configuration) {
 
         logProvider('api-call', { provider: 'openrouter', model, tools: useTools });
 
-        var response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        var response = await fetch(apiBase('OPENROUTER_API_BASE') + '/api/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

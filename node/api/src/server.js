@@ -170,6 +170,11 @@ app.use((err, req, res, next) => {
     });
 });
 
+// A bad *_API_BASE value (LLM-906) stops the server here, before it listens,
+// instead of failing every provider call later. Throwing at the top level
+// exits non-zero with the message in the journal.
+require('./services/api-base').checkApiBases();
+
 // Register pgvector types, then load config, then start server
 pool.init().then(() => config.init()).then(() => {
     // Register virtual agent handler (depends on config being loaded)
