@@ -9,6 +9,7 @@
 // Each search invocation costs $5/1K calls on top of token costs.
 
 const { log } = require('../logger');
+const { apiBase } = require('../api-base');
 const { asNumber } = require('./coerce');
 const { normalizeResponsesStatus, isTruncated } = require('./finish');
 
@@ -247,7 +248,7 @@ function createCall(model, apiKey, configuration) {
             search: searchEnabled.length > 0 ? searchEnabled : false
         });
 
-        const response = await fetch('https://api.x.ai/v1/responses', {
+        const response = await fetch(apiBase('XAI_API_BASE') + '/v1/responses', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

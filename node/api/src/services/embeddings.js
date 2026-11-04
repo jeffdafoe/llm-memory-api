@@ -1,10 +1,11 @@
-const OPENAI_URL = 'https://api.openai.com/v1/embeddings';
+const { apiBase } = require('./api-base');
+
 const MODEL = 'text-embedding-3-small';
 
 async function embed(texts) {
     const input = Array.isArray(texts) ? texts : [texts];
 
-    const response = await fetch(OPENAI_URL, {
+    const response = await fetch(apiBase('OPENAI_API_BASE') + '/v1/embeddings', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
