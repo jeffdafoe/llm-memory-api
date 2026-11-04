@@ -550,3 +550,27 @@ func TestLogoutDuringLookupIsNotUndone(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRetryExhaustionFailsClosed(t *testing.T) {
+	mock := testutil.NewMock(t)
+	now := time.Now()
+	hooked := &hookDB{PgxPoolIface: mock}
+	a := &SessionAuth{
+		Sessions: &Sessions{DB: hooked, Now: func() time.Time { return now }},
+		APIKeys:  &APIKeys{DB: hooked},
+	}
+	// Every attempt reads a live session, and every attempt is invalidated.
+	for i := 0; i < lookupAttempts; i++ {
+		mock.ExpectQuery(`token_lookup_hash = \$2`).WithArgs(SessionKindAPI, vectorSHA).
+			WillReturnRows(sessionRow(now.Add(20*time.Hour), 4, "work"))
+	}
+	hooked.onQuery = func() { a.Forget("some-other-token") }
+
+	rec, _, reached := serveV1(a, "Bearer "+vectorToken, "/v1/mail/check")
+	if reached || rec.Code != 403 {
+		t.Fatalf("reached=%v code=%d", reached, rec.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

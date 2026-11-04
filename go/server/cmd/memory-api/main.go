@@ -26,6 +26,7 @@ import (
 const (
 	shutdownGrace   = 10 * time.Second
 	backgroundDrain = 5 * time.Second
+	poolCloseWait   = 5 * time.Second
 )
 
 func main() {
@@ -51,7 +52,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
-	defer pool.Close()
 
 	store := config.NewStore()
 	if err := store.Load(ctx, pool); err != nil {
@@ -86,6 +86,7 @@ func run() error {
 
 	select {
 	case err := <-serveErr:
+		pool.Close()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
@@ -96,13 +97,28 @@ func run() error {
 	// Stop taking requests and let the running ones finish. Past the grace
 	// period the remaining connections are closed, which cancels their
 	// requests' contexts and so their queries. Then the background writes are
-	// drained, so nothing holds a connection when the deferred pool.Close runs.
+	// drained. pool.Close waits for every borrowed connection, so it gets a
+	// deadline too; past it the process exits anyway, and Postgres drops the
+	// connections when the process is gone. Total time is bounded by
+	// shutdownGrace + 2*backgroundDrain + poolCloseWait.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 	err = srv.Shutdown(shutdownCtx)
 	if err != nil {
 		srv.Close()
 	}
-	db.DrainBackground(backgroundDrain)
+	if !db.DrainBackground(backgroundDrain) {
+		fmt.Fprintln(os.Stderr, "memory-api: background writes still running at shutdown")
+	}
+	closed := make(chan struct{})
+	go func() {
+		pool.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(poolCloseWait):
+		fmt.Fprintln(os.Stderr, "memory-api: database pool did not close in time")
+	}
 	return err
 }

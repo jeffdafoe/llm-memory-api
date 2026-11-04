@@ -149,21 +149,70 @@ func readJSONBody(r *http.Request) (json.RawMessage, int, error) {
 	return json.RawMessage(text), 0, nil
 }
 
-// replaceInvalidUTF8 turns each byte that is not part of valid UTF-8 into
-// U+FFFD, as Node's UTF-8 decoding of the body did.
+// replaceInvalidUTF8 replaces invalid UTF-8 with U+FFFD the way Node's
+// decoder does (the WHATWG "maximal subpart" rule): a truncated but otherwise
+// valid sequence becomes one U+FFFD, and a byte that cannot start or continue
+// a sequence (an overlong form, a surrogate, a value above U+10FFFF) becomes
+// one U+FFFD each.
 func replaceInvalidUTF8(b []byte) []byte {
 	if utf8.Valid(b) {
 		return b
 	}
+	const replacement = "\xef\xbf\xbd" // U+FFFD
 	out := make([]byte, 0, len(b)+16)
-	for len(b) > 0 {
-		r, size := utf8.DecodeRune(b)
-		if r == utf8.RuneError && size == 1 {
-			out = append(out, "\uFFFD"...)
-		} else {
-			out = append(out, b[:size]...)
+	i := 0
+	for i < len(b) {
+		lead := b[i]
+		if lead < 0x80 {
+			out = append(out, lead)
+			i++
+			continue
 		}
-		b = b[size:]
+		need, lo, hi := sequenceShape(lead)
+		if need == 0 {
+			out = append(out, replacement...)
+			i++
+			continue
+		}
+		j := i + 1
+		complete := true
+		for k := 0; k < need; k++ {
+			if j >= len(b) || b[j] < lo || b[j] > hi {
+				complete = false
+				break
+			}
+			j++
+			lo, hi = 0x80, 0xBF
+		}
+		if complete {
+			out = append(out, b[i:j]...)
+		} else {
+			out = append(out, replacement...)
+		}
+		i = j
 	}
 	return out
+}
+
+// sequenceShape returns, for a UTF-8 lead byte, how many continuation bytes
+// follow and the allowed range of the first one (the later ones are always
+// 80..BF). need is 0 for a byte that cannot start a sequence.
+func sequenceShape(lead byte) (need int, lo, hi byte) {
+	switch {
+	case lead >= 0xC2 && lead <= 0xDF:
+		return 1, 0x80, 0xBF
+	case lead == 0xE0:
+		return 2, 0xA0, 0xBF
+	case lead == 0xED:
+		return 2, 0x80, 0x9F
+	case lead >= 0xE1 && lead <= 0xEF:
+		return 2, 0x80, 0xBF
+	case lead == 0xF0:
+		return 3, 0x90, 0xBF
+	case lead >= 0xF1 && lead <= 0xF3:
+		return 3, 0x80, 0xBF
+	case lead == 0xF4:
+		return 3, 0x80, 0x8F
+	}
+	return 0, 0, 0
 }

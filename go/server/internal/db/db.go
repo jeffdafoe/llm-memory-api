@@ -54,6 +54,8 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 }
 
 var (
+	backgroundMu     sync.Mutex
+	backgroundClosed bool
 	background       sync.WaitGroup
 	backgroundCtx    context.Context
 	cancelBackground context.CancelFunc
@@ -66,8 +68,15 @@ func init() {
 // Background runs fn on its own goroutine with a fresh, bounded context. Use it
 // for writes whose failure must never affect the request that caused them.
 // The Node server did these as un-awaited promises with `.catch(() => {})`.
+// Once DrainBackground has started, new jobs are dropped.
 func Background(fn func(ctx context.Context)) {
+	backgroundMu.Lock()
+	if backgroundClosed {
+		backgroundMu.Unlock()
+		return
+	}
 	background.Add(1)
+	backgroundMu.Unlock()
 	go func() {
 		defer background.Done()
 		ctx, cancel := context.WithTimeout(backgroundCtx, backgroundTimeout)
@@ -76,11 +85,14 @@ func Background(fn func(ctx context.Context)) {
 	}()
 }
 
-// DrainBackground waits up to timeout for background writes to finish, then
-// cancels the rest and waits for them to return. Call it at shutdown, after
-// the HTTP server stops and before the pool closes, so no write is left
-// holding a connection.
-func DrainBackground(timeout time.Duration) {
+// DrainBackground stops new background jobs, waits up to timeout for the
+// running ones, then cancels them and waits up to timeout again. It reports
+// whether every job returned. Call it at shutdown, before the pool closes.
+func DrainBackground(timeout time.Duration) bool {
+	backgroundMu.Lock()
+	backgroundClosed = true
+	backgroundMu.Unlock()
+
 	done := make(chan struct{})
 	go func() {
 		background.Wait()
@@ -88,9 +100,14 @@ func DrainBackground(timeout time.Duration) {
 	}()
 	select {
 	case <-done:
-		return
+		return true
 	case <-time.After(timeout):
 	}
 	cancelBackground()
-	<-done
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }

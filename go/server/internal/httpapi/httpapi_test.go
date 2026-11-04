@@ -418,3 +418,30 @@ func TestRouteEncodeErrorIsA500(t *testing.T) {
 	}
 	testutil.WaitMet(t, mock)
 }
+
+// Expected outputs are Node's Buffer.toString('utf8') of the same bytes.
+func TestReplaceInvalidUTF8MatchesNode(t *testing.T) {
+	const r = "\xef\xbf\xbd"
+	cases := []struct {
+		name     string
+		in, want string
+	}{
+		{"truncated 3-byte before quote", "\"\xe2\x82\"", "\"" + r + "\""},
+		{"truncated 2-byte", "\"\xc3\"", "\"" + r + "\""},
+		{"truncated 4-byte, 3 of 4", "\"\xf0\x9f\x98\"", "\"" + r + "\""},
+		{"truncated 4-byte, 2 of 4", "\"\xf0\x9f\"", "\"" + r + "\""},
+		{"ff", "\"\xff\"", "\"" + r + "\""},
+		{"overlong 2-byte", "\"\xc0\x80\"", "\"" + r + r + "\""},
+		{"overlong 3-byte", "\"\xe0\x80\x80\"", "\"" + r + r + r + "\""},
+		{"surrogate", "\"\xed\xa0\x80\"", "\"" + r + r + r + "\""},
+		{"above U+10FFFF", "\"\xf4\x90\x80\x80\"", "\"" + r + r + r + r + "\""},
+		{"truncated then ASCII", "\"\xe2\x82A\"", "\"" + r + "A\""},
+		{"lone continuations", "\"\x80\x80\"", "\"" + r + r + "\""},
+		{"valid stays", "\"é😀\"", "\"é😀\""},
+	}
+	for _, tc := range cases {
+		if got := string(replaceInvalidUTF8([]byte(tc.in))); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

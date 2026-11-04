@@ -30,7 +30,8 @@ type cachedSession struct {
 }
 
 // lookupAttempts bounds the retries when invalidations keep landing during a
-// lookup. Past it the result is used for this request but not cached.
+// lookup. Past it the token is refused: every result read may describe a
+// session revoked meanwhile.
 const lookupAttempts = 3
 
 // SessionAuth guards /v1. A bearer token is tried, in order, as an agent API
@@ -75,18 +76,16 @@ func earlier(a, b time.Time) time.Time {
 }
 
 // resolve returns the session for a token, from the cache or the database.
-// A database result is cached only if no Forget ran during the lookup; if
-// one did, the lookup is repeated, because the result may describe a session
-// that was just revoked.
+// A database result is used and cached only if no Forget ran during the
+// lookup; if one did, the lookup is repeated, because the result may describe
+// a session that was just revoked.
 func (a *SessionAuth) resolve(ctx context.Context, token string) (cachedSession, bool) {
 	if entry, ok := a.cache.Get(token); ok {
 		return entry, true
 	}
-	var entry cachedSession
-	var found bool
 	for attempt := 0; attempt < lookupAttempts; attempt++ {
 		gen := a.cache.Generation()
-		entry, found = a.lookup(ctx, token)
+		entry, found := a.lookup(ctx, token)
 		if !found {
 			return cachedSession{}, false
 		}
@@ -94,7 +93,8 @@ func (a *SessionAuth) resolve(ctx context.Context, token string) (cachedSession,
 			return entry, true
 		}
 	}
-	return entry, found
+	a.errorf("Auth: refused a token after %d lookups were each invalidated by a concurrent logout", lookupAttempts)
+	return cachedSession{}, false
 }
 
 // Middleware wraps the /v1 routes. prefix is the mount path ("/v1"); the

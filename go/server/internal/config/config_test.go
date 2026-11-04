@@ -68,6 +68,9 @@ func TestParseNonNegativeFinite(t *testing.T) {
 		{"garbage", "12abc", true, 7, 7},
 		{"infinity", "Infinity", true, 7, 7},
 		{"underscore", "1_000", true, 7, 7},
+		{"hex underscore", "0x1_0", true, 7, 7},
+		{"binary underscore", "0b1_0", true, 7, 7},
+		{"octal underscore", "0o1_0", true, 7, 7},
 		{"hex float", "0x1p3", true, 7, 7},
 	}
 	for _, tc := range cases {
