@@ -89,6 +89,9 @@ var notesListCases = []Scenario{
 	postCase("notes list with deleted", listPath, "agent-a-session", `{"namespace":"agent-a","include_deleted":1}`),
 	postCase("notes list limit as a string", listPath, "agent-a-session", `{"namespace":"agent-a","limit":"2"}`),
 	postCase("notes list limit zero is the default", listPath, "agent-a-session", `{"namespace":"shared","limit":0}`),
+	// node-postgres sends an array as an array literal, which Postgres
+	// refuses as a LIMIT with that text in its message.
+	postCase("notes list limit an array", listPath, "agent-a-session", `{"namespace":"shared","limit":[1]}`),
 	postCase("notes list missing namespace", listPath, "agent-a-session", `{}`),
 	postCase("notes list without read access", listPath, "agent-b-session", `{"namespace":"private-ns"}`),
 	postCase("notes list as a reader", listPath, "agent-b-session", `{"namespace":"shared"}`),

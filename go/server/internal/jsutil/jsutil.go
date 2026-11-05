@@ -7,6 +7,7 @@ package jsutil
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"math/big"
 	"strconv"
@@ -287,6 +288,43 @@ func ToNumber(raw json.RawMessage) float64 {
 		return math.NaN()
 	}
 	return toNumber(v)
+}
+
+// ErrNoPrimitive is V8's TypeError when an object cannot become a
+// primitive: a JSON object with its own "toString" key has no callable
+// toString, and its valueOf returns the object itself.
+var ErrNoPrimitive = errors.New("Cannot convert object to primitive value")
+
+// ToNumberE is ToNumber, plus the TypeError Number() throws for an object
+// with its own "toString" key, as the value or inside arrays (an array
+// becomes a primitive by joining its elements).
+func ToNumberE(raw json.RawMessage) (float64, error) {
+	if raw == nil {
+		return math.NaN(), nil
+	}
+	v, err := decode(raw)
+	if err != nil {
+		return math.NaN(), nil
+	}
+	if !convertible(v) {
+		return math.NaN(), ErrNoPrimitive
+	}
+	return toNumber(v), nil
+}
+
+func convertible(v any) bool {
+	switch x := v.(type) {
+	case map[string]any:
+		_, own := x["toString"]
+		return !own
+	case []any:
+		for _, e := range x {
+			if !convertible(e) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // decode keeps numbers as their JSON text, as JSON.parse reads them, so a
