@@ -35,33 +35,6 @@ func noBodyRead(field string) error {
 	return errors.New("Cannot read properties of undefined (reading '" + field + "')")
 }
 
-// identity is the agent a call acts as. With an agent session (or API key)
-// it is the authenticated agent: a truthy field that does not sanitize to
-// that name is 403 IDENTITY_MISMATCH, written directly as Node did (a value
-// of another JSON type is never equal to it). An admin web session may name
-// any agent. done means the response is written.
-func identity(w http.ResponseWriter, r *http.Request, f httpapi.Fields, field, mismatch string) (name string, done bool, err error) {
-	agent := httpapi.StateOf(r).AuthenticatedAgent
-	if agent == "" {
-		name, err := agentField(f, field)
-		return name, false, err
-	}
-	if f.Truthy(field) {
-		s, isString := f.String(field)
-		if given := sanitize.AgentName(s); !isString || given != "" && given != agent {
-			httpapi.WriteError(w, http.StatusForbidden, "IDENTITY_MISMATCH", mismatch)
-			return "", true, nil
-		}
-	}
-	return agent, false, nil
-}
-
-// agentField is an optional agent-name field, sanitized.
-func agentField(f httpapi.Fields, field string) (string, error) {
-	s, err := f.OptionalString(field)
-	return sanitize.AgentName(s), err
-}
-
 // contentField is an optional free-text field, sanitized.
 func contentField(f httpapi.Fields, field string) (string, error) {
 	s, err := f.OptionalString(field)
@@ -87,11 +60,11 @@ func (rt *Routes) send(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return httpapi.NoBody("in_reply_to")
 	}
-	from, done, err := identity(w, r, f, "from_agent", "from_agent does not match authenticated agent")
+	from, done, err := httpapi.Identity(w, r, f, "from_agent", "from_agent does not match authenticated agent")
 	if done || err != nil {
 		return err
 	}
-	to, err := agentField(f, "to_agent")
+	to, err := httpapi.AgentField(f, "to_agent")
 	if err != nil {
 		return err
 	}
@@ -115,7 +88,7 @@ func (rt *Routes) check(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return noBodyRead("agent")
 	}
-	agent, done, err := identity(w, r, f, "agent", "agent does not match authenticated agent")
+	agent, done, err := httpapi.Identity(w, r, f, "agent", "agent does not match authenticated agent")
 	if done || err != nil {
 		return err
 	}
@@ -131,7 +104,7 @@ func (rt *Routes) receive(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return noBodyRead("agent")
 	}
-	agent, done, err := identity(w, r, f, "agent", "agent does not match authenticated agent")
+	agent, done, err := httpapi.Identity(w, r, f, "agent", "agent does not match authenticated agent")
 	if done || err != nil {
 		return err
 	}
@@ -147,7 +120,7 @@ func (rt *Routes) edit(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return httpapi.NoBody("id")
 	}
-	from, done, err := identity(w, r, f, "from_agent", "from_agent does not match authenticated agent")
+	from, done, err := httpapi.Identity(w, r, f, "from_agent", "from_agent does not match authenticated agent")
 	if done || err != nil {
 		return err
 	}
@@ -171,7 +144,7 @@ func (rt *Routes) unsend(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return httpapi.NoBody("id")
 	}
-	from, done, err := identity(w, r, f, "from_agent", "from_agent does not match authenticated agent")
+	from, done, err := httpapi.Identity(w, r, f, "from_agent", "from_agent does not match authenticated agent")
 	if done || err != nil {
 		return err
 	}
@@ -191,7 +164,7 @@ func (rt *Routes) ack(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return noBodyRead("agent")
 	}
-	agent, done, err := identity(w, r, f, "agent", "agent does not match authenticated agent")
+	agent, done, err := httpapi.Identity(w, r, f, "agent", "agent does not match authenticated agent")
 	if done || err != nil {
 		return err
 	}
@@ -237,11 +210,11 @@ func listArgs(w http.ResponseWriter, r *http.Request, peerField string) (agent s
 	if !ok {
 		return "", opts, true, noBodyRead("agent")
 	}
-	agent, done, err = identity(w, r, f, "agent", "agent does not match authenticated agent")
+	agent, done, err = httpapi.Identity(w, r, f, "agent", "agent does not match authenticated agent")
 	if done || err != nil {
 		return "", opts, true, err
 	}
-	peer, err := agentField(f, peerField)
+	peer, err := httpapi.AgentField(f, peerField)
 	if err != nil {
 		return "", opts, true, err
 	}

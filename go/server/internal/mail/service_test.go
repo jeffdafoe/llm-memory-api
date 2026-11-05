@@ -359,7 +359,7 @@ func TestIdentity(t *testing.T) {
 		r := request(c.body, c.agent)
 		f, _ := httpapi.BodyFields(r)
 		rec := httptest.NewRecorder()
-		got, done, err := identity(rec, r, f, "agent", "agent does not match authenticated agent")
+		got, done, err := httpapi.Identity(rec, r, f, "agent", "agent does not match authenticated agent")
 		switch {
 		case c.forbidden:
 			if !done || rec.Code != 403 || rec.Body.String() != `{"error":{"code":"IDENTITY_MISMATCH","message":"agent does not match authenticated agent"}}` {

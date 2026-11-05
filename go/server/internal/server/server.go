@@ -9,6 +9,7 @@ import (
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
@@ -19,6 +20,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
 )
 
@@ -40,6 +42,8 @@ type Services struct {
 	Memory      *memory.Service
 	Notes       *notes.Service
 	Mail        *mail.Service
+	System      *system.Handler
+	Chat        *chat.Service
 }
 
 // NewServices wires the shared services over one database and config store.
@@ -52,6 +56,9 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sessions := &auth.Sessions{DB: conn}
 	keys := &auth.APIKeys{DB: conn, Warnf: func(format string, args ...any) { log.Errorf(format, args...) }}
 	mem := &memory.Service{DB: conn, Config: store, Embedder: &memory.OpenAI{}, Errors: recorder}
+	agents := virtualagent.Seam{}
+	sysHandler := &system.Handler{Log: log}
+	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -75,7 +82,12 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 			DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
 			Enricher: &notes.GatedEnricher{Config: store},
 		},
-		Mail: &mail.Service{DB: conn, Actors: actorCache, Log: log, Agents: virtualagent.Seam{}},
+		Mail:   &mail.Service{DB: conn, Actors: actorCache, Log: log, Agents: agents},
+		System: sysHandler,
+		Chat: &chat.Service{
+			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
+			Notifier: &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler},
+		},
 	}
 }
 
@@ -106,6 +118,7 @@ func Handler(s *Services) http.Handler {
 	(&memory.Routes{Service: s.Memory, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	(&notes.Routes{Service: s.Notes, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	(&mail.Routes{Service: s.Mail, Router: s.Router}).Register(v1)
+	(&chat.Routes{Service: s.Chat, Router: s.Router}).Register(v1)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
 
 	// The top level is decided on the raw path, as Express matches app.get
