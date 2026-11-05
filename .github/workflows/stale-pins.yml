@@ -1,0 +1,55 @@
+name: Stale version pins
+
+# Weekly check for pins Dependabot does not watch: the Go toolchain, the
+# PostgreSQL and Node.js major lines (near end of life), Dependabot PRs that
+# wait for a person, and Go modules with a newer major path (LLM-923). The
+# logic and the list of pins live in .github/scripts/stale-pins.sh.
+#
+# Scheduled and manual runs on the default branch keep one open issue labelled
+# stale-pins: they open it, rewrite its body with the current list, and close it
+# when every pin is current. Any other run (a pull request that edits the check,
+# or a manual run on another branch) is report-only, so pins from a branch can
+# never rewrite or close the issue.
+
+on:
+  schedule:
+    # Mondays, 13:17 UTC.
+    - cron: '17 13 * * 1'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/stale-pins.yml
+      - .github/scripts/stale-pins.sh
+
+# issues: write keeps the stale-pins issue and its label. pull-requests: read
+# lists the waiting Dependabot PRs. Nothing in this workflow writes code.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+# Two runs at once could both find no open issue and both open one.
+concurrency:
+  group: stale-pins
+  cancel-in-progress: false
+
+jobs:
+  stale-pins:
+    name: Stale version pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check pins (report only)
+        if: github.event_name == 'pull_request' || github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/stale-pins.sh report
+
+      - name: Check pins and update the issue
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/stale-pins.sh issue
