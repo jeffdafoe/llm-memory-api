@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"net/http"
-	"path"
 	"strings"
 )
 
@@ -16,33 +15,4 @@ func RawPath(r *http.Request) string {
 		return p
 	}
 	return r.URL.EscapedPath()
-}
-
-// isClean reports whether ServeMux would serve the escaped path p as is.
-// ServeMux redirects any other path to its cleaned form ("//a/./b" to
-// "/a/b"), keeping a trailing slash; this is the same cleaning rule, applied
-// to the same input (URL.EscapedPath, so "%2e%2e" is not a dot segment).
-func isClean(p string) bool {
-	if p == "" || p[0] != '/' {
-		return false
-	}
-	np := path.Clean(p)
-	if p[len(p)-1] == '/' && np != "/" {
-		np += "/"
-	}
-	return np == p
-}
-
-// Unclean sends a request whose path ServeMux would redirect to fallback,
-// and every other request to next. Express never cleans or redirects a path:
-// "//a" or "/v1/../x" simply matches no route. fallback gives the answer an
-// unmatched path gets at that level.
-func Unclean(next, fallback http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !isClean(r.URL.EscapedPath()) {
-			fallback.ServeHTTP(w, r)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
