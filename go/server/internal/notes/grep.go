@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsregex"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/pgbind"
 )
 
 // GrepMaxContext caps the context lines per side of a match.
@@ -94,7 +95,7 @@ func (s *Service) Grep(ctx context.Context, in GrepInput) ([]GrepResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	limit := orDefault(in.Limit, 20)
+	limit := pgbind.OrDefault(in.Limit, 20)
 
 	var match func(string) (bool, error)
 	sqlPattern, op := "%"+in.Pattern+"%", "ILIKE"

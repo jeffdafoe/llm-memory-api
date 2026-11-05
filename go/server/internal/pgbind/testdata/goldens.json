@@ -1,0 +1,130 @@
+[
+  {
+    "input": "\"plain\"",
+    "prepared": "plain"
+  },
+  {
+    "input": "\"\"",
+    "prepared": ""
+  },
+  {
+    "input": "\"with \\\"quotes\\\" and \\\\ backslash\"",
+    "prepared": "with \"quotes\" and \\ backslash"
+  },
+  {
+    "input": "\"ünï 😀\"",
+    "prepared": "ünï 😀"
+  },
+  {
+    "input": "0",
+    "prepared": "0"
+  },
+  {
+    "input": "-0",
+    "prepared": "0"
+  },
+  {
+    "input": "7",
+    "prepared": "7"
+  },
+  {
+    "input": "-12",
+    "prepared": "-12"
+  },
+  {
+    "input": "2.5",
+    "prepared": "2.5"
+  },
+  {
+    "input": "1e21",
+    "prepared": "1e+21"
+  },
+  {
+    "input": "1e-7",
+    "prepared": "1e-7"
+  },
+  {
+    "input": "0.1",
+    "prepared": "0.1"
+  },
+  {
+    "input": "123456789012345678901",
+    "prepared": "123456789012345680000"
+  },
+  {
+    "input": "1.0",
+    "prepared": "1"
+  },
+  {
+    "input": "true",
+    "prepared": "true"
+  },
+  {
+    "input": "false",
+    "prepared": "false"
+  },
+  {
+    "input": "null",
+    "prepared": null
+  },
+  {
+    "input": "{}",
+    "prepared": "{}"
+  },
+  {
+    "input": "{\"b\":1,\"a\":[1,\"x\"]}",
+    "prepared": "{\"b\":1,\"a\":[1,\"x\"]}"
+  },
+  {
+    "input": "{\"2\":\"x\",\"1\":\"y\",\"k\":null}",
+    "prepared": "{\"1\":\"y\",\"2\":\"x\",\"k\":null}"
+  },
+  {
+    "input": "[]",
+    "prepared": "{}"
+  },
+  {
+    "input": "[1,2]",
+    "prepared": "{\"1\",\"2\"}"
+  },
+  {
+    "input": "[\"a\",\"b\"]",
+    "prepared": "{\"a\",\"b\"}"
+  },
+  {
+    "input": "[null]",
+    "prepared": "{NULL}"
+  },
+  {
+    "input": "[1,null,\"x\"]",
+    "prepared": "{\"1\",NULL,\"x\"}"
+  },
+  {
+    "input": "[\"q\\\"uote\",\"back\\\\slash\"]",
+    "prepared": "{\"q\\\"uote\",\"back\\\\slash\"}"
+  },
+  {
+    "input": "[[1,2],[3]]",
+    "prepared": "{{\"1\",\"2\"},{\"3\"}}"
+  },
+  {
+    "input": "[{\"a\":1}]",
+    "prepared": "{\"{\\\"a\\\":1}\"}"
+  },
+  {
+    "input": "[true,false]",
+    "prepared": "{\"true\",\"false\"}"
+  },
+  {
+    "input": "[-0,1e21]",
+    "prepared": "{\"0\",\"1e+21\"}"
+  },
+  {
+    "input": "[\"{}\"]",
+    "prepared": "{\"{}\"}"
+  },
+  {
+    "input": "[[]]",
+    "prepared": "{{}}"
+  }
+]

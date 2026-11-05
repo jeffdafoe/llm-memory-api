@@ -34,6 +34,14 @@ var multisetTables = map[string][]string{
 	"error_log": {"id", "error_detail"},
 }
 
+// tableOrder replaces primary-key order for tables whose key is random
+// (gen_random_uuid), which would order new rows differently on the two
+// copies. The servers write them in request order, so the creation time
+// orders them the same on both sides.
+var tableOrder = map[string]string{
+	"mail": "sent_at, subject, body",
+}
+
 // Cluster is the Postgres server the harness runs on, reached as a superuser
 // through CONTRACT_PG_URL. All databases of one test run, and its app role,
 // share a random prefix, so two runs on one cluster do not collide.
@@ -242,7 +250,9 @@ func readTables(ctx context.Context, conn *pgx.Conn) ([]tableInfo, error) {
 				t.columns = append(t.columns, col)
 			}
 		}
-		if len(pk) > 0 && len(drop) == 0 {
+		if order, ok := tableOrder[name]; ok {
+			t.orderBy = order
+		} else if len(pk) > 0 && len(drop) == 0 {
 			quoted := make([]string, len(pk))
 			for i, col := range pk {
 				quoted[i] = pgx.Identifier{col}.Sanitize()

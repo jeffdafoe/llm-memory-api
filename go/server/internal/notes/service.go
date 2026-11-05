@@ -24,6 +24,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/pgbind"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 )
 
@@ -363,7 +364,7 @@ func (s *Service) Save(ctx context.Context, in SaveInput) (SavedNote, error) {
 // 10 KB serialized (JSON.stringify of the value, in UTF-16 units). A falsy
 // value is no metadata.
 func metadataJSON(raw json.RawMessage) (*string, error) {
-	if !truthy(raw) {
+	if !pgbind.Truthy(raw) {
 		return nil, nil
 	}
 	raw = bytes.TrimSpace(raw)
@@ -383,18 +384,6 @@ func metadataJSON(raw json.RawMessage) (*string, error) {
 		return nil, badRequest("metadata exceeds 10KB limit")
 	}
 	return &serialized, nil
-}
-
-// truthy is JavaScript truthiness for a decoded JSON value.
-func truthy(raw json.RawMessage) bool {
-	raw = bytes.TrimSpace(raw)
-	switch {
-	case len(raw) == 0, string(raw) == "null", string(raw) == "false", string(raw) == `""`:
-		return false
-	case raw[0] == '-' || raw[0] >= '0' && raw[0] <= '9':
-		return jsutil.ToNumber(raw) != 0
-	}
-	return true
 }
 
 // cleanExtension keeps an extension of the form ".abc" (dot, lowercase
@@ -425,33 +414,6 @@ type ListInput struct {
 	Limit, Offset  json.RawMessage
 	Prefix         string
 	IncludeDeleted bool
-}
-
-// bindValue is what node-postgres binds for a JSON value used as a query
-// parameter: a number as its JS text, a string as is, anything else as its
-// text, which Postgres refuses for a LIMIT or OFFSET.
-func bindValue(raw json.RawMessage) any {
-	raw = bytes.TrimSpace(raw)
-	switch {
-	case len(raw) == 0:
-		return nil
-	case raw[0] == '"':
-		var s string
-		json.Unmarshal(raw, &s)
-		return s
-	case raw[0] == '-' || raw[0] >= '0' && raw[0] <= '9':
-		return jsutil.Num(jsutil.ToNumber(raw))
-	}
-	str, _ := jsutil.Stringify(raw)
-	return str
-}
-
-// orDefault is `value || fallback` bound as node-postgres bound it.
-func orDefault(raw json.RawMessage, fallback int) any {
-	if truthy(raw) {
-		return bindValue(raw)
-	}
-	return fallback
 }
 
 // ListedNote is one row of a listing.
@@ -493,7 +455,7 @@ func (s *Service) List(ctx context.Context, in ListInput) (any, error) {
             FROM documents d
             LEFT JOIN actors ac ON ac.id = d.created_by_actor_id`
 	var sql string
-	params := []any{in.Namespace, orDefault(in.Limit, 50), orDefault(in.Offset, 0)}
+	params := []any{in.Namespace, pgbind.OrDefault(in.Limit, 50), pgbind.OrDefault(in.Offset, 0)}
 	if in.Prefix != "" {
 		sql = cols + `
             WHERE d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4)` + deletedFilter + `
