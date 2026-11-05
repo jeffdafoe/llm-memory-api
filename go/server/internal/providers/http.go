@@ -130,16 +130,23 @@ func fetchHeaders(headers []header) (http.Header, error) {
 }
 
 // fetchRedirects is fetch's redirect rule on top of the client's own: at
-// most 20 redirects, and Authorization dropped when a redirect leaves the
-// original origin (scheme, host and port). Go's default would send it on to
-// another port or a subdomain.
+// most 20 redirects, and Authorization dropped for good once any hop has
+// changed origin (scheme, host and port). Go copies the first request's
+// headers onto every hop and its default would send Authorization on to
+// another port or a subdomain, so each hop of the chain is checked.
 func fetchRedirects(next func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 20 {
+		// via holds the first request and each redirect so far, so this is
+		// the len(via)-th redirect.
+		if len(via) > 20 {
 			return errors.New("redirect count exceeded")
 		}
-		if origin(req.URL) != origin(via[0].URL) {
-			req.Header.Del("Authorization")
+		chain := append(append([]*http.Request(nil), via...), req)
+		for i := 1; i < len(chain); i++ {
+			if origin(chain[i].URL) != origin(chain[i-1].URL) {
+				req.Header.Del("Authorization")
+				break
+			}
 		}
 		if next != nil {
 			return next(req, via)

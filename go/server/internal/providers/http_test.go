@@ -3,9 +3,11 @@ package providers
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -54,6 +56,56 @@ func TestRedirectDropsAuthorizationAcrossOrigins(t *testing.T) {
 	// The shared client keeps its own policy.
 	if http.DefaultClient.CheckRedirect != nil {
 		t.Error("send changed the default client")
+	}
+}
+
+// Once a chain leaves the origin, Authorization stays gone even when it
+// comes back (A → B → A).
+func TestRedirectBackToOriginKeepsAuthorizationDropped(t *testing.T) {
+	var got []string
+	var a *httptest.Server
+	b := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, "B auth="+r.Header.Get("Authorization"))
+		http.Redirect(w, r, a.URL+"/back", http.StatusTemporaryRedirect)
+	}))
+	defer b.Close()
+	a = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, "A"+r.URL.Path+" auth="+r.Header.Get("Authorization"))
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, b.URL+"/hop", http.StatusTemporaryRedirect)
+			return
+		}
+		w.Write([]byte("{}"))
+	}))
+	defer a.Close()
+	body := "{}"
+	if _, err := (&Providers{}).send(context.Background(), http.MethodPost, a.URL+"/start", []header{{"Authorization", "Bearer secret"}}, &body); err != nil {
+		t.Fatal(err)
+	}
+	want := "A/start auth=Bearer secret|B auth=|A/back auth="
+	if strings.Join(got, "|") != want {
+		t.Errorf("got %q, want %q", strings.Join(got, "|"), want)
+	}
+}
+
+// fetch follows 20 redirects and fails on the 21st.
+func TestRedirectLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var n int
+		fmt.Sscanf(strings.TrimPrefix(r.URL.Path, "/"), "%d", &n)
+		if n > 0 {
+			http.Redirect(w, r, "/"+strconv.Itoa(n-1), http.StatusFound)
+			return
+		}
+		w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+	p := &Providers{}
+	if resp, err := p.send(context.Background(), http.MethodGet, srv.URL+"/20", nil, nil); err != nil || resp.status != 200 {
+		t.Errorf("20 redirects: %v", err)
+	}
+	if _, err := p.send(context.Background(), http.MethodGet, srv.URL+"/21", nil, nil); err == nil || !strings.Contains(err.Error(), "redirect count exceeded") {
+		t.Errorf("21 redirects: %v", err)
 	}
 }
 
