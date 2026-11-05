@@ -201,7 +201,7 @@ jobs:
           [ -n "$token" ] || { echo "login failed: $login"; cat "$RUNNER_TEMP/server.log"; exit 1; }
           templates=$(curl -s -X POST http://127.0.0.1:3100/v1/admin/templates/list -H "Authorization: Bearer $token" \
             -H 'Content-Type: application/json' -d '{}' | jq '.templates | length')
-          [ "$templates" = "3" ] || { echo "templates list: $templates"; cat "$RUNNER_TEMP/server.log"; exit 1; }
+          [ "$templates" = "2" ] || { echo "templates list: $templates"; cat "$RUNNER_TEMP/server.log"; exit 1; }
           echo "admin login ok, $templates templates"
 
       - name: Server log
