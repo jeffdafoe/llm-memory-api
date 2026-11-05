@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pashagolub/pgxmock/v5"
+	"github.com/pashagolub/pgxmock/v6"
 )
 
 // NewMock returns a pgxmock pool whose expectations may be met in any order.

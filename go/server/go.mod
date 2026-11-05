@@ -6,7 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/jackc/pgx/v5 v5.12.0
-	github.com/pashagolub/pgxmock/v5 v5.2.0
+	github.com/pashagolub/pgxmock/v6 v6.0.0-beta2
 	github.com/pgvector/pgvector-go/pgx v0.4.1
 	golang.org/x/text v0.43.0
 )

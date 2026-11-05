@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pashagolub/pgxmock/v5"
+	"github.com/pashagolub/pgxmock/v6"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
