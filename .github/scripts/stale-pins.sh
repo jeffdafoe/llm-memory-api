@@ -107,18 +107,18 @@ check_go_toolchain() {
         "go/client/go.mod=$(sed -n 's/^toolchain go//p' "$ROOT/go/client/go.mod")"
 }
 
-# file_pins NAME FILE KEY FILTER VALUE_RE GROUP
+# file_pins NAME FILE KEY VALUE_RE GROUP
 # Sets FILE_PINS to one "FILE:LINE=major" pin for each active (not commented)
-# YAML line "KEY: value" in FILE whose value matches the ERE FILTER (empty
-# FILTER takes every KEY line). Every such value must match VALUE_RE, and
+# YAML line "KEY: value" in FILE. Every such value must match VALUE_RE, and
 # capture group GROUP is the major. A value that does not match (an expression,
-# a new spelling) is an error, so one job cannot drop out of the check while the
-# others keep it green. No KEY line at all is an error too: the pin moved or was
-# renamed. It fills a global instead of printing, because error() must run in
-# this shell, not in a command substitution.
+# a new spelling, an unrelated value under the same key) is an error, so one job
+# cannot drop out of the check while the others keep it green. No KEY line at
+# all is an error too: the pin moved or was renamed. It fills a global instead
+# of printing, because error() must run in this shell, not in a command
+# substitution.
 FILE_PINS=()
 file_pins() {
-    local name="$1" file="$2" key="$3" filter="$4" value_re="$5" group="$6"
+    local name="$1" file="$2" key="$3" value_re="$4" group="$5"
     local lines rc=0 entry number value found=0
     FILE_PINS=()
     if [ ! -r "$ROOT/$file" ]; then
@@ -143,9 +143,6 @@ file_pins() {
         value="${value%"${value##*[![:space:]]}"}"
         if [[ "$value" =~ ^\'(.*)\'$ ]] || [[ "$value" =~ ^\"(.*)\"$ ]]; then
             value="${BASH_REMATCH[1]}"
-        fi
-        if [ -n "$filter" ] && ! [[ "$value" =~ $filter ]]; then
-            continue
         fi
         found=1
         if [[ "$value" =~ $value_re ]]; then
@@ -193,9 +190,11 @@ check_eol() {
 }
 
 check_postgres() {
-    # The CI service containers run pgvector/pgvector:pgNN. Any image that
-    # names Postgres must have a readable major.
-    file_pins "PostgreSQL" .github/workflows/ci.yml image 'pgvector|postgres' \
+    # The only images in ci.yml are the Postgres service containers
+    # (pgvector/pgvector:pgNN), so every image line must name a Postgres
+    # major. A new, unrelated image makes this an error until it is handled
+    # here, which is louder than skipping a Postgres job by mistake.
+    file_pins "PostgreSQL" .github/workflows/ci.yml image \
         '^(pgvector/pgvector:pg|postgres:)([0-9]+)([.-].*)?$' 2
     check_eol postgresql "PostgreSQL" \
         "infrastructure/group_vars/all.yml postgresql_version=$(yaml_var infrastructure/group_vars/all.yml postgresql_version)" \
@@ -203,7 +202,7 @@ check_postgres() {
 }
 
 check_node() {
-    file_pins "Node.js" .github/workflows/ci.yml node-version '' '^([0-9]+)(\.[0-9x]+)*$' 1
+    file_pins "Node.js" .github/workflows/ci.yml node-version '^([0-9]+)(\.[0-9x]+)*$' 1
     check_eol nodejs "Node.js" \
         "infrastructure/group_vars/all.yml nodejs_version=$(yaml_var infrastructure/group_vars/all.yml nodejs_version)" \
         "${FILE_PINS[@]}"
@@ -307,7 +306,9 @@ report="$(mktemp)"
 {
     echo "## $ISSUE_TITLE"
     echo
-    if [ "${#findings[@]}" -eq 0 ]; then
+    if [ "${#findings[@]}" -eq 0 ] && [ "${#errors[@]}" -gt 0 ]; then
+        echo "No stale pins in the checks that completed."
+    elif [ "${#findings[@]}" -eq 0 ]; then
         echo "All pins are current."
     else
         echo "These pins are behind and need a person to update them."
