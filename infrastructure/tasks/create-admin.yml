@@ -1,9 +1,12 @@
 ---
+# '[object Promise]' is what create-user.js stored before it awaited the async
+# hash (LLM-908): no password matches it, so such a user counts as having none,
+# and the step below rewrites its hash from admin_password.
 - name: Check if admin user already exists
   become_user: postgres
   postgresql_query:
     db: "{{ database_name }}"
-    query: "SELECT id FROM actors WHERE name = %s AND password_hash IS NOT NULL"
+    query: "SELECT id FROM actors WHERE name = %s AND password_hash IS NOT NULL AND password_hash <> '[object Promise]'"
     positional_args:
       - "{{ admin_username }}"
   register: admin_exists
