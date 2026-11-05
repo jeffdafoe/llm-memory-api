@@ -150,7 +150,8 @@ func translateMessagesToAnthropic(messages []*object) ([]*object, error) {
 		}
 	}
 	for _, msg := range messages {
-		role := msg.Value("role").(string)
+		// SanitizeOpts kept only messages with a string role.
+		role, _ := msg.Value("role").(string)
 		if role == "tool" {
 			content := msg.Value("content")
 			if !isString(content) {

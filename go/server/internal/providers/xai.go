@@ -41,7 +41,7 @@ var xaiAdapter = &adapter{
 
 // xaiComputeCost finds the model by id or by API id (the call has the API
 // id). Cached input is subtracted without a floor, as in Node.
-func xaiComputeCost(model string, promptTokens, cachedTokens, completionTokens any) *float64 {
+func xaiComputeCost(model string, promptTokens, cachedTokens, completionTokens any) (*float64, error) {
 	entry := xaiModels.Get(model)
 	if entry == nil {
 		for _, m := range xaiModels {
@@ -52,28 +52,32 @@ func xaiComputeCost(model string, promptTokens, cachedTokens, completionTokens a
 		}
 	}
 	if entry == nil || entry.Pricing == nil {
-		return nil
+		return nil, nil
 	}
 	pricing := entry.Pricing
-	cached := toNumber(cachedTokens)
-	uncached := toNumber(promptTokens) - cached
+	n := &numbers{}
+	cached := n.of(cachedTokens)
+	uncached := n.of(promptTokens) - cached
 	cost := 0.0
 	cost += uncached * pricing.rate(pricing.Input) / 1_000_000
 	cost += cached * pricing.rate(pricing.CacheRead) / 1_000_000
-	cost += toNumber(completionTokens) * pricing.rate(pricing.Output) / 1_000_000
-	return &cost
+	cost += n.of(completionTokens) * pricing.rate(pricing.Output) / 1_000_000
+	if n.err != nil {
+		return nil, n.err
+	}
+	return &cost, nil
 }
 
-// iterate is for...of over v: an array's elements or a string's code units.
+// iterate is for...of over v: an array's elements or a string's code
+// points.
 func iterate(v any, expr string) ([]any, error) {
 	switch x := v.(type) {
 	case []any:
 		return x, nil
 	case string:
-		units := utf16Units(x)
-		out := make([]any, len(units))
-		for i, u := range units {
-			out[i] = u
+		var out []any
+		for _, r := range x {
+			out = append(out, string(r))
 		}
 		return out, nil
 	}
@@ -201,7 +205,12 @@ func xaiCreateCall(p *Providers, model, apiKey string, configuration any) callFu
 		citations, _ := get(data, "citations")
 		if truthy(citations) {
 			length, _ := get(citations, "length")
-			if toNumber(length) > 0 {
+			n := &numbers{}
+			positive := n.of(length) > 0
+			if n.err != nil {
+				return nil, n.err
+			}
+			if positive {
 				list, ok := arr(citations)
 				if !ok {
 					return nil, notFunction("data.citations.map")
@@ -238,9 +247,16 @@ func xaiCreateCall(p *Providers, model, apiKey string, configuration any) callFu
 		promptTokens := or(optional(usageData, "input_tokens"), 0.0)
 		completionTokens := or(optional(usageData, "output_tokens"), 0.0)
 		cachedTokens := or(or(optional(usageData, "cache_read_input_tokens"), optional(optional(usageData, "input_tokens_details"), "cached_tokens")), 0.0)
-		uncached := maxNum(0, toNumber(promptTokens)-toNumber(cachedTokens))
+		n := &numbers{}
+		uncached := maxNum(0, n.of(promptTokens)-n.of(cachedTokens))
+		if n.err != nil {
+			return nil, n.err
+		}
 		usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cachedTokens}
-		cost := xaiComputeCost(model, promptTokens, cachedTokens, completionTokens)
+		cost, err := xaiComputeCost(model, promptTokens, cachedTokens, completionTokens)
+		if err != nil {
+			return nil, err
+		}
 		usage.Cost = cost
 
 		status, _ := get(data, "status")

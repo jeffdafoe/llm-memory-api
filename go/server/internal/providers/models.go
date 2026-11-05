@@ -65,6 +65,39 @@ type Capability struct {
 // Capabilities are a model's controls in order.
 type Capabilities []Capability
 
+// clone is a deep copy, so a caller cannot change the shared registry.
+func (c Capabilities) clone() Capabilities {
+	out := make(Capabilities, len(c))
+	for i, cap := range c {
+		cap.Min = copyFloat(cap.Min)
+		cap.Max = copyFloat(cap.Max)
+		cap.Step = copyFloat(cap.Step)
+		cap.Options = append([]string(nil), cap.Options...)
+		if cap.DisabledWhen != nil {
+			d := *cap.DisabledWhen
+			cap.DisabledWhen = &d
+		}
+		out[i] = cap
+	}
+	return out
+}
+
+func copyFloat(f *float64) *float64 {
+	if f == nil {
+		return nil
+	}
+	v := *f
+	return &v
+}
+
+// clone is a deep copy.
+func (p *Pricing) clone() *Pricing {
+	if p == nil {
+		return nil
+	}
+	return &Pricing{Input: copyFloat(p.Input), Output: copyFloat(p.Output), CacheWrite: copyFloat(p.CacheWrite), CacheRead: copyFloat(p.CacheRead), Request: copyFloat(p.Request)}
+}
+
 func (c Capabilities) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteByte('{')

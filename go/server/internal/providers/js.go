@@ -117,10 +117,18 @@ func stringifyValue(v any) any {
 	return jsutil.Marshal(v)
 }
 
-// toNumber is Number(v) where the value came from a provider response and
-// is used in arithmetic.
-func toNumber(v any) float64 {
-	f, _ := jsutil.ValueNumber(v)
+// numbers converts values for arithmetic as JavaScript's operators do,
+// keeping the first TypeError (an object with its own toString member); the
+// caller checks err where Node's expression would have thrown.
+type numbers struct {
+	err error
+}
+
+func (n *numbers) of(v any) float64 {
+	f, err := jsutil.ValueNumber(v)
+	if err != nil && n.err == nil {
+		n.err = err
+	}
 	return f
 }
 

@@ -243,6 +243,11 @@ add({ name: 'anthropic cache, null last block', provider: 'anthropic', model: 'c
 add({ name: 'anthropic turn context after assistant', provider: 'anthropic', model: 'claude-opus-5-5', conf: {}, opts: { messages: [{ role: 'user', content: 'p' }, { role: 'assistant', content: 'said' }], turnContext: 'ctx' }, responses: [anthropicReply] });
 add({ name: 'anthropic turn context object content', provider: 'anthropic', model: 'claude-opus-5-5', conf: {}, opts: { messages: [{ role: 'user', content: { odd: true } }], turnContext: 'ctx' }, responses: [anthropicReply] });
 add({ name: 'anthropic custom headers', provider: 'anthropic', model: 'claude-opus-4-6', conf: { headers: { 'anthropic-beta': 'x', 'x-api-key': 'override', 'Content-type': 'text/plain', n: 5 } }, responses: [anthropicReply] });
+add({ name: 'anthropic header above latin-1', provider: 'anthropic', model: 'claude-opus-4-6', conf: { headers: { 'x-ok': 'café', 'x-snow': 'a ☃' } }, responses: [anthropicReply] });
+add({ name: 'anthropic header astral', provider: 'anthropic', model: 'claude-opus-4-6', conf: { headers: { 'x-e': '😀' } }, responses: [anthropicReply] });
+add({ name: 'anthropic bad header name', provider: 'anthropic', model: 'claude-opus-4-6', conf: { headers: { 'bad name': 'v' } }, responses: [anthropicReply] });
+add({ name: 'anthropic bad header value', provider: 'anthropic', model: 'claude-opus-4-6', conf: { headers: { 'x-a': ' a\nb ' } }, responses: [anthropicReply] });
+add({ name: 'anthropic header record converted first', provider: 'anthropic', model: 'claude-opus-4-6', conf: { headers: { 'bad name': 'v', 'x-b': '☃' } }, responses: [anthropicReply] });
 add({ name: 'anthropic headers string', provider: 'anthropic', model: 'claude-opus-4-6', conf: { headers: 'ab' }, responses: [anthropicReply] });
 add({ name: 'anthropic assistant odd tool calls', provider: 'anthropic', model: 'claude-opus-4-6', conf: {}, opts: { messages: [{ role: 'user', content: 'p' }, { role: 'assistant', content: '', tool_calls: [{ id: 1, function: { name: 'n', arguments: '[1,2]' } }, { function: { name: 'm', arguments: 'bad' } }, { function: { name: 'k', arguments: 7 } }, { function: 'str' }, 5, { function: { name: 'o', arguments: [1] } }] }, { role: 'assistant' }, { role: 'tool', content: null }] }, responses: [anthropicReply] });
 add({ name: 'anthropic null tool call', provider: 'anthropic', model: 'claude-opus-4-6', conf: {}, opts: { messages: [{ role: 'assistant', tool_calls: [null] }] }, responses: [anthropicReply] });
@@ -281,6 +286,9 @@ add({ name: 'openai chat choices string', provider: 'openai', model: 'gpt-4o-min
 add({ name: 'openai chat tool_calls object', provider: 'openai', model: 'gpt-4o-mini', conf: {}, responses: [ok({ choices: [{ message: { content: null, tool_calls: {} } }] })] });
 add({ name: 'openai chat odd content and usage', provider: 'openai', model: 'gpt-4o-mini', conf: {}, responses: [ok({ choices: [{ message: { content: 5 } }], usage: { prompt_tokens: 10, prompt_tokens_details: { cached_tokens: 50 } } })] });
 add({ name: 'openai chat null tool call', provider: 'openai', model: 'gpt-4o-mini', conf: {}, responses: [ok({ choices: [{ message: { tool_calls: [null] } }] })] });
+add({ name: 'openai chat usage toString object', provider: 'openai', model: 'gpt-4o-mini', conf: {}, responses: [ok({ choices: [{ message: { content: 'x' } }], usage: { prompt_tokens: { toString: 1 } } })] });
+add({ name: 'openrouter usage toString object', provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', conf: {}, responses: [ok({ choices: [{ message: { content: 'x' } }], usage: { prompt_tokens: 5, completion_tokens: { toString: 1 } } }), catalogReply] });
+add({ name: 'xai citations length object', provider: 'xai', model: 'grok-4.1-fast-non-reasoning', conf: {}, responses: [ok({ output: [{ type: 'output_text', text: 'x' }], citations: { length: { toString: 1 } } })] });
 add({ name: 'openai api error', provider: 'openai', model: 'gpt-5.5', conf: {}, responses: [{ status: 500, body: 'upstream broke' }] });
 
 // Google
@@ -409,6 +417,7 @@ async function main() {
         { input_tokens: 10, output_tokens: 1, cost: NaN },
         { input_tokens: 10, output_tokens: 1, cost: 0 },
         {},
+        { input_tokens: { toString: 0 }, output_tokens: 1 },
     ];
     const costs = [];
     for (const [provider, model] of pairs) {

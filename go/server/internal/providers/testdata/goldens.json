@@ -3608,6 +3608,158 @@
     "system": "You are a test.",
     "user": "hello",
     "opts": {},
+    "name": "anthropic header above latin-1",
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "conf": {
+     "headers": {
+      "x-ok": "café",
+      "x-snow": "a ☃"
+     }
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\"},{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"look\",\"input\":{\"dir\":\"north\"}},{\"type\":\"text\",\"text\":\"second\"}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":7}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [],
+   "result": null,
+   "error": {
+    "message": "Cannot convert argument to a ByteString because the character at index 2 has a value of 9731 which is greater than 255.",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "anthropic header astral",
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "conf": {
+     "headers": {
+      "x-e": "😀"
+     }
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\"},{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"look\",\"input\":{\"dir\":\"north\"}},{\"type\":\"text\",\"text\":\"second\"}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":7}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [],
+   "result": null,
+   "error": {
+    "message": "Cannot convert argument to a ByteString because the character at index 0 has a value of 55357 which is greater than 255.",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "anthropic bad header name",
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "conf": {
+     "headers": {
+      "bad name": "v"
+     }
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\"},{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"look\",\"input\":{\"dir\":\"north\"}},{\"type\":\"text\",\"text\":\"second\"}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":7}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [],
+   "result": null,
+   "error": {
+    "message": "Headers.append: \"bad name\" is an invalid header name.",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "anthropic bad header value",
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "conf": {
+     "headers": {
+      "x-a": " a\nb "
+     }
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\"},{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"look\",\"input\":{\"dir\":\"north\"}},{\"type\":\"text\",\"text\":\"second\"}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":7}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [],
+   "result": null,
+   "error": {
+    "message": "Headers.append: \"a\nb\" is an invalid header value.",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "anthropic header record converted first",
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "conf": {
+     "headers": {
+      "bad name": "v",
+      "x-b": "☃"
+     }
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\"},{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"look\",\"input\":{\"dir\":\"north\"}},{\"type\":\"text\",\"text\":\"second\"}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":7}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [],
+   "result": null,
+   "error": {
+    "message": "Cannot convert argument to a ByteString because the character at index 0 has a value of 9731 which is greater than 255.",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
     "name": "anthropic headers string",
     "provider": "anthropic",
     "model": "claude-opus-4-6",
@@ -5992,6 +6144,156 @@
    "result": null,
    "error": {
     "message": "Cannot read properties of null (reading 'type')",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "openai chat usage toString object",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"choices\":[{\"message\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":{\"toString\":1}}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1/chat/completions",
+     "headers": [
+      [
+       "authorization",
+       "Bearer sk-test"
+      ],
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "body": "{\"model\":\"gpt-4o-mini\",\"messages\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}]}"
+    }
+   ],
+   "result": null,
+   "error": {
+    "message": "Cannot convert object to primitive value",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "openrouter usage toString object",
+    "provider": "openrouter",
+    "model": "deepseek/deepseek-v4-flash",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"choices\":[{\"message\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":{\"toString\":1}}}"
+     },
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"data\":[{\"id\":\"deepseek/deepseek-v4-flash\",\"name\":\"DeepSeek V4 Flash\",\"context_length\":64000,\"pricing\":{\"prompt\":\"0.00000014\",\"completion\":\"0.00000028\",\"input_cache_read\":\"0.000000028\"}},{\"id\":\"x/no-cache\",\"pricing\":{\"prompt\":\"0.000001\",\"completion\":\"0.000002\"}},{\"id\":\"x/garbage\",\"pricing\":{\"prompt\":\"abc\",\"completion\":\"1e-6xyz\",\"input_cache_read\":\".5e-7\"}},{\"id\":\"x/no-pricing\"},{\"id\":7,\"pricing\":{\"prompt\":\"0.1\"}},{\"id\":\"x/no-cache\",\"name\":\"second copy\",\"pricing\":{\"prompt\":\"0.000003\"}}]}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/api/v1/chat/completions",
+     "headers": [
+      [
+       "authorization",
+       "Bearer sk-test"
+      ],
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "http-referer",
+       "https://memory.jeffdafoe.com"
+      ],
+      [
+       "x-title",
+       "llm-memory"
+      ]
+     ],
+     "body": "{\"model\":\"deepseek/deepseek-v4-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}]}"
+    },
+    {
+     "method": "GET",
+     "url": "http://upstream.test/prefix/api/v1/models",
+     "headers": [
+      [
+       "accept",
+       "application/json"
+      ]
+     ],
+     "body": null
+    }
+   ],
+   "result": null,
+   "error": {
+    "message": "Cannot convert object to primitive value",
+    "status": null
+   }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "xai citations length object",
+    "provider": "xai",
+    "model": "grok-4.1-fast-non-reasoning",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"output\":[{\"type\":\"output_text\",\"text\":\"x\"}],\"citations\":{\"length\":{\"toString\":1}}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1/responses",
+     "headers": [
+      [
+       "authorization",
+       "Bearer sk-test"
+      ],
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "body": "{\"model\":\"grok-4-1-fast-non-reasoning\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}]}"
+    }
+   ],
+   "result": null,
+   "error": {
+    "message": "Cannot convert object to primitive value",
     "status": null
    }
   },
@@ -8814,6 +9116,15 @@
   },
   {
    "provider": "anthropic",
+   "model": "claude-fable-5-1",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "anthropic",
    "model": "claude-opus-5-5",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -8886,6 +9197,15 @@
   },
   {
    "provider": "anthropic",
+   "model": "claude-opus-5-5",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "anthropic",
    "model": "claude-opus-5",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -8954,6 +9274,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "anthropic",
+   "model": "claude-opus-5",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -9030,6 +9359,15 @@
   },
   {
    "provider": "anthropic",
+   "model": "claude-sonnet-5",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "anthropic",
    "model": "claude-haiku-5-5",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9102,6 +9440,15 @@
   },
   {
    "provider": "anthropic",
+   "model": "claude-haiku-5-5",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "anthropic",
    "model": "claude-opus-4-8",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9174,6 +9521,15 @@
   },
   {
    "provider": "anthropic",
+   "model": "claude-opus-4-8",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "anthropic",
    "model": "claude-opus-4-7",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9246,6 +9602,15 @@
   },
   {
    "provider": "anthropic",
+   "model": "claude-opus-4-7",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "anthropic",
    "model": "claude-opus-4-6",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9314,6 +9679,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "anthropic",
+   "model": "claude-opus-4-6",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -9390,6 +9764,15 @@
   },
   {
    "provider": "anthropic",
+   "model": "claude-sonnet-4-6",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "anthropic",
    "model": "claude-haiku-4-5",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9458,6 +9841,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "anthropic",
+   "model": "claude-haiku-4-5",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -9534,6 +9926,15 @@
   },
   {
    "provider": "google",
+   "model": "gemini-2.5-pro",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "google",
    "model": "gemini-2.5-flash",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9602,6 +10003,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "google",
+   "model": "gemini-2.5-flash",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -9678,6 +10088,15 @@
   },
   {
    "provider": "google",
+   "model": "gemini-2.5-flash-lite",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "google",
    "model": "gemini-2.0-flash",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9746,6 +10165,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "google",
+   "model": "gemini-2.0-flash",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -9822,6 +10250,15 @@
   },
   {
    "provider": "openai",
+   "model": "gpt-6.1-sol",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "openai",
    "model": "gpt-6.1-terra",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -9890,6 +10327,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-6.1-terra",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -9966,6 +10412,15 @@
   },
   {
    "provider": "openai",
+   "model": "gpt-6-luna",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "openai",
    "model": "gpt-5.6-sol",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10038,6 +10493,15 @@
   },
   {
    "provider": "openai",
+   "model": "gpt-5.6-sol",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "openai",
    "model": "gpt-5.6-terra",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10106,6 +10570,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-5.6-terra",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -10182,6 +10655,15 @@
   },
   {
    "provider": "openai",
+   "model": "gpt-5.6-luna",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "openai",
    "model": "gpt-5.5",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10254,6 +10736,15 @@
   },
   {
    "provider": "openai",
+   "model": "gpt-5.5",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "openai",
    "model": "gpt-5.5-pro",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10322,6 +10813,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-5.5-pro",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -10398,6 +10898,15 @@
   },
   {
    "provider": "openai",
+   "model": "gpt-5.4",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "openai",
    "model": "gpt-5.4-mini",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10466,6 +10975,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-5.4-mini",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -10542,6 +11060,15 @@
   },
   {
    "provider": "openai",
+   "model": "gpt-5.4-nano",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "openai",
    "model": "gpt-5.4-pro",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10610,6 +11137,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-5.4-pro",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -10682,6 +11218,15 @@
    "cost_nan": false,
    "out": {
     "out": "0.005"
+   }
+  },
+  {
+   "provider": "perplexity",
+   "model": "sonar",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -10758,6 +11303,15 @@
   },
   {
    "provider": "perplexity",
+   "model": "sonar-pro",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "perplexity",
    "model": "sonar-deep-research",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10829,6 +11383,15 @@
    }
   },
   {
+   "provider": "perplexity",
+   "model": "sonar-deep-research",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
    "provider": "xai",
    "model": "grok-4.20-reasoning",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -10902,6 +11465,15 @@
   },
   {
    "provider": "xai",
+   "model": "grok-4.20-reasoning",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "xai",
    "model": "grok-4.20-non-reasoning",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -10970,6 +11542,15 @@
    "cost_nan": false,
    "out": {
     "out": "0"
+   }
+  },
+  {
+   "provider": "xai",
+   "model": "grok-4.20-non-reasoning",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
    }
   },
   {
@@ -11046,6 +11627,15 @@
   },
   {
    "provider": "xai",
+   "model": "grok-4.1-fast-reasoning",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "provider": "xai",
    "model": "grok-4.1-fast-non-reasoning",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
    "cost_nan": false,
@@ -11117,6 +11707,15 @@
    }
   },
   {
+   "provider": "xai",
+   "model": "grok-4.1-fast-non-reasoning",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
    "provider": "anthropic",
    "model": "nope",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -11183,6 +11782,15 @@
    "provider": "anthropic",
    "model": "nope",
    "usage": "{}",
+   "cost_nan": false,
+   "out": {
+    "error": "No pricing data for anthropic/nope — cannot calculate cost"
+   }
+  },
+  {
+   "provider": "anthropic",
+   "model": "nope",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
    "cost_nan": false,
    "out": {
     "error": "No pricing data for anthropic/nope — cannot calculate cost"
@@ -11261,6 +11869,15 @@
    }
   },
   {
+   "provider": "ANTHROPIC",
+   "model": "claude-opus-4-6",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
    "provider": "gemini",
    "model": "gemini-2.5-pro",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -11333,6 +11950,15 @@
    }
   },
   {
+   "provider": "gemini",
+   "model": "gemini-2.5-pro",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
    "provider": "openrouter",
    "model": "deepseek/deepseek-v4-flash",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -11405,6 +12031,15 @@
    }
   },
   {
+   "provider": "openrouter",
+   "model": "deepseek/deepseek-v4-flash",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "No pricing data for openrouter/deepseek/deepseek-v4-flash — cannot calculate cost"
+   }
+  },
+  {
    "provider": "nope",
    "model": "x",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -11477,6 +12112,15 @@
    }
   },
   {
+   "provider": "nope",
+   "model": "x",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "No pricing data for nope/x — cannot calculate cost"
+   }
+  },
+  {
    "provider": "constructor",
    "model": "m",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -11549,6 +12193,15 @@
    }
   },
   {
+   "provider": "constructor",
+   "model": "m",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot read properties of undefined (reading 'm')"
+   }
+  },
+  {
    "provider": "__proto__",
    "model": "m",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -11621,6 +12274,15 @@
    }
   },
   {
+   "provider": "__proto__",
+   "model": "m",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
+   "cost_nan": false,
+   "out": {
+    "error": "Cannot read properties of undefined (reading 'm')"
+   }
+  },
+  {
    "provider": "anthropic",
    "model": "constructor",
    "usage": "{\"input_tokens\":1000,\"output_tokens\":500}",
@@ -11687,6 +12349,15 @@
    "provider": "anthropic",
    "model": "constructor",
    "usage": "{}",
+   "cost_nan": false,
+   "out": {
+    "error": "No pricing data for anthropic/constructor — cannot calculate cost"
+   }
+  },
+  {
+   "provider": "anthropic",
+   "model": "constructor",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
    "cost_nan": false,
    "out": {
     "error": "No pricing data for anthropic/constructor — cannot calculate cost"
@@ -11759,6 +12430,15 @@
    "provider": "anthropic",
    "model": "__proto__",
    "usage": "{}",
+   "cost_nan": false,
+   "out": {
+    "error": "No pricing data for anthropic/__proto__ — cannot calculate cost"
+   }
+  },
+  {
+   "provider": "anthropic",
+   "model": "__proto__",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
    "cost_nan": false,
    "out": {
     "error": "No pricing data for anthropic/__proto__ — cannot calculate cost"
@@ -11831,6 +12511,15 @@
    "provider": "xai",
    "model": "grok-4.20-0309-reasoning",
    "usage": "{}",
+   "cost_nan": false,
+   "out": {
+    "error": "No pricing data for xai/grok-4.20-0309-reasoning — cannot calculate cost"
+   }
+  },
+  {
+   "provider": "xai",
+   "model": "grok-4.20-0309-reasoning",
+   "usage": "{\"input_tokens\":{\"toString\":0},\"output_tokens\":1}",
    "cost_nan": false,
    "out": {
     "error": "No pricing data for xai/grok-4.20-0309-reasoning — cannot calculate cost"
@@ -15741,7 +16430,7 @@
   },
   {
    "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-   "in": "fd0790302a6b660069d126ca:c29104ce802a6a6e836c3a897ee7bbed:",
+   "in": "02afa356cb4190edf59bc7c8:25cc9f2d28b88f64fb69d084d8a38fde:",
    "out": {
     "out": "\"\""
    }
@@ -15825,7 +16514,7 @@
   },
   {
    "key": "",
-   "in": "fd0790302a6b660069d126ca:c29104ce802a6a6e836c3a897ee7bbed:",
+   "in": "02afa356cb4190edf59bc7c8:25cc9f2d28b88f64fb69d084d8a38fde:",
    "out": {
     "error": "virtual_agent_encryption_key not configured"
    }
@@ -15909,7 +16598,7 @@
   },
   {
    "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e",
-   "in": "fd0790302a6b660069d126ca:c29104ce802a6a6e836c3a897ee7bbed:",
+   "in": "02afa356cb4190edf59bc7c8:25cc9f2d28b88f64fb69d084d8a38fde:",
    "out": {
     "error": "Invalid key length"
    }
@@ -15993,7 +16682,7 @@
   },
   {
    "key": null,
-   "in": "fd0790302a6b660069d126ca:c29104ce802a6a6e836c3a897ee7bbed:",
+   "in": "02afa356cb4190edf59bc7c8:25cc9f2d28b88f64fb69d084d8a38fde:",
    "out": {
     "error": "Config key \"virtual_agent_encryption_key\" not found. Was config.init() called?"
    }

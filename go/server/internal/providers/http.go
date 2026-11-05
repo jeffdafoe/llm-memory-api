@@ -2,9 +2,11 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apibase"
@@ -47,9 +49,120 @@ func endpoint(name, path string) (string, error) {
 	return base + path, nil
 }
 
-// send makes one request. Headers are combined as fetch's Headers combines
-// them: names compared ignoring case, a repeated name's values joined with
-// ", ", and each value trimmed of surrounding HTTP whitespace.
+// byteString is WebIDL's ByteString conversion, which fetch applies to header
+// names and values: every character must be at most U+00FF and is sent as
+// that one byte (é is 0xE9, not UTF-8).
+func byteString(s string) (string, error) {
+	var b strings.Builder
+	index := 0
+	for _, r := range s {
+		if r > 0xFF {
+			unit := r
+			if r >= 0x10000 {
+				unit = 0xD800 + ((r - 0x10000) >> 10)
+			}
+			return "", fmt.Errorf("Cannot convert argument to a ByteString because the character at index %d has a value of %d which is greater than 255.", index, unit)
+		}
+		b.WriteByte(byte(r))
+		index++
+	}
+	return b.String(), nil
+}
+
+// isToken reports whether s is an HTTP token (a valid header name).
+func isToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		case strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// fetchHeaders turns a fetch headers record into request headers as undici
+// does: every name and value converted to a ByteString first, then each
+// name checked, its value trimmed of HTTP whitespace and checked, and a
+// repeated name (ignoring case) joined with ", ". Errors carry undici's text.
+func fetchHeaders(headers []header) (http.Header, error) {
+	type entry struct{ name, value string }
+	converted := make([]entry, len(headers))
+	for i, h := range headers {
+		name, err := byteString(h.name)
+		if err != nil {
+			return nil, err
+		}
+		value, err := byteString(h.value)
+		if err != nil {
+			return nil, err
+		}
+		converted[i] = entry{name, value}
+	}
+	var names []string
+	values := map[string]string{}
+	for _, e := range converted {
+		if !isToken(e.name) {
+			return nil, fmt.Errorf("Headers.append: \"%s\" is an invalid header name.", e.name)
+		}
+		v := strings.Trim(e.value, " \t\r\n")
+		if strings.ContainsAny(v, "\x00\r\n") {
+			return nil, fmt.Errorf("Headers.append: \"%s\" is an invalid header value.", v)
+		}
+		key := strings.ToLower(e.name)
+		if prev, ok := values[key]; ok {
+			values[key] = prev + ", " + v
+			continue
+		}
+		names = append(names, key)
+		values[key] = v
+	}
+	out := http.Header{}
+	for _, n := range names {
+		out.Set(n, values[n])
+	}
+	return out, nil
+}
+
+// fetchRedirects is fetch's redirect rule on top of the client's own: at
+// most 20 redirects, and Authorization dropped when a redirect leaves the
+// original origin (scheme, host and port). Go's default would send it on to
+// another port or a subdomain.
+func fetchRedirects(next func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 20 {
+			return errors.New("redirect count exceeded")
+		}
+		if origin(req.URL) != origin(via[0].URL) {
+			req.Header.Del("Authorization")
+		}
+		if next != nil {
+			return next(req, via)
+		}
+		return nil
+	}
+}
+
+// origin is a URL's scheme, host and port, the default port filled in.
+func origin(u *neturl.URL) string {
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Hostname()) + ":" + port
+}
+
+// send makes one request with fetch's header and redirect rules.
 func (p *Providers) send(ctx context.Context, method, url string, headers []header, body *string) (*response, error) {
 	var reader io.Reader
 	if body != nil {
@@ -59,22 +172,14 @@ func (p *Providers) send(ctx context.Context, method, url string, headers []head
 	if err != nil {
 		return nil, err
 	}
-	var names []string
-	values := map[string]string{}
-	for _, h := range headers {
-		key := strings.ToLower(h.name)
-		v := strings.Trim(h.value, " \t\r\n")
-		if prev, ok := values[key]; ok {
-			values[key] = prev + ", " + v
-			continue
-		}
-		names = append(names, h.name)
-		values[key] = v
+	h, err := fetchHeaders(headers)
+	if err != nil {
+		return nil, err
 	}
-	for _, n := range names {
-		req.Header.Set(n, values[strings.ToLower(n)])
-	}
-	resp, err := p.client().Do(req)
+	req.Header = h
+	client := *p.client()
+	client.CheckRedirect = fetchRedirects(client.CheckRedirect)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

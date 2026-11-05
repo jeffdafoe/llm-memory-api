@@ -58,7 +58,8 @@ var (
 func translateMessagesToGoogle(messages []*object) ([]any, error) {
 	out := []any{}
 	for _, msg := range messages {
-		role := msg.Value("role").(string)
+		// SanitizeOpts kept only messages with a string role.
+		role, _ := msg.Value("role").(string)
 		switch role {
 		case "tool":
 			id := or(msg.Value("tool_call_id"), "")

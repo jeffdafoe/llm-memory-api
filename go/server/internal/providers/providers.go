@@ -463,13 +463,13 @@ func withTimeout(ctx context.Context, seconds float64, provider, model string, f
 	return res, err
 }
 
-// GetModelPricing returns a model's pricing, or nil.
+// GetModelPricing returns a copy of a model's pricing, or nil.
 func GetModelPricing(provider, modelID string) (*Pricing, error) {
 	_, m, err := lookupModel(provider, modelID)
 	if err != nil || m == nil {
 		return nil, err
 	}
-	return m.Pricing, nil
+	return m.Pricing.clone(), nil
 }
 
 // CalculateCost is the dollar cost of one call: the provider's own cost
@@ -490,11 +490,13 @@ func CalculateCost(provider, modelID string, usage Usage) (float64, error) {
 	if pricing == nil {
 		return 0, fmt.Errorf("No pricing data for %s/%s — cannot calculate cost", provider, modelID)
 	}
+	n := &numbers{}
 	tokens := func(v any) float64 {
 		if !truthy(v) {
 			return 0
 		}
-		return toNumber(v)
+		// Node kept the value (||) and converted it in the arithmetic.
+		return n.of(v)
 	}
 	inputTokens := tokens(usage.InputTokens)
 	outputTokens := tokens(usage.OutputTokens)
@@ -512,6 +514,9 @@ func CalculateCost(provider, modelID string, usage Usage) (float64, error) {
 	}
 	if pricing.truthy(pricing.Request) {
 		cost += *pricing.Request / 1000
+	}
+	if n.err != nil {
+		return 0, n.err
 	}
 	return cost, nil
 }
@@ -565,13 +570,13 @@ func GetModelConfigVersion(provider, modelID string) (int, error) {
 	return m.ConfigVersion, nil
 }
 
-// GetModelCapabilities returns a model's capabilities, or nil.
+// GetModelCapabilities returns a copy of a model's capabilities, or nil.
 func GetModelCapabilities(provider, modelID string) (Capabilities, error) {
 	_, m, err := lookupModel(provider, modelID)
 	if err != nil || m == nil {
 		return nil, err
 	}
-	return m.Capabilities, nil
+	return m.Capabilities.clone(), nil
 }
 
 // GetDefaultConfiguration is the configuration a new agent starts with:

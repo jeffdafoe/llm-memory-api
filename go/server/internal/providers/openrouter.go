@@ -197,11 +197,12 @@ func (p *Providers) LookupOpenRouterPricing(ctx context.Context, modelID string)
 	return &Pricing{Input: num(e.Input), Output: num(e.Output), CacheRead: e.CacheRead}
 }
 
-func openrouterComputeCost(ctx context.Context, p *Providers, model string, promptTokens, cachedTokens, completionTokens any) *float64 {
+func openrouterComputeCost(ctx context.Context, p *Providers, model string, promptTokens, cachedTokens, completionTokens any) (*float64, error) {
 	pricing := p.LookupOpenRouterPricing(ctx, model)
 	if pricing == nil {
-		return nil
+		return nil, nil
 	}
+	n := &numbers{}
 	orRate := func(vs ...*float64) float64 {
 		for _, v := range vs {
 			if pricing.truthy(v) {
@@ -210,13 +211,16 @@ func openrouterComputeCost(ctx context.Context, p *Providers, model string, prom
 		}
 		return 0
 	}
-	cached := toNumber(cachedTokens)
-	uncached := toNumber(promptTokens) - cached
+	cached := n.of(cachedTokens)
+	uncached := n.of(promptTokens) - cached
 	cost := 0.0
 	cost += uncached * orRate(pricing.Input) / 1_000_000
 	cost += cached * orRate(pricing.CacheRead, pricing.Input) / 1_000_000
-	cost += toNumber(completionTokens) * orRate(pricing.Output) / 1_000_000
-	return &cost
+	cost += n.of(completionTokens) * orRate(pricing.Output) / 1_000_000
+	if n.err != nil {
+		return nil, n.err
+	}
+	return &cost, nil
 }
 
 // openrouterCapabilities apply to every OpenRouter model.
@@ -226,9 +230,10 @@ var openrouterCapabilities = Capabilities{
 	selectCap("thinking_effort", "Thinking Effort", "Controls how much the model reasons before responding. \"off\" disables reasoning entirely. Only hybrid reasoning models honour this; others ignore it. LEAVING THIS UNSET IS NOT THE SAME AS \"off\" — unset sends nothing and the model keeps its own default, which for deepseek-v4-flash and Gemini 2.5 means it reasons. Reasoning tokens are billed as output tokens but are NOT stored in the response, so any setting other than \"off\" pays for text that is never kept (LLM-570 follow-up).", "off", "off", "low", "medium", "high", "max"),
 }
 
-// OpenRouterCapabilities are the controls every OpenRouter model gets.
+// OpenRouterCapabilities are the controls every OpenRouter model gets (a
+// copy).
 func OpenRouterCapabilities() Capabilities {
-	return openrouterCapabilities
+	return openrouterCapabilities.clone()
 }
 
 // Our thinking_effort levels mapped to OpenRouter's reasoning.effort. "off"
@@ -330,11 +335,15 @@ func openrouterCreateCall(p *Providers, model, apiKey string, configuration any)
 		}
 		promptTokens := or(usageMember("prompt_tokens"), 0.0)
 		completionTokens := or(usageMember("completion_tokens"), 0.0)
+		n := &numbers{}
 		cached := 0.0
 		if details := usageMember("prompt_tokens_details"); truthy(details) {
-			cached = maxNum(0, minNum(toNumber(or(member(details, "cached_tokens"), 0.0)), toNumber(promptTokens)))
+			cached = maxNum(0, minNum(n.of(or(member(details, "cached_tokens"), 0.0)), n.of(promptTokens)))
 		}
-		uncached := maxNum(0, toNumber(promptTokens)-cached)
+		uncached := maxNum(0, n.of(promptTokens)-cached)
+		if n.err != nil {
+			return nil, n.err
+		}
 		usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
 
 		var cost *float64
@@ -352,7 +361,10 @@ func openrouterCreateCall(p *Providers, model, apiKey string, configuration any)
 		costSource := "billed"
 		if cost == nil {
 			costSource = "catalog-estimate"
-			cost = openrouterComputeCost(ctx, p, model, promptTokens, cached, completionTokens)
+			cost, err = openrouterComputeCost(ctx, p, model, promptTokens, cached, completionTokens)
+			if err != nil {
+				return nil, err
+			}
 		}
 		usage.Cost = cost
 

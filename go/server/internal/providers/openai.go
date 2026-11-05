@@ -173,22 +173,23 @@ func messagesToResponsesInput(messages []*object) ([]any, error) {
 // openaiComputeCost: uncached input, cached input and output at the
 // model's rates, halved for flex, multiplied above the long-context
 // threshold. Nil when the model has no pricing.
-func openaiComputeCost(model string, serviceTier any, promptTokens, cachedTokens, completionTokens any) *float64 {
+func openaiComputeCost(model string, serviceTier any, promptTokens, cachedTokens, completionTokens any) (*float64, error) {
 	entry := openaiModels.Get(model)
 	if entry == nil || entry.Pricing == nil {
-		return nil
+		return nil, nil
 	}
+	n := &numbers{}
 	pricing := entry.Pricing
 	flex := 1.0
 	if isStr(serviceTier, "flex") {
 		flex = 0.5
 	}
 	inputMul, cacheMul, outputMul := 1.0, 1.0, 1.0
-	prompt := toNumber(promptTokens)
+	prompt := n.of(promptTokens)
 	if lc := entry.LongContext; lc != nil && prompt > lc.Threshold {
 		inputMul, cacheMul, outputMul = lc.Input, lc.CacheRead, lc.Output
 	}
-	cached := toNumber(cachedTokens)
+	cached := n.of(cachedTokens)
 	uncached := prompt - cached
 	inputRate := pricing.rate(pricing.Input) * flex * inputMul
 	cacheRate := pricing.rate(pricing.CacheRead) * flex * cacheMul
@@ -197,8 +198,11 @@ func openaiComputeCost(model string, serviceTier any, promptTokens, cachedTokens
 	cost := 0.0
 	cost += uncached * inputRate / 1_000_000
 	cost += cached * cacheRate / 1_000_000
-	cost += toNumber(completionTokens) * outputRate / 1_000_000
-	return &cost
+	cost += n.of(completionTokens) * outputRate / 1_000_000
+	if n.err != nil {
+		return nil, n.err
+	}
+	return &cost, nil
 }
 
 // maxTokensOf is asNumber(max_completion_tokens) ?? asNumber(max_tokens).
@@ -229,11 +233,13 @@ func costLog(cost *float64, digits int) string {
 
 // tokenPair is Math.max(0, Math.min(raw, prompt)) and Math.max(0, prompt -
 // cached): cached input clamped to the prompt, and the uncached rest.
-func tokenPair(prompt, rawCached any) (cached, uncached float64) {
-	p := toNumber(prompt)
-	cached = maxNum(0, minNum(toNumber(rawCached), p))
+func tokenPair(prompt, rawCached any) (cached, uncached float64, err error) {
+	n := &numbers{}
+	raw := n.of(rawCached)
+	p := n.of(prompt)
+	cached = maxNum(0, minNum(raw, p))
 	uncached = maxNum(0, p-cached)
-	return
+	return cached, uncached, n.err
 }
 
 func openaiCreateCall(p *Providers, model, apiKey string, configuration any) callFunc {
@@ -328,12 +334,18 @@ func openaiCreateCall(p *Providers, model, apiKey string, configuration any) cal
 		promptTokens := coalesce(optional(usageData, "prompt_tokens"), 0.0)
 		completionTokens := coalesce(optional(usageData, "completion_tokens"), 0.0)
 		rawCached := coalesce(optional(optional(usageData, "prompt_tokens_details"), "cached_tokens"), 0.0)
-		cached, uncached := tokenPair(promptTokens, rawCached)
+		cached, uncached, err := tokenPair(promptTokens, rawCached)
+		if err != nil {
+			return nil, err
+		}
 
 		serviceTier, _ := get(data, "service_tier")
 		appliedTier := coalesce(serviceTier, requestedTier)
 		usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
-		cost := openaiComputeCost(model, appliedTier, promptTokens, cached, completionTokens)
+		cost, err := openaiComputeCost(model, appliedTier, promptTokens, cached, completionTokens)
+		if err != nil {
+			return nil, err
+		}
 		usage.Cost = cost
 
 		toolCalls, err := chatToolCalls(p, "openai", model, "(choice.message.tool_calls || []).filter", message, false, opts)
@@ -556,12 +568,18 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 	promptTokens := coalesce(optional(usageData, "input_tokens"), 0.0)
 	completionTokens := coalesce(optional(usageData, "output_tokens"), 0.0)
 	rawCached := coalesce(optional(optional(usageData, "input_tokens_details"), "cached_tokens"), 0.0)
-	cached, uncached := tokenPair(promptTokens, rawCached)
+	cached, uncached, err := tokenPair(promptTokens, rawCached)
+	if err != nil {
+		return nil, err
+	}
 
 	serviceTier, _ := get(data, "service_tier")
 	appliedTier := coalesce(serviceTier, "default")
 	usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
-	cost := openaiComputeCost(model, appliedTier, promptTokens, cached, completionTokens)
+	cost, err := openaiComputeCost(model, appliedTier, promptTokens, cached, completionTokens)
+	if err != nil {
+		return nil, err
+	}
 	usage.Cost = cost
 
 	status, _ := get(data, "status")
