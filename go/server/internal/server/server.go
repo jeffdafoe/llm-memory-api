@@ -5,6 +5,7 @@ package server
 import (
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
@@ -99,6 +100,10 @@ func Handler(s *Services) http.Handler {
 		switch {
 		case p == "/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
 			httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		case p == "/health" && r.Method == http.MethodOptions:
+			// Express's router answers OPTIONS itself for a path with routes,
+			// listing their methods.
+			writeOptions(w, "GET, HEAD")
 		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
 			v1Chain.ServeHTTP(w, r)
 		default:
@@ -108,6 +113,17 @@ func Handler(s *Services) http.Handler {
 
 	requestLog := &httpapi.RequestLog{DB: s.DB}
 	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))
+}
+
+// writeOptions is the automatic OPTIONS response of Express's router: the
+// allowed methods in the Allow header and as a plain-text body.
+func writeOptions(w http.ResponseWriter, allow string) {
+	w.Header().Set("Allow", allow)
+	w.Header().Set("Content-Length", strconv.Itoa(len(allow)))
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(allow))
 }
 
 // v1Unmatched answers a /v1 path no route matched. In Node the admin router

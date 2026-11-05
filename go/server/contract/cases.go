@@ -41,10 +41,26 @@ func one(name string, st Step, known ...KnownDifference) Scenario {
 	return Scenario{Name: name, Steps: []Step{st}, Known: known}
 }
 
+// routingCase is the known difference for Express's case-insensitive,
+// trailing-slash-tolerant matching, which Go does not copy.
+func routingCase(label string) KnownDifference {
+	return KnownDifference{
+		Where:  "step 1 " + label + ": *",
+		Reason: "Go matches paths case-sensitively and exactly; Express ignores case and a trailing slash (go-server note, Known differences)",
+	}
+}
+
 var healthCases = []Scenario{
 	one("health GET", Step{Method: "GET", Path: "/health"}),
 	one("health HEAD", Step{Method: "HEAD", Path: "/health"}),
 	one("health with a query", Step{Method: "GET", Path: "/health?x=1"}),
+	// Express answers OPTIONS itself for a path with routes.
+	one("health OPTIONS", Step{Method: "OPTIONS", Path: "/health"}),
+	one("health trailing slash", Step{Method: "GET", Path: "/health/"}, routingCase("GET /health/")),
+	one("health upper case", Step{Method: "GET", Path: "/HEALTH"}, routingCase("GET /HEALTH"),
+		KnownDifference{Where: "table request_log*", Reason: "Go's 404 is logged; Express's /health is not"}),
+	one("v1 upper case without auth", Step{Method: "GET", Path: "/V1/missing"}, routingCase("GET /V1/missing"),
+		KnownDifference{Where: "table request_log*", Reason: "same request, different status in the log row"}),
 }
 
 var notFoundCases = []Scenario{

@@ -167,3 +167,19 @@ func TestV1Unmatched(t *testing.T) {
 		}
 	}
 }
+
+// OPTIONS on /health is Express's automatic router answer; /health is not
+// request-logged, so no insert is expected.
+func TestHealthOptions(t *testing.T) {
+	h, mock := newHandler(t)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("OPTIONS", "/health", nil))
+	if rec.Code != 200 || rec.Body.String() != "GET, HEAD" ||
+		rec.Header().Get("Allow") != "GET, HEAD" || rec.Header().Get("Content-Type") != "text/plain" ||
+		rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("got %d %q %v", rec.Code, rec.Body.String(), rec.Header())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

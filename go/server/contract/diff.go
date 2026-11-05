@@ -17,6 +17,7 @@ var ComparedHeaders = []string{
 	"content-security-policy",
 	"x-content-type-options",
 	"location",
+	"allow",
 	"set-cookie",
 }
 
