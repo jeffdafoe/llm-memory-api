@@ -8,7 +8,7 @@ require (
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/pashagolub/pgxmock/v5 v5.2.0
 	github.com/pgvector/pgvector-go/pgx v0.4.1
-	golang.org/x/text v0.41.0
+	golang.org/x/text v0.43.0
 )
 
 require (
