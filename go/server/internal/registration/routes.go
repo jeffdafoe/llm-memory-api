@@ -110,7 +110,7 @@ func (rt *Routes) checkName(w http.ResponseWriter, r *http.Request) {
 		rt.unhandled(w, httpapi.NoBody("name"))
 		return
 	}
-	if !httpapi.Truthy(body["name"]) {
+	if !jsutil.Truthy(body["name"]) {
 		writeError(w, http.StatusBadRequest, "Name is required")
 		return
 	}
@@ -169,7 +169,7 @@ func (rt *Routes) realmFromHost(r *http.Request) string {
 	var decoded any
 	dec := json.NewDecoder(strings.NewReader(string(v)))
 	dec.UseNumber()
-	if dec.Decode(&decoded) != nil || !httpapi.Truthy(decoded) {
+	if dec.Decode(&decoded) != nil || !jsutil.Truthy(decoded) {
 		return "llm-memory"
 	}
 	// A truthy non-string realm went to Postgres as node-postgres's text.
@@ -250,11 +250,11 @@ func (rt *Routes) register(w http.ResponseWriter, r *http.Request) {
 		rt.unhandled(w, err)
 		return
 	}
-	if !httpapi.Truthy(body["name"]) {
+	if !jsutil.Truthy(body["name"]) {
 		writeError(w, http.StatusBadRequest, "Agent name is required")
 		return
 	}
-	if !httpapi.Truthy(body["code"]) && !open {
+	if !jsutil.Truthy(body["code"]) && !open {
 		writeError(w, http.StatusBadRequest, "Invite code is required (open registration is disabled)")
 		return
 	}
@@ -270,7 +270,7 @@ func (rt *Routes) register(w http.ResponseWriter, r *http.Request) {
 	}
 	password := body["password"]
 	length, comparable := passwordLength(password)
-	if !httpapi.Truthy(password) || comparable && length < minLen {
+	if !jsutil.Truthy(password) || comparable && length < minLen {
 		writeError(w, http.StatusBadRequest, "Password must be at least "+jsutil.NumberString(minLen)+" characters")
 		return
 	}
@@ -296,7 +296,7 @@ func (rt *Routes) register(w http.ResponseWriter, r *http.Request) {
 	// moderation agent; the authoritative invite check is in phase 3.
 	realm := ""
 	var inviteID *int
-	if httpapi.Truthy(body["code"]) {
+	if jsutil.Truthy(body["code"]) {
 		code, ok := body["code"].(string)
 		if !ok {
 			rt.unhandled(w, notAFunction("code.trim"))

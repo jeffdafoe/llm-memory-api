@@ -32,7 +32,7 @@ func parseSearch(s string) []searchPair {
 
 func formDecode(s string) string {
 	s = strings.ReplaceAll(s, "+", " ")
-	return httpapi.DecodeUTF8Replace([]byte(percentDecode(s)))
+	return httpapi.DecodeUTF8([]byte(percentDecode(s)))
 }
 
 // setSearch is URLSearchParams.set: the first pair with the name takes the

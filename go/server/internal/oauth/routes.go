@@ -197,7 +197,7 @@ func (rt *Routes) formOrJSONBody(w http.ResponseWriter, r *http.Request) (p http
 }
 
 func truthy(v any) bool {
-	return httpapi.Truthy(v)
+	return jsutil.Truthy(v)
 }
 
 // register is RFC 7591 dynamic client registration, claude.ai's fallback

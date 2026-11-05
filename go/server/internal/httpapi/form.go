@@ -6,13 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"mime"
 	"net/http"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 )
 
 // Params are request parameters as a Node route saw them in req.body or
@@ -99,12 +96,6 @@ func ReadForm(r *http.Request) (params Params, ok bool, err error) {
 		return nil, true, &FormError{http.StatusRequestEntityTooLarge, "too many parameters"}
 	}
 	return parseQS(body, charset), true, nil
-}
-
-// DecodeUTF8Replace reads bytes as UTF-8 the way the WHATWG decoder does,
-// one U+FFFD per maximal invalid subpart (replaceInvalidUTF8).
-func DecodeUTF8Replace(b []byte) string {
-	return string(replaceInvalidUTF8(b))
 }
 
 // latin1 maps each byte to the code point of the same value.
@@ -490,23 +481,4 @@ func JSONParams(r *http.Request) Params {
 		return Params(m)
 	}
 	return Params{}
-}
-
-// Truthy is JavaScript truthiness of a request value.
-func Truthy(v any) bool {
-	switch x := v.(type) {
-	case nil:
-		return false
-	case string:
-		return x != ""
-	case bool:
-		return x
-	case json.Number:
-		f, err := x.Float64()
-		if err != nil {
-			f = jsutil.StringToNumber(string(x))
-		}
-		return f != 0 && !math.IsNaN(f)
-	}
-	return true
 }
