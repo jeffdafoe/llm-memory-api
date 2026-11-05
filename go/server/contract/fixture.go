@@ -64,7 +64,11 @@ var fixtureConfig = map[string]string{
 	"dream_cron_schedule":   "",
 	"cleanup_cron_schedule": "",
 	// Minutes; the ping has no off switch, so it is pushed past any run.
-	"virtual_agent_error_ping_interval": "100000",
+	// Node passes minutes * 60000 to setInterval, whose limit is 2^31-1 ms
+	// (about 35791 minutes); a larger value overflows and Node runs the
+	// ping every millisecond, which starved its event loop and made a
+	// server miss its 60 s /health start check.
+	"virtual_agent_error_ping_interval": "35000",
 }
 
 // applyFixture writes the harness data on top of seed.sql: config, an admin

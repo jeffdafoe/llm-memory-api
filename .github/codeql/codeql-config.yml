@@ -3,3 +3,10 @@ name: "llm-memory-api CodeQL config"
 query-filters:
     - exclude:
           id: js/missing-rate-limiting
+
+# testdata holds test fixtures, not shipped code. The jsregex golden
+# generator (go/server/internal/jsregex/testdata/goldens.js) builds
+# catastrophic-backtracking patterns on purpose, to record V8's and
+# safe-regex's verdicts on them, which js/redos reports.
+paths-ignore:
+    - "**/testdata/**"

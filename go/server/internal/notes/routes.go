@@ -7,8 +7,8 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 )
 
-// Routes are the /v1/documents routes (Node's routes/documents.js), except
-// grep. Node does not sanitize these fields, and neither does the port.
+// Routes are the /v1/documents routes (Node's routes/documents.js). Node
+// does not sanitize these fields, and neither does the port.
 type Routes struct {
 	Service    *Service
 	Router     *httpapi.Router
@@ -27,6 +27,7 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	route("restore", "restore", rt.restore)
 	route("edit", "edit", rt.edit)
 	route("move", "move", rt.move)
+	route("grep", "grep", rt.grep)
 }
 
 // access validates the namespace and checks the caller's grant on it.
@@ -274,4 +275,48 @@ func (rt *Routes) move(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return httpapi.WriteJSON(w, http.StatusOK, res)
+}
+
+func (rt *Routes) grep(w http.ResponseWriter, r *http.Request) error {
+	f, ok := httpapi.BodyFields(r)
+	if !ok {
+		return httpapi.NoBody("pattern")
+	}
+	if !f.Truthy("pattern") {
+		return httpapi.BadRequest(w, "Required field: pattern")
+	}
+	pattern, err := f.RequireString("pattern")
+	if err != nil {
+		return err
+	}
+	in := GrepInput{
+		Pattern:       pattern,
+		Limit:         f.Raw("limit"),
+		ContextBefore: f.Raw("context_before"),
+		ContextAfter:  f.Raw("context_after"),
+		Context:       f.Raw("context"),
+		Regex:         string(f.Raw("regex")) == "true",
+	}
+	if in.Namespace, err = f.OptionalString("namespace"); err != nil {
+		return err
+	}
+	a := httpapi.ActorOf(r)
+	if in.Namespace != "" && in.Namespace != "*" {
+		if err := rt.access(r, in.Namespace, permissions.Read); err != nil {
+			return err
+		}
+	} else {
+		readable, all, err := rt.Namespaces.ReadableNamespaces(r.Context(), a.ID, a.Name)
+		if err != nil {
+			return err
+		}
+		in.Readable, in.FilterReadable = readable, !all
+	}
+	results, err := rt.Service.Grep(r.Context(), in)
+	if err != nil {
+		return err
+	}
+	return httpapi.WriteJSON(w, http.StatusOK, struct {
+		Results []GrepResult `json:"results"`
+	}{results})
 }

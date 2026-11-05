@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
@@ -32,7 +35,7 @@ func (rt *Router) Route(category, label string, fn HandlerFunc) http.HandlerFunc
 		status, code := apierr.StatusAndCode(err)
 		rt.Log.LogError(category, label, logger.ErrorOpts{
 			Agent:      StateOf(r).AuthenticatedAgent,
-			Message:    err.Error(),
+			Message:    errorMessage(err),
 			Detail:     fmt.Sprintf("%+v", err),
 			StatusCode: status,
 		})
@@ -40,7 +43,7 @@ func (rt *Router) Route(category, label string, fn HandlerFunc) http.HandlerFunc
 			WriteError(w, status, code, err.Error())
 			return
 		}
-		rt.Log.Errorf("%s %s error: %s", category, label, err.Error())
+		rt.Log.Errorf("%s %s error: %s", category, label, errorMessage(err))
 		WriteError(w, http.StatusInternalServerError, "INTERNAL", "Failed: "+label)
 	}
 }
@@ -55,4 +58,15 @@ func callRecovering(fn HandlerFunc, w http.ResponseWriter, r *http.Request) (err
 		}
 	}()
 	return fn(w, r)
+}
+
+// errorMessage is the text Node logged for err. For a Postgres error that is
+// the server's message alone, as node-postgres puts it in err.message; pgx's
+// Error() adds "ERROR: " and the SQLSTATE.
+func errorMessage(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Message
+	}
+	return err.Error()
 }
