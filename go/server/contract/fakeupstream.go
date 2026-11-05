@@ -221,6 +221,9 @@ func (f *FakeUpstream) serve(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(k, v)
 		}
 	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
 	status := reply.Status
 	if status == 0 {
 		status = http.StatusOK
@@ -229,76 +232,178 @@ func (f *FakeUpstream) serve(w http.ResponseWriter, r *http.Request) {
 	w.Write(reply.Body)
 }
 
+// The default replies are fixed values built with json.Marshal. Nothing from
+// the request is echoed: the providers read only the fields below, and a
+// fake that reflected its input would be a needless injection path.
+const fakeModel = "fake-model"
+
+type textPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type tokenUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+type chatUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+}
+
+func marshalReply(status int, v any) Reply {
+	data, err := json.Marshal(v)
+	if err != nil {
+		// Only fixed shapes come here; a failure is a bug in this file.
+		panic(err)
+	}
+	return Reply{Status: status, Body: data}
+}
+
 // defaultReply is a small, valid answer for each endpoint the providers
 // call, shaped like the fields node/api/src/services/providers/*.js read.
 func defaultReply(upstream, method, path string, body []byte) Reply {
+	switch {
+	case upstream == "openai" && path == "/v1/embeddings":
+		return embeddingsReply(body)
+	case upstream == "anthropic" && path == "/v1/messages":
+		return anthropicReply()
+	case upstream == "openai" && path == "/v1/responses":
+		return responsesReply("fake openai reply")
+	case upstream == "xai" && path == "/v1/responses":
+		return responsesReply("fake xai reply")
+	case upstream == "openai" && path == "/v1/chat/completions":
+		return chatReply("fake openai reply")
+	case upstream == "openrouter" && path == "/api/v1/chat/completions":
+		return chatReply("fake openrouter reply")
+	case upstream == "perplexity" && path == "/chat/completions":
+		return chatReply("fake perplexity reply")
+	case upstream == "openrouter" && method == http.MethodGet && path == "/api/v1/models":
+		return marshalReply(http.StatusOK, struct {
+			Data []struct{} `json:"data"`
+		}{Data: []struct{}{}})
+	case upstream == "google" && strings.HasPrefix(path, "/v1beta/models/") && strings.HasSuffix(path, ":generateContent"):
+		return googleReply()
+	}
+	// The recorded request names the endpoint; the reply does not echo it.
+	return marshalReply(http.StatusNotFound, map[string]map[string]string{
+		"error": {"message": "fake upstream has no default reply for this endpoint"},
+	})
+}
+
+func anthropicReply() Reply {
+	return marshalReply(http.StatusOK, struct {
+		ID         string     `json:"id"`
+		Type       string     `json:"type"`
+		Role       string     `json:"role"`
+		Model      string     `json:"model"`
+		Content    []textPart `json:"content"`
+		StopReason string     `json:"stop_reason"`
+		Usage      tokenUsage `json:"usage"`
+	}{"msg_fake", "message", "assistant", fakeModel, []textPart{{"text", "fake anthropic reply"}}, "end_turn", tokenUsage{10, 5}})
+}
+
+// responsesReply is the /v1/responses shape OpenAI and xAI share.
+func responsesReply(text string) Reply {
+	type outputItem struct {
+		Type    string     `json:"type"`
+		Role    string     `json:"role"`
+		Content []textPart `json:"content"`
+	}
+	return marshalReply(http.StatusOK, struct {
+		ID     string       `json:"id"`
+		Object string       `json:"object"`
+		Status string       `json:"status"`
+		Model  string       `json:"model"`
+		Output []outputItem `json:"output"`
+		Usage  tokenUsage   `json:"usage"`
+	}{"resp_fake", "response", "completed", fakeModel,
+		[]outputItem{{"message", "assistant", []textPart{{"output_text", text}}}}, tokenUsage{10, 5}})
+}
+
+// chatReply is the chat-completions shape OpenAI, OpenRouter and Perplexity
+// share.
+func chatReply(text string) Reply {
+	type message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	type choice struct {
+		Index        int     `json:"index"`
+		Message      message `json:"message"`
+		FinishReason string  `json:"finish_reason"`
+	}
+	return marshalReply(http.StatusOK, struct {
+		ID      string    `json:"id"`
+		Object  string    `json:"object"`
+		Model   string    `json:"model"`
+		Choices []choice  `json:"choices"`
+		Usage   chatUsage `json:"usage"`
+	}{"chatcmpl_fake", "chat.completion", fakeModel,
+		[]choice{{0, message{"assistant", text}, "stop"}}, chatUsage{10, 5}})
+}
+
+func googleReply() Reply {
+	type part struct {
+		Text string `json:"text"`
+	}
+	type content struct {
+		Role  string `json:"role"`
+		Parts []part `json:"parts"`
+	}
+	type candidate struct {
+		Content      content `json:"content"`
+		FinishReason string  `json:"finishReason"`
+	}
+	type usage struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+	}
+	return marshalReply(http.StatusOK, struct {
+		Candidates    []candidate `json:"candidates"`
+		UsageMetadata usage       `json:"usageMetadata"`
+	}{[]candidate{{content{"model", []part{{"fake google reply"}}}, "STOP"}}, usage{10, 5}})
+}
+
+// embeddingsReply answers /v1/embeddings for a string or an array of
+// strings. Each vector is computed from its text; the text itself is not in
+// the reply.
+func embeddingsReply(body []byte) Reply {
 	var req struct {
-		Model string          `json:"model"`
 		Input json.RawMessage `json:"input"`
 	}
 	json.Unmarshal(body, &req)
-	model := req.Model
-	if model == "" {
-		model = "fake-model"
-	}
-	m, _ := json.Marshal(model)
-	quotedModel := string(m)
-
-	switch {
-	case upstream == "openai" && path == "/v1/embeddings":
-		return embeddingsReply(req.Input)
-	case upstream == "anthropic" && path == "/v1/messages":
-		return JSONReply(200, `{"id":"msg_fake","type":"message","role":"assistant","model":`+quotedModel+
-			`,"content":[{"type":"text","text":"fake anthropic reply"}],"stop_reason":"end_turn",`+
-			`"usage":{"input_tokens":10,"output_tokens":5}}`)
-	case (upstream == "openai" || upstream == "xai") && path == "/v1/responses":
-		return JSONReply(200, `{"id":"resp_fake","object":"response","status":"completed","model":`+quotedModel+
-			`,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"fake `+upstream+` reply"}]}],`+
-			`"usage":{"input_tokens":10,"output_tokens":5}}`)
-	case (upstream == "openai" && path == "/v1/chat/completions") ||
-		(upstream == "openrouter" && path == "/api/v1/chat/completions") ||
-		(upstream == "perplexity" && path == "/chat/completions"):
-		return JSONReply(200, `{"id":"chatcmpl_fake","object":"chat.completion","model":`+quotedModel+
-			`,"choices":[{"index":0,"message":{"role":"assistant","content":"fake `+upstream+` reply"},"finish_reason":"stop"}],`+
-			`"usage":{"prompt_tokens":10,"completion_tokens":5}}`)
-	case upstream == "openrouter" && method == http.MethodGet && path == "/api/v1/models":
-		return JSONReply(200, `{"data":[]}`)
-	case upstream == "google" && strings.HasPrefix(path, "/v1beta/models/") && strings.HasSuffix(path, ":generateContent"):
-		return JSONReply(200, `{"candidates":[{"content":{"role":"model","parts":[{"text":"fake google reply"}]},"finishReason":"STOP"}],`+
-			`"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}`)
-	}
-	return JSONReply(http.StatusNotFound, `{"error":{"message":"fake upstream has no default reply for `+upstream+` `+method+` `+strings.ReplaceAll(path, `"`, `'`)+`"}}`)
-}
-
-// embeddingsReply answers /v1/embeddings for a string or an array of strings.
-func embeddingsReply(raw json.RawMessage) Reply {
 	var inputs []string
 	var one string
-	if err := json.Unmarshal(raw, &one); err == nil {
+	if err := json.Unmarshal(req.Input, &one); err == nil {
 		inputs = []string{one}
-	} else if err := json.Unmarshal(raw, &inputs); err != nil {
-		return JSONReply(http.StatusBadRequest, `{"error":{"message":"fake upstream: input must be a string or an array of strings"}}`)
+	} else if err := json.Unmarshal(req.Input, &inputs); err != nil {
+		return marshalReply(http.StatusBadRequest, map[string]map[string]string{
+			"error": {"message": "fake upstream: input must be a string or an array of strings"},
+		})
 	}
-	var b strings.Builder
-	b.WriteString(`{"object":"list","data":[`)
-	tokens := 0
+	type item struct {
+		Object    string    `json:"object"`
+		Index     int       `json:"index"`
+		Embedding []float32 `json:"embedding"`
+	}
+	type usage struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	}
+	items := make([]item, len(inputs))
 	for i, text := range inputs {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(`{"object":"embedding","index":`)
-		b.WriteString(strconv.Itoa(i))
-		b.WriteString(`,"embedding":`)
-		b.WriteString(VectorLiteral(EmbeddingFor(text)))
-		b.WriteByte('}')
-		tokens += len(strings.Fields(text))
+		items[i] = item{"embedding", i, EmbeddingFor(text)}
 	}
-	b.WriteString(`],"model":"text-embedding-3-small","usage":{"prompt_tokens":`)
-	b.WriteString(strconv.Itoa(tokens))
-	b.WriteString(`,"total_tokens":`)
-	b.WriteString(strconv.Itoa(tokens))
-	b.WriteString(`}}`)
-	return JSONReply(200, b.String())
+	// encoding/json writes a float32 as the shortest decimal that reads back
+	// as the same float32, as VectorLiteral does.
+	return marshalReply(http.StatusOK, struct {
+		Object string `json:"object"`
+		Data   []item `json:"data"`
+		Model  string `json:"model"`
+		Usage  usage  `json:"usage"`
+	}{"list", items, "text-embedding-3-small", usage{len(inputs), len(inputs)}})
 }
 
 // EmbeddingFor is the fake embedding of a text: a unit vector drawn from
