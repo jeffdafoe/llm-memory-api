@@ -17,7 +17,9 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mail"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/oauth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/registration"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
 )
@@ -108,6 +110,15 @@ func Handler(s *Services) http.Handler {
 	(&mail.Routes{Service: s.Mail, Router: s.Router}).Register(v1)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
 
+	// Top-level routes outside /v1, with no auth: OAuth (mounted before /mcp
+	// and /v1 in Node) and registration (after them; no path overlaps).
+	top := httpapi.NewRawMux("", http.HandlerFunc(httpapi.NotFound))
+	oauth.New(s.DB, s.Config, s.Actors, s.APIKeys, s.Log, os.Getenv("BASE_URL")).Register(top)
+	(&registration.Routes{
+		DB: s.DB, Config: s.Config, Actors: s.Actors, Log: s.Log, Mail: s.Mail, Notes: s.Notes,
+		Moderator: virtualagent.Moderator{DB: s.DB, Log: s.Log},
+	}).Register(top)
+
 	// The top level is decided on the raw path, as Express matches app.get
 	// and app.use mounts: "/%76%31/x" is not under /v1 and "/%68ealth" is
 	// not /health, though both decode to those paths. "/v1" itself is under
@@ -123,6 +134,8 @@ func Handler(s *Services) http.Handler {
 			httpapi.WriteOptions(w, "GET, HEAD")
 		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
 			v1Chain.ServeHTTP(w, r)
+		case top.Handles(p):
+			top.ServeHTTP(w, r)
 		default:
 			httpapi.NotFound(w, r)
 		}
