@@ -6,10 +6,29 @@
     query: "SELECT id FROM actors WHERE name = '{{ admin_username }}' AND password_hash IS NOT NULL"
   register: admin_exists
 
+# create-user.js lives at the repo root and requires node/api/src from there,
+# so it runs from repo_root. Its pg dependency is installed with the app's own
+# packages, which is project_root/node_modules on a server (the memory-api role
+# copies node/api there) and node/api/node_modules in a dev checkout.
 - name: Create admin user
   command: >
-    node {{ project_root }}/scripts/create-user.js
+    node {{ repo_root }}/scripts/create-user.js
     "{{ admin_username }}" "{{ admin_password }}"
   environment:
     DATABASE_URL: "postgresql://{{ database_user }}:{{ database_password }}@localhost:5432/{{ database_name }}"
+    NODE_PATH: "{{ (project_root ~ '/node_modules') if repo_root != project_root else (repo_root ~ '/node/api/node_modules') }}"
+  when: admin_exists.rowcount == 0 and admin_password | default('') | length > 0
+
+# The admin UI checks admin_permissions on every action; a user with no row
+# can log in but do nothing. Only a user this run created gets the grant.
+- name: Grant the new admin user full admin access
+  become_user: postgres
+  postgresql_query:
+    db: "{{ database_name }}"
+    query: >
+      INSERT INTO admin_permissions (actor_id, resource, action)
+      SELECT id, '*', '*' FROM actors WHERE name = %s
+      ON CONFLICT DO NOTHING
+    positional_args:
+      - "{{ admin_username }}"
   when: admin_exists.rowcount == 0 and admin_password | default('') | length > 0

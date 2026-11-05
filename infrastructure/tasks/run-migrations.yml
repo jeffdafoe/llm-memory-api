@@ -1,4 +1,48 @@
 ---
+# A fresh database is built from the baseline: migrations/schema.sql (a
+# schema-only dump of production) and migrations/seed.sql (the config keys and
+# built-in rows the server needs), loaded together in one transaction. Only the
+# *_up.sql files that come after the baseline are applied on top. A database
+# that already has the schema (production) never loads the baseline; it applies
+# pending *_up.sql files only. "Fresh" is "no actors table": roles/postgresql
+# creates an empty migrations_applied before this runs, so that table cannot
+# tell a fresh database from a migrated one. One transaction means a failed load
+# leaves the database empty, and the next run loads it again.
+- name: Check whether the database has the schema yet
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -t -A -c "SELECT to_regclass('public.actors') IS NULL;"
+  register: database_is_fresh
+  changed_when: false
+
+- name: Load the baseline schema and seed into a fresh database
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -v ON_ERROR_STOP=1 --single-transaction \
+      -f {{ project_root }}/migrations/schema.sql \
+      -f {{ project_root }}/migrations/seed.sql
+  when: database_is_fresh.stdout | trim == 't'
+
+# seed.sql leaves the two secret keys empty. Fill an empty one with 256 bits
+# from Postgres's strong random source, so the value never appears in a command
+# line or in Ansible's output. A key that has a value is never changed: the
+# encryption key protects stored provider API keys, and the bearer secret
+# signs every issued MCP token. Runs on every deploy, so it also repairs an
+# install whose keys were left empty.
+- name: Generate any empty secret config keys
+  shell: |
+    sudo -u postgres psql -d {{ database_name }} -v ON_ERROR_STOP=1 -t -A -c "
+      WITH filled AS (
+        UPDATE config
+           SET value = encode(sha256((gen_random_uuid()::text || gen_random_uuid()::text)::bytea), 'hex'),
+               updated_at = NOW()
+         WHERE key IN ('mcp_oauth_bearer_secret', 'virtual_agent_encryption_key')
+           AND coalesce(value, '') = ''
+        RETURNING key
+      )
+      SELECT count(*) FROM filled;"
+  register: secret_keys_filled
+  changed_when: secret_keys_filled.stdout | trim != '0'
+  notify: Restart memory-api
+
 - name: Find all up migration files
   find:
     paths: "{{ project_root }}/migrations"

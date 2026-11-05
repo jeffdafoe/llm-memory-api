@@ -104,6 +104,106 @@ jobs:
       - name: Test
         run: npm test
 
+  # A fresh install from the baseline (LLM-908): build an empty database the
+  # way roles/postgresql, tasks/run-migrations.yml and tasks/create-admin.yml do
+  # on a new server, then the server must start and answer /health, and the new
+  # admin must log in and read an admin page. psql runs inside the pgvector
+  # container so its version matches the dump (pg17 dumps carry a \restrict
+  # line that older clients reject).
+  fresh-install:
+    name: Fresh Install
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PSQL: docker exec -i ${{ job.services.postgres.id }} psql -U postgres -v ON_ERROR_STOP=1
+      DATABASE_URL: postgresql://memory_api:ci@localhost:5432/memory_api
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      # The server's own packages only, as on the VPS (npm install --omit=dev).
+      - name: Install
+        working-directory: node/api
+        run: npm ci --omit=dev
+
+      - name: Create the database and its user
+        run: |
+          $PSQL -c "CREATE USER memory_api WITH PASSWORD 'ci'"
+          $PSQL -c "CREATE DATABASE memory_api OWNER memory_api"
+          $PSQL -d memory_api -c "CREATE EXTENSION IF NOT EXISTS vector"
+          $PSQL -d memory_api -c "CREATE TABLE IF NOT EXISTS migrations_applied (migration_id VARCHAR(50) PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+
+      - name: Load the baseline
+        run: cat migrations/schema.sql migrations/seed.sql | $PSQL -d memory_api --single-transaction -f -
+
+      - name: Apply migrations after the baseline
+        run: |
+          for f in $(ls migrations/*_up.sql 2>/dev/null | sort); do
+            echo "applying $f"
+            $PSQL -d memory_api -f - < "$f"
+          done
+
+      - name: Generate the secret keys and grant the app user
+        run: |
+          $PSQL -d memory_api -c "UPDATE config SET value = encode(sha256((gen_random_uuid()::text || gen_random_uuid()::text)::bytea), 'hex') WHERE key IN ('mcp_oauth_bearer_secret', 'virtual_agent_encryption_key') AND coalesce(value, '') = ''"
+          $PSQL -d memory_api -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO memory_api; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO memory_api;"
+
+      - name: Create the admin user
+        env:
+          NODE_PATH: ${{ github.workspace }}/node/api/node_modules
+        run: |
+          node scripts/create-user.js ci-admin ci-admin-password
+          $PSQL -d memory_api -c "INSERT INTO admin_permissions (actor_id, resource, action) SELECT id, '*', '*' FROM actors WHERE name = 'ci-admin'"
+
+      # The process keeps running for the later steps of this job.
+      - name: Start the server
+        working-directory: node/api
+        env:
+          PORT: '3100'
+          BASE_URL: http://127.0.0.1:3100
+          LOG_DIR: ${{ runner.temp }}/logs
+        run: |
+          mkdir -p "$LOG_DIR"
+          nohup node src/server.js > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/health)" = "200" ]; then
+              echo "health 200 after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/server.log"; exit 1
+
+      - name: Log in as the admin and read an admin page
+        run: |
+          login=$(curl -s -X POST http://127.0.0.1:3100/v1/admin/login -H 'Content-Type: application/json' \
+            -d '{"username":"ci-admin","password":"ci-admin-password"}')
+          token=$(echo "$login" | jq -r '.session_token // empty')
+          [ -n "$token" ] || { echo "login failed: $login"; cat "$RUNNER_TEMP/server.log"; exit 1; }
+          templates=$(curl -s -X POST http://127.0.0.1:3100/v1/admin/templates/list -H "Authorization: Bearer $token" \
+            -H 'Content-Type: application/json' -d '{}' | jq '.templates | length')
+          [ "$templates" = "3" ] || { echo "templates list: $templates"; cat "$RUNNER_TEMP/server.log"; exit 1; }
+          echo "admin login ok, $templates templates"
+
+      - name: Server log
+        if: always()
+        run: cat "$RUNNER_TEMP/server.log" || true
+
   # Per-commit build of what the deploy installs (LLM-904): the Go server
   # binary and the admin UI's Vite output, published with their checksums as
   # the prerelease build-<sha>. infrastructure/roles/memory-api-go downloads
