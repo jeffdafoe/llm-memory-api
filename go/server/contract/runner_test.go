@@ -184,11 +184,43 @@ func TestRunnerSettlesAndComparesOutbound(t *testing.T) {
 	}
 }
 
-func TestRunnerMissingCaptureIsAnError(t *testing.T) {
-	sc := Scenario{Name: "bad capture", Steps: []Step{{Method: "GET", Path: "/v1/me", Header: [][2]string{{"Authorization", "Bearer {{nothing}}"}}}}}
-	out := runPair(t, sc, "", "")
-	if got := out.Node.Steps[0].Err; !strings.Contains(got, "{{nothing}}") {
-		t.Fatalf("Err = %q", got)
+// A harness problem fails the run even when both sides hit it the same way;
+// compared as results, two identical failures would pass.
+func TestRunnerHarnessErrorsFailTheRun(t *testing.T) {
+	cases := []struct {
+		name string
+		step Step
+		want string
+	}{
+		{"undefined value", Step{Method: "GET", Path: "/v1/me", Header: [][2]string{{"Authorization", "Bearer {{nothing}}"}}}, "{{nothing}}"},
+		{"unknown credential", Step{Method: "GET", Path: "/v1/me", Auth: "nobody"}, `no credential "nobody"`},
+		{"capture not in response", Step{Method: "GET", Path: "/v1/me", Auth: "agent-a", Capture: map[string]string{"x": "no.such.field"}}, "capture x"},
+		{"capture from a non-JSON response", Step{Method: "GET", Path: "/nowhere", Capture: map[string]string{"x": "a"}}, "not JSON"},
+	}
+	for _, c := range cases {
+		f := NewFakeUpstream()
+		_, node := newFakeServer(t, f, "node", "")
+		_, goTarget := newFakeServer(t, f, "go", "")
+		r := &Runner{Fake: f, QuietFor: 50 * time.Millisecond, SettleLimit: 5 * time.Second}
+		_, err := r.Run(context.Background(), Scenario{Name: c.name, Steps: []Step{c.step}}, node, goTarget)
+		f.Close()
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want it to mention %q", c.name, err, c.want)
+		}
+	}
+}
+
+// Parallel upstream calls that differ only in their auth headers must sort
+// by them, so arrival order does not matter.
+func TestSortRecordedUsesAuth(t *testing.T) {
+	a := Recorded{Upstream: "openai", Method: "POST", Path: "/v1/embeddings", Auth: []string{"authorization"}, Body: []byte(`{"input":"x"}`)}
+	b := Recorded{Upstream: "openai", Method: "POST", Path: "/v1/embeddings", Body: []byte(`{"input":"x"}`)}
+	first := sortRecorded(NewNormalizer(), []Recorded{a, b})
+	second := sortRecorded(NewNormalizer(), []Recorded{b, a})
+	for i := range first {
+		if strings.Join(first[i].Auth, ",") != strings.Join(second[i].Auth, ",") {
+			t.Fatalf("arrival order changed the sorted order at %d", i)
+		}
 	}
 }
 

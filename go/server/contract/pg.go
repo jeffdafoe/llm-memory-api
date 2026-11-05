@@ -19,12 +19,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// AppRole is the login the servers connect as. Like memory_api on the VPS it
-// is not a superuser; it gets the same grants a fresh install gives.
-const (
-	AppRole     = "contract_app"
-	appPassword = "contract"
-)
+// appPassword is the password of the run's app role. The role is created for
+// one run and dropped after it, and only listens on the test cluster.
+const appPassword = "contract"
 
 // multisetTables are written from background goroutines (the request log
 // after the response, error_log from a fire-and-forget insert), so their row
@@ -36,12 +33,16 @@ var multisetTables = map[string][]string{
 }
 
 // Cluster is the Postgres server the harness runs on, reached as a superuser
-// through CONTRACT_PG_URL. All databases of one test run share a random
-// prefix, so two runs on one cluster do not collide.
+// through CONTRACT_PG_URL. All databases of one test run, and its app role,
+// share a random prefix, so two runs on one cluster do not collide.
 type Cluster struct {
 	adminURL *url.URL
 	prefix   string
 	template string
+	// role is the login the servers connect as (<prefix>_app). Like
+	// memory_api on the VPS it is not a superuser; it gets the same grants a
+	// fresh install gives.
+	role string
 
 	createMu sync.Mutex // CREATE DATABASE ... TEMPLATE needs the template idle
 	mu       sync.Mutex
@@ -63,7 +64,8 @@ func NewCluster(adminURL string) (*Cluster, error) {
 	}
 	var b [3]byte
 	rand.Read(b[:])
-	return &Cluster{adminURL: u, prefix: "contract_" + hex.EncodeToString(b[:])}, nil
+	prefix := "contract_" + hex.EncodeToString(b[:])
+	return &Cluster{adminURL: u, prefix: prefix, role: prefix + "_app"}, nil
 }
 
 // URL returns the connection URL for one database, as the superuser or as
@@ -72,7 +74,7 @@ func (c *Cluster) URL(db string, asApp bool) string {
 	u := *c.adminURL
 	u.Path = "/" + db
 	if asApp {
-		u.User = url.UserPassword(AppRole, appPassword)
+		u.User = url.UserPassword(c.role, appPassword)
 	}
 	return u.String()
 }
@@ -89,44 +91,49 @@ func maintenanceDB(u *url.URL) string {
 	return db
 }
 
+// execFile runs one SQL text on its own connection to db, as the migration
+// runner gives each file its own psql: a file that changes session settings
+// (schema.sql empties search_path) cannot affect the next one.
+func (c *Cluster) execFile(ctx context.Context, db, name, sql string) error {
+	conn, err := c.admin(ctx, db)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	if _, err := conn.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
+}
+
 // BuildTemplate makes the template database the way a fresh install builds
 // one (infrastructure/tasks/run-migrations.yml, CI's fresh-install job):
 // the vector extension and migrations_applied, schema.sql plus seed.sql in
-// one transaction, every *_up.sql in file-name order, the secret config keys
-// filled, the grants, and then the harness fixture.
+// one transaction, every *_up.sql in file-name order, the grants, and then
+// the harness fixture.
 func (c *Cluster) BuildTemplate(ctx context.Context, repoRoot string) error {
 	c.template = c.prefix + "_template"
 	maint := maintenanceDB(c.adminURL)
+	role := pgx.Identifier{c.role}.Sanitize()
 
 	conn, err := c.admin(ctx, maint)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", maint, err)
 	}
 	defer conn.Close(ctx)
-	var exists bool
-	if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)", AppRole).Scan(&exists); err != nil {
-		return err
-	}
-	if !exists {
-		// Role names cannot be bind parameters; both are constants.
-		if _, err := conn.Exec(ctx, "CREATE ROLE "+AppRole+" LOGIN PASSWORD '"+appPassword+"'"); err != nil {
-			return fmt.Errorf("create role: %w", err)
-		}
+	// A role name cannot be a bind parameter; the password is a constant.
+	if _, err := conn.Exec(ctx, "CREATE ROLE "+role+" LOGIN NOSUPERUSER PASSWORD '"+appPassword+"'"); err != nil {
+		return fmt.Errorf("create role: %w", err)
 	}
 	// Owned by the app role as on a fresh install; the tables are still the
 	// superuser's, since the superuser creates them.
-	if _, err := conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{c.template}.Sanitize()+" OWNER "+AppRole); err != nil {
+	if _, err := conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{c.template}.Sanitize()+" OWNER "+role); err != nil {
 		return fmt.Errorf("create template: %w", err)
 	}
 
-	tpl, err := c.admin(ctx, c.template)
-	if err != nil {
-		return err
-	}
-	defer tpl.Close(ctx)
-	if _, err := tpl.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS vector;
+	if err := c.execFile(ctx, c.template, "extension", `CREATE EXTENSION IF NOT EXISTS vector;
 		CREATE TABLE IF NOT EXISTS migrations_applied (migration_id VARCHAR(50) PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`); err != nil {
-		return fmt.Errorf("extension: %w", err)
+		return err
 	}
 
 	var baseline strings.Builder
@@ -139,9 +146,10 @@ func (c *Cluster) BuildTemplate(ctx context.Context, repoRoot string) error {
 		baseline.WriteString("\n")
 	}
 	// One simple-protocol query with many statements runs as one implicit
-	// transaction, as psql --single-transaction does.
-	if _, err := tpl.Exec(ctx, baseline.String()); err != nil {
-		return fmt.Errorf("baseline: %w", err)
+	// transaction, as psql --single-transaction does. The files hold no
+	// transaction statements of their own.
+	if err := c.execFile(ctx, c.template, "baseline", baseline.String()); err != nil {
+		return err
 	}
 
 	ups, _ := filepath.Glob(filepath.Join(repoRoot, "migrations", "*_up.sql"))
@@ -151,20 +159,18 @@ func (c *Cluster) BuildTemplate(ctx context.Context, repoRoot string) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tpl.Exec(ctx, sql); err != nil {
-			return fmt.Errorf("%s: %w", filepath.Base(f), err)
+		if err := c.execFile(ctx, c.template, filepath.Base(f), sql); err != nil {
+			return err
 		}
 	}
-	// schema.sql empties search_path for its session; start clean.
-	tpl.Close(ctx)
 
-	tpl, err = c.admin(ctx, c.template)
+	tpl, err := c.admin(ctx, c.template)
 	if err != nil {
 		return err
 	}
 	defer tpl.Close(ctx)
-	if _, err := tpl.Exec(ctx, `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO `+AppRole+`;
-		GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO `+AppRole); err != nil {
+	if _, err := tpl.Exec(ctx, `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO `+role+`;
+		GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO `+role); err != nil {
 		return fmt.Errorf("grants: %w", err)
 	}
 	if err := applyFixture(ctx, tpl); err != nil {
@@ -269,7 +275,9 @@ func (c *Cluster) Copy(ctx context.Context, label string) (*ScenarioDB, error) {
 			return err
 		}
 		defer conn.Close(ctx)
-		_, err = conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()+" TEMPLATE "+pgx.Identifier{c.template}.Sanitize())
+		// A copy is owned by whoever creates it unless OWNER says otherwise.
+		_, err = conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()+
+			" TEMPLATE "+pgx.Identifier{c.template}.Sanitize()+" OWNER "+pgx.Identifier{c.role}.Sanitize())
 		return err
 	}()
 	c.createMu.Unlock()
@@ -278,44 +286,56 @@ func (c *Cluster) Copy(ctx context.Context, label string) (*ScenarioDB, error) {
 	}
 	pool, err := pgxpool.New(ctx, c.URL(name, false))
 	if err != nil {
+		// The database exists but the caller gets no handle to drop it.
+		c.dropDatabase(context.Background(), name)
 		return nil, err
 	}
 	return &ScenarioDB{Name: name, cluster: c, pool: pool}, nil
 }
 
-// Drop removes the copy. FORCE ends any connection a stopped server left.
-func (d *ScenarioDB) Drop(ctx context.Context) error {
-	d.pool.Close()
-	conn, err := d.cluster.admin(ctx, maintenanceDB(d.cluster.adminURL))
+// dropDatabase drops one database of this run. FORCE ends any connection a
+// stopped server left.
+func (c *Cluster) dropDatabase(ctx context.Context, name string) error {
+	conn, err := c.admin(ctx, maintenanceDB(c.adminURL))
 	if err != nil {
 		return err
 	}
 	defer conn.Close(ctx)
-	_, err = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{d.Name}.Sanitize()+" WITH (FORCE)")
+	_, err = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)")
 	return err
 }
 
-// DropTemplate removes the template at the end of the run.
-func (c *Cluster) DropTemplate(ctx context.Context) error {
-	if c.template == "" {
-		return nil
+// Drop removes the copy.
+func (d *ScenarioDB) Drop(ctx context.Context) error {
+	d.pool.Close()
+	return d.cluster.dropDatabase(ctx, d.Name)
+}
+
+// Cleanup drops the template and then the run's role, which can only go once
+// no database it owns is left. Call it after every copy is dropped.
+func (c *Cluster) Cleanup(ctx context.Context) error {
+	if c.template != "" {
+		if err := c.dropDatabase(ctx, c.template); err != nil {
+			return err
+		}
 	}
 	conn, err := c.admin(ctx, maintenanceDB(c.adminURL))
 	if err != nil {
 		return err
 	}
 	defer conn.Close(ctx)
-	_, err = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{c.template}.Sanitize()+" WITH (FORCE)")
+	_, err = conn.Exec(ctx, "DROP ROLE IF EXISTS "+pgx.Identifier{c.role}.Sanitize())
 	return err
 }
 
-// Fingerprint is the row count and newest row version (xmin) of every table.
-// An insert, update or delete in any table changes it, which is what the
-// settle step waits on.
+// Fingerprint is an MD5 of every table's full contents, all columns. Any
+// committed insert, update or delete changes it, including one that commits
+// after a later transaction (row counts and xmin would miss that). The
+// settle step waits until it stops changing.
 func (d *ScenarioDB) Fingerprint(ctx context.Context) (string, error) {
 	parts := make([]string, len(d.cluster.tables))
 	for i, t := range d.cluster.tables {
-		parts[i] = fmt.Sprintf("SELECT %s || '=' || count(*) || '/' || coalesce(max(xmin::text::bigint), 0) FROM %s",
+		parts[i] = fmt.Sprintf("SELECT %s || '=' || md5(coalesce(string_agg(x::text, E'\\n' ORDER BY x::text), '')) FROM %s x",
 			quoteLiteral(t.name), pgx.Identifier{"public", t.name}.Sanitize())
 	}
 	rows, err := d.pool.Query(ctx, strings.Join(parts, " UNION ALL "))

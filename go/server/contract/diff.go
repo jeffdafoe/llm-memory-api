@@ -42,12 +42,12 @@ type Response struct {
 	Body    Body
 }
 
-// StepResult is one step of a scenario on one server. Err is set when the
-// request could not be made or read (connection refused, timeout).
+// StepResult is one request step of a scenario on one server. A step that
+// could not be sent or read fails the run instead (Runner.Run), so every
+// StepResult has a response.
 type StepResult struct {
 	Label    string
-	Response *Response
-	Err      string
+	Response Response
 }
 
 // Outbound is one request a server sent to the fake upstream.
@@ -215,17 +215,7 @@ func (c *comparer) steps(node, goSteps []StepResult) {
 			return
 		}
 		ns, gs := node[i], goSteps[i]
-		where := fmt.Sprintf("step %d %s", i+1, ns.Label)
-		if ns.Err != "" || gs.Err != "" {
-			if ns.Err != gs.Err {
-				c.add(where+": error", orNone(ns.Err), orNone(gs.Err))
-			}
-			continue
-		}
-		if ns.Response == nil || gs.Response == nil {
-			continue
-		}
-		c.response(where, *ns.Response, *gs.Response)
+		c.response(fmt.Sprintf("step %d %s", i+1, ns.Label), ns.Response, gs.Response)
 	}
 }
 
@@ -265,7 +255,7 @@ func (c *comparer) headers(where string, node, goHeaders []Header) {
 	}
 	for _, name := range names {
 		nv, gv := nm[name], gm[name]
-		if strings.Join(nv, "\x00") != strings.Join(gv, "\x00") || len(nv) != len(gv) {
+		if !sameStrings(nv, gv) {
 			c.add(where+": header "+name, showHeader(nv), showHeader(gv))
 		}
 	}
@@ -301,8 +291,10 @@ func showBody(b Body) string {
 var kindNames = map[Kind]string{Null: "null", Bool: "boolean", Number: "number", String: "string", Array: "array", Object: "object"}
 
 // value walks two JSON values. Key order is part of the contract, so a
-// different key sequence is reported once at the object, and then each key
-// both sides have is compared by name.
+// different key sequence is reported once at the object. Then each key both
+// sides have is compared occurrence by occurrence: the first "x" with the
+// first "x", the second with the second, so a duplicate key's earlier value
+// is compared too.
 func (c *comparer) value(where string, node, goVal Value) {
 	if node.Kind != goVal.Kind {
 		c.add(where, kindNames[node.Kind]+" "+showValue(node), kindNames[goVal.Kind]+" "+showValue(goVal))
@@ -323,18 +315,52 @@ func (c *comparer) value(where string, node, goVal Value) {
 		}
 	case Object:
 		nk, gk := keys(node), keys(goVal)
-		if strings.Join(nk, "\x00") != strings.Join(gk, "\x00") {
-			c.add(where+": keys", show(strings.Join(nk, ", ")), show(strings.Join(gk, ", ")))
+		if !sameStrings(nk, gk) {
+			c.add(where+": keys", showKeys(nk), showKeys(gk))
 		}
+		nOcc, gOcc := occurrences(node), occurrences(goVal)
 		for _, k := range uniqueKeys(nk) {
-			gv, ok := goVal.Get(k)
-			if !ok {
-				continue
+			nvs, gvs := nOcc[k], gOcc[k]
+			for j := 0; j < min(len(nvs), len(gvs)); j++ {
+				w := where + "." + k
+				if len(nvs) > 1 || len(gvs) > 1 {
+					w += fmt.Sprintf("#%d", j+1)
+				}
+				c.value(w, nvs[j], gvs[j])
 			}
-			nv, _ := node.Get(k)
-			c.value(where+"."+k, nv, gv)
 		}
 	}
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// showKeys quotes each key, so an empty key or one with a comma reads
+// unambiguously.
+func showKeys(ks []string) string {
+	q := make([]string, len(ks))
+	for i, k := range ks {
+		q[i] = strconv.Quote(k)
+	}
+	return show("[" + strings.Join(q, ", ") + "]")
+}
+
+// occurrences lists each key's values in document order.
+func occurrences(v Value) map[string][]Value {
+	out := map[string][]Value{}
+	for _, m := range v.Members {
+		out[m.Key] = append(out[m.Key], m.Value)
+	}
+	return out
 }
 
 func keys(v Value) []string {
@@ -368,7 +394,7 @@ func (c *comparer) outbound(node, goOut []Outbound) {
 			c.add(where+": request", n.Label(), g.Label())
 			continue
 		}
-		if strings.Join(n.Auth, ",") != strings.Join(g.Auth, ",") {
+		if !sameStrings(n.Auth, g.Auth) {
 			c.add(where+": auth headers", orNone(strings.Join(n.Auth, ",")), orNone(strings.Join(g.Auth, ",")))
 		}
 		c.body(where+": body", n.Body, g.Body)

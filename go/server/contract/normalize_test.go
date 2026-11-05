@@ -122,3 +122,30 @@ func TestSortMultisetMakesNamesOrderFree(t *testing.T) {
 		t.Fatalf("order changed the result:\n%s\n%s", a, b)
 	}
 }
+
+// Rows that differ only in which already-named token they carry must sort by
+// that name, not tie: otherwise Node's [A, B] and Go's [B, A] would number
+// the same multiset differently.
+func TestSortMultisetUsesKnownNames(t *testing.T) {
+	tokA := strings.Repeat("a1", 32)
+	tokB := strings.Repeat("b2", 32)
+	row := func(tok string) Value {
+		v, _ := ParseJSON([]byte(`{"path":"/x","token":"` + tok + `"}`))
+		return v
+	}
+	norm := func(rows []Value) string {
+		n := NewNormalizer()
+		n.String(tokA) // named <rand-1> by an earlier response
+		n.String(tokB) // <rand-2>
+		var parts []string
+		for _, r := range n.SortMultiset(rows) {
+			parts = append(parts, n.Value(r).Compact())
+		}
+		return strings.Join(parts, " ")
+	}
+	a := norm([]Value{row(tokA), row(tokB)})
+	b := norm([]Value{row(tokB), row(tokA)})
+	if a != b {
+		t.Fatalf("order changed the result:\n%s\n%s", a, b)
+	}
+}

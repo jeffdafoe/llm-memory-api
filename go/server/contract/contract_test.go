@@ -81,8 +81,8 @@ func runMain(m *testing.M) int {
 	if buildErr == nil {
 		code = m.Run()
 	}
-	if err := cluster.DropTemplate(ctx); err != nil {
-		fmt.Fprintln(os.Stderr, "contract: drop template:", err)
+	if err := cluster.Cleanup(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "contract: cleanup:", err)
 	}
 	return code
 }
@@ -112,8 +112,11 @@ func TestContract(t *testing.T) {
 // template and a Node and a Go server, then runs and compares.
 func runScenario(t *testing.T, sc Scenario) {
 	ctx := context.Background()
+	// Cleanups run last-registered first: the servers stop, then the
+	// databases are dropped, then the fake closes. Closing the fake first
+	// would wait on requests from servers that are still running.
 	fake := NewFakeUpstream()
-	defer fake.Close()
+	t.Cleanup(fake.Close)
 
 	type side struct {
 		name string

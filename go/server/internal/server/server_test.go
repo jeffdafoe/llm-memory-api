@@ -117,6 +117,15 @@ func TestPathsExpressDoesNotRedirect(t *testing.T) {
 		{"/v1/../health", 401, `{"error":{"code":"UNAUTHORIZED","message":"Missing Authorization header"}}`},
 		// The login exemption is on the raw path, as Express's req.path.
 		{"/v1/agent%2Flogin", 401, `{"error":{"code":"UNAUTHORIZED","message":"Missing Authorization header"}}`},
+		// The top level is decided on the raw path: these decode to /v1/...
+		// and /health but are neither in Express.
+		{"/%76%31/missing", 404, "<pre>Cannot GET /%76%31/missing</pre>"},
+		{"/v%31/missing", 404, "<pre>Cannot GET /v%31/missing</pre>"},
+		{"/v1%2Fmissing", 404, "<pre>Cannot GET /v1%2Fmissing</pre>"},
+		{"/%68ealth", 404, "<pre>Cannot GET /%68ealth</pre>"},
+		// ServeMux cleans the escaped path, so an encoded dot segment is not
+		// a dot segment; it reaches the /v1 chain like any other path.
+		{"/v1/%2e%2e/x", 401, `{"error":{"code":"UNAUTHORIZED","message":"Missing Authorization header"}}`},
 	}
 	for _, c := range cases {
 		h, mock := newHandler(t)

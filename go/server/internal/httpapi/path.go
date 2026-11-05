@@ -18,9 +18,10 @@ func RawPath(r *http.Request) string {
 	return r.URL.EscapedPath()
 }
 
-// isClean reports whether ServeMux would serve p as is. ServeMux redirects
-// any other path to its cleaned form ("//a/./b" to "/a/b"), keeping a
-// trailing slash; this is the same cleaning rule.
+// isClean reports whether ServeMux would serve the escaped path p as is.
+// ServeMux redirects any other path to its cleaned form ("//a/./b" to
+// "/a/b"), keeping a trailing slash; this is the same cleaning rule, applied
+// to the same input (URL.EscapedPath, so "%2e%2e" is not a dot segment).
 func isClean(p string) bool {
 	if p == "" || p[0] != '/' {
 		return false
@@ -38,7 +39,7 @@ func isClean(p string) bool {
 // unmatched path gets at that level.
 func Unclean(next, fallback http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !isClean(r.URL.Path) {
+		if !isClean(r.URL.EscapedPath()) {
 			fallback.ServeHTTP(w, r)
 			return
 		}

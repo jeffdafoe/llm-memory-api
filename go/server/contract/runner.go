@@ -3,6 +3,7 @@ package contract
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -101,7 +102,6 @@ type Outcome struct {
 
 type rawStep struct {
 	label  string
-	err    string
 	status int
 	header http.Header
 	body   []byte
@@ -172,7 +172,11 @@ func (r *Runner) runSide(ctx context.Context, sc Scenario, t *Target) (rawSide, 
 			}
 			continue
 		}
-		side.steps = append(side.steps, r.request(ctx, client, t, st, vars))
+		step, err := r.request(ctx, client, t, st, vars)
+		if err != nil {
+			return side, fmt.Errorf("%s: step %d %s: %w", t.Name, i+1, stepLabel(st), err)
+		}
+		side.steps = append(side.steps, step)
 	}
 
 	// The last request may have started background work (request_log
@@ -226,11 +230,13 @@ func stepLabel(st Step) string {
 	return st.Method + " " + st.Path
 }
 
-func (r *Runner) request(ctx context.Context, client *http.Client, t *Target, st Step, vars map[string]string) rawStep {
+// request sends one step. Every error is a harness failure, not a result to
+// compare: two servers failing the same way (a broken {{capture}}, a timeout
+// on both) would otherwise compare equal and pass without testing anything.
+func (r *Runner) request(ctx context.Context, client *http.Client, t *Target, st Step, vars map[string]string) (rawStep, error) {
 	res := rawStep{label: stepLabel(st)}
-	fail := func(err error) rawStep {
-		res.err = err.Error()
-		return res
+	fail := func(err error) (rawStep, error) {
+		return res, err
 	}
 
 	path, err := expand(st.Path, vars)
@@ -296,16 +302,22 @@ func (r *Runner) request(ctx context.Context, client *http.Client, t *Target, st
 	res.header = resp.Header
 	res.body = data
 
-	if len(st.Capture) > 0 && isJSON(resp.Header.Get("Content-Type")) {
-		if v, err := ParseJSON(data); err == nil {
-			for name, p := range st.Capture {
-				if got, ok := v.Path(p); ok && got.Kind != Null {
-					vars[name] = got.Text()
-				}
+	// A capture is required: a missing one would leave a later step with no
+	// value, or with a stale one from an earlier capture of the same name.
+	if len(st.Capture) > 0 {
+		v, err := ParseJSON(data)
+		if err != nil || !isJSON(resp.Header.Get("Content-Type")) {
+			return fail(fmt.Errorf("capture: status %d, response is not JSON", resp.StatusCode))
+		}
+		for name, p := range st.Capture {
+			got, ok := v.Path(p)
+			if !ok || got.Kind == Null {
+				return fail(fmt.Errorf("capture %s: no value at %q (status %d)", name, p, resp.StatusCode))
 			}
+			vars[name] = got.Text()
 		}
 	}
-	return res
+	return res, nil
 }
 
 func isJSON(contentType string) bool {
@@ -386,19 +398,14 @@ func normalizeSide(side rawSide, t *Target, outboundMultiset bool) Result {
 	n := NewNormalizer(t.BaseURL)
 	var res Result
 	for _, s := range side.steps {
-		sr := StepResult{Label: s.label}
-		if s.err != "" {
-			// Error texts name the server's own address; normalized, the
-			// same failure reads the same on both sides.
-			sr.Err = n.String(s.err)
-		} else {
-			sr.Response = &Response{
+		res.Steps = append(res.Steps, StepResult{
+			Label: s.label,
+			Response: Response{
 				Status:  s.status,
 				Headers: compareHeaders(n, s.header),
 				Body:    makeBody(n, s.body, isJSON(s.header.Get("Content-Type"))),
-			}
-		}
-		res.Steps = append(res.Steps, sr)
+			},
+		})
 	}
 
 	outbound := side.outbound
@@ -460,18 +467,20 @@ func makeBody(n *Normalizer, data []byte, tryJSON bool) Body {
 	return Body{Text: n.String(string(data))}
 }
 
-// sortRecorded orders upstream requests by their masked normalized form, so
-// parallel calls compare the same way whatever order they arrived in.
+// sortRecorded orders upstream requests by every compared field in masked
+// normalized form, so parallel calls compare the same way whatever order
+// they arrived in. The key is JSON, so no field can run into the next.
 func sortRecorded(n *Normalizer, recs []Recorded) []Recorded {
-	m := maskingNormalizer(n.origins)
+	m := n.masking()
 	keys := make([]string, len(recs))
 	for i, rec := range recs {
 		b := makeBody(m, rec.Body, true)
-		body := b.Text
+		body := "text:" + b.Text
 		if b.IsJSON {
-			body = b.JSON.Compact()
+			body = "json:" + b.JSON.Compact()
 		}
-		keys[i] = rec.Upstream + " " + rec.Method + " " + m.String(rec.Path) + " " + body
+		key, _ := json.Marshal([]any{rec.Upstream, rec.Method, m.String(rec.Path), rec.Auth, body})
+		keys[i] = string(key)
 	}
 	idx := make([]int, len(recs))
 	for i := range idx {

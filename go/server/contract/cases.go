@@ -62,6 +62,13 @@ var notFoundCases = []Scenario{
 	one("404 double slash", Step{Method: "GET", Path: "//double//slash"}),
 	one("404 dot segment", Step{Method: "GET", Path: "/./health"}),
 	one("404 encoded v1 slash is not under v1", Step{Method: "GET", Path: "/v1%2Fcontract"}),
+	// Express matches mounts and routes on the raw path; these decode to
+	// /v1/... and /health but match neither.
+	one("404 encoded v1 mount", Step{Method: "GET", Path: "/%76%31/missing"}),
+	one("404 encoded v1 mount with a session", Step{Method: "GET", Path: "/%76%31/missing", Auth: "agent-a-session"}),
+	one("404 partly encoded v1 mount", Step{Method: "GET", Path: "/v%31/missing", Auth: "admin-web"}),
+	one("404 encoded health", Step{Method: "GET", Path: "/%68ealth"}),
+	one("404 POST health", Step{Method: "POST", Path: "/health"}),
 	one("404 bad percent escape", Step{Method: "GET", Path: "/bad%ZZescape"},
 		KnownDifference{Where: "step 1 GET /bad%ZZescape: *", Reason: "Go's net/http refuses an invalid percent escape with a plain 400 before any handler (go-server note, Known differences)"},
 		KnownDifference{Where: "table request_log*", Reason: "that 400 never reaches the request log; Node logs its 404"},
@@ -89,6 +96,7 @@ var authCases = []Scenario{
 	one("v1 bare path admin", Step{Method: "GET", Path: "/v1", Auth: "admin-web"}),
 	one("v1 double slash agent", Step{Method: "GET", Path: "/v1//contract", Auth: "agent-a-session"}),
 	one("v1 dot-dot without auth", Step{Method: "GET", Path: "/v1/../health"}),
+	one("v1 encoded dot-dot with a session", Step{Method: "GET", Path: "/v1/%2e%2e/x", Auth: "agent-a-session"}),
 	one("v1 GET agent login without auth", Step{Method: "GET", Path: "/v1/agent/login"}),
 	one("v1 GET admin login without auth", Step{Method: "GET", Path: "/v1/admin/login"}),
 	one("v1 encoded login path needs auth", Step{Method: "POST", Path: "/v1/agent%2Flogin", Header: jsonType, Body: `{}`}),

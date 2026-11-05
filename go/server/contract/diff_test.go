@@ -17,7 +17,7 @@ func jsonBody(t *testing.T, s string) Body {
 func oneStep(status int, headers []Header, body Body) Result {
 	return Result{Steps: []StepResult{{
 		Label:    "POST /v1/agent/login",
-		Response: &Response{Status: status, Headers: headers, Body: body},
+		Response: Response{Status: status, Headers: headers, Body: body},
 	}}}
 }
 
@@ -149,6 +149,21 @@ func TestCompareOutboundAndTables(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing difference %q in:\n%s", want, got)
+		}
+	}
+}
+
+// A duplicate key's earlier value is compared, and an empty key counts.
+func TestCompareDuplicateAndEmptyKeys(t *testing.T) {
+	cases := []struct{ node, goBody, where string }{
+		{`{"x":1,"x":2}`, `{"x":9,"x":2}`, "step 1 POST /v1/agent/login: body.x#1"},
+		{`{}`, `{"":1}`, "step 1 POST /v1/agent/login: body: keys"},
+		{`{"a,b":1}`, `{"a":1,"b":1}`, "step 1 POST /v1/agent/login: body: keys"},
+	}
+	for _, c := range cases {
+		rep, _ := Compare(oneStep(200, nil, jsonBody(t, c.node)), oneStep(200, nil, jsonBody(t, c.goBody)), nil)
+		if !strings.Contains(strings.Join(wheres(rep), "\n"), c.where) {
+			t.Errorf("%s vs %s: want %q, got:\n%s", c.node, c.goBody, c.where, rep)
 		}
 	}
 }

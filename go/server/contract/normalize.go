@@ -37,7 +37,10 @@ var (
 type Normalizer struct {
 	origins []string
 	names   map[string]string
-	mask    bool
+	// mask, when set, is the Normalizer whose names this one only reads:
+	// a value it already named keeps that name, any other random value
+	// becomes <rand>.
+	mask *Normalizer
 }
 
 // NewNormalizer returns a Normalizer for one server. origins are that
@@ -57,11 +60,13 @@ func NewNormalizer(origins ...string) *Normalizer {
 	return n
 }
 
-// maskingNormalizer names every random value <rand>, for the sort key of a
-// multiset, where first-seen numbering would depend on the order being
-// decided.
-func maskingNormalizer(origins []string) *Normalizer {
-	return &Normalizer{origins: origins, names: map[string]string{}, mask: true}
+// masking returns a Normalizer for the sort key of a multiset, where
+// first-seen numbering would depend on the order being decided. A value an
+// earlier response already named keeps its <rand-N>, so two rows that differ
+// only in which known token they carry still sort apart; a value not yet
+// named is <rand>.
+func (n *Normalizer) masking() *Normalizer {
+	return &Normalizer{origins: n.origins, mask: n}
 }
 
 // Names returns the placeholder each raw random value got, for debugging a
@@ -75,7 +80,10 @@ func (n *Normalizer) Names() map[string]string {
 }
 
 func (n *Normalizer) random(raw string) string {
-	if n.mask {
+	if n.mask != nil {
+		if name, ok := n.mask.names[raw]; ok {
+			return name
+		}
 		return maskedRandom
 	}
 	if name, ok := n.names[raw]; ok {
@@ -187,12 +195,14 @@ func (n *Normalizer) Value(v Value) Value {
 }
 
 // SortMultiset orders values whose order does not matter (rows written by
-// background goroutines, parallel provider calls) by their normalized form
-// with every random value masked. Sorting before numbering makes the
+// background goroutines, parallel provider calls) by their normalized form,
+// with values not yet named masked. Sorting before numbering makes the
 // <rand-N> names come out the same on both sides whatever order the server
-// wrote in. Ties keep their input order.
+// wrote in. Ties keep their input order; values that tie differ at most in
+// random values first seen in this multiset, and such a tie can still number
+// them differently on the two sides.
 func (n *Normalizer) SortMultiset(values []Value) []Value {
-	m := maskingNormalizer(n.origins)
+	m := n.masking()
 	keys := make([]string, len(values))
 	for i, v := range values {
 		keys[i] = m.Value(v).Compact()

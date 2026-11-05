@@ -81,35 +81,30 @@ func LogDir() string {
 // request is still logged, as Express logged a request its error handler
 // answered. The outer one covers the layers above the log.
 func Handler(s *Services) http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-
 	// /v1: every route behind the session middleware and the last_seen
-	// heartbeat. Routes are added to v1 as they are ported. Express mounts
-	// /v1 for "/v1" itself too, so the bare path gets the same chain instead
-	// of ServeMux's redirect to "/v1/".
+	// heartbeat. Routes are added to v1 as they are ported. A path ServeMux
+	// would clean and redirect goes to the /v1 fallback instead, as Express
+	// redirects nothing.
 	v1 := http.NewServeMux()
 	v1Fallback := http.HandlerFunc(v1Unmatched)
 	v1.Handle("/", v1Fallback)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, httpapi.Unclean(v1, v1Fallback)))
-	mux.Handle("/v1/", v1Chain)
-	mux.Handle("/v1", v1Chain)
 
-	mux.HandleFunc("/", httpapi.NotFound)
-
-	// A path ServeMux would clean and redirect never reaches it. Under /v1
-	// (matched on the raw path, as Express's mount is) it still goes through
-	// auth to the /v1 fallback; anywhere else it is the 404 page.
-	root := httpapi.Unclean(mux, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if p := httpapi.RawPath(r); p == "/v1" || strings.HasPrefix(p, "/v1/") {
+	// The top level is decided on the raw path, as Express matches app.get
+	// and app.use mounts: "/%76%31/x" is not under /v1 and "/%68ealth" is
+	// not /health, though both decode to those paths. "/v1" itself is under
+	// the mount.
+	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := httpapi.RawPath(r)
+		switch {
+		case p == "/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
+			httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
 			v1Chain.ServeHTTP(w, r)
-			return
+		default:
+			httpapi.NotFound(w, r)
 		}
-		httpapi.NotFound(w, r)
-	}))
+	})
 
 	requestLog := &httpapi.RequestLog{DB: s.DB}
 	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))

@@ -35,6 +35,7 @@ func TestIsClean(t *testing.T) {
 		"/a/./b":        false,
 		"/v1/../health": false,
 		"/a/b/..":       false,
+		"/v1/%2e%2e/x":  true,
 		"":              false,
 	}
 	for p, want := range cases {
