@@ -149,6 +149,13 @@ func readJSONBody(r *http.Request) (json.RawMessage, int, error) {
 	return json.RawMessage(text), 0, nil
 }
 
+// DecodeUTF8 is a UTF-8 byte string decoded as Node decodes one (TextDecoder,
+// Buffer.toString, a fetch Response's text()), invalid bytes replaced as
+// replaceInvalidUTF8 does. A byte order mark is kept.
+func DecodeUTF8(b []byte) string {
+	return string(replaceInvalidUTF8(b))
+}
+
 // replaceInvalidUTF8 replaces invalid UTF-8 with U+FFFD the way Node's
 // decoder does (the WHATWG "maximal subpart" rule): a truncated but otherwise
 // valid sequence becomes one U+FFFD, and a byte that cannot start or continue
