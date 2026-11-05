@@ -105,6 +105,16 @@
     mode: "0600"
   notify: Restart memory-api
 
+# sfw checks for a new firewall binary at most once an hour and records the
+# time in its own install directory (/usr/lib/node_modules/sfw/.sfw-cache/
+# next-check), which only root can write. The npm installs below run as
+# app_user, so when the hour has passed, sfw fails with EACCES on that file.
+# Running sfw once as root here does the check and writes the file, so the
+# app_user run inside the same hour has nothing to write.
+- name: Refresh the sfw firewall binary as root
+  command: sfw npm --version
+  changed_when: false
+
 - name: Install npm dependencies
   command: sfw npm install --omit=dev
   args:
