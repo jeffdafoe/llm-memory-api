@@ -126,10 +126,14 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      PSQL: docker exec -i ${{ job.services.postgres.id }} psql -U postgres -v ON_ERROR_STOP=1
       DATABASE_URL: postgresql://memory_api:ci@localhost:5432/memory_api
     steps:
       - uses: actions/checkout@v7
+
+      # The job context (the service container's id) is not available in
+      # job-level env, only in steps.
+      - name: Point psql at the database container
+        run: echo "PSQL=docker exec -i ${{ job.services.postgres.id }} psql -U postgres -v ON_ERROR_STOP=1" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v7
         with:
