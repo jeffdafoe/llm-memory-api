@@ -19,10 +19,22 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # GitHub starts no workflows for events caused by GITHUB_TOKEN, so a merge
+      # made with it gets no push CI on main and no build-<sha> release (LLM-916).
+      # Events caused by a GitHub App token do start workflows. Workflows started
+      # by Dependabot can read only Dependabot secrets, so both secrets live there.
+      - name: Mint a GitHub App token
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.DEPENDABOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_APP_KEY }}
+
       - name: Approve and auto-merge patch/minor updates
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           gh pr review "$PR_URL" --approve --body "Auto-approved (dependabot ${{ steps.metadata.outputs.update-type }})"
