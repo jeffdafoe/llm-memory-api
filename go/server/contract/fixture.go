@@ -71,7 +71,8 @@ var fixtureConfig = map[string]string{
 // user with *:* and a web session, and two agents, each with a passphrase,
 // an API session, an API key and namespace grants. agent-a has every MCP
 // permission and wildcard namespace access; agent-b can read "shared" and
-// read and write "agent-a".
+// read and write "agent-a". Then the notes and chunks searches run against
+// (fixture_memory.go).
 func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 	creds := Credentials()
 	tx, err := conn.Begin(ctx)
@@ -180,6 +181,9 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 			agents[g.actor], g.namespace, g.read, g.write, g.dele); err != nil {
 			return err
 		}
+	}
+	if err := applyMemoryFixture(ctx, tx, adminID, agents); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

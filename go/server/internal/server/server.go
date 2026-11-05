@@ -5,7 +5,6 @@ package server
 import (
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
@@ -15,6 +14,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 )
 
@@ -32,6 +32,7 @@ type Services struct {
 	MCPAuth     *auth.MCPAuth
 	Namespaces  *permissions.Namespaces
 	Admin       *permissions.Admin
+	Memory      *memory.Service
 }
 
 // NewServices wires the shared services over one database and config store.
@@ -59,6 +60,12 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		MCPAuth:    auth.NewMCPAuth(conn, store, actorCache, keys, bc),
 		Namespaces: &permissions.Namespaces{DB: conn},
 		Admin:      &permissions.Admin{DB: conn, Errorf: log.Errorf},
+		Memory: &memory.Service{
+			DB:       conn,
+			Config:   store,
+			Embedder: &memory.OpenAI{},
+			Errorf:   log.Errorf,
+		},
 	}
 }
 
@@ -83,13 +90,11 @@ func LogDir() string {
 // answered. The outer one covers the layers above the log.
 func Handler(s *Services) http.Handler {
 	// /v1: every route behind the session middleware and the last_seen
-	// heartbeat. Routes are added to v1 as they are ported. A path ServeMux
-	// would clean and redirect goes to the /v1 fallback instead, as Express
-	// redirects nothing.
-	v1 := http.NewServeMux()
-	v1Fallback := http.HandlerFunc(v1Unmatched)
-	v1.Handle("/", v1Fallback)
-	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, httpapi.Unclean(v1, v1Fallback)))
+	// heartbeat, matched on the raw path below /v1. A path no route has goes
+	// to the /v1 fallback.
+	v1 := httpapi.NewRawMux("/v1", http.HandlerFunc(v1Unmatched))
+	(&memory.Routes{Service: s.Memory, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
+	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
 
 	// The top level is decided on the raw path, as Express matches app.get
 	// and app.use mounts: "/%76%31/x" is not under /v1 and "/%68ealth" is
@@ -103,7 +108,7 @@ func Handler(s *Services) http.Handler {
 		case p == "/health" && r.Method == http.MethodOptions:
 			// Express's router answers OPTIONS itself for a path with routes,
 			// listing their methods.
-			writeOptions(w, "GET, HEAD")
+			httpapi.WriteOptions(w, "GET, HEAD")
 		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
 			v1Chain.ServeHTTP(w, r)
 		default:
@@ -113,17 +118,6 @@ func Handler(s *Services) http.Handler {
 
 	requestLog := &httpapi.RequestLog{DB: s.DB}
 	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))
-}
-
-// writeOptions is the automatic OPTIONS response of Express's router: the
-// allowed methods in the Allow header and as a plain-text body.
-func writeOptions(w http.ResponseWriter, allow string) {
-	w.Header().Set("Allow", allow)
-	w.Header().Set("Content-Length", strconv.Itoa(len(allow)))
-	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(allow))
 }
 
 // v1Unmatched answers a /v1 path no route matched. In Node the admin router

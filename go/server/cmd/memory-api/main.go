@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apibase"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/server"
@@ -47,6 +48,12 @@ func envOr(key, fallback string) string {
 func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// A bad *_API_BASE value stops the server here, with its name, instead
+	// of failing every provider or embeddings call later.
+	if err := apibase.Check(); err != nil {
+		return err
+	}
 
 	pool, err := db.Open(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {

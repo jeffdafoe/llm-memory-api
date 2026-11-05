@@ -29,7 +29,9 @@ const appPassword = "contract"
 // without the dropped columns.
 var multisetTables = map[string][]string{
 	"request_log": {"id", "duration_ms"},
-	"error_log":   {"id"},
+	// error_detail is the stack trace in Node and Go's %+v of the error:
+	// implementation text, never the same.
+	"error_log": {"id", "error_detail"},
 }
 
 // Cluster is the Postgres server the harness runs on, reached as a superuser

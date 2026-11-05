@@ -8,10 +8,10 @@ import (
 )
 
 // Scenarios are the contract cases, run by TestContract (contract build
-// tag). Each port step adds its cases here in the same PR as the Go code.
+// tag). Each port step adds its cases in the same PR as the Go code.
 //
-// Go serves /health, the 404 page, the JSON body parser and /v1 auth so far,
-// so these cases stay on paths both servers route the same way:
+// Paths with no route in either server are used to test the layers in
+// front of the routes:
 //   - a body the parser accepts goes to bodyPath, which neither server
 //     routes, so both answer with the 404 page;
 //   - a body the parser rejects is answered before any route, so it can
@@ -19,10 +19,10 @@ import (
 //   - a valid /v1 credential goes to noRoutePath: auth and the heartbeat
 //     run, then both 404.
 //
-// /v1/agent/login and /v1/admin/login are not used: Go lets them through
-// auth but has not ported them, so an accepted request there gets Node's
-// login route and Go's 404.
-var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases)
+// /v1/agent/login and /v1/admin/login are not used with POST: Go lets them
+// through auth but has not ported them, so an accepted request there gets
+// Node's login route and Go's 404.
+var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases, memoryCases)
 
 const (
 	bodyPath    = "/contract/body"
