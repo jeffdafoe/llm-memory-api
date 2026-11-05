@@ -163,6 +163,10 @@ var mailListCases = []Scenario{
 	postCase("mail sent limit an empty array", mailSentPath, "agent-a-session", `{"limit":[]}`),
 	postCase("mail sent limit not a number", mailSentPath, "agent-a-session", `{"limit":"abc"}`),
 	postCase("mail sent limit negative", mailSentPath, "agent-a-session", `{"limit":-1}`),
+	// Number() throws a TypeError for an object with its own toString key,
+	// before the list query runs.
+	postCase("mail sent limit an object Number cannot convert", mailSentPath, "agent-a-session", `{"limit":{"toString":null}}`),
+	postCase("mail history limit an array Number cannot convert", mailHistoryPath, "agent-b-session", `{"limit":[{"toString":1}]}`),
 	postCase("mail sent offset an array", mailSentPath, "agent-a-session", `{"offset":[1]}`),
 	postCase("mail sent to an unknown agent", mailSentPath, "agent-a-session", `{"to":"nobody-here"}`),
 	postCase("mail sent mismatch", mailSentPath, "agent-a-session", `{"agent":"agent-b"}`),

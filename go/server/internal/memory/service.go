@@ -147,6 +147,9 @@ func (c BigCount) MarshalJSON() ([]byte, error) {
 // Search runs the scored search, then stamps last_accessed on the notes it
 // returned, in the background.
 func (s *Service) Search(ctx context.Context, in SearchInput) (SearchResults, error) {
+	if in.LimitErr != nil {
+		return SearchResults{}, in.LimitErr
+	}
 	cleaned := PreprocessQuery(in.Query)
 	vectors, err := s.Embedder.Embed(ctx, []string{cleaned})
 	if err != nil {

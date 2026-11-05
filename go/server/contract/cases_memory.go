@@ -27,6 +27,9 @@ var memorySearchCases = []Scenario{
 		`{"query":"how does the auth middleware work","namespace":"agent-a"}`),
 	postCase("memory search all namespaces as a wildcard reader", searchPath, "agent-a-session",
 		`{"query":"dream lock","limit":20}`),
+	// searchMemory's Math.floor(limit) throws before the embeddings call.
+	postCase("memory search limit an object Number cannot convert", searchPath, "agent-a-session",
+		`{"query":"dream lock","namespace":"agent-a","limit":{"toString":null}}`),
 	// agent-b reads shared and agent-a, plus the one private-ns note shared
 	// with it, but not the other private-ns note.
 	postCase("memory search star with a shared note", searchPath, "agent-b-session",

@@ -278,9 +278,17 @@ func TestLimitParam(t *testing.T) {
 		`"abc"`: "NaN", "{}": "NaN", "[]": "0", "[7]": "7", "true": "1", `"0"`: "0", "1e999": "100",
 	}
 	for in, want := range cases {
-		if got := limitParam(json.RawMessage(in)); got != want {
-			t.Errorf("limit %s: %q, want %q", in, got, want)
+		if got, err := limitParam(json.RawMessage(in)); err != nil || got != want {
+			t.Errorf("limit %s: %q %v, want %q", in, got, err, want)
 		}
+	}
+	for _, in := range []string{`{"toString":null}`, `[{"toString":1}]`, `[null,[{"toString":"x"}]]`} {
+		if _, err := limitParam(json.RawMessage(in)); err != jsutil.ErrNoPrimitive {
+			t.Errorf("limit %s: %v, want V8's TypeError", in, err)
+		}
+	}
+	if _, err := limitParam(json.RawMessage(`{"valueOf":null,"a":{"toString":null}}`)); err != nil {
+		t.Errorf("valueOf and a nested toString convert to NaN: %v", err)
 	}
 }
 

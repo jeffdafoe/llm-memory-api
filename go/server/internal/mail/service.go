@@ -464,16 +464,19 @@ type ListOptions struct {
 
 // limitParam is `Math.min(limit || 50, 100)` as node-postgres bound the
 // result: Number() rules, so a value that is not a number is NaN, which
-// Postgres refuses.
-func limitParam(raw json.RawMessage) jsutil.Number {
+// Postgres refuses, and an object Number() cannot convert is its TypeError.
+func limitParam(raw json.RawMessage) (jsutil.Number, error) {
 	n := 50.0
 	if pgbind.Truthy(raw) {
-		n = jsutil.ToNumber(raw)
+		var err error
+		if n, err = jsutil.ToNumberE(raw); err != nil {
+			return "", err
+		}
 	}
 	if !math.IsNaN(n) && n > 100 {
 		n = 100
 	}
-	return jsutil.Num(n)
+	return jsutil.Num(n), nil
 }
 
 // SentMessage is one line of a sent listing.
@@ -497,7 +500,11 @@ func (s *Service) Sent(ctx context.Context, agent string, opts ListOptions) (*Me
 	if err != nil {
 		return nil, err
 	}
-	limit, offset := limitParam(opts.Limit), pgbind.OrDefault(opts.Offset, 0)
+	limit, err := limitParam(opts.Limit)
+	if err != nil {
+		return nil, err
+	}
+	offset := pgbind.OrDefault(opts.Offset, 0)
 	conditions := []string{"m.from_actor_id = $1", "m.deleted_at IS NULL"}
 	values := []any{actor.ID}
 	if opts.Peer != "" {
@@ -562,7 +569,11 @@ func (s *Service) History(ctx context.Context, agent string, opts ListOptions) (
 	if err != nil {
 		return nil, err
 	}
-	limit, offset := limitParam(opts.Limit), pgbind.OrDefault(opts.Offset, 0)
+	limit, err := limitParam(opts.Limit)
+	if err != nil {
+		return nil, err
+	}
+	offset := pgbind.OrDefault(opts.Offset, 0)
 	conditions := []string{"m.to_actor_id = $1", "m.acked_at IS NOT NULL", "m.deleted_at IS NULL"}
 	values := []any{actor.ID}
 	if opts.Peer != "" {

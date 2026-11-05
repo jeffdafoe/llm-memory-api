@@ -138,7 +138,8 @@ func (rt *Routes) search(w http.ResponseWriter, r *http.Request) error {
 		return httpapi.NotString("query")
 	}
 
-	in := SearchInput{Query: query, Limit: jsutil.ToNumber(f.Raw("limit")), SlugPrefix: prefix}
+	limit, limitErr := jsutil.ToNumberE(f.Raw("limit"))
+	in := SearchInput{Query: query, Limit: limit, LimitErr: limitErr, SlugPrefix: prefix}
 	a := httpapi.ActorOf(r)
 	if f.Truthy("namespace") {
 		namespace, err := f.RequireString("namespace")

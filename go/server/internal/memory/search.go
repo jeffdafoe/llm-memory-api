@@ -17,6 +17,9 @@ type SearchInput struct {
 	// Limit is Number(limit) as the caller sent it; NaN when it was not
 	// sent. It becomes max(1, floor(limit) || 5).
 	Limit float64
+	// LimitErr is the TypeError Number(limit) threw; Search returns it
+	// before any other work, where searchMemory's Math.floor threw.
+	LimitErr error
 	// Readable filters a search across namespaces. FilterReadable false means
 	// no filter: the caller reads every namespace, or a namespace was given.
 	Readable       []string
