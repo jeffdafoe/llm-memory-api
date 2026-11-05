@@ -24,6 +24,10 @@ jobs:
           go-version-file: go/client/go.mod
           cache: false
 
+      # Shows in the log which toolchain ran (go.mod's `toolchain` line).
+      - name: Go version
+        run: go version
+
       - name: Vet
         run: go vet ./...
 
@@ -44,6 +48,14 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      # Known vulnerabilities in the pinned Go toolchain and in the required
+      # modules, reported only where this code reaches them. A new Go
+      # security release turns this red, which is the signal to raise the
+      # toolchain line in go.mod. govulncheck is a `tool` in go.mod, so
+      # Dependabot's gomod updates bump it.
+      - name: Vulnerability check
+        run: go tool govulncheck ./...
 
   # The Go port of the server (LLM-902). Built and tested on every PR; not
   # deployed until the switch. Unit tests use pgxmock, so no database yet.
@@ -76,6 +88,11 @@ jobs:
 
       - name: Test
         run: go test -race ./...
+
+      # See the go-client job: a reachable vulnerability in the toolchain or a
+      # module fails the build.
+      - name: Vulnerability check
+        run: go tool govulncheck ./...
 
   node-api:
     name: Node API

@@ -12,6 +12,12 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
 
+  - package-ecosystem: gomod
+    directory: /go/server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
