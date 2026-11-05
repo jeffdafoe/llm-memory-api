@@ -34,14 +34,7 @@ func Stringify(raw []byte) (string, error) {
 	if _, err := dec.Token(); err != io.EOF {
 		return "", fmt.Errorf("unexpected data after the JSON value")
 	}
-	var b strings.Builder
-	writeValue(&b, v)
-	return b.String(), nil
-}
-
-type object struct {
-	keys   []string
-	values map[string]any
+	return Marshal(v), nil
 }
 
 func parseValue(dec *json.Decoder) (any, error) {
@@ -53,7 +46,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 	case json.Delim:
 		switch t {
 		case '{':
-			o := &object{values: map[string]any{}}
+			o := NewObject()
 			for dec.More() {
 				kt, err := dec.Token()
 				if err != nil {
@@ -67,10 +60,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				if _, seen := o.values[k]; !seen {
-					o.keys = append(o.keys, k)
-				}
-				o.values[k] = v
+				o.Set(k, v)
 			}
 			_, err := dec.Token()
 			return o, err
@@ -99,11 +89,11 @@ func writeValue(b *strings.Builder, v any) {
 	case bool:
 		b.WriteString(strconv.FormatBool(x))
 	case json.Number:
-		s := NumberString(jsonNumber(string(x)))
-		if s == "Infinity" || s == "-Infinity" || s == "NaN" {
-			s = "null"
-		}
-		b.WriteString(s)
+		writeNumber(b, jsonNumber(string(x)))
+	case float64:
+		writeNumber(b, x)
+	case int:
+		writeNumber(b, float64(x))
 	case string:
 		writeString(b, x)
 	case []any:
@@ -112,21 +102,41 @@ func writeValue(b *strings.Builder, v any) {
 			if i > 0 {
 				b.WriteByte(',')
 			}
+			// JSON.stringify writes undefined in an array as null.
+			if e == Undefined {
+				e = nil
+			}
 			writeValue(b, e)
 		}
 		b.WriteByte(']')
-	case *object:
+	case *Object:
 		b.WriteByte('{')
-		for i, k := range propertyOrder(x.keys) {
-			if i > 0 {
+		n := 0
+		for _, k := range x.Keys() {
+			v := x.values[k]
+			if v == Undefined {
+				continue
+			}
+			if n > 0 {
 				b.WriteByte(',')
 			}
+			n++
 			writeString(b, k)
 			b.WriteByte(':')
-			writeValue(b, x.values[k])
+			writeValue(b, v)
 		}
 		b.WriteByte('}')
 	}
+}
+
+// writeNumber writes a number as JSON.stringify does; NaN and the
+// infinities are null.
+func writeNumber(b *strings.Builder, x float64) {
+	s := NumberString(x)
+	if s == "Infinity" || s == "-Infinity" || s == "NaN" {
+		s = "null"
+	}
+	b.WriteString(s)
 }
 
 func writeString(b *strings.Builder, s string) {
