@@ -23,9 +23,11 @@
 #
 # Needs bash, curl, jq, GNU date/sed/sort and an authenticated gh (GH_TOKEN).
 
-set -Eeuo pipefail
-# An unexpected exit under set -e prints no report, so name the line at least.
-trap 'echo "stale-pins.sh: unexpected failure at line $LINENO" >&2' ERR
+set -euo pipefail
+# An unexpected exit under set -e would end the run with no report and no
+# reason. Say so on the way out. REPORT_PRINTED is set once the report is out.
+REPORT_PRINTED=""
+trap 'rc=$?; if [ "$rc" -ne 0 ] && [ -z "$REPORT_PRINTED" ]; then echo "stale-pins.sh: stopped with exit $rc before the report was printed" >&2; fi' EXIT
 
 MODE="${1:-report}"
 case "$MODE" in
@@ -294,6 +296,7 @@ report="$(mktemp)"
 } > "$report"
 
 cat "$report"
+REPORT_PRINTED=1
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     cat "$report" >> "$GITHUB_STEP_SUMMARY"
 fi
