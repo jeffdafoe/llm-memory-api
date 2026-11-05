@@ -48,6 +48,10 @@ func Credentials() map[string]string {
 		"agent-b-passphrase": fixedSecret("agent-b passphrase"),
 		"agent-b-session":    fixedSecret("agent-b api session"),
 		"agent-b-key":        fixedSecret("agent-b api key"),
+		// Stored, but refused: the session expired a day before the
+		// template was built, and the key is revoked.
+		"agent-b-expired-session": fixedSecret("agent-b expired session"),
+		"agent-b-revoked-key":     fixedSecret("agent-b revoked key"),
 	}
 }
 
@@ -141,6 +145,21 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 		}
 	}
 
+	bID := agents[AgentBName]
+	if err := insertSessionExpiring(ctx, tx, bID, creds["agent-b-expired-session"], "agent-b expired session", "api", "NOW() - INTERVAL '1 day'"); err != nil {
+		return err
+	}
+	revoked := creds["agent-b-revoked-key"]
+	rh, rs, err := hash(revoked, "agent-b revoked key")
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		"INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, key_lookup_hash, label, revoked_at) VALUES ($1, $2, $3, $4, 'contract revoked', NOW())",
+		bID, rh, rs, auth.TokenLookupHash(revoked)); err != nil {
+		return err
+	}
+
 	if _, err := tx.Exec(ctx,
 		"INSERT INTO agent_permissions (actor_id, permission_id) SELECT $1, id FROM permissions ORDER BY id",
 		agents[AgentAName]); err != nil {
@@ -169,6 +188,12 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 // and salt plus the SHA-256 lookup hash. It expires 30 days after the
 // template is built, far from the 12-hour refresh window.
 func insertSession(ctx context.Context, tx pgx.Tx, actorID int, token, saltName, kind string) error {
+	return insertSessionExpiring(ctx, tx, actorID, token, saltName, kind, "NOW() + INTERVAL '30 days'")
+}
+
+// insertSessionExpiring takes the expiry as a constant SQL expression from
+// this file, never from a scenario.
+func insertSessionExpiring(ctx context.Context, tx pgx.Tx, actorID int, token, saltName, kind, expires string) error {
 	salt := fixedSalt(saltName)
 	h, err := auth.Hash(token, salt)
 	if err != nil {
@@ -176,7 +201,7 @@ func insertSession(ctx context.Context, tx pgx.Tx, actorID int, token, saltName,
 	}
 	_, err = tx.Exec(ctx,
 		`INSERT INTO sessions (actor_id, token_hash, token_salt, token_lookup_hash, kind, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '30 days')`,
+		 VALUES ($1, $2, $3, $4, $5, `+expires+`)`,
 		actorID, h, salt, auth.TokenLookupHash(token), kind)
 	return err
 }

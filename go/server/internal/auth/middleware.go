@@ -98,10 +98,11 @@ func (a *SessionAuth) resolve(ctx context.Context, token string) (cachedSession,
 }
 
 // Middleware wraps the /v1 routes. prefix is the mount path ("/v1"); the
-// unauthenticated paths are matched below it, like Express's req.path.
+// unauthenticated paths are matched below it on the raw path, like Express's
+// req.path, so "/v1/agent%2Flogin" still needs a token.
 func (a *SessionAuth) Middleware(prefix string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if unauthenticatedV1[strings.TrimPrefix(r.URL.Path, prefix)] {
+		if unauthenticatedV1[strings.TrimPrefix(httpapi.RawPath(r), prefix)] {
 			next.ServeHTTP(w, r)
 			return
 		}

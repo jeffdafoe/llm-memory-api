@@ -102,3 +102,59 @@ func TestPanicOutsideRouteIsLoggedAs500(t *testing.T) {
 	}
 	testutil.WaitMet(t, mock)
 }
+
+// Express never cleans or redirects a path, and mounts /v1 for "/v1" too.
+func TestPathsExpressDoesNotRedirect(t *testing.T) {
+	cases := []struct {
+		target string
+		status int
+		body   string
+	}{
+		{"//double//slash", 404, "<pre>Cannot GET //double//slash</pre>"},
+		{"/./health", 404, "<pre>Cannot GET /./health</pre>"},
+		{"/v1", 401, `{"error":{"code":"UNAUTHORIZED","message":"Missing Authorization header"}}`},
+		{"/v1//x", 401, `{"error":{"code":"UNAUTHORIZED","message":"Missing Authorization header"}}`},
+		{"/v1/../health", 401, `{"error":{"code":"UNAUTHORIZED","message":"Missing Authorization header"}}`},
+		// The login exemption is on the raw path, as Express's req.path.
+		{"/v1/agent%2Flogin", 401, `{"error":{"code":"UNAUTHORIZED","message":"Missing Authorization header"}}`},
+	}
+	for _, c := range cases {
+		h, mock := newHandler(t)
+		mock.ExpectExec("INSERT INTO request_log").WithArgs(
+			"GET", c.target, c.status, pgxmock.AnyArg(), (*int)(nil), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", c.target, nil))
+		if rec.Code != c.status || !strings.Contains(rec.Body.String(), c.body) {
+			t.Errorf("%s: got %d %s", c.target, rec.Code, rec.Body.String())
+		}
+		testutil.WaitMet(t, mock)
+	}
+}
+
+// The /v1 fallback is Node's requireUser: 401 without an admin web session,
+// except on /admin/login; the 404 page with one.
+func TestV1Unmatched(t *testing.T) {
+	cases := []struct {
+		target string
+		user   *httpapi.User
+		status int
+	}{
+		{"/v1/no-route", nil, 401},
+		{"/v1/no-route", &httpapi.User{ID: 2, Username: "admin"}, 404},
+		{"/v1/admin/login", nil, 404},
+		{"/v1/agent/login", nil, 401},
+		{"/v1/admin%2Flogin", nil, 401},
+	}
+	for _, c := range cases {
+		r := httpapi.WithStateValue(httptest.NewRequest("GET", c.target, nil), &httpapi.State{AuthenticatedUser: c.user})
+		rec := httptest.NewRecorder()
+		v1Unmatched(rec, r)
+		if rec.Code != c.status {
+			t.Errorf("%s (user %v): %d %s", c.target, c.user != nil, rec.Code, rec.Body.String())
+		}
+		if c.status == 401 && rec.Body.String() != `{"error":{"code":"UNAUTHORIZED","message":"Admin authentication required"}}` {
+			t.Errorf("%s: body %s", c.target, rec.Body.String())
+		}
+	}
+}

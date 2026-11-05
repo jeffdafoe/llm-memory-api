@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -249,8 +250,19 @@ func (r *Runner) request(ctx context.Context, client *http.Client, t *Target, st
 		return fail(err)
 	}
 	// Opaque is sent as the request target unchanged, so a case can send a
-	// path that needs escaping exactly as a client would.
-	req.URL.Opaque = path
+	// path that needs escaping exactly as a client would. Go writes an
+	// Opaque that starts with "//" as an absolute URL ("http://a//b"), so
+	// such a path goes through ParseRequestURI instead, which keeps it a
+	// path; its RawPath keeps the escapes as written.
+	if strings.HasPrefix(path, "//") {
+		u, err := url.ParseRequestURI(path)
+		if err != nil {
+			return fail(err)
+		}
+		req.URL.Path, req.URL.RawPath, req.URL.RawQuery = u.Path, u.RawPath, u.RawQuery
+	} else {
+		req.URL.Opaque = path
+	}
 	if st.Chunked {
 		req.ContentLength = -1
 		req.TransferEncoding = []string{"chunked"}

@@ -5,6 +5,7 @@ package server
 import (
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
@@ -87,13 +88,42 @@ func Handler(s *Services) http.Handler {
 	})
 
 	// /v1: every route behind the session middleware and the last_seen
-	// heartbeat. Routes are added to v1 as they are ported.
+	// heartbeat. Routes are added to v1 as they are ported. Express mounts
+	// /v1 for "/v1" itself too, so the bare path gets the same chain instead
+	// of ServeMux's redirect to "/v1/".
 	v1 := http.NewServeMux()
-	v1.HandleFunc("/", httpapi.NotFound)
-	mux.Handle("/v1/", s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1)))
+	v1Fallback := http.HandlerFunc(v1Unmatched)
+	v1.Handle("/", v1Fallback)
+	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, httpapi.Unclean(v1, v1Fallback)))
+	mux.Handle("/v1/", v1Chain)
+	mux.Handle("/v1", v1Chain)
 
 	mux.HandleFunc("/", httpapi.NotFound)
 
+	// A path ServeMux would clean and redirect never reaches it. Under /v1
+	// (matched on the raw path, as Express's mount is) it still goes through
+	// auth to the /v1 fallback; anywhere else it is the 404 page.
+	root := httpapi.Unclean(mux, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := httpapi.RawPath(r); p == "/v1" || strings.HasPrefix(p, "/v1/") {
+			v1Chain.ServeHTTP(w, r)
+			return
+		}
+		httpapi.NotFound(w, r)
+	}))
+
 	requestLog := &httpapi.RequestLog{DB: s.DB}
-	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(mux)))))
+	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))
+}
+
+// v1Unmatched answers a /v1 path no route matched. In Node the admin router
+// is mounted last on /v1 with router.use(requireUser) (routes/admin.js), so
+// every unmatched /v1 path reaches it: a caller without an admin web session
+// gets 401 there, except on /admin/login, and an admin user falls through to
+// the 404 page.
+func v1Unmatched(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimPrefix(httpapi.RawPath(r), "/v1") != "/admin/login" && httpapi.StateOf(r).AuthenticatedUser == nil {
+		httpapi.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Admin authentication required")
+		return
+	}
+	httpapi.NotFound(w, r)
 }

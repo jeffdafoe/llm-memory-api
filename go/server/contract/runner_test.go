@@ -121,6 +121,7 @@ var loginScenario = Scenario{
 		{Method: "GET", Path: "/v1/me", Auth: "agent-a"},
 		{Label: "escaped path", Method: "GET", Path: "/a%20b/%2e%2E?q=1&x=%zz"},
 		{Label: "chunked body", Method: "POST", Path: "/chunked", Body: "abc", Chunked: true},
+		{Label: "double slash", Method: "GET", Path: "//a//b%20c?x=1"},
 	},
 }
 
@@ -143,6 +144,10 @@ func TestRunnerIdenticalServers(t *testing.T) {
 	}
 	if got := out.Node.Steps[4].Response.Body.Text; got != "Cannot POST /chunked len=-1 te=[chunked]" {
 		t.Errorf("chunked body arrived as %q", got)
+	}
+	// Origin form, not "http://a//b...".
+	if got := out.Node.Steps[5].Response.Body.Text; got != "Cannot GET //a//b%20c?x=1 len=0 te=[]" {
+		t.Errorf("double-slash path arrived as %q", got)
 	}
 }
 
