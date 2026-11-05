@@ -15,7 +15,9 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 )
 
 // Services are the long-lived pieces routes share.
@@ -32,7 +34,9 @@ type Services struct {
 	MCPAuth     *auth.MCPAuth
 	Namespaces  *permissions.Namespaces
 	Admin       *permissions.Admin
+	Errors      *syserrors.Recorder
 	Memory      *memory.Service
+	Notes       *notes.Service
 }
 
 // NewServices wires the shared services over one database and config store.
@@ -40,9 +44,11 @@ type Services struct {
 func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	actorCache := actors.NewCache(conn)
 	log := logger.New(conn, actorCache, logDir)
+	recorder := &syserrors.Recorder{DB: conn, Actors: actorCache, Errorf: log.Errorf}
 	bc := events.Broadcaster(events.Nop{})
 	sessions := &auth.Sessions{DB: conn}
 	keys := &auth.APIKeys{DB: conn, Warnf: func(format string, args ...any) { log.Errorf(format, args...) }}
+	mem := &memory.Service{DB: conn, Config: store, Embedder: &memory.OpenAI{}, Errors: recorder}
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -60,11 +66,11 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		MCPAuth:    auth.NewMCPAuth(conn, store, actorCache, keys, bc),
 		Namespaces: &permissions.Namespaces{DB: conn},
 		Admin:      &permissions.Admin{DB: conn, Errorf: log.Errorf},
-		Memory: &memory.Service{
-			DB:       conn,
-			Config:   store,
-			Embedder: &memory.OpenAI{},
-			Errorf:   log.Errorf,
+		Errors:     recorder,
+		Memory:     mem,
+		Notes: &notes.Service{
+			DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
+			Enricher: &notes.GatedEnricher{Config: store},
 		},
 	}
 }
@@ -94,6 +100,7 @@ func Handler(s *Services) http.Handler {
 	// to the /v1 fallback.
 	v1 := httpapi.NewRawMux("/v1", http.HandlerFunc(v1Unmatched))
 	(&memory.Routes{Service: s.Memory, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
+	(&notes.Routes{Service: s.Notes, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
 
 	// The top level is decided on the raw path, as Express matches app.get

@@ -2,10 +2,8 @@ package memory
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
@@ -28,63 +26,10 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	mux.Handle(http.MethodPost, "/memory/delete", rt.Router.Route("memory", "delete", rt.delete))
 }
 
-// actor is the caller as the permission checks name it.
-type actor struct {
-	id   int
-	name string
-	kind string // "agent" or "user"
-}
-
-func actorOf(r *http.Request) actor {
-	st := httpapi.StateOf(r)
-	a := actor{id: st.ActorID, name: st.AuthenticatedAgent, kind: "agent"}
-	if a.name == "" {
-		a.kind = "user"
-		if st.AuthenticatedUser != nil && st.AuthenticatedUser.Username != "" {
-			a.name = st.AuthenticatedUser.Username
-		} else {
-			a.name = "unknown"
-		}
-	}
-	return a
-}
-
-// noBody is the TypeError Node threw when a route read a field from an
-// undefined req.body (no JSON body). The text is V8's, so the error_log row
-// matches.
-func noBody(destructured string) error {
-	return errors.New("Cannot destructure property '" + destructured + "' of 'req.body' as it is undefined.")
-}
-
-// notString refuses a truthy field of a JSON type the route cannot use.
-// Node passed such a value on, where it failed in some later step or was
-// used as text; the port refuses it (go-server note, Known differences).
-func notString(name string) error {
-	return apierr.New(http.StatusBadRequest, fmt.Sprintf("%s must be a string", name))
-}
-
-// badRequest answers a missing required field. Node wrote these 400s with
-// res.status(400).json() instead of throwing, so the route wrapper never
-// logged them to error_log.
-func badRequest(w http.ResponseWriter, message string) error {
-	httpapi.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", message)
-	return nil
-}
-
-// requireString reads a string field after the route's required-fields
-// check: a truthy field that is not a string is refused.
-func requireString(f httpapi.Fields, name string) (string, error) {
-	s, ok := f.String(name)
-	if !ok {
-		return "", notString(name)
-	}
-	return s, nil
-}
-
 func (rt *Routes) ingest(w http.ResponseWriter, r *http.Request) error {
 	f, ok := httpapi.BodyFields(r)
 	if !ok {
-		return noBody("namespace")
+		return httpapi.NoBody("namespace")
 	}
 	// Each field is sanitized before the required check, so one that cleans
 	// down to "" counts as missing.
@@ -93,24 +38,24 @@ func (rt *Routes) ingest(w http.ResponseWriter, r *http.Request) error {
 	content, cOK := f.String("content")
 	content = sanitize.Content(content)
 	if !f.Truthy("namespace") || (sfOK && sourceFile == "") || !f.Truthy("source_file") || (cOK && content == "") || !f.Truthy("content") {
-		return badRequest(w, "Required fields: namespace, source_file, content")
+		return httpapi.BadRequest(w, "Required fields: namespace, source_file, content")
 	}
-	namespace, err := requireString(f, "namespace")
+	namespace, err := f.RequireString("namespace")
 	if err != nil {
 		return err
 	}
 	if !sfOK {
-		return notString("source_file")
+		return httpapi.NotString("source_file")
 	}
 	if !cOK {
-		return notString("content")
+		return httpapi.NotString("content")
 	}
 
 	if err := permissions.ValidateNamespace(namespace); err != nil {
 		return err
 	}
-	a := actorOf(r)
-	if err := rt.Namespaces.RequireAccess(r.Context(), a.id, a.name, namespace, permissions.Write); err != nil {
+	a := httpapi.ActorOf(r)
+	if err := rt.Namespaces.RequireAccess(r.Context(), a.ID, a.Name, namespace, permissions.Write); err != nil {
 		return err
 	}
 	res, err := rt.Service.Ingest(r.Context(), namespace, sourceFile, content)
@@ -123,18 +68,18 @@ func (rt *Routes) ingest(w http.ResponseWriter, r *http.Request) error {
 func (rt *Routes) ingestStatus(w http.ResponseWriter, r *http.Request) error {
 	f, ok := httpapi.BodyFields(r)
 	if !ok {
-		return noBody("namespace")
+		return httpapi.NoBody("namespace")
 	}
-	a := actorOf(r)
+	a := httpapi.ActorOf(r)
 	if f.Truthy("namespace") {
-		namespace, err := requireString(f, "namespace")
+		namespace, err := f.RequireString("namespace")
 		if err != nil {
 			return err
 		}
 		if err := permissions.ValidateNamespace(namespace); err != nil {
 			return err
 		}
-		if err := rt.Namespaces.RequireAccess(r.Context(), a.id, a.name, namespace, permissions.Read); err != nil {
+		if err := rt.Namespaces.RequireAccess(r.Context(), a.ID, a.Name, namespace, permissions.Read); err != nil {
 			return err
 		}
 		res, err := rt.Service.Status(r.Context(), namespace)
@@ -147,7 +92,7 @@ func (rt *Routes) ingestStatus(w http.ResponseWriter, r *http.Request) error {
 	// Node passes the actor TYPE where the name goes here, so the implicit
 	// own namespace is "agent" or "user", and a wildcard reader (null list)
 	// makes the filter throw. Kept as Node does it until LLM-918 fixes both.
-	readable, all, err := rt.Namespaces.ReadableNamespaces(r.Context(), a.id, a.kind)
+	readable, all, err := rt.Namespaces.ReadableNamespaces(r.Context(), a.ID, a.Kind)
 	if err != nil {
 		return err
 	}
@@ -187,16 +132,16 @@ func (rt *Routes) search(w http.ResponseWriter, r *http.Request) error {
 		prefix = sanitize.Identifier(p)
 	}
 	if !f.Truthy("query") || (qOK && query == "") {
-		return badRequest(w, "Required field: query")
+		return httpapi.BadRequest(w, "Required field: query")
 	}
 	if !qOK {
-		return notString("query")
+		return httpapi.NotString("query")
 	}
 
 	in := SearchInput{Query: query, Limit: jsutil.ToNumber(f.Raw("limit")), SlugPrefix: prefix}
-	a := actorOf(r)
+	a := httpapi.ActorOf(r)
 	if f.Truthy("namespace") {
-		namespace, err := requireString(f, "namespace")
+		namespace, err := f.RequireString("namespace")
 		if err != nil {
 			return err
 		}
@@ -205,19 +150,19 @@ func (rt *Routes) search(w http.ResponseWriter, r *http.Request) error {
 			if err := permissions.ValidateNamespace(namespace); err != nil {
 				return err
 			}
-			if err := rt.Namespaces.RequireAccess(r.Context(), a.id, a.name, namespace, permissions.Read); err != nil {
+			if err := rt.Namespaces.RequireAccess(r.Context(), a.ID, a.Name, namespace, permissions.Read); err != nil {
 				return err
 			}
 		}
 	}
 	if in.wildcard() {
-		readable, all, err := rt.Namespaces.ReadableNamespaces(r.Context(), a.id, a.name)
+		readable, all, err := rt.Namespaces.ReadableNamespaces(r.Context(), a.ID, a.Name)
 		if err != nil {
 			return err
 		}
 		in.Readable = readable
 		in.FilterReadable = !all
-		in.ActorID = a.id
+		in.ActorID = a.ID
 	}
 	res, err := rt.Service.Search(r.Context(), in)
 	if err != nil {
@@ -229,21 +174,21 @@ func (rt *Routes) search(w http.ResponseWriter, r *http.Request) error {
 func (rt *Routes) cleanup(w http.ResponseWriter, r *http.Request) error {
 	f, ok := httpapi.BodyFields(r)
 	if !ok {
-		return noBody("namespace")
+		return httpapi.NoBody("namespace")
 	}
 	valid, isArray := f.Array("valid_source_files")
 	if !f.Truthy("namespace") || !isArray {
-		return badRequest(w, "Required fields: namespace (string), valid_source_files (array)")
+		return httpapi.BadRequest(w, "Required fields: namespace (string), valid_source_files (array)")
 	}
-	namespace, err := requireString(f, "namespace")
+	namespace, err := f.RequireString("namespace")
 	if err != nil {
 		return err
 	}
 	if err := permissions.ValidateNamespace(namespace); err != nil {
 		return err
 	}
-	a := actorOf(r)
-	if err := rt.Namespaces.RequireAccess(r.Context(), a.id, a.name, namespace, permissions.Delete); err != nil {
+	a := httpapi.ActorOf(r)
+	if err := rt.Namespaces.RequireAccess(r.Context(), a.ID, a.Name, namespace, permissions.Delete); err != nil {
 		return err
 	}
 	res, err := rt.Service.Cleanup(r.Context(), namespace, valid)
@@ -256,25 +201,25 @@ func (rt *Routes) cleanup(w http.ResponseWriter, r *http.Request) error {
 func (rt *Routes) delete(w http.ResponseWriter, r *http.Request) error {
 	f, ok := httpapi.BodyFields(r)
 	if !ok {
-		return noBody("namespace")
+		return httpapi.NoBody("namespace")
 	}
 	sourceFile, sfOK := f.String("source_file")
 	sourceFile = sanitize.Identifier(sourceFile)
 	if !f.Truthy("namespace") || !f.Truthy("source_file") || (sfOK && sourceFile == "") {
-		return badRequest(w, "Required fields: namespace, source_file")
+		return httpapi.BadRequest(w, "Required fields: namespace, source_file")
 	}
-	namespace, err := requireString(f, "namespace")
+	namespace, err := f.RequireString("namespace")
 	if err != nil {
 		return err
 	}
 	if !sfOK {
-		return notString("source_file")
+		return httpapi.NotString("source_file")
 	}
 	if err := permissions.ValidateNamespace(namespace); err != nil {
 		return err
 	}
-	a := actorOf(r)
-	if err := rt.Namespaces.RequireAccess(r.Context(), a.id, a.name, namespace, permissions.Delete); err != nil {
+	a := httpapi.ActorOf(r)
+	if err := rt.Namespaces.RequireAccess(r.Context(), a.ID, a.Name, namespace, permissions.Delete); err != nil {
 		return err
 	}
 	res, err := rt.Service.Delete(r.Context(), namespace, sourceFile)

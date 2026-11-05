@@ -491,3 +491,37 @@ func leftPad(s string, n int) string {
 	}
 	return s
 }
+
+// ToFixed is Number.prototype.toFixed for |x| below 1e21: the exact
+// decimal value of x rounded to digits places, a tie going to the larger
+// magnitude (toFixed(0.25, 1) is "0.3"; Go's 'f' format gives "0.2").
+func ToFixed(x float64, digits int) string {
+	if math.IsNaN(x) {
+		return "NaN"
+	}
+	if math.Abs(x) >= 1e21 || math.IsInf(x, 0) {
+		return NumberString(x)
+	}
+	neg := x < 0
+	if neg {
+		x = -x
+	}
+	exact := new(big.Float).SetPrec(2048).SetFloat64(x)
+	scale := new(big.Float).SetPrec(2048).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(digits)), nil))
+	exact.Mul(exact, scale)
+	exact.Add(exact, big.NewFloat(0.5).SetPrec(2048))
+	n, _ := exact.Int(nil) // truncates toward zero, so this is floor(x*10^d + 0.5)
+	s := n.String()
+	if digits > 0 {
+		for len(s) <= digits {
+			s = "0" + s
+		}
+		s = s[:len(s)-digits] + "." + s[len(s)-digits:]
+	}
+	// x < 0 above, so -0 has no sign, but a negative value that rounds to
+	// zero keeps it: (-0.001).toFixed(2) is "-0.00".
+	if neg {
+		s = "-" + s
+	}
+	return s
+}
