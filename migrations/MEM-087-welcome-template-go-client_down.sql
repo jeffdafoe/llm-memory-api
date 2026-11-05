@@ -1,2 +1,0 @@
--- MEM-087 rollback: revert to MEM-085 welcome template (Node.js version)
--- Run MEM-085 up migration to restore

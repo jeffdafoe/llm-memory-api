@@ -1,15 +1,48 @@
 ---
+# '[object Promise]' is what create-user.js stored before it awaited the async
+# hash (LLM-908): no password matches it, so such a user counts as having none,
+# and the step below rewrites its hash from admin_password.
 - name: Check if admin user already exists
   become_user: postgres
   postgresql_query:
     db: "{{ database_name }}"
-    query: "SELECT id FROM actors WHERE name = '{{ admin_username }}' AND password_hash IS NOT NULL"
+    query: "SELECT id FROM actors WHERE name = %s AND password_hash IS NOT NULL AND password_hash <> '[object Promise]'"
+    positional_args:
+      - "{{ admin_username }}"
   register: admin_exists
 
+# create-user.js lives at the repo root and requires node/api/src from there,
+# so it runs from repo_root. Its pg dependency is installed with the app's own
+# packages, which is project_root/node_modules on a server (the memory-api role
+# copies node/api there) and node/api/node_modules in a dev checkout.
 - name: Create admin user
-  command: >
-    node {{ project_root }}/scripts/create-user.js
-    "{{ admin_username }}" "{{ admin_password }}"
+  command:
+    argv:
+      - node
+      - "{{ repo_root }}/scripts/create-user.js"
+      - "{{ admin_username }}"
+      - "{{ admin_password }}"
   environment:
     DATABASE_URL: "postgresql://{{ database_user }}:{{ database_password }}@localhost:5432/{{ database_name }}"
+    NODE_PATH: "{{ (project_root ~ '/node_modules') if repo_root != project_root else (repo_root ~ '/node/api/node_modules') }}"
+  no_log: true
   when: admin_exists.rowcount == 0 and admin_password | default('') | length > 0
+
+# The admin UI checks admin_permissions on every action; a user with no row
+# can log in but do nothing. The configured admin gets full access whenever it
+# has no admin grant at all, which also covers a run that stopped between
+# creating the user and granting it. An admin with any grant keeps exactly
+# what it has.
+- name: Grant the admin user full admin access if it has none
+  become_user: postgres
+  postgresql_query:
+    db: "{{ database_name }}"
+    query: >
+      INSERT INTO admin_permissions (actor_id, resource, action)
+      SELECT a.id, '*', '*' FROM actors a
+       WHERE a.name = %s AND a.password_hash IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM admin_permissions p WHERE p.actor_id = a.id)
+      ON CONFLICT DO NOTHING
+    positional_args:
+      - "{{ admin_username }}"
+  when: admin_username | default('') | length > 0
