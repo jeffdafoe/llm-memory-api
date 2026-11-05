@@ -21,7 +21,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 (async () => {
     try {
         const salt = generateSalt();
-        const passwordHash = hash(password, salt);
+        const passwordHash = await hash(password, salt);
 
         // Check if actor already exists
         const existing = await pool.query('SELECT id, password_hash FROM actors WHERE name = $1', [username]);
