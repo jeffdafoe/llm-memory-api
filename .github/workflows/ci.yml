@@ -208,6 +208,50 @@ jobs:
         if: always()
         run: cat "$RUNNER_TEMP/server.log" || true
 
+  # The switch gate for the Go port (LLM-909): each scenario in
+  # go/server/contract/cases.go goes to a Node server and a Go server, each on
+  # its own copy of a template database built from migrations/, and the
+  # responses, the rows written and the provider calls must match. The test
+  # builds the template, the Go binary and the fake provider server itself.
+  contract:
+    name: Contract
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CONTRACT_PG_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go/server/go.mod
+          cache: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      - name: Install Node packages
+        working-directory: node/api
+        run: npm ci --ignore-scripts
+
+      - name: Contract tests
+        working-directory: go/server
+        run: go test -tags contract -count=1 -v ./contract/
+
   # Per-commit build of what the deploy installs (LLM-904): the Go server
   # binary and the admin UI's Vite output, published with their checksums as
   # the prerelease build-<sha>. infrastructure/roles/memory-api-go downloads
