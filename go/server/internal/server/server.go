@@ -5,6 +5,8 @@ package server
 import (
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
@@ -80,20 +82,59 @@ func LogDir() string {
 // request is still logged, as Express logged a request its error handler
 // answered. The outer one covers the layers above the log.
 func Handler(s *Services) http.Handler {
-	mux := http.NewServeMux()
+	// /v1: every route behind the session middleware and the last_seen
+	// heartbeat. Routes are added to v1 as they are ported. A path ServeMux
+	// would clean and redirect goes to the /v1 fallback instead, as Express
+	// redirects nothing.
+	v1 := http.NewServeMux()
+	v1Fallback := http.HandlerFunc(v1Unmatched)
+	v1.Handle("/", v1Fallback)
+	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, httpapi.Unclean(v1, v1Fallback)))
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	// The top level is decided on the raw path, as Express matches app.get
+	// and app.use mounts: "/%76%31/x" is not under /v1 and "/%68ealth" is
+	// not /health, though both decode to those paths. "/v1" itself is under
+	// the mount.
+	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := httpapi.RawPath(r)
+		switch {
+		case p == "/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
+			httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		case p == "/health" && r.Method == http.MethodOptions:
+			// Express's router answers OPTIONS itself for a path with routes,
+			// listing their methods.
+			writeOptions(w, "GET, HEAD")
+		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
+			v1Chain.ServeHTTP(w, r)
+		default:
+			httpapi.NotFound(w, r)
+		}
 	})
 
-	// /v1: every route behind the session middleware and the last_seen
-	// heartbeat. Routes are added to v1 as they are ported.
-	v1 := http.NewServeMux()
-	v1.HandleFunc("/", httpapi.NotFound)
-	mux.Handle("/v1/", s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1)))
-
-	mux.HandleFunc("/", httpapi.NotFound)
-
 	requestLog := &httpapi.RequestLog{DB: s.DB}
-	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(mux)))))
+	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))
+}
+
+// writeOptions is the automatic OPTIONS response of Express's router: the
+// allowed methods in the Allow header and as a plain-text body.
+func writeOptions(w http.ResponseWriter, allow string) {
+	w.Header().Set("Allow", allow)
+	w.Header().Set("Content-Length", strconv.Itoa(len(allow)))
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(allow))
+}
+
+// v1Unmatched answers a /v1 path no route matched. In Node the admin router
+// is mounted last on /v1 with router.use(requireUser) (routes/admin.js), so
+// every unmatched /v1 path reaches it: a caller without an admin web session
+// gets 401 there, except on /admin/login, and an admin user falls through to
+// the 404 page.
+func v1Unmatched(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimPrefix(httpapi.RawPath(r), "/v1") != "/admin/login" && httpapi.StateOf(r).AuthenticatedUser == nil {
+		httpapi.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Admin authentication required")
+		return
+	}
+	httpapi.NotFound(w, r)
 }
