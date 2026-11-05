@@ -16,8 +16,8 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsonutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 )
 
 // Service runs the pipeline against one database.
@@ -25,8 +25,8 @@ type Service struct {
 	DB       db.DB
 	Config   *config.Store
 	Embedder Embedder
-	// Errorf writes to stderr; nil drops the message.
-	Errorf func(format string, args ...any)
+	// Errors records failures of background work; nil drops them.
+	Errors *syserrors.Recorder
 }
 
 // IngestResult is the ingest response. A context/ document is not indexed
@@ -214,15 +214,8 @@ func (s *Service) stampLastAccessed(results []SearchResult) {
          FROM (SELECT unnest($1::text[]) AS ns, unnest($2::text[]) AS sf) t
          WHERE d.namespace = t.ns AND LOWER(d.slug) = LOWER(t.sf) AND d.deleted_at IS NULL`,
 			namespaces, files)
-		if err == nil {
-			return
-		}
-		detail, _ := jsonutil.Marshal(map[string]string{"error": err.Error()})
-		if _, ierr := s.DB.Exec(ctx,
-			`INSERT INTO system_errors (actor_id, source, error_code, context, status, handler_action, resolved_at)
-         VALUES (NULL, 'memory', 'LAST_ACCESSED_STAMP_FAILED', $1, 'unhandled', NULL, NULL)`,
-			string(detail)); ierr != nil && s.Errorf != nil {
-			s.Errorf("memory LAST_ACCESSED_STAMP_FAILED not recorded: %s", ierr)
+		if err != nil && s.Errors != nil {
+			s.Errors.Record(ctx, "", "memory", "LAST_ACCESSED_STAMP_FAILED", map[string]string{"error": err.Error()})
 		}
 	})
 }

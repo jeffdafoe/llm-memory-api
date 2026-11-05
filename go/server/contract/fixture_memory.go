@@ -40,6 +40,8 @@ type fixtureNote struct {
 	kind      string // "" means no documents row (a raw ingest)
 	metadata  string // JSON, "" for NULL
 	deleted   bool
+	createdBy string // actor name, "" for none
+	content   string // the document content when there are no chunks
 	chunks    []fixtureChunk
 }
 
@@ -72,7 +74,7 @@ var fixtureNotes = []fixtureNote{
 	{namespace: AgentAName, slug: "memory-only/file-2", chunks: []fixtureChunk{
 		{text: "Raw ingest two."},
 	}},
-	{namespace: "shared", slug: "notes/codebase/dream-lock", kind: "reference", metadata: `{"cognitive_type": "Semantic"}`, chunks: []fixtureChunk{
+	{namespace: "shared", slug: "notes/codebase/dream-lock", kind: "reference", metadata: `{"cognitive_type": "Semantic"}`, createdBy: AgentBName, chunks: []fixtureChunk{
 		{heading: "## Dream lock", text: "## Dream lock\nThe dream lock keeps one dream run at a time.", embedText: queryDream},
 	}},
 	{namespace: "shared", slug: "imports/raw-file", chunks: []fixtureChunk{
@@ -91,10 +93,18 @@ var fixtureNotes = []fixtureNote{
 	{namespace: "private-ns", slug: "notes/codebase/not-shared", kind: "reference", chunks: []fixtureChunk{
 		{text: "A private note nobody else reads, about the dream lock.", embedText: queryDream},
 	}},
+	// A retention tombstone: deleted, content purged, metadata.purged_at
+	// set. Restoring it is a 410.
+	{namespace: AgentAName, slug: "conversations/purged-old", kind: "conversation", deleted: true,
+		metadata: `{"purged_at": "2026-02-01T00:00:00.000Z"}`, content: ""},
 }
 
-// applyMemoryFixture writes the notes and chunks, and shares one private-ns
-// note with agent-b through note_permissions.
+// Quota fixtures: quota-ns is 10 bytes under the 50 MB default, and agent-b
+// has its own 100-byte quota on its namespace.
+const quotaNamespace = "quota-ns"
+
+// applyMemoryFixture writes the notes and chunks, shares one private-ns note
+// with agent-b through note_permissions, and sets up the quota cases.
 func applyMemoryFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[string]int) error {
 	for _, n := range fixtureNotes {
 		if n.kind != "" {
@@ -106,17 +116,21 @@ func applyMemoryFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[
 			if n.deleted {
 				deleted = fixtureCreated
 			}
-			content := ""
+			content := n.content
 			for i, c := range n.chunks {
 				if i > 0 {
 					content += "\n\n"
 				}
 				content += c.text
 			}
+			var createdBy any
+			if n.createdBy != "" {
+				createdBy = agents[n.createdBy]
+			}
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO documents (namespace, slug, title, content, created_at, updated_at, deleted_at, kind, metadata)
-				 VALUES ($1, $2, $2, $3, $4, $4, $5, $6, $7::jsonb)`,
-				n.namespace, n.slug, content, fixtureCreated, deleted, n.kind, meta); err != nil {
+				`INSERT INTO documents (namespace, slug, title, content, created_at, updated_at, deleted_at, kind, metadata, created_by_actor_id)
+				 VALUES ($1, $2, $2, $3, $4, $4, $5, $6, $7::jsonb, $8)`,
+				n.namespace, n.slug, content, fixtureCreated, deleted, n.kind, meta, createdBy); err != nil {
 				return fmt.Errorf("document %s/%s: %w", n.namespace, n.slug, err)
 			}
 		}
@@ -137,9 +151,17 @@ func applyMemoryFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[
 			}
 		}
 	}
-	_, err := tx.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`INSERT INTO note_permissions (owner_namespace, slug_pattern, grantee_actor_id, can_read, granted_by)
 		 VALUES ('private-ns', 'notes/codebase/shared-with-b', $1, true, $2)`,
-		agents[AgentBName], adminID)
+		agents[AgentBName], adminID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		"INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at) VALUES ($1, 1, 52428790, $2)",
+		quotaNamespace, fixtureCreated); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, "UPDATE agent_configuration SET storage_quota = 100 WHERE actor_id = $1", agents[AgentBName])
 	return err
 }

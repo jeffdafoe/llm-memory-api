@@ -1,0 +1,584 @@
+{
+  "title_to_slug": [
+    {
+      "in": "Hello World",
+      "out": "hello-world"
+    },
+    {
+      "in": "  Leading and trailing  ",
+      "out": "leading-and-trailing"
+    },
+    {
+      "in": "Tabs\tand\nnewlines",
+      "out": "tabs-and-newlines"
+    },
+    {
+      "in": "Ünïcödé Title",
+      "out": "ncd-title"
+    },
+    {
+      "in": "İstanbul",
+      "out": "istanbul"
+    },
+    {
+      "in": "Already-slugged-title",
+      "out": "already-slugged-title"
+    },
+    {
+      "in": "--dashes--everywhere--",
+      "out": "dashes-everywhere"
+    },
+    {
+      "in": "Mixed   spaces nbsp em",
+      "out": "mixed-spaces-nbsp-em"
+    },
+    {
+      "in": "punctuation!@#$%^&*()_+=[]{}|;:'\",.<>/?",
+      "out": "punctuation"
+    },
+    {
+      "in": "!!!",
+      "out": ""
+    },
+    {
+      "in": "",
+      "out": ""
+    },
+    {
+      "in": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "out": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "in": "123 numbers 456",
+      "out": "123-numbers-456"
+    },
+    {
+      "in": "ΟΔΟΣ",
+      "out": ""
+    },
+    {
+      "in": "-",
+      "out": ""
+    },
+    {
+      "in": "a - b",
+      "out": "a-b"
+    },
+    {
+      "in": "x﻿y",
+      "out": "x-y"
+    }
+  ],
+  "validate_slug": [
+    {
+      "in": "notes/x",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": "",
+      "out": {
+        "error": "Slug is required",
+        "status": 400
+      }
+    },
+    {
+      "in": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "out": {
+        "error": "Slug too long (max 500 characters)",
+        "status": 400
+      }
+    },
+    {
+      "in": "notes/\u0001bad",
+      "out": {
+        "error": "Slug contains invalid characters",
+        "status": 400
+      }
+    },
+    {
+      "in": "notes\\x",
+      "out": {
+        "error": "Slug contains invalid characters",
+        "status": 400
+      }
+    },
+    {
+      "in": "/leading",
+      "out": {
+        "error": "Slug must not start with /",
+        "status": 400
+      }
+    },
+    {
+      "in": "trailing/",
+      "out": {
+        "error": "Slug must not end with /",
+        "status": 400
+      }
+    },
+    {
+      "in": "a//b",
+      "out": {
+        "error": "Slug must not contain //",
+        "status": 400
+      }
+    },
+    {
+      "in": "a/b/",
+      "out": {
+        "error": "Slug must not end with /",
+        "status": 400
+      }
+    },
+    {
+      "in": "ok/with space",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": "tab\there",
+      "out": {
+        "error": "Slug contains invalid characters",
+        "status": 400
+      }
+    },
+    {
+      "in": "del",
+      "out": {
+        "error": "Slug contains invalid characters",
+        "status": 400
+      }
+    },
+    {
+      "in": "émoji/😀",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": "x",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": ".",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": "a/./b",
+      "out": {
+        "ok": true
+      }
+    }
+  ],
+  "validate_slug_prefix": [
+    {
+      "in": "a/",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": "a/b/",
+      "out": {
+        "ok": true
+      }
+    },
+    {
+      "in": "a//",
+      "out": {
+        "error": "Slug must not contain //",
+        "status": 400
+      }
+    },
+    {
+      "in": "/a/",
+      "out": {
+        "error": "Slug must not start with /",
+        "status": 400
+      }
+    }
+  ],
+  "slug_to_kind": [
+    {
+      "in": "instructions/x",
+      "out": "instruction"
+    },
+    {
+      "in": "notes/codebase/x",
+      "out": "reference"
+    },
+    {
+      "in": "conversations/x",
+      "out": "conversation"
+    },
+    {
+      "in": "context/soul",
+      "out": "context"
+    },
+    {
+      "in": "dreams/x",
+      "out": "dream"
+    },
+    {
+      "in": "tasks/done/x",
+      "out": "task"
+    },
+    {
+      "in": "tasks/x",
+      "out": "task"
+    },
+    {
+      "in": "learnings/x",
+      "out": "learning"
+    },
+    {
+      "in": "notes/x",
+      "out": "note"
+    },
+    {
+      "in": "other/x",
+      "out": "note"
+    },
+    {
+      "in": "Notes/Codebase/x",
+      "out": "note"
+    },
+    {
+      "in": "instructions",
+      "out": "note"
+    }
+  ],
+  "paginate": [
+    {
+      "offset": "undefined",
+      "limit": "undefined",
+      "out": {
+        "text": "line 1\nline 2\nline 3\nline 4\nline 5",
+        "paginated": false
+      }
+    },
+    {
+      "offset": 1,
+      "limit": "undefined",
+      "out": {
+        "text": "[lines 1-5 of 5]\n\nline 1\nline 2\nline 3\nline 4\nline 5",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": "undefined",
+      "limit": 2,
+      "out": {
+        "text": "[lines 1-2 of 5]\n\nline 1\nline 2",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 2,
+      "limit": 2,
+      "out": {
+        "text": "[lines 2-3 of 5]\n\nline 2\nline 3",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 4,
+      "limit": 10,
+      "out": {
+        "text": "[lines 4-5 of 5]\n\nline 4\nline 5",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 5,
+      "limit": 1,
+      "out": {
+        "text": "[lines 5-5 of 5]\n\nline 5",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 6,
+      "limit": 1,
+      "out": {
+        "text": "[lines 6- of 5]\n\n",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 100,
+      "limit": 5,
+      "out": {
+        "text": "[lines 100- of 5]\n\n",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 0,
+      "limit": 1,
+      "out": {
+        "error": "offset must be a positive integer (1-indexed)",
+        "status": 400
+      }
+    },
+    {
+      "offset": -1,
+      "limit": 1,
+      "out": {
+        "error": "offset must be a positive integer (1-indexed)",
+        "status": 400
+      }
+    },
+    {
+      "offset": 1,
+      "limit": 0,
+      "out": {
+        "error": "limit must be a positive integer",
+        "status": 400
+      }
+    },
+    {
+      "offset": 1,
+      "limit": 10000,
+      "out": {
+        "text": "[lines 1-5 of 5]\n\nline 1\nline 2\nline 3\nline 4\nline 5",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 1,
+      "limit": 10001,
+      "out": {
+        "error": "limit must not exceed 10000",
+        "status": 400
+      }
+    },
+    {
+      "offset": 1.5,
+      "limit": 1,
+      "out": {
+        "error": "offset must be a positive integer (1-indexed)",
+        "status": 400
+      }
+    },
+    {
+      "offset": 1,
+      "limit": 2.5,
+      "out": {
+        "error": "limit must be a positive integer",
+        "status": 400
+      }
+    },
+    {
+      "offset": "2",
+      "limit": 1,
+      "out": {
+        "error": "offset must be a positive integer (1-indexed)",
+        "status": 400
+      }
+    },
+    {
+      "offset": 1,
+      "limit": "2",
+      "out": {
+        "error": "limit must be a positive integer",
+        "status": 400
+      }
+    },
+    {
+      "offset": null,
+      "limit": 2,
+      "out": {
+        "text": "[lines 1-2 of 5]\n\nline 1\nline 2",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": 2,
+      "limit": null,
+      "out": {
+        "text": "[lines 2-5 of 5]\n\nline 2\nline 3\nline 4\nline 5",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": null,
+      "limit": null,
+      "out": {
+        "text": "line 1\nline 2\nline 3\nline 4\nline 5",
+        "paginated": false
+      }
+    },
+    {
+      "offset": 1e+300,
+      "limit": 1,
+      "out": {
+        "text": "[lines 1e+300- of 5]\n\n",
+        "totalLines": 5,
+        "paginated": true
+      }
+    },
+    {
+      "offset": true,
+      "limit": 1,
+      "out": {
+        "error": "offset must be a positive integer (1-indexed)",
+        "status": 400
+      }
+    },
+    {
+      "offset": 1,
+      "limit": [
+        2
+      ],
+      "out": {
+        "error": "limit must be a positive integer",
+        "status": 400
+      }
+    },
+    {
+      "offset": 0,
+      "limit": 1,
+      "out": {
+        "error": "offset must be a positive integer (1-indexed)",
+        "status": 400
+      }
+    }
+  ],
+  "paginate_content": "line 1\nline 2\nline 3\nline 4\nline 5",
+  "stringify": [
+    {
+      "in": "{\"b\": 1, \"a\": 2}",
+      "out": "{\"b\":1,\"a\":2}"
+    },
+    {
+      "in": "{\"x\": 1.0, \"y\": 1e2, \"z\": -0, \"w\": 12345678901234567890}",
+      "out": "{\"x\":1,\"y\":100,\"z\":0,\"w\":12345678901234567000}"
+    },
+    {
+      "in": "{\"s\": \"a\\u2028b<>&\\u0001\\\"\\\\\"}",
+      "out": "{\"s\":\"a b<>&\\u0001\\\"\\\\\"}"
+    },
+    {
+      "in": "{\"nested\": {\"k\": [1, \"two\", null, true, {\"q\": false}]}}",
+      "out": "{\"nested\":{\"k\":[1,\"two\",null,true,{\"q\":false}]}}"
+    },
+    {
+      "in": "{\"dup\": 1, \"other\": 2, \"dup\": 3}",
+      "out": "{\"dup\":3,\"other\":2}"
+    },
+    {
+      "in": "{\"big\": 1e400}",
+      "out": "{\"big\":null}"
+    },
+    {
+      "in": "{\"unicode\": \"\\u00e9\\ud83d\\ude00\"}",
+      "out": "{\"unicode\":\"é😀\"}"
+    },
+    {
+      "in": "[]",
+      "out": "[]"
+    },
+    {
+      "in": "{}",
+      "out": "{}"
+    },
+    {
+      "in": "{\"tab\": \"\\t\\n\\r\\b\\f\"}",
+      "out": "{\"tab\":\"\\t\\n\\r\\b\\f\"}"
+    },
+    {
+      "in": "{\"a\":1,\"10\":2,\"2\":3,\"01\":4,\"4294967295\":5,\"4294967294\":6,\"-1\":7,\"0\":8}",
+      "out": "{\"0\":8,\"2\":3,\"10\":2,\"4294967294\":6,\"a\":1,\"01\":4,\"4294967295\":5,\"-1\":7}"
+    },
+    {
+      "in": "{\"n\": {\"b\": 1, \"1\": 2}}",
+      "out": "{\"n\":{\"1\":2,\"b\":1}}"
+    }
+  ],
+  "to_fixed": [
+    {
+      "in": 0,
+      "out": "0.0"
+    },
+    {
+      "in": 0.05,
+      "out": "0.1"
+    },
+    {
+      "in": 0.25,
+      "out": "0.3"
+    },
+    {
+      "in": 0.35,
+      "out": "0.3"
+    },
+    {
+      "in": 1.25,
+      "out": "1.3"
+    },
+    {
+      "in": 49.95,
+      "out": "50.0"
+    },
+    {
+      "in": 50,
+      "out": "50.0"
+    },
+    {
+      "in": 9.999,
+      "out": "10.0"
+    },
+    {
+      "in": 0.0000095367431640625,
+      "out": "0.0"
+    },
+    {
+      "in": 49.999990463256836,
+      "out": "50.0"
+    },
+    {
+      "in": 0.000095367431640625,
+      "out": "0.0"
+    },
+    {
+      "in": -0.001,
+      "out": "-0.0"
+    },
+    {
+      "in": 0,
+      "out": "0.0"
+    },
+    {
+      "in": -0.04,
+      "out": "-0.0"
+    },
+    {
+      "in": -1.25,
+      "out": "-1.3"
+    }
+  ]
+}
