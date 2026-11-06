@@ -65,6 +65,19 @@ var adminShareCases = []Scenario{
 		adminPost(adminSharesWithMe, `{}`),
 		adminPost(adminSharesDocuments, `{}`),
 	})},
+	// A namespace named like an Object.prototype member: Node grouped into a
+	// plain object, found the inherited function and threw on .push.
+	{Name: "admin shares documents in a namespace named constructor", Steps: []Step{
+		{SQL: `INSERT INTO documents (namespace, slug, title, content, kind)
+               VALUES ('constructor', 'notes/x', 'X', 'x', 'note');
+               INSERT INTO note_permissions (owner_namespace, slug_pattern, grantee_actor_id, can_read, granted_by)
+               SELECT 'constructor', 'notes/', NULL, true, id FROM actors WHERE name = 'agent-a'`},
+		adminPost(adminSharesDocuments, `{}`),
+	}, Known: []KnownDifference{
+		{Where: "step 1 POST /v1/admin/shares/documents: *", Reason: "a namespace named like an Object.prototype member groups in Go; Node threw (go-server note, Known differences)"},
+		{Where: "table error_log*", Reason: "Node logged the TypeError; Go answers (go-server note, Known differences)"},
+		{Where: "table request_log*", Reason: "the request log records the status and length the client got (go-server note, Known differences)"},
+	}},
 	{Name: "admin shares for slug", Steps: steps(routeShape(adminSharesForSlug), []Step{
 		adminPost(adminSharesForSlug, `{"owner_namespace":"private-ns"}`),
 		adminPost(adminSharesForSlug, `{"owner_namespace":"private-ns","slug_pattern":"notes/codebase/shared-with-b"}`),
