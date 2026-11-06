@@ -66,6 +66,10 @@ func run() error {
 	}
 
 	services := server.NewServices(pool, store, server.LogDir())
+	// Started after the config load and before the listener, as in Node.
+	if err := services.Agents.StartErrorPing(ctx); err != nil {
+		return err
+	}
 
 	// Loopback by default: nginx and the salem engine reach the server on
 	// 127.0.0.1. The login rate limits trust the X-Forwarded-For hop nginx
