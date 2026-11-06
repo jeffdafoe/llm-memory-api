@@ -26,6 +26,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/registration"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/simapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
@@ -199,7 +200,15 @@ func Handler(s *Services) http.Handler {
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
 		Namespaces: s.Namespaces, Visibility: s.Visibility, Agents: s.Agents,
 	}).Register(v1)
-	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
+	// routes/sim.js is mounted after the routes above in Node; its /sim gate
+	// sits in front of the mux because it applies to every method and
+	// path under /sim (simapi.Routes.Mount).
+	simRoutes := &simapi.Routes{
+		Service: &simapi.Service{DB: s.DB, Log: s.Log, Notes: s.Notes, Agents: s.Agents, Trust: s.Admin},
+		Router:  s.Router,
+		Admin:   s.Admin,
+	}
+	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, simRoutes.Mount(v1)))
 	// routes/auth.js is mounted on /v1 before the session middleware, so
 	// /v1/auth/verify needs no Authorization header; its other methods go
 	// on to the middleware.
