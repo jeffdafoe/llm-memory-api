@@ -66,7 +66,6 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sessions := &auth.Sessions{DB: conn}
 	keys := &auth.APIKeys{DB: conn, Warnf: func(format string, args ...any) { log.Errorf(format, args...) }}
 	mem := &memory.Service{DB: conn, Config: store, Embedder: &memory.OpenAI{}, Errors: recorder}
-	agents := virtualagent.Seam{}
 	llm := &providers.Providers{Config: store, Log: log}
 	notesService := &notes.Service{
 		DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
@@ -81,7 +80,9 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	}
 	mailService.Agents = vaService
 	sysHandler := &system.Handler{Log: log}
-	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
+	// A discussion's virtual participants answer through the system
+	// handler's "virtual-agent" messages.
+	sysHandler.Register("virtual-agent", vaService.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
 	notifier := &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler}
 	// Chat calls the virtual agents the same way: a chat message to one is
@@ -91,6 +92,8 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Notifier: notifier,
 	}
 	vaService.Chat = chatService
+	discussions := &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier}
+	vaService.Discussions = discussions
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -114,7 +117,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Mail:        mailService,
 		System:      sysHandler,
 		Chat:        chatService,
-		Discussions: &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier},
+		Discussions: discussions,
 		Providers:   llm,
 		Agents:      vaService,
 		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
