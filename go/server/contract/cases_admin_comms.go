@@ -38,10 +38,10 @@ func grantLimited(resource, action string) Step {
 
 var adminDiscussionCases = []Scenario{
 	{Name: "admin discussions list", Steps: steps(routeShape(adminDiscussions), []Step{
-		adminPost(adminDiscussions, `{}`),
-		adminPost(adminDiscussions, `{"status":"active"}`),
-		adminPost(adminDiscussions, `{"status":"no-such"}`),
-		adminPost(adminDiscussions, `{"status":""}`),
+		contentPost(adminDiscussions, `{}`),
+		contentPost(adminDiscussions, `{"status":"active"}`),
+		contentPost(adminDiscussions, `{"status":"no-such"}`),
+		contentPost(adminDiscussions, `{"status":""}`),
 	})},
 	{Name: "admin discussions list filtered", Steps: []Step{
 		grantLimited("comms", "read"),
@@ -49,57 +49,57 @@ var adminDiscussionCases = []Scenario{
 		limitedPost(adminDiscussionDetail, `{"discussion_id":101}`),
 	}},
 	{Name: "admin discussions detail", Steps: steps(routeShape(adminDiscussionDetail), []Step{
-		adminPost(adminDiscussionDetail, `{}`),
-		adminPost(adminDiscussionDetail, `{"discussion_id":105}`),
-		adminPost(adminDiscussionDetail, `{"discussion_id":"101"}`),
-		adminPost(adminDiscussionDetail, `{"discussion_id":104}`),
-		adminPost(adminDiscussionDetail, `{"discussion_id":999}`),
-		adminPost(adminDiscussionDetail, `{"discussion_id":"abc"}`),
+		contentPost(adminDiscussionDetail, `{}`),
+		contentPost(adminDiscussionDetail, `{"discussion_id":105}`),
+		contentPost(adminDiscussionDetail, `{"discussion_id":"101"}`),
+		contentPost(adminDiscussionDetail, `{"discussion_id":104}`),
+		contentPost(adminDiscussionDetail, `{"discussion_id":999}`),
+		contentPost(adminDiscussionDetail, `{"discussion_id":"abc"}`),
 	})},
 	{Name: "admin discussions create", Steps: steps(routeShape(adminDiscussionCreate), []Step{
-		adminPost(adminDiscussionCreate, `{}`),
-		adminPost(adminDiscussionCreate, `{"topic":"  ","participants":["agent-a"]}`),
-		adminPost(adminDiscussionCreate, `{"topic":"T","participants":[]}`),
-		adminPost(adminDiscussionCreate, `{"topic":"T","participants":["",null,0]}`),
-		adminPost(adminDiscussionCreate, `{"topic":"  Admin topic  ","participants":["agent-a","agent-a","",null],"mode":"async","context":"Some context"}`),
+		contentPost(adminDiscussionCreate, `{}`),
+		contentPost(adminDiscussionCreate, `{"topic":"  ","participants":["agent-a"]}`),
+		contentPost(adminDiscussionCreate, `{"topic":"T","participants":[]}`),
+		contentPost(adminDiscussionCreate, `{"topic":"T","participants":["",null,0]}`),
+		contentPost(adminDiscussionCreate, `{"topic":"  Admin topic  ","participants":["agent-a","agent-a","",null],"mode":"async","context":"Some context"}`),
 		{Settle: true},
-		adminPost(adminDiscussionCreate, `{"topic":"T","participants":["nobody-at-all"]}`),
+		contentPost(adminDiscussionCreate, `{"topic":"T","participants":["nobody-at-all"]}`),
 		{Settle: true},
 	})},
 	{Name: "admin discussions create naming the admin", Steps: []Step{
-		adminPost(adminDiscussionCreate, `{"topic":"With me","participants":["agent-b","contract-admin"],"mode":"realtime"}`),
+		contentPost(adminDiscussionCreate, `{"topic":"With me","participants":["agent-b","contract-admin"],"mode":"realtime"}`),
 		{Settle: true},
 	}},
 	{Name: "admin discussions send", Steps: steps(routeShape(adminDiscussionSend), []Step{
-		adminPost(adminDiscussionSend, `{"discussion_id":101}`),
-		adminPost(adminDiscussionSend, `{"message":"hi"}`),
-		adminPost(adminDiscussionSend, `{"discussion_id":101,"message":"   "}`),
+		contentPost(adminDiscussionSend, `{"discussion_id":101}`),
+		contentPost(adminDiscussionSend, `{"message":"hi"}`),
+		contentPost(adminDiscussionSend, `{"discussion_id":101,"message":"   "}`),
 		// contract-admin is not a participant of 101: Node's chatSend sends
 		// to the joined participants anyway.
-		adminPost(adminDiscussionSend, `{"discussion_id":101,"message":"  From the dashboard  "}`),
+		contentPost(adminDiscussionSend, `{"discussion_id":101,"message":"  From the dashboard  "}`),
 		{Settle: true},
-		adminPost(adminDiscussionSend, `{"discussion_id":"abc","message":"x"}`),
-		adminPost(adminDiscussionSend, `{"discussion_id":99999999999,"message":"x"}`),
+		contentPost(adminDiscussionSend, `{"discussion_id":"abc","message":"x"}`),
+		contentPost(adminDiscussionSend, `{"discussion_id":99999999999,"message":"x"}`),
 	})},
 	{Name: "admin discussions conclude", Steps: steps(routeShape(adminDiscussionConclude), []Step{
-		adminPost(adminDiscussionConclude, `{}`),
+		contentPost(adminDiscussionConclude, `{}`),
 		// The admin has not joined fixture discussions.
-		adminPost(adminDiscussionConclude, `{"discussion_id":105}`),
+		contentPost(adminDiscussionConclude, `{"discussion_id":105}`),
 		{Method: "POST", Path: adminDiscussionCreate, Auth: "admin-web", Header: jsonType,
 			Body:    `{"topic":"To end","participants":["agent-a"]}`,
 			Capture: map[string]string{"did": "discussion.id"}},
 		{Settle: true},
-		adminPost(adminDiscussionConclude, `{"discussion_id":{{did}}}`),
+		contentPost(adminDiscussionConclude, `{"discussion_id":{{did}}}`),
 		{Settle: true},
 	}), Known: deliveryRace},
 }
 
 var adminMailChatCases = []Scenario{
 	{Name: "admin mail list", Steps: steps(routeShape(adminMail), []Step{
-		adminPost(adminMail, `{}`),
-		adminPost(adminMail, `{"limit":2}`),
-		adminPost(adminMail, `{"limit":null}`),
-		adminPost(adminMail, `{"limit":"x"}`),
+		contentPost(adminMail, `{}`),
+		contentPost(adminMail, `{"limit":2}`),
+		contentPost(adminMail, `{"limit":null}`),
+		contentPost(adminMail, `{"limit":"x"}`),
 	})},
 	{Name: "admin mail list filtered", Steps: []Step{
 		grantLimited("comms", "read"),
@@ -107,20 +107,20 @@ var adminMailChatCases = []Scenario{
 		limitedPost(adminChat, `{}`),
 	}},
 	{Name: "admin mail delete", Steps: steps(routeShape(adminMailDelete), []Step{
-		adminPost(adminMailDelete, `{}`),
-		adminPost(adminMailDelete, `{"id":"6d2a0c1e-0000-4000-8000-0000000000a1"}`),
-		adminPost(adminMailDelete, `{"id":"6d2a0c1e-0000-4000-8000-0000000000a1"}`),
-		adminPost(adminMailDelete, `{"id":"not-a-uuid"}`),
+		contentPost(adminMailDelete, `{}`),
+		contentPost(adminMailDelete, `{"id":"6d2a0c1e-0000-4000-8000-0000000000a1"}`),
+		contentPost(adminMailDelete, `{"id":"6d2a0c1e-0000-4000-8000-0000000000a1"}`),
+		contentPost(adminMailDelete, `{"id":"not-a-uuid"}`),
 	})},
 	{Name: "admin mail delete filtered", Steps: []Step{
 		grantLimited("comms", "delete"),
 		limitedPost(adminMailDelete, `{"id":"6d2a0c1e-0000-4000-8000-0000000000a1"}`),
 	}},
 	{Name: "admin mail send", Steps: steps(routeShape(adminMailSend), []Step{
-		adminPost(adminMailSend, `{"to":"agent-a"}`),
-		adminPost(adminMailSend, `{"to":"  Agent-A! ","subject":"Hello`+bs+`u200b","body":"From the dashboard."}`),
-		adminPost(adminMailSend, `{"to":"nobody-at-all","subject":"s","body":"b"}`),
-		adminPost(adminMailSend, `{"to":"helper-va","subject":"s","body":"b"}`),
+		contentPost(adminMailSend, `{"to":"agent-a"}`),
+		contentPost(adminMailSend, `{"to":"  Agent-A! ","subject":"Hello`+bs+`u200b","body":"From the dashboard."}`),
+		contentPost(adminMailSend, `{"to":"nobody-at-all","subject":"s","body":"b"}`),
+		contentPost(adminMailSend, `{"to":"helper-va","subject":"s","body":"b"}`),
 		{Settle: true},
 	})},
 	{Name: "admin mail send filtered", Steps: []Step{
@@ -128,18 +128,18 @@ var adminMailChatCases = []Scenario{
 		limitedPost(adminMailSend, `{"to":"agent-a","subject":"s","body":"b"}`),
 	}},
 	{Name: "admin chat list", Steps: steps(routeShape(adminChat), []Step{
-		adminPost(adminChat, `{}`),
-		adminPost(adminChat, `{"limit":1}`),
-		adminPost(adminChat, `{"discussion_id":101}`),
-		adminPost(adminChat, `{"discussion_id":"101","limit":2}`),
-		adminPost(adminChat, `{"discussion_id":0}`),
-		adminPost(adminChat, `{"discussion_id":"abc"}`),
+		contentPost(adminChat, `{}`),
+		contentPost(adminChat, `{"limit":1}`),
+		contentPost(adminChat, `{"discussion_id":101}`),
+		contentPost(adminChat, `{"discussion_id":"101","limit":2}`),
+		contentPost(adminChat, `{"discussion_id":0}`),
+		contentPost(adminChat, `{"discussion_id":"abc"}`),
 	})},
 	{Name: "admin chat delete", Steps: steps(routeShape(adminChatDelete), []Step{
-		adminPost(adminChatDelete, `{}`),
-		adminPost(adminChatDelete, `{"id":101}`),
-		adminPost(adminChatDelete, `{"id":101}`),
-		adminPost(adminChatDelete, `{"id":"x"}`),
+		contentPost(adminChatDelete, `{}`),
+		contentPost(adminChatDelete, `{"id":101}`),
+		contentPost(adminChatDelete, `{"id":101}`),
+		contentPost(adminChatDelete, `{"id":"x"}`),
 	})},
 }
 
@@ -155,7 +155,7 @@ func apiLogDuration(step int) KnownDifference {
 
 var adminLogCases = []Scenario{
 	{Name: "admin dashboard", Steps: steps(routeShape(adminDashboard), []Step{
-		adminPost(adminDashboard, `{}`),
+		contentPost(adminDashboard, `{}`),
 		// The limited admin sees itself only.
 		limitedPost(adminDashboard, `{}`),
 	})},
@@ -166,10 +166,10 @@ var adminLogCases = []Scenario{
 		Steps: settleEach(steps(routeShape(adminAPILog), []Step{
 			{Method: "POST", Path: noRoutePath, Auth: "agent-a-session", Header: jsonType, Body: `{}`},
 			{Method: "GET", Path: "/health"},
-			adminPost(adminAPILog, `{}`),
-			adminPost(adminAPILog, `{"limit":1}`),
-			adminPost(adminAPILog, `{"since_id":1}`),
-			adminPost(adminAPILog, `{"since_id":"x"}`),
+			contentPost(adminAPILog, `{}`),
+			contentPost(adminAPILog, `{"limit":1}`),
+			contentPost(adminAPILog, `{"since_id":1}`),
+			contentPost(adminAPILog, `{"since_id":"x"}`),
 		})),
 		Known: []KnownDifference{apiLogDuration(9), apiLogDuration(10), apiLogDuration(11)},
 	},
@@ -186,11 +186,11 @@ var adminLogCases = []Scenario{
 		Steps: settleEach(steps(routeShape(adminErrorLog), []Step{
 			// A logged 404 (attributed to agent-a) and a logged 400.
 			{Method: "POST", Path: readPath, Auth: "agent-a-session", Header: jsonType, Body: `{"namespace":"agent-a","slug":"no/such"}`},
-			adminPost(adminNotesSave, `{"namespace":"contract-admin","slug":"x","title":"T","content":""}`),
+			contentPost(adminNotesSave, `{"namespace":"contract-admin","slug":"x","title":"T","content":""}`),
 			{Settle: true},
-			adminPost(adminErrorLog, `{}`),
-			adminPost(adminErrorLog, `{"limit":1}`),
-			adminPost(adminErrorLog, `{"since_id":1}`),
+			contentPost(adminErrorLog, `{}`),
+			contentPost(adminErrorLog, `{"limit":1}`),
+			contentPost(adminErrorLog, `{"since_id":1}`),
 		})),
 		Known: []KnownDifference{{
 			Where:  "step * POST /v1/admin/error-log: body.entries.*.error_detail",
@@ -198,10 +198,10 @@ var adminLogCases = []Scenario{
 		}},
 	},
 	{Name: "admin funnel", Steps: steps(routeShape(adminFunnel), []Step{
-		adminPost(adminFunnel, `{}`),
+		contentPost(adminFunnel, `{}`),
 		{SQL: `INSERT INTO signup_events (actor_id, event, value)
                SELECT id, 'guide_shown', 'claude-code' FROM actors WHERE name = 'agent-a'`},
-		adminPost(adminFunnel, `{}`),
+		contentPost(adminFunnel, `{}`),
 	})},
 }
 

@@ -49,8 +49,8 @@ func shareToAdmin(namespace, pattern string, read, write, del bool) Step {
          SELECT '%s', '%s', a.id, %t, %t, %t, a.id FROM actors a WHERE a.name = 'contract-admin'`, namespace, pattern, read, write, del)}
 }
 
-// adminPost is a JSON POST as contract-admin.
-func adminPost(path, body string) Step {
+// contentPost is a JSON POST as contract-admin.
+func contentPost(path, body string) Step {
 	return Step{Method: "POST", Path: path, Auth: "admin-web", Header: jsonType, Body: body}
 }
 
