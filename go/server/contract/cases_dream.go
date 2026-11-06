@@ -61,7 +61,9 @@ UPDATE config SET value = '0' WHERE key IN ('dream_interagent_delay', 'dream_int
 UPDATE actors SET expertise = '["dream-companion", "dream-companion-soul", "dream-companion-people"]',
     created_by = (SELECT id FROM actors WHERE name = 'system')
     WHERE name = 'va-anthropic';
-UPDATE agent_configuration SET last_dream_at = NOW() - INTERVAL '10 minutes'
+-- agent-b's 100-byte fixture quota would refuse whichever save lands after
+-- the background usage counter catches up, a race on both servers.
+UPDATE agent_configuration SET last_dream_at = NOW() - INTERVAL '10 minutes', storage_quota = NULL
     WHERE actor_id = (SELECT id FROM actors WHERE name = 'agent-b');
 INSERT INTO documents (namespace, slug, title, content, kind, created_at, updated_at) VALUES
     ('agent-b', 'conversations/release-day', 'Release day',
