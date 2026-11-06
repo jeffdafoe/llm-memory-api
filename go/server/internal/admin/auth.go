@@ -365,7 +365,9 @@ func (rt *Routes) profileVisibility(w http.ResponseWriter, r *http.Request) erro
 	}
 	if raw, present := f["visible_to_others"]; present {
 		visible := pgbind.Truthy(raw)
-		if _, err := rt.DB.Exec(r.Context(), "UPDATE actors SET visible_to_others = $1 WHERE id = $2", visible, target); err != nil {
+		ctx, cancel := detached(r)
+		defer cancel()
+		if _, err := rt.DB.Exec(ctx, "UPDATE actors SET visible_to_others = $1 WHERE id = $2", visible, target); err != nil {
 			return err
 		}
 		rt.LogAdmin("visibility_update", logger.Fields{
