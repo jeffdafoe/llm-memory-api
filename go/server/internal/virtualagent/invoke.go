@@ -558,6 +558,10 @@ func (s *Service) pingAgent(ctx context.Context, agentName string) {
 
 // statusCode is err.status || err.statusCode for the call log.
 func statusCode(err error) any {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.status
+	}
 	if status, ok := errorStatus(err); ok && status != 0 {
 		return status
 	}

@@ -621,13 +621,15 @@ func (s *Service) dispatchVirtualAgents(ctx context.Context, in SendInput, fromA
 				return s.Agents.HandleDirectChat(ctx, d)
 			}, nil
 		}
-		db.Background(func(ctx context.Context) {
+		db.BackgroundUnbounded(func(ctx context.Context) {
 			s.Agents.HandleDirectChat(ctx, d)
 		})
 		return nil, nil
 	}
+	// The reply bounds itself: each provider call has its own timeout, and
+	// the retries between them wait minutes, past db.Background's bound.
 	for _, d := range dispatches {
-		db.Background(func(ctx context.Context) {
+		db.BackgroundUnbounded(func(ctx context.Context) {
 			s.Agents.HandleDirectChat(ctx, d)
 		})
 	}

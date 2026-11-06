@@ -18,7 +18,7 @@ import (
 //     also go to /v1 with no credentials (parsing comes before auth);
 //   - a valid /v1 credential goes to noRoutePath: auth and the heartbeat
 //     run, then both 404.
-var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases, memoryCases, notesCases, grepCases, mailCases, vaMailCases, chatCases, discussionCases, agentCases, oauthCases, registrationCases, cleanupCases, adminCases)
+var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases, memoryCases, notesCases, grepCases, mailCases, vaMailCases, chatCases, vaChatCases, discussionCases, agentCases, oauthCases, registrationCases, cleanupCases, adminCases)
 
 const (
 	bodyPath    = "/contract/body"
