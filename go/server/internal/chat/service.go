@@ -446,7 +446,9 @@ func (s *Service) Send(ctx context.Context, in SendInput) (sent *Sent, pending P
 	for _, d := range deliveries {
 		if d.Agent == "system" && s.System != nil {
 			id, from, message := d.ID, in.FromAgent, in.Message
-			db.Background(func(ctx context.Context) {
+			// Unbounded, as in NotifySystem: a virtual-agent payload runs
+			// provider calls.
+			db.BackgroundUnbounded(func(ctx context.Context) {
 				s.System.HandleMessage(ctx, id, from, message, nil)
 			})
 			break

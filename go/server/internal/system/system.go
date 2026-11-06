@@ -134,7 +134,9 @@ type Notified struct {
 
 // NotifySystem stores payload, as JSON.stringify writes it, as a message
 // from system to system, then runs its handler in the background. The two
-// inserts are separate statements, as in Node.
+// inserts are separate statements, as in Node. The handler has no time
+// bound: the virtual-agent handler waits out the response pacing and slow
+// provider calls.
 func (n *Notifier) NotifySystem(ctx context.Context, payload any) (*Notified, error) {
 	text, err := jsonutil.Marshal(payload)
 	if err != nil {
@@ -149,7 +151,7 @@ func (n *Notifier) NotifySystem(ctx context.Context, payload any) (*Notified, er
 	if err != nil {
 		return nil, err
 	}
-	db.Background(func(ctx context.Context) {
+	db.BackgroundUnbounded(func(ctx context.Context) {
 		n.Handler.HandleMessage(ctx, sent.ID, "system", &message, nil)
 	})
 	return sent, nil
