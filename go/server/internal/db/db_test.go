@@ -7,27 +7,35 @@ import (
 	"time"
 )
 
-// An unbounded job's context has no deadline; Background's has one. Runs
-// before the drain test, which closes background work for the process.
-func TestBackgroundUnboundedHasNoDeadline(t *testing.T) {
+func TestDrainBackground(t *testing.T) {
+	// Before the drain: an unbounded job's context has no deadline, a
+	// bounded one's has. (The drain closes background work for the
+	// process, so these checks live in this test.)
 	deadlines := make(chan bool, 2)
+	hasDeadline := func() bool {
+		select {
+		case ok := <-deadlines:
+			return ok
+		case <-time.After(5 * time.Second):
+			t.Fatal("background job did not run")
+			return false
+		}
+	}
 	BackgroundUnbounded(func(ctx context.Context) {
 		_, ok := ctx.Deadline()
 		deadlines <- ok
 	})
-	if <-deadlines {
+	if hasDeadline() {
 		t.Error("unbounded job has a deadline")
 	}
 	Background(func(ctx context.Context) {
 		_, ok := ctx.Deadline()
 		deadlines <- ok
 	})
-	if !<-deadlines {
+	if !hasDeadline() {
 		t.Error("bounded job has no deadline")
 	}
-}
 
-func TestDrainBackground(t *testing.T) {
 	var finished atomic.Int32
 	Background(func(ctx context.Context) {
 		<-ctx.Done()

@@ -150,47 +150,94 @@ func (r *recorder) LogError(subsystem, action string, opts logger.ErrorOpts) {
 	r.mu.Unlock()
 }
 
-// split cuts a recording into the part compared in order and the part
-// compared as a multiset: items floating marks (written in the background,
-// so their place against the rest is not fixed), and everything from the
-// cut on (the learning extraction and transcript, which run in parallel
-// after the reply). cut is len(items) when there is no tail.
-func split[T any](items []T, cut int, floating func(T) bool) (ordered []string, unordered []string) {
+// floating is the lane of a write whose place against the others is not
+// fixed: Go makes it from a goroutine, Node in a fixed microtask order. Such
+// writes are compared as a multiset.
+const floating = "floating"
+
+// lanes splits a recording by lane: "" is the handler's own sequence, a
+// named lane is one background job (learning, transcript), each compared in
+// order, and floating is compared as a multiset. cut is where the jobs
+// started after the reply (len(items) when they did not).
+func lanes[T any](items []T, cut int, lane func(i, cut int, it T) string) map[string][]string {
+	out := map[string][]string{}
 	for i, it := range items {
-		if i >= cut || floating(it) {
-			unordered = append(unordered, jsonOf(it))
-		} else {
-			ordered = append(ordered, jsonOf(it))
+		l := lane(i, cut, it)
+		out[l] = append(out[l], jsonOf(it))
+	}
+	sort.Strings(out[floating])
+	return out
+}
+
+// compareLanes compares each lane. newLane makes a fresh lane function for
+// each side, as a lane may depend on what came before it.
+func compareLanes[T any](t *testing.T, name string, got, want []T, cut func([]T) int, newLane func() func(i, cut int, it T) string) {
+	t.Helper()
+	g, w := lanes(got, cut(got), newLane()), lanes(want, cut(want), newLane())
+	names := map[string]bool{}
+	for k := range g {
+		names[k] = true
+	}
+	for k := range w {
+		names[k] = true
+	}
+	for k := range names {
+		if a, b := strings.Join(g[k], "\n"), strings.Join(w[k], "\n"); a != b {
+			t.Errorf("%s, lane %q:\n got %s\nwant %s", name, k, a, b)
 		}
 	}
-	sort.Strings(unordered)
-	return ordered, unordered
 }
 
 // cutAfter is the index after the last item that is, or len(items) when
 // none is.
-func cutAfter[T any](items []T, is func(T) bool) int {
-	for i := len(items) - 1; i >= 0; i-- {
-		if is(items[i]) {
-			return i + 1
+func cutAfter[T any](is func(T) bool) func([]T) int {
+	return func(items []T) int {
+		for i := len(items) - 1; i >= 0; i-- {
+			if is(items[i]) {
+				return i + 1
+			}
 		}
+		return len(items)
 	}
-	return len(items)
 }
 
-func sortedJSON[T any](items []T) string {
-	var out []string
-	for _, it := range items {
-		out = append(out, jsonOf(it))
+// lane is newLane for a lane function with no state.
+func lane[T any](f func(i, cut int, it T) string) func() func(i, cut int, it T) string {
+	return func() func(i, cut int, it T) string { return f }
+}
+
+// noTail puts every item before the cut.
+func noTail[T any](items []T) int { return len(items) }
+
+// checkSpinner fails when the activity spinner goes off more often than it
+// came on at any point, or ends on: an off-switch the comparison above lets
+// float must still follow its own on-switch.
+func checkSpinner(t *testing.T, name string, on, off []bool) {
+	t.Helper()
+	n := 0
+	for i := range on {
+		if on[i] {
+			n++
+		}
+		if off[i] {
+			n--
+		}
+		if n < 0 {
+			t.Errorf("%s: the spinner goes off before it came on (item %d)", name, i)
+			return
+		}
 	}
-	sort.Strings(out)
-	return strings.Join(out, "\n")
+	if n != 0 {
+		t.Errorf("%s: the spinner is left on (%d)", name, n)
+	}
 }
 
 // compareMail is compare for handleDirectMail. Node finished its background
-// work in a fixed microtask order; Go runs it on goroutines. So the call
-// log, the spinner's off-switch and everything after the reply (learning,
-// transcript) are compared as multisets, and the rest in order.
+// work in a fixed microtask order; Go runs it on goroutines. The handler's
+// own writes are compared in order, and so is each background job after the
+// reply (learning extraction, transcript), though the jobs may interleave;
+// the call logs and the activity spinner's off-switch float, and the
+// spinner is checked to go off only after it came on.
 func compareMail(t *testing.T, want *scenario, r *recorder, got outcome) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -211,30 +258,75 @@ func compareMail(t *testing.T, want *scenario, r *recorder, got outcome) {
 	if jsonOf(got) != jsonOf(want.Outcome) {
 		t.Errorf("outcome:\n got %s\nwant %s", jsonOf(got), jsonOf(want.Outcome))
 	}
-	isSend := func(q queryRec) bool { return q.Kind == "mail-send" }
-	floatingQuery := func(q queryRec) bool { return q.Kind == "call-insert" || q.Kind == "active-off" }
-	responded := func(l logRec) bool { return l.Action == "direct-mail-responded" }
-	floatingLog := func(l logRec) bool { return l.Action == "call-log-error" }
-	floatingEvent := func(e eventRec) bool { return strings.Contains(e.Data, `"active":false`) }
-	everything := func(n int) int { return n }
 
-	for _, c := range []splitResult{
-		queries(r.queries, want.Queries, isSend, floatingQuery),
-		logsOf(r.logs, want.Logs, responded, floatingLog),
-		eventsOf(r.events, want.Events, everything, floatingEvent),
-	} {
-		if g, w := strings.Join(c.gotOrdered, "\n"), strings.Join(c.wantOrdered, "\n"); g != w {
-			t.Errorf("%s in order:\n got %s\nwant %s", c.name, g, w)
-		}
-		if g, w := strings.Join(c.gotRest, "\n"), strings.Join(c.wantRest, "\n"); g != w {
-			t.Errorf("%s in the background:\n got %s\nwant %s", c.name, g, w)
-		}
+	compareLanes(t, "queries", r.queries, want.Queries, cutAfter(func(q queryRec) bool { return q.Kind == "mail-send" }),
+		func() func(i, cut int, q queryRec) string {
+			// The mail call's spinner goes off from a timer, which in Go
+			// can land after the reply too; an off after the cut is the
+			// learning call's only while that call is on.
+			learningOn := 0
+			return func(i, cut int, q queryRec) string {
+				switch {
+				case q.Kind == "call-insert":
+					return floating
+				case q.Kind == "active-off" && (i < cut || learningOn == 0):
+					return floating
+				case i < cut:
+					return ""
+				case q.Kind == "dream-mode":
+					return "transcript"
+				case q.Kind == "active-on":
+					learningOn++
+				case q.Kind == "active-off":
+					learningOn--
+				}
+				return "learning"
+			}
+		})
+	compareLanes(t, "logs", r.logs, want.Logs, cutAfter(func(l logRec) bool { return l.Action == "direct-mail-responded" }),
+		lane(func(i, cut int, l logRec) string {
+			switch {
+			case l.Action == "call-log-error":
+				return floating
+			case i < cut:
+				return ""
+			case l.Action == "transcript-log-failed":
+				return "transcript"
+			}
+			return "learning"
+		}))
+	compareLanes(t, "events", r.events, want.Events, noTail[eventRec],
+		lane(func(i, cut int, e eventRec) string {
+			if strings.Contains(e.Data, `"active":false`) {
+				return floating
+			}
+			return ""
+		}))
+	compareLanes(t, "notes", r.notes, want.Notes, noTail[noteRec],
+		lane(func(i, cut int, n noteRec) string {
+			if strings.HasPrefix(n.Slug, "conversations/") {
+				return "transcript"
+			}
+			return "learning"
+		}))
+
+	var on, off []bool
+	for _, e := range r.events {
+		on = append(on, strings.Contains(e.Data, `"active":true`))
+		off = append(off, strings.Contains(e.Data, `"active":false`))
 	}
+	checkSpinner(t, "events", on, off)
+	on, off = nil, nil
+	for _, q := range r.queries {
+		on = append(on, q.Kind == "active-on")
+		off = append(off, q.Kind == "active-off")
+	}
+	checkSpinner(t, "queries", on, off)
+
 	for _, c := range []struct {
 		name      string
 		got, want string
 	}{
-		{"notes", sortedJSON(r.notes), sortedJSON(want.Notes)},
 		{"timers", sortedJSON(r.timers), sortedJSON(want.Timers)},
 		{"created", jsonOf(orEmpty(r.created)), jsonOf(orEmpty(want.Created))},
 		{"calls", jsonOf(orEmpty(r.calls)), jsonOf(orEmpty(want.Calls))},
@@ -248,35 +340,20 @@ func compareMail(t *testing.T, want *scenario, r *recorder, got outcome) {
 	}
 }
 
+func sortedJSON[T any](items []T) string {
+	var out []string
+	for _, it := range items {
+		out = append(out, jsonOf(it))
+	}
+	sort.Strings(out)
+	return strings.Join(out, "\n")
+}
+
 func orEmpty[T any](items []T) []T {
 	if items == nil {
 		return []T{}
 	}
 	return items
-}
-
-type splitResult = struct {
-	name                  string
-	gotOrdered, gotRest   []string
-	wantOrdered, wantRest []string
-}
-
-func queries(got, want []queryRec, cut func(queryRec) bool, floating func(queryRec) bool) splitResult {
-	go1, gr := split(got, cutAfter(got, cut), floating)
-	wo, wr := split(want, cutAfter(want, cut), floating)
-	return splitResult{"queries", go1, gr, wo, wr}
-}
-
-func logsOf(got, want []logRec, cut func(logRec) bool, floating func(logRec) bool) splitResult {
-	go1, gr := split(got, cutAfter(got, cut), floating)
-	wo, wr := split(want, cutAfter(want, cut), floating)
-	return splitResult{"logs", go1, gr, wo, wr}
-}
-
-func eventsOf(got, want []eventRec, cut func(int) int, floating func(eventRec) bool) splitResult {
-	go1, gr := split(got, cut(len(got)), floating)
-	wo, wr := split(want, cut(len(want)), floating)
-	return splitResult{"events", go1, gr, wo, wr}
 }
 
 func TestDirectMailMatchesNode(t *testing.T) {
