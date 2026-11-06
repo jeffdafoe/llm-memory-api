@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -10,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v6"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
@@ -50,13 +53,21 @@ func newRoutes(t *testing.T, values map[string]string) (*Routes, pgxmock.PgxPool
 		Router:      &httpapi.Router{Log: log},
 		Events:      ev,
 		Sessions:    sessions,
-		SessionAuth: &auth.SessionAuth{Sessions: sessions},
+		SessionAuth: &fakeCache{},
 		Notes: &notes.Service{DB: mock, Config: store, Actors: cache,
 			Errors: &syserrors.Recorder{DB: mock, Actors: cache, Errorf: log.Errorf}, Events: ev},
 		Visibility: &visibility.Visibility{DB: mock, Admin: notSuper{}},
 		Now:        func() time.Time { return time.Date(2026, 11, 6, 12, 0, 0, 123456789, time.UTC) },
 	}, mock, ev
 }
+
+// fakeCache records what logout and rotate drop from the token cache.
+type fakeCache struct {
+	tokens, agents []string
+}
+
+func (f *fakeCache) Forget(token string)      { f.tokens = append(f.tokens, token) }
+func (f *fakeCache) ForgetAgent(agent string) { f.agents = append(f.agents, agent) }
 
 type notSuper struct{}
 
@@ -253,6 +264,9 @@ func TestLogoutWithoutAgent(t *testing.T) {
 	if rec.Body.String() != `{"message":"Logged out"}` {
 		t.Errorf("%s", rec.Body)
 	}
+	if c := rt.SessionAuth.(*fakeCache); len(c.tokens) == 0 || c.tokens[0] != token {
+		t.Errorf("token not forgotten: %v", c.tokens)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
 	}
@@ -297,15 +311,13 @@ func TestRotate(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT token_hash, token_salt FROM actors WHERE id = $1")).
 		WithArgs(11).
 		WillReturnRows(pgxmock.NewRows([]string{"token_hash", "token_salt"}).AddRow(&hash, &salt))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3")).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 11).
-		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM sessions WHERE actor_id = $1 AND kind = $2")).
-		WithArgs(11, "api").
-		WillReturnResult(pgxmock.NewResult("DELETE", 2))
+	expectRotateWrites(mock)
 	rec := httptest.NewRecorder()
 	if err := rt.rotate(rec, request(`{"current_passphrase":"current"}`, "agent-a", 11)); err != nil {
 		t.Fatal(err)
+	}
+	if c := rt.SessionAuth.(*fakeCache); len(c.agents) == 0 || c.agents[0] != "agent-a" {
+		t.Errorf("agent tokens not forgotten: %v", c.agents)
 	}
 	var got rotateResponse
 	json.Unmarshal(rec.Body.Bytes(), &got)
@@ -564,5 +576,100 @@ func TestExpertiseOrEmpty(t *testing.T) {
 		if err != nil || string(got) != want {
 			t.Errorf("%q: %s %v", in, got, err)
 		}
+	}
+}
+
+func expectRotateWrites(mock pgxmock.PgxPoolIface) {
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3")).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 11).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM sessions WHERE actor_id = $1 AND kind = $2")).
+		WithArgs(11, "api").
+		WillReturnResult(pgxmock.NewResult("DELETE", 2))
+	mock.ExpectCommit()
+}
+
+// hangUpDB cancels the request (the client hangs up) right after the
+// passphrase UPDATE, before the session DELETE.
+type hangUpDB struct {
+	pgxmock.PgxPoolIface
+	cancel context.CancelFunc
+}
+
+func (h hangUpDB) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := h.PgxPoolIface.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return hangUpTx{Tx: tx, cancel: h.cancel}, nil
+}
+
+type hangUpTx struct {
+	pgx.Tx
+	cancel context.CancelFunc
+}
+
+func (t hangUpTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	tag, err := t.Tx.Exec(ctx, sql, args...)
+	if strings.HasPrefix(sql, "UPDATE actors SET token_hash") {
+		t.cancel()
+	}
+	return tag, err
+}
+
+// Once the new passphrase is written, a client that hangs up cannot stop
+// the old sessions from ending or the cached tokens from being dropped.
+func TestRotateSurvivesHangUp(t *testing.T) {
+	rt, mock, _ := newRoutes(t, nil)
+	mock.MatchExpectationsInOrder(true)
+	salt := "00ff"
+	hash, _ := auth.Hash("current", salt)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT token_hash, token_salt FROM actors WHERE id = $1")).
+		WithArgs(11).
+		WillReturnRows(pgxmock.NewRows([]string{"token_hash", "token_salt"}).AddRow(&hash, &salt))
+	expectRotateWrites(mock)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rt.DB = hangUpDB{PgxPoolIface: mock, cancel: cancel}
+	r := httptest.NewRequest("POST", "/v1/agent/rotate", nil).WithContext(ctx)
+	r = httpapi.WithStateValue(r, &httpapi.State{AuthenticatedAgent: "agent-a", ActorID: 11, Body: json.RawMessage(`{"current_passphrase":"current"}`)})
+	if err := rt.rotate(httptest.NewRecorder(), r); err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() == nil {
+		t.Fatal("the request was not cancelled")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+	if c := rt.SessionAuth.(*fakeCache); len(c.agents) == 0 {
+		t.Error("agent tokens not forgotten")
+	}
+}
+
+// A failed session DELETE still drops the cached tokens.
+func TestRotateForgetsOnFailure(t *testing.T) {
+	rt, mock, _ := newRoutes(t, nil)
+	salt := "00ff"
+	hash, _ := auth.Hash("current", salt)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT token_hash, token_salt FROM actors WHERE id = $1")).
+		WithArgs(11).
+		WillReturnRows(pgxmock.NewRows([]string{"token_hash", "token_salt"}).AddRow(&hash, &salt))
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE actors SET token_hash")).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 11).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM sessions")).
+		WithArgs(11, "api").
+		WillReturnError(errors.New("connection lost"))
+	mock.ExpectRollback()
+	err := rt.rotate(httptest.NewRecorder(), request(`{"current_passphrase":"current"}`, "agent-a", 11))
+	if err == nil || err.Error() != "connection lost" {
+		t.Fatalf("%v", err)
+	}
+	if c := rt.SessionAuth.(*fakeCache); len(c.agents) == 0 {
+		t.Error("agent tokens not forgotten after a failure")
 	}
 }

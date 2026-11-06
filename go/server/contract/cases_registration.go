@@ -52,7 +52,7 @@ var registerCases = []Scenario{
 			registerPost(`{"code":"` + InviteGood + `","name":"other-name","password":"long-enough-password"}`),
 			checkName(`{"name":"newcomer"}`),
 		},
-		Known: []KnownDifference{{Where: "table request_log row *", Volatile: true,
+		Known: []KnownDifference{{Where: "table request_log row *.response_length", Volatile: true,
 			Reason: "the register response carries a random passphrase, so its response_length differs between correct runs"}},
 	},
 	one("register no body", Step{Method: "POST", Path: "/api/register"}),

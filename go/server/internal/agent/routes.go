@@ -6,6 +6,7 @@
 package agent
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -35,6 +36,10 @@ import (
 // sessionTTL is how long an agent login session lasts.
 const sessionTTL = 24 * time.Hour
 
+// credentialWriteTimeout bounds the credential writes of logout and rotate,
+// which run on after the client hangs up.
+const credentialWriteTimeout = 30 * time.Second
+
 // Routes are the /v1/agent routes.
 type Routes struct {
 	DB          db.DB
@@ -43,13 +48,20 @@ type Routes struct {
 	Router      *httpapi.Router
 	Events      events.Broadcaster
 	Sessions    *auth.Sessions
-	SessionAuth *auth.SessionAuth
+	SessionAuth TokenCache
 	Notes       *notes.Service
 	Namespaces  *permissions.Namespaces
 	Visibility  *visibility.Visibility
 	// Now is the clock for session expiry and the prune cutoff; nil is
 	// time.Now.
 	Now func() time.Time
+}
+
+// TokenCache is the /v1 auth middleware's token cache (auth.SessionAuth),
+// which logout and rotate clear.
+type TokenCache interface {
+	Forget(token string)
+	ForgetAgent(agent string)
 }
 
 // Register adds the routes to the /v1 mux.
@@ -223,7 +235,12 @@ func (rt *Routes) logout(w http.ResponseWriter, r *http.Request) error {
 	agent := st.AuthenticatedAgent
 	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
 
-	deleted, err := rt.Sessions.DeleteByToken(r.Context(), token, auth.SessionKindAPI, st.ActorID)
+	// A client that hangs up cannot stop the delete halfway, and the cached
+	// token is dropped even when the delete fails (by the defer).
+	defer rt.SessionAuth.Forget(token)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), credentialWriteTimeout)
+	defer cancel()
+	deleted, err := rt.Sessions.DeleteByToken(ctx, token, auth.SessionKindAPI, st.ActorID)
 	if err != nil {
 		return err
 	}
@@ -278,12 +295,30 @@ func (rt *Routes) rotate(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if _, err := rt.DB.Exec(r.Context(),
+	// The new credentials and the end of the old sessions commit together,
+	// and a client that hangs up cannot cancel them halfway (Node's queries
+	// ran on after a disconnect). The cached tokens are dropped on every
+	// path from here, even when the outcome is unknown: before the answer on
+	// success (as in Node), by the defer otherwise.
+	if agent != "" {
+		defer rt.SessionAuth.ForgetAgent(agent)
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), credentialWriteTimeout)
+	defer cancel()
+	tx, err := rt.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx,
 		"UPDATE actors SET token_hash = $1, token_salt = $2, passphrase_rotated_at = NOW() WHERE id = $3",
 		newHash, newSalt, st.ActorID); err != nil {
 		return err
 	}
-	if _, err := rt.DB.Exec(r.Context(), "DELETE FROM sessions WHERE actor_id = $1 AND kind = $2", st.ActorID, auth.SessionKindAPI); err != nil {
+	if _, err := tx.Exec(ctx, "DELETE FROM sessions WHERE actor_id = $1 AND kind = $2", st.ActorID, auth.SessionKindAPI); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	if agent != "" {
