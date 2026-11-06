@@ -6,7 +6,7 @@ import "strings"
 // (fixture_agent.go). /agent/tick and /agent/rate-limit are not ported yet
 // (they call the virtual-agent service).
 var agentCases = concat(agentLoginCases, agentRotateCases, agentProfileCases, agentStatusCases,
-	agentInstructionsCases, agentMiscCases, agentRoutingCases)
+	agentInstructionsCases, agentMiscCases, agentRoutingCases, agentMemorySyncCases, agentConversationSyncCases)
 
 const (
 	agentLoginPath        = "/v1/agent/login"
@@ -23,6 +23,7 @@ const (
 	agentInstructionsSave = "/v1/agent/instructions/save"
 	agentSyncMappingsPath = "/v1/agent/sync-mappings"
 	agentConfigPath       = "/v1/agent/config"
+	agentMemorySyncPath   = "/v1/agent/memory/sync"
 )
 
 // loginStep logs agent-a in and captures the session token as "token".
@@ -213,4 +214,155 @@ var agentRoutingCases = []Scenario{
 	one("agent status encoded path", Step{Method: "POST", Path: "/v1/%61gent/status", Auth: "agent-a-session", Header: jsonType, Body: `{}`}),
 	one("agent status without credentials", Step{Method: "POST", Path: agentStatusPath, Header: jsonType, Body: `{}`}),
 	one("agent tick is not ported", Step{Method: "GET", Path: "/v1/agent/tick", Auth: "agent-a-session"}),
+}
+
+// syncCase is one memory-sync request whose saves index in the background:
+// the embedding calls may interleave, so they compare as a multiset.
+func syncCase(name, auth, body string, known ...KnownDifference) Scenario {
+	sc := postCase(name, agentMemorySyncPath, auth, body, known...)
+	sc.OutboundMultiset = true
+	return sc
+}
+
+// syncFile is one memory.files entry; the arguments are JSON texts.
+func syncFile(name, content, mtime string) string {
+	return `{"filename":` + name + `,"content":` + content + `,"mtime":` + mtime + `}`
+}
+
+func syncFiles(files ...string) string {
+	return `{"memory":{"files":[` + strings.Join(files, ",") + `]}}`
+}
+
+// Against the memory notes of the agent fixture (applyMemorySyncFixture).
+var agentMemorySyncCases = []Scenario{
+	// Remote names first in listing order (future.md, dup.md from "dup",
+	// same.md, local-newer.md, remote-newer.md, retired.md, notes.txt), then
+	// local-only names in Object.keys order ("7" and "10" first). __proto__
+	// vanishes; constructor compares as unchanged against
+	// Object.prototype.constructor.
+	syncCase("agent memory sync push pull unchanged", "agent-a-session", `{"memory":{"files":[`+strings.Join([]string{
+		syncFile(`"remote-newer.md"`, `"stale local copy"`, `"2026-10-01T00:00:00Z"`),
+		syncFile(`"same.md"`, `"Same on both sides."`, `"2026-10-02T10:00:00Z"`),
+		syncFile(`"local-newer.md"`, `"---\nname: Local Newer Title\n---\nUpdated locally."`, `"2026-10-03T00:00:00.1234567Z"`),
+		syncFile(`"new-note.md"`, `"# New Note\n\nWritten locally."`, `1759300000000`),
+		syncFile(`"deleted.md"`, `"Back again."`, `"2026-10-05T00:00:00Z"`),
+		syncFile(`"plain_note-file.md"`, `"no heading here"`, `"2026-10-05T00:00:00+02:00"`),
+		syncFile(`"10"`, `"ten"`, `true`),
+		syncFile(`"7"`, `"seven"`, `["2026-10-05T00:00:00Z"]`),
+		syncFile(`"constructor"`, `"x"`, `"2026-10-05T00:00:00Z"`),
+		syncFile(`"__proto__"`, `"x"`, `"2026-10-05T00:00:00Z"`),
+	}, ",")+`]},"conversations":{}}`),
+	{
+		Name:             "agent memory sync prune",
+		OutboundMultiset: true,
+		Steps: []Step{
+			// Everything remote-only and older than the scan is pruned;
+			// future.md was written after it and pulls.
+			{Method: "POST", Path: agentMemorySyncPath, Auth: "agent-a-key", Header: jsonType,
+				Body: `{"memory":{"prune":true,"scan_age_ms":0,"files":[` + syncFile(`"same.md"`, `"Same on both sides."`, `"2026-10-02T10:00:00Z"`) + `]}}`},
+			{Settle: true},
+			// dup.md now comes from the older "dup.md" note, which the
+			// collision hid.
+			{Method: "POST", Path: agentMemorySyncPath, Auth: "agent-a-key", Header: jsonType, Body: `{"memory":{"files":[]}}`},
+		},
+	},
+	syncCase("agent memory sync prune with the oldest scan age", "agent-a-session",
+		`{"memory":{"prune":true,"scan_age_ms":3600000,"files":[]}}`),
+	syncCase("agent memory sync prune flag not true", "agent-a-session",
+		`{"memory":{"prune":"yes","scan_age_ms":"bad","files":[]}}`),
+	syncCase("agent memory sync push over quota", "agent-b-session",
+		syncFiles(syncFile(`"big.md"`, `"`+strings.Repeat("quota ", 40)+`"`, `"2026-10-05T00:00:00Z"`))),
+	syncCase("agent memory sync push empty content", "agent-a-session",
+		syncFiles(syncFile(`"empty.md"`, `""`, `"2026-10-05T00:00:00Z"`))),
+	syncCase("agent memory sync push heading with no title", "agent-a-session",
+		syncFiles(syncFile(`"blank.md"`, `"#   \n"`, `"2026-10-05T00:00:00Z"`))),
+	syncCase("agent memory sync push a name that is not a slug", "agent-a-session",
+		syncFiles(syncFile(`"tab\there.md"`, `"tab"`, `"2026-10-05T00:00:00Z"`))),
+	postCase("agent memory sync files missing", agentMemorySyncPath, "agent-a-session", `{"memory":{"prune":true}}`),
+	postCase("agent memory sync memory true", agentMemorySyncPath, "agent-a-session", `{"memory":true}`),
+	postCase("agent memory sync file null", agentMemorySyncPath, "agent-a-session", syncFiles(`null`)),
+	postCase("agent memory sync file array", agentMemorySyncPath, "agent-a-session", syncFiles(`[]`)),
+	postCase("agent memory sync file name traversal", agentMemorySyncPath, "agent-a-session",
+		syncFiles(syncFile(`"same.md"`, `""`, `"2026-10-05T00:00:00Z"`), syncFile(`"../x.md"`, `""`, `"2026-10-05T00:00:00Z"`))),
+	postCase("agent memory sync file name a number", agentMemorySyncPath, "agent-a-session", syncFiles(syncFile(`5`, `""`, `1`))),
+	postCase("agent memory sync content a number", agentMemorySyncPath, "agent-a-session", syncFiles(syncFile(`"a.md"`, `5`, `1`))),
+	postCase("agent memory sync mtime missing", agentMemorySyncPath, "agent-a-session", syncFiles(`{"filename":"a.md","content":""}`)),
+	postCase("agent memory sync mtime not a date", agentMemorySyncPath, "agent-a-session", syncFiles(syncFile(`"a.md"`, `""`, `"soon"`))),
+	postCase("agent memory sync mtime past the Date range", agentMemorySyncPath, "agent-a-session", syncFiles(syncFile(`"a.md"`, `""`, `8640000000000001`))),
+	postCase("agent memory sync mtime without a primitive", agentMemorySyncPath, "agent-a-session", syncFiles(syncFile(`"a.md"`, `""`, `{"toString":1}`))),
+	// Node reads a free-form date; constructor then compares as unchanged,
+	// and agent-b has no memory notes to pull, so Node writes nothing.
+	postCase("agent memory sync mtime free-form", agentMemorySyncPath, "agent-b-session",
+		syncFiles(syncFile(`"constructor"`, `"x"`, `"Oct 9 2026"`)),
+		KnownDifference{Where: "step 1 POST " + agentMemorySyncPath + ": *", Reason: "a free-form mtime is a 400 in Go (go-server note, Known differences)"},
+		KnownDifference{Where: "table request_log*", Reason: "the request log records the status and length the client got (go-server note, Known differences)"}),
+	postCase("agent memory sync prune without a scan age", agentMemorySyncPath, "agent-a-session", `{"memory":{"prune":true,"files":[]}}`),
+	postCase("agent memory sync prune scan age too old", agentMemorySyncPath, "agent-a-session", `{"memory":{"prune":true,"scan_age_ms":3600001,"files":[]}}`),
+	postCase("agent memory sync prune scan age negative", agentMemorySyncPath, "agent-a-session", `{"memory":{"prune":true,"scan_age_ms":-1,"files":[]}}`),
+	postCase("agent memory sync prune scan age a string", agentMemorySyncPath, "agent-a-session", `{"memory":{"prune":true,"scan_age_ms":"10","files":[]}}`),
+	postCase("agent memory sync as an admin", agentMemorySyncPath, "admin-web", syncFiles()),
+	postCase("agent memory sync nothing asked", agentMemorySyncPath, "agent-a-session", `{"memory":0,"conversations":null}`),
+	postCase("agent memory sync array body", agentMemorySyncPath, "agent-a-session", `[{"memory":{"files":[]}}]`),
+	agentNoBody(agentMemorySyncPath),
+	one("agent memory sync encoded path", Step{Method: "POST", Path: "/v1/agent/memory/%73ync", Auth: "agent-a-session", Header: jsonType, Body: syncFiles()}),
+	one("agent memory sync GET falls through", Step{Method: "GET", Path: agentMemorySyncPath, Auth: "agent-a-session"}),
+}
+
+// Session ids of agent-a's conversation logs in the fixture (fixture_agent.go) (memory-sync's diff).
+const (
+	syncSessionLive    = "11111111-1111-4111-8111-111111111111"
+	syncSessionDeleted = "22222222-2222-4222-8222-222222222222"
+	syncSessionOdd     = "33333333-3333-4333-8333-333333333333"
+	syncSessionNew     = "44444444-4444-4444-8444-444444444444"
+)
+
+func syncSession(id, size string) string {
+	return `{"id":"` + id + `","file_size":` + size + `}`
+}
+
+// Against the conversation logs of the agent fixture.
+var agentConversationSyncCases = []Scenario{
+	// The live session's largest size is its retired copy's 300; the
+	// soft-deleted session is present; the odd one's stored size is not a
+	// number, so 0.
+	postCase("agent conversation sync sized sessions", agentMemorySyncPath, "agent-a-session",
+		`{"conversations":{"sessions":[`+strings.Join([]string{
+			syncSession(strings.ToUpper(syncSessionLive), `400`), syncSession(syncSessionDeleted, `10`),
+			syncSession(syncSessionOdd, `1`), syncSession(syncSessionNew, `"5"`), syncSession(syncSessionLive, `999`),
+			syncSession("not-a-uuid", `1`), `null`, `7`, `[1]`, `{"id":5}`, syncSession(syncSessionNew+"0", `1`),
+		}, ",")+`],"session_ids":["`+syncSessionNew+`"]}}`),
+	postCase("agent conversation sync sizes not grown", agentMemorySyncPath, "agent-a-session",
+		`{"conversations":{"sessions":[`+syncSession(syncSessionLive, `300`)+`,`+syncSession(syncSessionOdd, `-4`)+`,`+
+			syncSession(syncSessionDeleted, `1.5`)+`]}}`),
+	postCase("agent conversation sync legacy ids", agentMemorySyncPath, "agent-b-session",
+		`{"conversations":{"session_ids":["`+syncSessionLive+`","`+syncSessionNew+`",5,"bad"]}}`),
+	postCase("agent conversation sync legacy ids of agent-a", agentMemorySyncPath, "agent-a-key",
+		`{"conversations":{"session_ids":["`+syncSessionLive+`","`+syncSessionNew+`"],"sessions":[]}}`),
+	postCase("agent conversation sync no valid ids", agentMemorySyncPath, "agent-a-session", `{"conversations":{"sessions":[{"id":"x"}]}}`),
+	postCase("agent conversation sync retention only", agentMemorySyncPath, "agent-a-session", `{"conversations":5}`),
+	postCase("agent conversation sync too many ids", agentMemorySyncPath, "agent-a-session",
+		`{"conversations":{"session_ids":[`+strings.TrimSuffix(strings.Repeat(`"`+syncSessionNew+`",`, 1001), ",")+`],"uploads":[{"date":"d"}]}}`),
+	syncCase("agent conversation sync uploads", "agent-a-session", `{"conversations":{"uploads":[`+strings.Join([]string{
+		`{"content":"[11:00] agent-a: a new log","session_id":"` + syncSessionNew + `","date":"2026-10-06",` +
+			`"metadata":{"session_id":"` + syncSessionNew + `","file_size":42,"project":"p"}}`,
+		`{"content":"[10:00] agent-a: hello\n[10:05] agent-a: grown","session_id":"` + syncSessionLive + `","date":"2026-10-01",` +
+			`"metadata":{"session_id":"` + syncSessionLive + `","file_size":150}}`,
+		`{"session_id":5,"date":"d"}`,
+		`"text"`,
+		`{"content":"c","session_id":"s1","date":"2026//10"}`,
+		`{"content":"c","session_id":"s2","date":"d","metadata":[1]}`,
+		`{"content":"[12:00] agent-a: no metadata","session_id":"😀😀😀😀x","date":"2026-10-07","metadata":0}`,
+	}, ",")+`]}}`),
+	// Node failed in Buffer.byteLength with its own TypeError text.
+	postCase("agent conversation sync upload content a number", agentMemorySyncPath, "agent-a-session",
+		`{"conversations":{"uploads":[{"content":5,"session_id":"s","date":"d"}]}}`,
+		KnownDifference{Where: "step 1 POST " + agentMemorySyncPath + ": body.conversations.upload_errors.0.error",
+			Reason: "an upload field that is not a string is refused with Go's text (go-server note, Known differences)"},
+		KnownDifference{Where: "table error_log row 1.error_message", Reason: "the same refusal, logged as conversation-upload (go-server note, Known differences)"},
+		KnownDifference{Where: "table request_log row 1.response_length", Reason: "the request log records the length the client got (go-server note, Known differences)"}),
+	syncCase("agent conversation sync null upload", "agent-a-session",
+		`{"conversations":{"sessions":[`+syncSession(syncSessionNew, `1`)+`],"uploads":[{"content":"[09:00] agent-a: before the null","session_id":"`+syncSessionNew+`","date":"2026-10-08"},null]}}`),
+	postCase("agent conversation sync file size without a primitive", agentMemorySyncPath, "agent-a-session",
+		`{"memory":{"files":[`+syncFile(`"same.md"`, `"Same on both sides."`, `"2026-10-02T10:00:00Z"`)+`]},`+
+			`"conversations":{"sessions":[{"id":"`+syncSessionLive+`","file_size":{"toString":1}}]}}`),
 }

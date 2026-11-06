@@ -60,6 +60,12 @@ func callRecovering(fn HandlerFunc, w http.ResponseWriter, r *http.Request) (err
 	return fn(w, r)
 }
 
+// ErrorMessage is err.message as Node had it: errorMessage below. Routes that
+// put an error's text in a response or a log line of their own use it.
+func ErrorMessage(err error) string {
+	return errorMessage(err)
+}
+
 // errorMessage is the text Node logged for err. For a Postgres error that is
 // the server's message alone, as node-postgres puts it in err.message; pgx's
 // Error() adds "ERROR: " and the SQLSTATE.
