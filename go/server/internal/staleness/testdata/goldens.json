@@ -1,0 +1,2940 @@
+{
+ "platform": "win32",
+ "apt": [
+  {
+   "in": "",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "apt printed no \"N upgraded, N newly installed, ...\" summary line"
+    ]
+   }
+  },
+  {
+   "in": "Reading package lists...\n0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "Reading package lists...\nBuilding dependency tree...\nCalculating upgrade...\nThe following packages will be upgraded:\n  libssl3t64 nodejs openssl tzdata\n4 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.\nInst libssl3t64 [3.5.1-1] (3.5.1-1+deb13u1 Debian-Security:13/stable-security [amd64])\nInst openssl [3.5.1-1] (3.5.1-1+deb13u1 Debian:13.2/stable, Debian-Security:13/stable-security [amd64])\nInst nodejs [24.22.0-1nodesource1] (24.22.1-1nodesource1 Node Source:nodistro [amd64])\nInst tzdata [2025b-4] (2025c-0+deb13u1 Debian:13.2/stable [all])\nInst libfoo1 (1.2-3 Debian:13.2/stable [amd64])\nConf libssl3t64 (3.5.1-1+deb13u1 Debian-Security:13/stable-security [amd64])",
+   "out": {
+    "upgrades": [
+     {
+      "name": "libssl3t64",
+      "from": "3.5.1-1",
+      "to": "3.5.1-1+deb13u1",
+      "origins": "Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "openssl",
+      "from": "3.5.1-1",
+      "to": "3.5.1-1+deb13u1",
+      "origins": "Debian:13.2/stable, Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "nodejs",
+      "from": "24.22.0-1nodesource1",
+      "to": "24.22.1-1nodesource1",
+      "origins": "Node Source:nodistro",
+      "security": false
+     },
+     {
+      "name": "tzdata",
+      "from": "2025b-4",
+      "to": "2025c-0+deb13u1",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     },
+     {
+      "name": "libfoo1",
+      "from": null,
+      "to": "1.2-3",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     }
+    ],
+    "removals": [],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "Inst foo [1.0] (1.1 [amd64])\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [
+     {
+      "name": "foo",
+      "from": "1.0",
+      "to": "1.1",
+      "origins": "",
+      "security": false
+     }
+    ],
+    "removals": [],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "Inst vim [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [amd64]) []\nInst vim-common [2:9.1.1230-2] (2:9.1.1230-2+deb13u1 Debian-Security:13/stable-security [all]) [vim-tiny:amd64 ]\nInst tzdata [2026e-0+deb13u1] (2026f-0+deb13u1 Debian:13.2/stable-updates [all])\n3 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.",
+   "out": {
+    "upgrades": [
+     {
+      "name": "vim",
+      "from": "2:9.1.1230-2",
+      "to": "2:9.1.1230-2+deb13u1",
+      "origins": "Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "vim-common",
+      "from": "2:9.1.1230-2",
+      "to": "2:9.1.1230-2+deb13u1",
+      "origins": "Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "tzdata",
+      "from": "2026e-0+deb13u1",
+      "to": "2026f-0+deb13u1",
+      "origins": "Debian:13.2/stable-updates",
+      "security": false
+     }
+    ],
+    "removals": [],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "Remv libold1 [1.0-1] [libnew2:amd64 ]\n0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [
+     {
+      "name": "libold1",
+      "from": "1.0-1"
+     }
+    ],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "Inst foo [1.0] (1.1 Debian:13.2/stable [amd64]) [] extra\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "unrecognised apt line: Inst foo [1.0] (1.1 Debian:13.2/stable [amd64]) [] extra",
+     "apt's summary (1 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Inst foo something new\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "unrecognised apt line: Inst foo something new",
+     "apt's summary (1 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Remv foo unexpected new format\n0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "unrecognised apt line: Remv foo unexpected new format",
+     "apt's summary (0 upgraded, 0 newly installed, 1 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Inst foo (1.1 Debian:13.2/stable [amd64])\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [
+     {
+      "name": "foo",
+      "from": null,
+      "to": "1.1",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     }
+    ],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "apt's summary (1 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 1 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Remv libold1 [1.0-1]\nInst libnew2 (2.0-1 Debian:13.2/stable [amd64])\n0 upgraded, 1 newly installed, 1 to remove and 3 not upgraded.",
+   "out": {
+    "upgrades": [
+     {
+      "name": "libnew2",
+      "from": null,
+      "to": "2.0-1",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     }
+    ],
+    "removals": [
+     {
+      "name": "libold1",
+      "from": "1.0-1"
+     }
+    ],
+    "heldBack": 3,
+    "problems": []
+   }
+  },
+  {
+   "in": "Inst a [] (2 deb-SECURITY:x [amd64])\r\n  Inst b [1] (2 x:y [all])  \r\n1 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.\r\n",
+   "out": {
+    "upgrades": [
+     {
+      "name": "a",
+      "from": null,
+      "to": "2",
+      "origins": "deb-SECURITY:x",
+      "security": true
+     },
+     {
+      "name": "b",
+      "from": "1",
+      "to": "2",
+      "origins": "x:y",
+      "security": false
+     }
+    ],
+    "removals": [],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "0 upgraded, 0 newly installed, 0 to remove and 1 not upgraded.\n0 upgraded, 0 newly installed, 0 to remove and 2 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 2,
+    "problems": []
+   }
+  },
+  {
+   "in": "99999999999999999999999 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "apt's summary (1e+23 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Remv gone\n0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [
+     {
+      "name": "gone",
+      "from": null
+     }
+    ],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "Inst x [1] (2 Debian:13/stable, Other:1/a b c [amd64])\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [
+     {
+      "name": "x",
+      "from": "1",
+      "to": "2",
+      "origins": "Debian:13/stable, Other:1/a b c",
+      "security": false
+     }
+    ],
+    "removals": [],
+    "heldBack": 0,
+    "problems": []
+   }
+  },
+  {
+   "in": "Inst x y [1] (2 [amd64])\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "unrecognised apt line: Inst x y [1] (2 [amd64])",
+     "apt's summary (1 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Inst x [1] (2 a b [amd64])\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "unrecognised apt line: Inst x [1] (2 a b [amd64])",
+     "apt's summary (1 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Inst  x [1] (2 [amd64])\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "unrecognised apt line: Inst  x [1] (2 [amd64])",
+     "apt's summary (1 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "Inst x [1] (2 [amd64]) [a] [b]\n1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "unrecognised apt line: Inst x [1] (2 [amd64]) [a] [b]",
+     "apt's summary (1 upgraded, 0 newly installed, 0 to remove) does not match the lines read (0 upgraded, 0 newly installed, 0 to remove)"
+    ]
+   }
+  },
+  {
+   "in": "1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded",
+   "out": {
+    "upgrades": [],
+    "removals": [],
+    "heldBack": 0,
+    "problems": [
+     "apt printed no \"N upgraded, N newly installed, ...\" summary line"
+    ]
+   }
+  }
+ ],
+ "eol": [
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2028-04-30\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-01-19\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2027-01-19",
+     "daysLeft": 90,
+     "ended": false
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-01-20\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-04-30\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-04-30",
+     "daysLeft": -174,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-21\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-10-21",
+     "daysLeft": 0,
+     "ended": false
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-22\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-10-22",
+     "daysLeft": 1,
+     "ended": false
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "false",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "true",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": null,
+     "daysLeft": null,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "null",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": null,
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"soon\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"soon\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-99-99\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-99-99"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-02-30\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2027-02-30"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2028-02-29\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-02-29\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2027-02-29"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "5",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: 5"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "{\"a\":1}",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: {\"a\":1}"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "[]",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: []"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-21T00:00:00Z\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"2026-10-21T00:00:00Z\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"0000-01-01\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "0000-01-01",
+     "daysLeft": -740275,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"false\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"false\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-1-01\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"2026-1-01\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-02-00\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-02-00"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-04-31\"",
+   "today": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-04-31"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2028-04-30\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-01-19\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2027-01-19",
+     "daysLeft": 19,
+     "ended": false
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-01-20\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2027-01-20",
+     "daysLeft": 20,
+     "ended": false
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-04-30\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-04-30",
+     "daysLeft": -245,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-21\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-10-21",
+     "daysLeft": -71,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-22\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-10-22",
+     "daysLeft": -70,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "false",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "true",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": null,
+     "daysLeft": null,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "null",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": null,
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"soon\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"soon\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-99-99\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-99-99"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-02-30\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2027-02-30"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2028-02-29\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-02-29\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2027-02-29"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "5",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: 5"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "{\"a\":1}",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: {\"a\":1}"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "[]",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: []"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-21T00:00:00Z\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"2026-10-21T00:00:00Z\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"0000-01-01\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "0000-01-01",
+     "daysLeft": -740346,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"false\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"false\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-1-01\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"2026-1-01\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-02-00\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-02-00"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-04-31\"",
+   "today": "2026-12-31T23:59:59.999Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-04-31"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2028-04-30\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2028-04-30",
+     "daysLeft": 61,
+     "ended": false
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-01-19\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2027-01-19",
+     "daysLeft": -406,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-01-20\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2027-01-20",
+     "daysLeft": -405,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-04-30\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-04-30",
+     "daysLeft": -670,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-21\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-10-21",
+     "daysLeft": -496,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-22\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2026-10-22",
+     "daysLeft": -495,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "false",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "true",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": null,
+     "daysLeft": null,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "null",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": null,
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"soon\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"soon\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-99-99\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-99-99"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-02-30\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2027-02-30"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2028-02-29\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "2028-02-29",
+     "daysLeft": 0,
+     "ended": false
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2027-02-29\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2027-02-29"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "5",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: 5"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "{\"a\":1}",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: {\"a\":1}"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "[]",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: []"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-10-21T00:00:00Z\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"2026-10-21T00:00:00Z\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"0000-01-01\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": {
+     "label": "Node.js",
+     "cycle": "24",
+     "eol": "0000-01-01",
+     "daysLeft": -740771,
+     "ended": true
+    },
+    "error": ""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"false\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"false\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-1-01\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "unexpected eol value for Node.js 24: \"2026-1-01\""
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-02-00\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-02-00"
+   }
+  },
+  {
+   "label": "Node.js",
+   "cycle": "24",
+   "eol": "\"2026-04-31\"",
+   "today": "2028-02-29T00:00:00.000Z",
+   "out": {
+    "value": null,
+    "error": "not a calendar date: 2026-04-31"
+   }
+  }
+ ],
+ "cert": [
+  {
+   "from": "2026-09-11T12:30:00.000Z",
+   "to": "2026-12-10T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-08-13T12:30:00.000Z",
+   "to": "2026-11-11T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-11-11",
+     "expired": false,
+     "days": 21
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-08-13T13:30:00.000Z",
+   "to": "2026-11-11T13:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-08-13T12:29:59.999Z",
+   "to": "2026-11-11T12:29:59.999Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-11-11",
+     "expired": false,
+     "days": 20
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-03-16T00:30:00.000Z",
+   "to": "2026-06-14T00:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-06-14",
+     "expired": true,
+     "days": 129
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-07-23T11:30:00.000Z",
+   "to": "2026-10-21T11:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-21",
+     "expired": true,
+     "days": 0
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-07-23T12:30:00.000Z",
+   "to": "2026-10-21T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-21",
+     "expired": true,
+     "days": 0
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-07-23T12:30:00.001Z",
+   "to": "2026-10-21T12:30:00.001Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-21",
+     "expired": false,
+     "days": 0
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-09-20T12:30:00.000Z",
+   "to": "2026-11-04T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-09-16T12:30:00.000Z",
+   "to": "2026-10-31T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-31",
+     "expired": false,
+     "days": 10
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-09-17T00:30:00.000Z",
+   "to": "2026-11-01T00:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-11-01",
+     "expired": false,
+     "days": 10
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2025-11-20T12:30:00.000Z",
+   "to": "2026-11-20T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "from": "2025-11-10T12:30:00.000Z",
+   "to": "2026-11-10T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-11-10",
+     "expired": false,
+     "days": 20
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-10-20T17:18:00.000Z",
+   "to": "2026-10-21T17:18:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-21",
+     "expired": false,
+     "days": 0
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-10-16T04:20:24.000Z",
+   "to": "2026-10-23T04:20:24.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-07-23T12:29:59.999Z",
+   "to": "2026-10-21T12:29:59.999Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-21",
+     "expired": true,
+     "days": 0
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-07-29T00:30:00.000Z",
+   "to": "2026-10-27T00:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-27",
+     "expired": false,
+     "days": 5
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-07-23T14:30:00.000Z",
+   "to": "2026-10-21T14:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-21",
+     "expired": false,
+     "days": 0
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-07-25T00:30:00.000Z",
+   "to": "2026-10-23T00:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-10-23",
+     "expired": false,
+     "days": 1
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-03-15T00:30:00.000Z",
+   "to": "2026-06-13T00:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": {
+     "name": "example.org",
+     "expires": "2026-06-13",
+     "expired": true,
+     "days": 130
+    },
+    "error": ""
+   }
+  },
+  {
+   "from": "2026-10-21T13:30:00.000Z",
+   "to": "2027-01-19T13:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "certificate example.org is not valid until 2026-10-21T13:30:00.000Z"
+   }
+  },
+  {
+   "from": "2026-10-21T12:30:00.000Z",
+   "to": "2026-10-21T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "certificate example.org has an invalid validity period"
+   }
+  },
+  {
+   "from": "2026-10-21T12:30:00.000Z",
+   "to": "2026-10-20T12:30:00.000Z",
+   "now": "2026-10-21T12:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": "certificate example.org has an invalid validity period"
+   }
+  },
+  {
+   "from": "2026-10-21T13:30:00.000Z",
+   "to": "2027-01-19T12:30:00.000Z",
+   "now": "2026-10-21T13:30:00.000Z",
+   "out": {
+    "value": null,
+    "error": ""
+   }
+  }
+ ],
+ "kernels": [
+  {
+   "in": "6.12.113+deb13-amd64",
+   "out": {
+    "version": [
+     "6",
+     "12",
+     "113"
+    ],
+    "flavour": "amd64"
+   }
+  },
+  {
+   "in": "6.12.113+deb13-rt-amd64",
+   "out": {
+    "version": [
+     "6",
+     "12",
+     "113"
+    ],
+    "flavour": "rt-amd64"
+   }
+  },
+  {
+   "in": "6.16.3+bpo-cloud-amd64",
+   "out": {
+    "version": [
+     "6",
+     "16",
+     "3"
+    ],
+    "flavour": "cloud-amd64"
+   }
+  },
+  {
+   "in": "6.1.0-25-amd64",
+   "out": {
+    "version": [
+     "6",
+     "1",
+     "0",
+     "25"
+    ],
+    "flavour": "amd64"
+   }
+  },
+  {
+   "in": "foo",
+   "out": null
+  },
+  {
+   "in": "6.12.113+deb13-amd64.old",
+   "out": null
+  },
+  {
+   "in": "",
+   "out": null
+  },
+  {
+   "in": "6+deb-amd64",
+   "out": null
+  },
+  {
+   "in": "6.12+-amd64",
+   "out": null
+  },
+  {
+   "in": "6.12.1+deb13~1.2-arm64",
+   "out": {
+    "version": [
+     "6",
+     "12",
+     "1"
+    ],
+    "flavour": "arm64"
+   }
+  },
+  {
+   "in": "6.12.1+DEB-amd64",
+   "out": null
+  },
+  {
+   "in": "6.1.0-25-",
+   "out": null
+  },
+  {
+   "in": "6.1.0-25-amd64-",
+   "out": {
+    "version": [
+     "6",
+     "1",
+     "0",
+     "25"
+    ],
+    "flavour": "amd64-"
+   }
+  },
+  {
+   "in": "06.012.0113+deb13-amd64",
+   "out": {
+    "version": [
+     "06",
+     "012",
+     "0113"
+    ],
+    "flavour": "amd64"
+   }
+  },
+  {
+   "in": "6.1-2-x",
+   "out": {
+    "version": [
+     "6",
+     "1",
+     "2"
+    ],
+    "flavour": "x"
+   }
+  }
+ ],
+ "compare": [
+  {
+   "a": [
+    "6",
+    "12",
+    "113"
+   ],
+   "b": [
+    "6",
+    "12",
+    "99"
+   ],
+   "sign": 1
+  },
+  {
+   "a": [
+    "6",
+    "12",
+    "99"
+   ],
+   "b": [
+    "6",
+    "12",
+    "113"
+   ],
+   "sign": -1
+  },
+  {
+   "a": [
+    "6",
+    "12",
+    "111"
+   ],
+   "b": [
+    "6",
+    "12",
+    "111"
+   ],
+   "sign": 0
+  },
+  {
+   "a": [
+    "7",
+    "0",
+    "1"
+   ],
+   "b": [
+    "6",
+    "12",
+    "113"
+   ],
+   "sign": 1
+  },
+  {
+   "a": [
+    "6",
+    "012",
+    "114"
+   ],
+   "b": [
+    "6",
+    "12",
+    "113"
+   ],
+   "sign": 1
+  },
+  {
+   "a": [
+    "90071992547409930"
+   ],
+   "b": [
+    "90071992547409929"
+   ],
+   "sign": 1
+  },
+  {
+   "a": [
+    "6",
+    "12"
+   ],
+   "b": [
+    "6",
+    "12",
+    "0"
+   ],
+   "sign": 0
+  },
+  {
+   "a": [
+    "6",
+    "12"
+   ],
+   "b": [
+    "6",
+    "12",
+    "1"
+   ],
+   "sign": -1
+  },
+  {
+   "a": [
+    "000"
+   ],
+   "b": [
+    "0"
+   ],
+   "sign": 0
+  },
+  {
+   "a": [
+    "0"
+   ],
+   "b": [
+    ""
+   ],
+   "sign": 1
+  },
+  {
+   "a": [
+    ""
+   ],
+   "b": [
+    ""
+   ],
+   "sign": 0
+  },
+  {
+   "a": [
+    "00"
+   ],
+   "b": [
+    "1"
+   ],
+   "sign": -1
+  }
+ ],
+ "reboot": [
+  {
+   "in": {},
+   "out": null
+  },
+  {
+   "in": {
+    "runningKernel": "6.12.113+deb13-amd64",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64"
+    ]
+   },
+   "out": null
+  },
+  {
+   "in": {
+    "runningKernel": "6.12.111+deb13-amd64",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64"
+    ]
+   },
+   "out": {
+    "reasons": [
+     "kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running"
+    ],
+    "runningKernel": "6.12.111+deb13-amd64",
+    "newestKernel": "6.12.113+deb13-amd64",
+    "packages": []
+   }
+  },
+  {
+   "in": {
+    "runningKernel": "6.12.113+deb13-amd64",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64",
+     "6.12.120+deb13-rt-amd64",
+     "6.12.120+deb13-cloud-amd64"
+    ]
+   },
+   "out": null
+  },
+  {
+   "in": {
+    "runningKernel": "6.12.113+deb13-amd64",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64",
+     "foo",
+     "9.9.9-garbage"
+    ]
+   },
+   "out": null
+  },
+  {
+   "in": {
+    "flagExists": false,
+    "flagPackages": "libc6\n",
+    "runningKernel": "6.12.111+deb13-amd64",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64"
+    ]
+   },
+   "out": {
+    "reasons": [
+     "kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running"
+    ],
+    "runningKernel": "6.12.111+deb13-amd64",
+    "newestKernel": "6.12.113+deb13-amd64",
+    "packages": []
+   }
+  },
+  {
+   "in": {
+    "flagExists": true,
+    "flagPackages": "libc6\nlibc6\nlibssl3t64\n",
+    "runningKernel": "6.12.113+deb13-amd64",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64"
+    ]
+   },
+   "out": {
+    "reasons": [
+     "/var/run/reboot-required is set"
+    ],
+    "runningKernel": "6.12.113+deb13-amd64",
+    "newestKernel": null,
+    "packages": [
+     "libc6",
+     "libssl3t64"
+    ]
+   }
+  },
+  {
+   "in": {
+    "flagExists": true,
+    "flagPackages": "linux-image-6.12.113+deb13-amd64\n",
+    "runningKernel": "6.12.111+deb13-amd64",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64"
+    ]
+   },
+   "out": {
+    "reasons": [
+     "/var/run/reboot-required is set",
+     "kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running"
+    ],
+    "runningKernel": "6.12.111+deb13-amd64",
+    "newestKernel": "6.12.113+deb13-amd64",
+    "packages": [
+     "linux-image-6.12.113+deb13-amd64"
+    ]
+   }
+  },
+  {
+   "in": {
+    "flagExists": true,
+    "flagPackages": "  a \r\n\n b\n a",
+    "runningKernel": "garbage",
+    "installedKernels": [
+     "6.12.101+deb13-amd64",
+     "6.12.111+deb13-amd64",
+     "6.12.113+deb13-amd64"
+    ]
+   },
+   "out": {
+    "reasons": [
+     "/var/run/reboot-required is set"
+    ],
+    "runningKernel": "garbage",
+    "newestKernel": null,
+    "packages": [
+     "a",
+     "b"
+    ]
+   }
+  },
+  {
+   "in": {
+    "flagExists": true,
+    "runningKernel": "6.12.111+deb13-amd64",
+    "installedKernels": []
+   },
+   "out": {
+    "reasons": [
+     "/var/run/reboot-required is set"
+    ],
+    "runningKernel": "6.12.111+deb13-amd64",
+    "newestKernel": null,
+    "packages": []
+   }
+  },
+  {
+   "in": {
+    "runningKernel": "6.1.0-25-amd64",
+    "installedKernels": [
+     "6.1.0-26-amd64",
+     "6.1.0-27-amd64",
+     "6.1.0-3-amd64",
+     "6.12.1+deb13-amd64"
+    ]
+   },
+   "out": {
+    "reasons": [
+     "kernel 6.12.1+deb13-amd64 is installed but 6.1.0-25-amd64 is running"
+    ],
+    "runningKernel": "6.1.0-25-amd64",
+    "newestKernel": "6.12.1+deb13-amd64",
+    "packages": []
+   }
+  },
+  {
+   "in": {
+    "runningKernel": "6.12.111+deb13-amd64",
+    "installedKernels": [
+     "6.12.113+deb13-amd64",
+     "6.12.113+bpo-amd64"
+    ]
+   },
+   "out": {
+    "reasons": [
+     "kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running"
+    ],
+    "runningKernel": "6.12.111+deb13-amd64",
+    "newestKernel": "6.12.113+deb13-amd64",
+    "packages": []
+   }
+  }
+ ],
+ "report": [
+  {
+   "in": {
+    "host": "host5"
+   },
+   "out": null
+  },
+  {
+   "in": {
+    "host": "host5",
+    "upgrades": [],
+    "eolFindings": [],
+    "failures": []
+   },
+   "out": null
+  },
+  {
+   "in": {
+    "host": "host5",
+    "upgrades": [
+     {
+      "name": "libssl3t64",
+      "from": "3.5.1-1",
+      "to": "3.5.1-1+deb13u1",
+      "origins": "Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "openssl",
+      "from": "3.5.1-1",
+      "to": "3.5.1-1+deb13u1",
+      "origins": "Debian:13.2/stable, Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "nodejs",
+      "from": "24.22.0-1nodesource1",
+      "to": "24.22.1-1nodesource1",
+      "origins": "Node Source:nodistro",
+      "security": false
+     },
+     {
+      "name": "tzdata",
+      "from": "2025b-4",
+      "to": "2025c-0+deb13u1",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     },
+     {
+      "name": "libfoo1",
+      "from": null,
+      "to": "1.2-3",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 2 security updates, Node.js update, 2 other updates",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Security updates\n\n- `libssl3t64` 3.5.1-1 → 3.5.1-1+deb13u1\n- `openssl` 3.5.1-1 → 3.5.1-1+deb13u1\n\n## Node.js\n\n- `nodejs` 24.22.0-1nodesource1 → 24.22.1-1nodesource1\n\nAfter installing, restart `memory-api` so it runs the new binary.\n\n## Other updates\n\n- `tzdata` 2025b-4 → 2025c-0+deb13u1\n- `libfoo1` new: 1.2-3\n\nTo apply this plan, run `sudo apt full-upgrade` on the server.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "removals": [
+     {
+      "name": "libold1",
+      "from": "1.0-1"
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 1 removal",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Packages the upgrade would remove\n\n- `libold1` 1.0-1\n\nTo apply this plan, run `sudo apt full-upgrade` on the server.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "removals": [
+     {
+      "name": "gone",
+      "from": null
+     },
+     {
+      "name": "b",
+      "from": ""
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 2 removals",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Packages the upgrade would remove\n\n- `gone`\n- `b`\n\nTo apply this plan, run `sudo apt full-upgrade` on the server.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "heldBack": 2
+   },
+   "out": {
+    "subject": "Staleness check (host5): 2 held back",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Held back\n\n2 packages have updates that the upgrade would not install (held with `apt-mark hold`, or blocked by dependencies). `apt list --upgradable` and `apt-mark showhold` show which.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "heldBack": 1
+   },
+   "out": {
+    "subject": "Staleness check (host5): 1 held back",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Held back\n\n1 package has an update that the upgrade would not install (held with `apt-mark hold`, or blocked by dependencies). `apt list --upgradable` and `apt-mark showhold` show which.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "eolFindings": [
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-19",
+      "daysLeft": 90,
+      "ended": false
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 1 end-of-life warning",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## End of life\n\n- Node.js 24: support ends 2027-01-19, in 90 days.\n\nPlan each move to a supported version before its date.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "eolFindings": [
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-19",
+      "daysLeft": 90,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-04-30",
+      "daysLeft": -174,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-10-21",
+      "daysLeft": 0,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-10-22",
+      "daysLeft": 1,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": null,
+      "daysLeft": null,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "0000-01-01",
+      "daysLeft": -740275,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-19",
+      "daysLeft": 19,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-20",
+      "daysLeft": 20,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-04-30",
+      "daysLeft": -245,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-10-21",
+      "daysLeft": -71,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-10-22",
+      "daysLeft": -70,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": null,
+      "daysLeft": null,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "0000-01-01",
+      "daysLeft": -740346,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2028-04-30",
+      "daysLeft": 61,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-19",
+      "daysLeft": -406,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-20",
+      "daysLeft": -405,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-04-30",
+      "daysLeft": -670,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-10-21",
+      "daysLeft": -496,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-10-22",
+      "daysLeft": -495,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": null,
+      "daysLeft": null,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2028-02-29",
+      "daysLeft": 0,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "0000-01-01",
+      "daysLeft": -740771,
+      "ended": true
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 22 end-of-life warnings",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## End of life\n\n- Node.js 24: support ends 2027-01-19, in 90 days.\n- Node.js 24: support ENDED on 2026-04-30, 174 days ago.\n- Node.js 24: support ends TODAY (2026-10-21).\n- Node.js 24: support ends 2026-10-22, in 1 days.\n- Node.js 24: no longer supported (end date not recorded).\n- Node.js 24: support ENDED on 0000-01-01, 740275 days ago.\n- Node.js 24: support ends 2027-01-19, in 19 days.\n- Node.js 24: support ends 2027-01-20, in 20 days.\n- Node.js 24: support ENDED on 2026-04-30, 245 days ago.\n- Node.js 24: support ENDED on 2026-10-21, 71 days ago.\n- Node.js 24: support ENDED on 2026-10-22, 70 days ago.\n- Node.js 24: no longer supported (end date not recorded).\n- Node.js 24: support ENDED on 0000-01-01, 740346 days ago.\n- Node.js 24: support ends 2028-04-30, in 61 days.\n- Node.js 24: support ENDED on 2027-01-19, 406 days ago.\n- Node.js 24: support ENDED on 2027-01-20, 405 days ago.\n- Node.js 24: support ENDED on 2026-04-30, 670 days ago.\n- Node.js 24: support ENDED on 2026-10-21, 496 days ago.\n- Node.js 24: support ENDED on 2026-10-22, 495 days ago.\n- Node.js 24: no longer supported (end date not recorded).\n- Node.js 24: support ends TODAY (2028-02-29).\n- Node.js 24: support ENDED on 0000-01-01, 740771 days ago.\n\nPlan each move to a supported version before its date.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "certFindings": [
+     {
+      "name": "example.org",
+      "expires": "2026-11-11",
+      "expired": false,
+      "days": 21
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 1 certificate warning",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## TLS certificates\n\n- `example.org`: expires 2026-11-11, in 21 days.\n\ncertbot renews well before this point, so its renewal is failing: `sudo certbot renew --dry-run` and `sudo journalctl -u certbot` show why. A certificate for a site no longer hosted here should be removed with `sudo certbot delete --cert-name <name>`.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "certFindings": [
+     {
+      "name": "example.org",
+      "expires": "2026-11-11",
+      "expired": false,
+      "days": 21
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-11-11",
+      "expired": false,
+      "days": 20
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-06-14",
+      "expired": true,
+      "days": 129
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-21",
+      "expired": true,
+      "days": 0
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-21",
+      "expired": true,
+      "days": 0
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-21",
+      "expired": false,
+      "days": 0
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-31",
+      "expired": false,
+      "days": 10
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-11-01",
+      "expired": false,
+      "days": 10
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-11-10",
+      "expired": false,
+      "days": 20
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-21",
+      "expired": false,
+      "days": 0
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-21",
+      "expired": true,
+      "days": 0
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-27",
+      "expired": false,
+      "days": 5
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-21",
+      "expired": false,
+      "days": 0
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-10-23",
+      "expired": false,
+      "days": 1
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-06-13",
+      "expired": true,
+      "days": 130
+     }
+    ],
+    "eolFindings": [
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-19",
+      "daysLeft": 90,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-04-30",
+      "daysLeft": -174,
+      "ended": true
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 15 certificate warnings, 2 end-of-life warnings",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## TLS certificates\n\n- `example.org`: expires 2026-11-11, in 21 days.\n- `example.org`: expires 2026-11-11, in 20 days.\n- `example.org`: EXPIRED on 2026-06-14, 129 days ago.\n- `example.org`: EXPIRED today (2026-10-21).\n- `example.org`: EXPIRED today (2026-10-21).\n- `example.org`: expires in under a day (2026-10-21).\n- `example.org`: expires 2026-10-31, in 10 days.\n- `example.org`: expires 2026-11-01, in 10 days.\n- `example.org`: expires 2026-11-10, in 20 days.\n- `example.org`: expires in under a day (2026-10-21).\n- `example.org`: EXPIRED today (2026-10-21).\n- `example.org`: expires 2026-10-27, in 5 days.\n- `example.org`: expires in under a day (2026-10-21).\n- `example.org`: expires 2026-10-23, in 1 day.\n- `example.org`: EXPIRED on 2026-06-13, 130 days ago.\n\ncertbot renews well before this point, so its renewal is failing: `sudo certbot renew --dry-run` and `sudo journalctl -u certbot` show why. A certificate for a site no longer hosted here should be removed with `sudo certbot delete --cert-name <name>`.\n\n## End of life\n\n- Node.js 24: support ends 2027-01-19, in 90 days.\n- Node.js 24: support ENDED on 2026-04-30, 174 days ago.\n\nPlan each move to a supported version before its date.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "failures": [
+     "endoflife.date lookup for Debian 13 failed: HTTP 503"
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 1 failed check",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Checks that failed\n\n- endoflife.date lookup for Debian 13 failed: HTTP 503\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "failures": [
+     "a",
+     "b"
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (host5): 2 failed checks",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Checks that failed\n\n- a\n- b\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "reboot": {
+     "reasons": [
+      "kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running"
+     ],
+     "runningKernel": "6.12.111+deb13-amd64",
+     "newestKernel": "6.12.113+deb13-amd64",
+     "packages": []
+    }
+   },
+   "out": {
+    "subject": "Staleness check (host5): reboot needed",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Reboot needed\n\n- Kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running.\n\nInstalled fixes in these packages are not in effect until the server restarts. Reboot with `sudo reboot`; every service on the server stops for about a minute.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "host5",
+    "reboot": {
+     "reasons": [
+      "kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running"
+     ],
+     "runningKernel": "6.12.111+deb13-amd64",
+     "newestKernel": "6.12.113+deb13-amd64",
+     "packages": []
+    }
+   },
+   "out": {
+    "subject": "Staleness check (host5): reboot needed",
+    "body": "Weekly staleness check for **host5**. Nothing was installed.\n\n## Reboot needed\n\n- Kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running.\n\nInstalled fixes in these packages are not in effect until the server restarts. Reboot with `sudo reboot`; every service on the server stops for about a minute.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "vps.example",
+    "upgrades": [
+     {
+      "name": "libssl3t64",
+      "from": "3.5.1-1",
+      "to": "3.5.1-1+deb13u1",
+      "origins": "Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "openssl",
+      "from": "3.5.1-1",
+      "to": "3.5.1-1+deb13u1",
+      "origins": "Debian:13.2/stable, Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "nodejs",
+      "from": "24.22.0-1nodesource1",
+      "to": "24.22.1-1nodesource1",
+      "origins": "Node Source:nodistro",
+      "security": false
+     },
+     {
+      "name": "tzdata",
+      "from": "2025b-4",
+      "to": "2025c-0+deb13u1",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     },
+     {
+      "name": "libfoo1",
+      "from": null,
+      "to": "1.2-3",
+      "origins": "Debian:13.2/stable",
+      "security": false
+     },
+     {
+      "name": "vim",
+      "from": "2:9.1.1230-2",
+      "to": "2:9.1.1230-2+deb13u1",
+      "origins": "Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "vim-common",
+      "from": "2:9.1.1230-2",
+      "to": "2:9.1.1230-2+deb13u1",
+      "origins": "Debian-Security:13/stable-security",
+      "security": true
+     },
+     {
+      "name": "tzdata",
+      "from": "2026e-0+deb13u1",
+      "to": "2026f-0+deb13u1",
+      "origins": "Debian:13.2/stable-updates",
+      "security": false
+     }
+    ],
+    "removals": [
+     {
+      "name": "libold1",
+      "from": "1.0-1"
+     }
+    ],
+    "heldBack": 3,
+    "eolFindings": [
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2027-01-19",
+      "daysLeft": 90,
+      "ended": false
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-04-30",
+      "daysLeft": -174,
+      "ended": true
+     },
+     {
+      "label": "Node.js",
+      "cycle": "24",
+      "eol": "2026-10-21",
+      "daysLeft": 0,
+      "ended": false
+     }
+    ],
+    "reboot": {
+     "reasons": [
+      "kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running"
+     ],
+     "runningKernel": "6.12.111+deb13-amd64",
+     "newestKernel": "6.12.113+deb13-amd64",
+     "packages": []
+    },
+    "certFindings": [
+     {
+      "name": "example.org",
+      "expires": "2026-11-11",
+      "expired": false,
+      "days": 21
+     },
+     {
+      "name": "example.org",
+      "expires": "2026-11-11",
+      "expired": false,
+      "days": 20
+     }
+    ],
+    "failures": [
+     "x failed"
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (vps.example): 2 certificate warnings, 3 end-of-life warnings, reboot needed, 4 security updates, Node.js update, 3 other updates, 1 removal, 3 held back, 1 failed check",
+    "body": "Weekly staleness check for **vps.example**. Nothing was installed.\n\n## TLS certificates\n\n- `example.org`: expires 2026-11-11, in 21 days.\n- `example.org`: expires 2026-11-11, in 20 days.\n\ncertbot renews well before this point, so its renewal is failing: `sudo certbot renew --dry-run` and `sudo journalctl -u certbot` show why. A certificate for a site no longer hosted here should be removed with `sudo certbot delete --cert-name <name>`.\n\n## End of life\n\n- Node.js 24: support ends 2027-01-19, in 90 days.\n- Node.js 24: support ENDED on 2026-04-30, 174 days ago.\n- Node.js 24: support ends TODAY (2026-10-21).\n\nPlan each move to a supported version before its date.\n\n## Reboot needed\n\n- Kernel 6.12.113+deb13-amd64 is installed but 6.12.111+deb13-amd64 is running.\n\nInstalled fixes in these packages are not in effect until the server restarts. Reboot with `sudo reboot`; every service on the server stops for about a minute.\n\n## Security updates\n\n- `libssl3t64` 3.5.1-1 → 3.5.1-1+deb13u1\n- `openssl` 3.5.1-1 → 3.5.1-1+deb13u1\n- `vim` 2:9.1.1230-2 → 2:9.1.1230-2+deb13u1\n- `vim-common` 2:9.1.1230-2 → 2:9.1.1230-2+deb13u1\n\n## Node.js\n\n- `nodejs` 24.22.0-1nodesource1 → 24.22.1-1nodesource1\n\nAfter installing, restart `memory-api` so it runs the new binary.\n\n## Other updates\n\n- `tzdata` 2025b-4 → 2025c-0+deb13u1\n- `libfoo1` new: 1.2-3\n- `tzdata` 2026e-0+deb13u1 → 2026f-0+deb13u1\n\n## Packages the upgrade would remove\n\n- `libold1` 1.0-1\n\n## Held back\n\n3 packages have updates that the upgrade would not install (held with `apt-mark hold`, or blocked by dependencies). `apt list --upgradable` and `apt-mark showhold` show which.\n\n## Checks that failed\n\n- x failed\n\nTo apply this plan, run `sudo apt full-upgrade` on the server.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "h",
+    "upgrades": [
+     {
+      "name": "nodejs",
+      "from": "1",
+      "to": "2",
+      "origins": "Node Source:nodistro",
+      "security": false
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (h): Node.js update",
+    "body": "Weekly staleness check for **h**. Nothing was installed.\n\n## Node.js\n\n- `nodejs` 1 → 2\n\nAfter installing, restart `memory-api` so it runs the new binary.\n\nTo apply this plan, run `sudo apt full-upgrade` on the server.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "h",
+    "upgrades": [
+     {
+      "name": "nodejs",
+      "from": null,
+      "to": "2",
+      "origins": "Debian-Security",
+      "security": true
+     }
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (h): 1 security update",
+    "body": "Weekly staleness check for **h**. Nothing was installed.\n\n## Security updates\n\n- `nodejs` new: 2\n\nTo apply this plan, run `sudo apt full-upgrade` on the server.\n"
+   }
+  },
+  {
+   "in": {
+    "host": "h",
+    "upgrades": [
+     {
+      "name": "foo",
+      "from": "1.0",
+      "to": "1.1",
+      "origins": "",
+      "security": false
+     }
+    ],
+    "failures": [
+     "  trailing space  "
+    ]
+   },
+   "out": {
+    "subject": "Staleness check (h): 1 other update, 1 failed check",
+    "body": "Weekly staleness check for **h**. Nothing was installed.\n\n## Other updates\n\n- `foo` 1.0 → 1.1\n\n## Checks that failed\n\n-   trailing space  \n\nTo apply this plan, run `sudo apt full-upgrade` on the server.\n"
+   }
+  }
+ ],
+ "pem": "-----BEGIN CERTIFICATE-----\nMIIBgTCCASegAwIBAgIUKsGWdApkmp6YN1TcIGBNWUl3VhAwCgYIKoZIzj0EAwIw\nFjEUMBIGA1UEAwwLZXhhbXBsZS5vcmcwHhcNMjYxMDIyMjMxNzM5WhcNMjcwMTIw\nMjMxNzM5WjAWMRQwEgYDVQQDDAtleGFtcGxlLm9yZzBZMBMGByqGSM49AgEGCCqG\nSM49AwEHA0IABLRUG95Ts8JzRq4tiT33RbFXAiviBcvalmvQwEasR4gjKpPBlL63\nSxWeqKj9iEqz2p0rOXbqVlD5MXF4R/VdtQSjUzBRMB0GA1UdDgQWBBTcSAgLOmjU\nWG8JAIJ530chKOUnUjAfBgNVHSMEGDAWgBTcSAgLOmjUWG8JAIJ530chKOUnUjAP\nBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIQCeUFX+28+NwJBf+fWe\njiNgv6x7IJau7M81dJjK69IxJwIgJYeOHRqCzwXPy4v9ozfVn1ohlvKWYv46V902\nn8ygk+w=\n-----END CERTIFICATE-----\n",
+ "certificates": [
+  {
+   "name": "empty root",
+   "renewal": null,
+   "live": null,
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [],
+    "checked": 0
+   }
+  },
+  {
+   "name": "healthy",
+   "renewal": [
+    "example.org"
+   ],
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [],
+    "checked": 1
+   }
+  },
+  {
+   "name": "expiring",
+   "renewal": [
+    "example.org"
+   ],
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "expiring",
+   "now": "2027-01-15T23:17:39.000Z",
+   "out": {
+    "findings": [
+     {
+      "name": "example.org",
+      "expires": "2027-01-20",
+      "expired": false,
+      "days": 5
+     }
+    ],
+    "failures": [],
+    "checked": 1
+   }
+  },
+  {
+   "name": "expired",
+   "renewal": [
+    "example.org"
+   ],
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "expired",
+   "now": "2027-01-23T23:17:39.000Z",
+   "out": {
+    "findings": [
+     {
+      "name": "example.org",
+      "expires": "2027-01-20",
+      "expired": true,
+      "days": 3
+     }
+    ],
+    "failures": [],
+    "checked": 1
+   }
+  },
+  {
+   "name": "renewal without live cert",
+   "renewal": [
+    "example.org",
+    "example.net"
+   ],
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "Could not read the TLS certificate `example.net`: ENOENT: no such file or directory, open '<root>/live/example.net/cert.pem'"
+    ],
+    "checked": 1
+   }
+  },
+  {
+   "name": "no live directory",
+   "renewal": [
+    "example.org"
+   ],
+   "live": null,
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "Could not read the TLS certificate `example.org`: ENOENT: no such file or directory, open '<root>/live/example.org/cert.pem'"
+    ],
+    "checked": 0
+   }
+  },
+  {
+   "name": "no cert.pem, bad cert",
+   "renewal": [
+    "example.org",
+    "example.net"
+   ],
+   "live": {
+    "example.org": "none",
+    "example.net": "bad"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "Could not read the TLS certificate `example.net`: error:0480006C:PEM routines::no start line",
+     "Could not read the TLS certificate `example.org`: ENOENT: no such file or directory, open '<root>/live/example.org/cert.pem'"
+    ],
+    "checked": 0
+   }
+  },
+  {
+   "name": "cert.pem is a directory",
+   "renewal": [
+    "example.org"
+   ],
+   "live": {
+    "example.org": "dir"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "Could not read the TLS certificate `example.org`: EISDIR: illegal operation on a directory, read"
+    ],
+    "checked": 0
+   }
+  },
+  {
+   "name": "live without renewal config",
+   "renewal": [
+    "example.org"
+   ],
+   "live": {
+    "example.org": "cert",
+    "example.net": "cert"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "The TLS certificate `example.net` has no renewal config in <root>/renewal, so certbot will not renew it."
+    ],
+    "checked": 2
+   }
+  },
+  {
+   "name": "no renewal directory",
+   "renewal": null,
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "The TLS certificate `example.org` has no renewal config in <root>/renewal, so certbot will not renew it."
+    ],
+    "checked": 1
+   }
+  },
+  {
+   "name": "renewal is a file",
+   "renewal": "file",
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "Could not list the TLS certificates in <root>/renewal: ENOTDIR: not a directory, scandir '<root>/renewal'"
+    ],
+    "checked": 1
+   }
+  },
+  {
+   "name": "not valid yet",
+   "renewal": [
+    "example.org"
+   ],
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "before",
+   "now": "2026-10-21T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "Could not read the TLS certificate `example.org`: certificate example.org is not valid until 2026-10-22T23:17:39.000Z"
+    ],
+    "checked": 0
+   }
+  },
+  {
+   "name": "directories with no certificates",
+   "renewal": [],
+   "live": {},
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "<root> holds no certificates, so none were checked."
+    ],
+    "checked": 0
+   }
+  },
+  {
+   "name": "live is a file",
+   "renewal": [
+    "example.org"
+   ],
+   "live": "file",
+   "at": "healthy",
+   "platformDependent": true,
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "Could not list the TLS certificates in <root>/live: ENOTDIR: not a directory, scandir '<root>/live'",
+     "Could not read the TLS certificate `example.org`: ENOENT: no such file or directory, open '<root>/live/example.org/cert.pem'"
+    ],
+    "checked": 0
+   }
+  },
+  {
+   "name": "sorted names",
+   "renewal": [
+    "b.org",
+    "a.org",
+    "c.org"
+   ],
+   "live": {
+    "c.org": "cert",
+    "a.org": "cert",
+    "b.org": "cert"
+   },
+   "at": "expiring",
+   "now": "2027-01-15T23:17:39.000Z",
+   "out": {
+    "findings": [
+     {
+      "name": "a.org",
+      "expires": "2027-01-20",
+      "expired": false,
+      "days": 5
+     },
+     {
+      "name": "b.org",
+      "expires": "2027-01-20",
+      "expired": false,
+      "days": 5
+     },
+     {
+      "name": "c.org",
+      "expires": "2027-01-20",
+      "expired": false,
+      "days": 5
+     }
+    ],
+    "failures": [],
+    "checked": 3
+   }
+  }
+ ]
+}
