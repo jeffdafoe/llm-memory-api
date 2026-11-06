@@ -32,6 +32,10 @@ var multisetTables = map[string][]string{
 	// error_detail is the stack trace in Node and Go's %+v of the error:
 	// implementation text, never the same.
 	"error_log": {"id", "error_detail"},
+	// A note save indexes the note in the background; when one request
+	// saves several (memory-sync), their chunks are inserted in whatever
+	// order the embedding calls return.
+	"memory_chunks": {"id"},
 }
 
 // tableOrder replaces primary-key order for tables whose key is random
