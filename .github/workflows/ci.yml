@@ -265,6 +265,18 @@ jobs:
         working-directory: node/api
         run: npm ci --ignore-scripts
 
+      # The suite creates and drops about a thousand databases, and each DROP
+      # DATABASE forces a checkpoint. With fsync on, those checkpoints flood
+      # the runner's disk and stall commits and server start-up. This Postgres
+      # goes away with the job, so durability buys nothing here.
+      - name: Turn off fsync on the test Postgres
+        run: >-
+          docker exec ${{ job.services.postgres.id }} psql -U postgres
+          -c "ALTER SYSTEM SET fsync = off"
+          -c "ALTER SYSTEM SET synchronous_commit = off"
+          -c "ALTER SYSTEM SET full_page_writes = off"
+          -c "SELECT pg_reload_conf()"
+
       - name: Contract tests
         working-directory: go/server
         run: go test -tags contract -count=1 -v ./contract/

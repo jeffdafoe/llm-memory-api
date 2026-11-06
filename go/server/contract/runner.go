@@ -83,6 +83,12 @@ type Target struct {
 	// state (row counts per table) for the settle step; nil means only the
 	// fake upstream is watched.
 	Fingerprint func(ctx context.Context) (string, error)
+	// Busy counts the server's database connections that are running a
+	// statement or holding a transaction open; settle waits for zero. A
+	// commit stalled on a slow disk changes no row until it lands, so the
+	// fingerprint alone can read as quiet while a write is still coming.
+	// nil means not checked.
+	Busy func(ctx context.Context) (int, error)
 	// Snapshot reads every compared table after the steps; nil means no
 	// rows are compared.
 	Snapshot func(ctx context.Context) ([]Table, error)
@@ -364,8 +370,9 @@ func isJSON(contentType string) bool {
 }
 
 // settle waits until the server is quiet: no fake upstream request in
-// flight, and neither the fake's last activity nor the database fingerprint
-// changing for QuietFor. With Until it waits for that condition instead.
+// flight, no database connection busy, and neither the fake's last activity
+// nor the database fingerprint changing for QuietFor. With Until it waits for
+// that condition instead.
 func (r *Runner) settle(ctx context.Context, t *Target, st Step) error {
 	quietFor := r.QuietFor
 	if quietFor <= 0 {
@@ -409,10 +416,18 @@ func (r *Runner) settle(ctx context.Context, t *Target, st Step) error {
 				return err
 			}
 		}
-		state := fmt.Sprintf("upstream requests in flight %d, last upstream activity %s, database %s",
-			inFlight, lastActivity.Format(time.RFC3339Nano), fp)
+		busy := 0
+		if t.Busy != nil {
+			var err error
+			busy, err = t.Busy(ctx)
+			if err != nil && ctx.Err() == nil {
+				return err
+			}
+		}
+		state := fmt.Sprintf("upstream requests in flight %d, last upstream activity %s, database connections busy %d, database %s",
+			inFlight, lastActivity.Format(time.RFC3339Nano), busy, fp)
 		now := time.Now()
-		if state != lastState || inFlight > 0 {
+		if state != lastState || inFlight > 0 || busy > 0 {
 			lastState = state
 			stableSince = now
 		} else if now.Sub(stableSince) >= quietFor {
