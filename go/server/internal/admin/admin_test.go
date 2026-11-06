@@ -13,6 +13,7 @@ import (
 	"github.com/pashagolub/pgxmock/v6"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/attempts"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
@@ -58,6 +59,11 @@ func newRoutes(t *testing.T, values map[string]string) (*Routes, pgxmock.PgxPool
 		Namespaces:  &permissions.Namespaces{DB: mock},
 		Now:         func() time.Time { return testNow },
 	}
+	// A fixed clock, so Retry-After does not depend on how long the
+	// hashing in the earlier attempts took.
+	clock := func() time.Time { return testNow }
+	rt.linkCaller = attempts.New(attempts.Options{MaxAttempts: linkCallerAttempts, Window: linkWindow, Now: clock})
+	rt.linkTarget = attempts.New(attempts.Options{MaxAttempts: linkTargetAttempts, Window: linkWindow, Now: clock})
 	rt.Register(NewMux())
 	return rt, mock, tokens
 }

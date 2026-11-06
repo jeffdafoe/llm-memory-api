@@ -42,7 +42,7 @@ func fixedSalt(name string) string {
 // one in Auth (sent as a bearer token) or as {{name}} in a path, header or
 // body.
 func Credentials() map[string]string {
-	return map[string]string{
+	creds := map[string]string{
 		"admin-password": adminPassword,
 		"admin-web":      fixedSecret("admin web session"),
 		// The limited admin (fixture_admin.go).
@@ -59,6 +59,11 @@ func Credentials() map[string]string {
 		"agent-b-expired-session": fixedSecret("agent-b expired session"),
 		"agent-b-revoked-key":     fixedSecret("agent-b revoked key"),
 	}
+	// Each fixture virtual agent's API key, for /agent/tick as itself.
+	for _, va := range fixtureVirtualAgents {
+		creds[va.name+"-key"] = vaKey(va.name)
+	}
+	return creds
 }
 
 // Fixed values for the two secrets seed.sql leaves empty, so Node and Go
