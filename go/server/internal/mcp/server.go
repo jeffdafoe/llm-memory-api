@@ -19,16 +19,19 @@ import (
 	"unicode/utf8"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mail"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/signup"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/visibility"
 )
 
 // Server holds what the tools call.
@@ -41,6 +44,9 @@ type Server struct {
 	Shares     *permissions.NoteShares
 	Notes      *notes.Service
 	Memory     *memory.Service
+	Chat       *chat.Service
+	Mail       *mail.Service
+	Visibility *visibility.Visibility
 	// Location is the zone dates are printed in (Date.prototype.toString);
 	// nil is time.Local, the process zone, as in Node.
 	Location *time.Location
@@ -78,6 +84,23 @@ var toolHandlers = map[string]toolHandler{
 	"grep":              (*Server).grep,
 	"read_instructions": (*Server).readInstructions,
 	"save_instructions": (*Server).saveInstructions,
+	"chat_send":         (*Server).chatSend,
+	"chat_receive":      (*Server).chatReceive,
+	"chat_ack":          (*Server).chatAck,
+	"chat_status":       (*Server).chatStatus,
+	"mail_send":         (*Server).mailSend,
+	"mail_check":        (*Server).mailCheck,
+	"mail_receive":      (*Server).mailReceive,
+	"mail_ack":          (*Server).mailAck,
+	"mail_edit":         (*Server).mailEdit,
+	"mail_unsend":       (*Server).mailUnsend,
+	"mail_sent":         (*Server).mailSent,
+	"mail_history":      (*Server).mailHistory,
+	"agent_status":      (*Server).agentStatus,
+	"update_expertise":  (*Server).updateExpertise,
+	"update_profile":    (*Server).updateProfile,
+	"activity_start":    (*Server).activityStart,
+	"activity_stop":     (*Server).activityStop,
 }
 
 // toolResult is a CallToolResult with one text block.

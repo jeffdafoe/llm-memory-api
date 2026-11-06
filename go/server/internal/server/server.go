@@ -104,6 +104,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	discussions := &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier}
 	vaService.Discussions = discussions
 	namespaces := &permissions.Namespaces{DB: conn}
+	vis := &visibility.Visibility{DB: conn, Admin: admin}
 	s := &Services{
 		DB:       conn,
 		Config:   store,
@@ -131,10 +132,11 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Discussions: discussions,
 		Providers:   llm,
 		Agents:      vaService,
-		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
+		Visibility:  vis,
 		MCP: &mcp.Server{
 			DB: conn, Config: store, Log: log, Events: bc, Namespaces: namespaces,
 			Shares: &permissions.NoteShares{DB: conn}, Notes: notesService, Memory: mem,
+			Chat: chatService, Mail: mailService, Visibility: vis,
 		},
 	}
 	hub.Validate = adminTokenValidator(s.SessionAuth, sessions, log.Errorf)
