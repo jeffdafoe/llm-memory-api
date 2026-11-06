@@ -15,14 +15,15 @@ const engineName = "salem-engine"
 // after the call started, past a quiet settle). The last settle then waits
 // for the call log. With replied, one of them must be a model's reply, not
 // an [Error] or [Retrying] notice, so a case cannot pass by failing the same
-// way on both sides.
+// way on both sides. Only rows the case wrote count: the fixture's are
+// below id 100.
 func vaChatted(name, to string, n int, replied bool) Step {
 	return Step{Settle: true, Until: func(ctx context.Context, t *Target) (bool, error) {
 		return t.Holds(ctx, `WITH sent AS (
                 SELECT cmt.message, cmt.is_error FROM chat_message_texts cmt
                 JOIN chat_messages cm ON cm.message_text_id = cmt.id
                 JOIN actors f ON f.id = cmt.from_actor_id JOIN actors r ON r.id = cm.to_actor_id
-                WHERE f.name = $1 AND r.name = $2)
+                WHERE f.name = $1 AND r.name = $2 AND cmt.id > 100)
             SELECT (SELECT count(*) FROM sent) >= $3
                 AND (NOT $4 OR EXISTS (SELECT 1 FROM sent WHERE NOT is_error))
                 AND NOT EXISTS (SELECT 1 FROM actors WHERE name = $1 AND active_since IS NOT NULL)`,
@@ -47,8 +48,13 @@ func engineChat(fields string) Step {
 }
 
 const (
-	simScene = "6d2a0c1e-0000-4000-8000-0000000000e9"
-	simTools = `[{"name":"speak","description":"Say something aloud.","parameters":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}},` +
+	// historySceneA and historySceneB are the scenes of fixtureHistory;
+	// historySceneC has no rows.
+	historySceneA = "6d2a0c1e-0000-4000-8000-0000000000e7"
+	historySceneB = "6d2a0c1e-0000-4000-8000-0000000000e8"
+	historySceneC = "6d2a0c1e-0000-4000-8000-0000000000e6"
+	simScene      = "6d2a0c1e-0000-4000-8000-0000000000e9"
+	simTools      = `[{"name":"speak","description":"Say something aloud.","parameters":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}},` +
 		`{"name":"done","description":"End your turn.","parameters":{"type":"object","properties":{}}}]`
 	simScene1 = `"scene_id":"` + simScene + `","scene_structure":"Inn","conversation_id":"conv-7","sim_actor_id":"npc-3","sim_actor_name":"Elias Ward","history_scope":"scene"`
 )
@@ -130,6 +136,35 @@ var vaChatCases = func() []Scenario {
 				vaChatted("va-openrouter", engineName, 1, true),
 				engineChat(`"tool_call_results":[{"id":"call_1","content":"[OK] You spoke."},{"id":"call_2","content":"[done]"}],"tools_offered":` + simTools + `,` + simScene1 + `,"wait":true`),
 				vaChatted("va-openrouter", engineName, 2, true),
+			},
+			Known: []KnownDifference{callDuration},
+		},
+		// Which history a sim turn replays, against fixtureHistory: the
+		// provider request shows it.
+		Scenario{
+			Name:    "sim turn scoped to a scene with history",
+			Replies: []QueuedReply{openrouterCatalog},
+			Steps: []Step{
+				engineChat(`"message":"Scene A again.","tools_offered":` + simTools + `,"scene_id":"` + historySceneA + `","history_scope":"scene","wait":true`),
+				vaChatted("va-openrouter", engineName, 1, true),
+			},
+			Known: []KnownDifference{callDuration},
+		},
+		Scenario{
+			Name:    "sim turn scoped to a scene with no scene_id",
+			Replies: []QueuedReply{openrouterCatalog},
+			Steps: []Step{
+				engineChat(`"message":"No scene.","tools_offered":` + simTools + `,"history_scope":"scene","wait":true`),
+				vaChatted("va-openrouter", engineName, 1, true),
+			},
+			Known: []KnownDifference{callDuration},
+		},
+		Scenario{
+			Name:    "sim turn with the pair history",
+			Replies: []QueuedReply{openrouterCatalog},
+			Steps: []Step{
+				engineChat(`"message":"Unscoped again.","tools_offered":` + simTools + `,"scene_id":"` + historySceneC + `","wait":true`),
+				vaChatted("va-openrouter", engineName, 1, true),
 			},
 			Known: []KnownDifference{callDuration},
 		},

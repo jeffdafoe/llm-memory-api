@@ -16,9 +16,9 @@ const fixtureImpressions = "Anne pays late but always pays."
 // applyVAChatFixture adds what the direct-chat cases (cases_va_chat.go)
 // need on top of the virtual agents of fixture_va.go: the salem-engine actor
 // (no agent_configuration row, so it is not virtual and gets no "*"
-// broadcast) with access to va-openrouter, the NPC provider, and
+// broadcast) with access to va-openrouter, the NPC provider;
 // va-openrouter's context/people/anne-hale note (no chunks, so search never
-// sees it).
+// sees it); and history between the two in three scopes (fixtureHistory).
 func applyVAChatFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[string]int) error {
 	var engineID, vaID int
 	if err := tx.QueryRow(ctx, "INSERT INTO actors (name, created_by) VALUES ($1, $2) RETURNING id", engineName, adminID).Scan(&engineID); err != nil {
@@ -36,5 +36,48 @@ func applyVAChatFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[
 		fixtureImpressions, vaID); err != nil {
 		return fmt.Errorf("impressions note: %w", err)
 	}
+	for _, h := range fixtureHistory {
+		from, to := engineID, vaID
+		if h.fromVA {
+			from, to = vaID, engineID
+		}
+		var scene *string
+		if h.scene != "" {
+			scene = &h.scene
+		}
+		// Minutes before now, so the rows are inside the history window
+		// (virtual_agent_chat_history_hours) whenever the run starts.
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO chat_message_texts (id, message, from_actor_id, sent_at, scene_id, is_error)
+             VALUES ($1, $2, $3, NOW() - make_interval(mins => $4), $5::uuid, $6)`,
+			h.id, h.message, from, h.minutesAgo, scene, h.isError); err != nil {
+			return fmt.Errorf("history text %d: %w", h.id, err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO chat_messages (id, message_text_id, to_actor_id, acked_at) VALUES ($1, $1, $2, NOW())`, h.id, to); err != nil {
+			return fmt.Errorf("history delivery %d: %w", h.id, err)
+		}
+	}
 	return nil
+}
+
+// fixtureHistory is salem-engine and va-openrouter's chat: a pair exchange
+// with no scene, one in scene A, one in scene B, and an error row. Ids are
+// below 100, where applyChatFixture starts the sequences. Each perception is
+// followed by a reply, so pruning keeps them all.
+var fixtureHistory = []struct {
+	id         int
+	message    string
+	fromVA     bool
+	scene      string
+	minutesAgo int
+	isError    bool
+}{
+	{id: 51, message: "The pair's own perception.", minutesAgo: 50},
+	{id: 52, message: "The pair's own reply.", fromVA: true, minutesAgo: 49},
+	{id: 53, message: "Scene A perception.", scene: historySceneA, minutesAgo: 40},
+	{id: 54, message: "Scene A reply.", fromVA: true, scene: historySceneA, minutesAgo: 39},
+	{id: 55, message: "Scene B perception.", scene: historySceneB, minutesAgo: 30},
+	{id: 56, message: "Scene B reply.", fromVA: true, scene: historySceneB, minutesAgo: 29},
+	{id: 57, message: "[Error] va-openrouter is unavailable (boom).", fromVA: true, minutesAgo: 20, isError: true},
 }

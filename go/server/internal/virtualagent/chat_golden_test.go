@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -135,6 +136,8 @@ type chatGoldens struct {
 		Results json.RawMessage   `json:"results"`
 	} `json:"cache"`
 	Chat []chatScenario `json:"chat"`
+	// SQL is Node's text of the direct-chat query kinds, whitespace folded.
+	SQL map[string]string `json:"sql"`
 }
 
 type promptRec struct {
@@ -584,11 +587,32 @@ func compareChat(t *testing.T, want *chatScenario, r *recorder, got []string) {
 	}
 	compareLanes(t, "queries", r.queries, want.Queries, noTail[queryRec], lane(queryLane))
 	compareLanes(t, "logs", r.logs, want.Logs, noTail[logRec], lane(logLane))
+	// The spinner's off event comes from the background off-switch; every
+	// other event is compared in order, and the spinner must go off only
+	// after it came on.
+	compareLanes(t, "events", r.events, want.Events, noTail[eventRec],
+		lane(func(i, cut int, e eventRec) string {
+			if strings.Contains(e.Data, `"active":false`) {
+				return floating
+			}
+			return ""
+		}))
+	var on, off []bool
+	for _, e := range r.events {
+		on = append(on, strings.Contains(e.Data, `"active":true`))
+		off = append(off, strings.Contains(e.Data, `"active":false`))
+	}
+	checkSpinner(t, "events", on, off)
+	on, off = nil, nil
+	for _, q := range r.queries {
+		on = append(on, q.Kind == "active-on")
+		off = append(off, q.Kind == "active-off")
+	}
+	checkSpinner(t, "queries", on, off)
 	for _, c := range []struct {
 		name      string
 		got, want string
 	}{
-		{"events", sortedJSON(r.events), sortedJSON(want.Events)},
 		{"timers", sortedJSON(r.timers), sortedJSON(want.Timers)},
 		{"notes", sortedJSON(r.notes), sortedJSON(want.Notes)},
 		{"created", jsonOf(orEmpty(r.created)), jsonOf(orEmpty(want.Created))},
@@ -615,6 +639,35 @@ func newChatService(t *testing.T, sc *chatScenario) (*Service, *recorder) {
 	s.Chat = h
 	s.Providers = h
 	return s, r
+}
+
+// The direct-chat queries' SQL is Node's, whitespace aside: the stubs
+// answer from the scenario's rows whatever the WHERE clause says, so a
+// changed filter would pass the scenarios.
+func TestDirectChatSQLMatchesNode(t *testing.T) {
+	g := loadChatGoldens(t)
+	seen := map[string]string{}
+	for _, c := range g.Chat {
+		s, r := newChatService(t, &c)
+		for _, in := range c.Inputs {
+			s.HandleDirectChat(context.Background(), directChatFrom(t, in))
+		}
+		time.Sleep(20 * time.Millisecond)
+		r.mu.Lock()
+		for k, v := range r.sql {
+			seen[k] = v
+		}
+		r.mu.Unlock()
+	}
+	for _, kind := range []string{"chat-history", "chat-ack"} {
+		want := g.SQL[kind]
+		if want == "" {
+			t.Fatalf("no Node SQL for %s", kind)
+		}
+		if got := strings.Join(strings.Fields(seen[kind]), " "); got != want {
+			t.Errorf("%s SQL:\n got %s\nwant %s", kind, got, want)
+		}
+	}
 }
 
 func TestDirectChatMatchesNode(t *testing.T) {

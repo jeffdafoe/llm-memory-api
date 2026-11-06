@@ -229,6 +229,9 @@ type recorder struct {
 	clock  float64
 	counts map[string]int
 	nth    map[string]int
+	// sql is the text each query kind was last sent with
+	// (chat_golden_test.go compares the direct-chat kinds with Node's).
+	sql map[string]string
 	// slept holds the contexts Sleep was called with.
 	slept  map[context.Context]bool
 	nCalls int
@@ -318,6 +321,10 @@ func (r *recorder) query(ctx context.Context, sql string, args []any) (string, [
 	// inside its setTimeout callback.
 	r.mu.Lock()
 	timer := kind == "active-off" && r.slept[ctx]
+	if r.sql == nil {
+		r.sql = map[string]string{}
+	}
+	r.sql[kind] = sql
 	r.mu.Unlock()
 	rows, err := r.record(kind, params, timer)
 	return kind, rows, err

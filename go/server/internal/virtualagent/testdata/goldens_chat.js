@@ -74,9 +74,14 @@ function answerRows(kind) {
         return { rows: JSON.parse(JSON.stringify(rows || [])) };
 }
 
+// The text of each query kind, whitespace runs folded; the Go test
+// compares the direct-chat kinds.
+const sqlByKind = {};
 stub('db.js', {
     async query(sql, params) {
-        return record(kindOf(sql), params);
+        const kind = kindOf(sql);
+        sqlByKind[kind] = sql.replace(/\s+/g, ' ').trim();
+        return record(kind, params);
     },
 });
 
@@ -547,6 +552,7 @@ async function main() {
         out.chat.push(res);
     }
 
+    out.sql = { 'chat-history': sqlByKind['chat-history'], 'chat-ack': sqlByKind['chat-ack'] };
     fs.writeFileSync(path.join(__dirname, 'goldens_chat.json'), JSON.stringify(out, null, 1) + '\n');
 }
 
