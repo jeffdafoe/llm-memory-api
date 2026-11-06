@@ -1,8 +1,6 @@
 // Package agent is Node's routes/agent.js: the /v1/agent routes agents call
-// for their own session, profile, roster and startup instructions.
-//
-// /agent/tick and /agent/rate-limit call the virtual-agent service and are
-// wired with it (LLM-933).
+// for their own session, profile, roster and startup instructions, and the
+// two that call the virtual-agent service (/agent/tick, /agent/rate-limit).
 package agent
 
 import (
@@ -52,6 +50,9 @@ type Routes struct {
 	Notes       *notes.Service
 	Namespaces  *permissions.Namespaces
 	Visibility  *visibility.Visibility
+	// Agents is the virtual-agent service behind /agent/tick and
+	// /agent/rate-limit.
+	Agents VirtualAgents
 	// Now is the clock for session expiry and the prune cutoff; nil is
 	// time.Now.
 	Now func() time.Time
@@ -87,6 +88,8 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	route("memory/sync", "memory-sync", rt.memorySync)
 	route("sync-mappings", "sync-mappings", rt.syncMappings)
 	route("config", "agent-config", rt.agentConfig)
+	route("rate-limit", "rate-limit", rt.rateLimit)
+	route("tick", "tick", rt.tick)
 }
 
 func (rt *Routes) now() time.Time {
