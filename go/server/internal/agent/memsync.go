@@ -41,8 +41,11 @@ const maxSessionIDs = 1000
 
 // syncTimeout bounds a sync, which runs on after the client hangs up: Node's
 // saves and deletes went on after a disconnect, and stopping halfway would
-// leave a run that saved some files and not others.
-const syncTimeout = 2 * time.Minute
+// leave a run that saved some files and not others. Node had no bound; past
+// this one the next query fails and the request is a 500 (go-server note,
+// Known differences). The saves' indexing runs under db.Background, not
+// this context. A variable so tests can shorten it.
+var syncTimeout = 2 * time.Minute
 
 // prototypeNames are the members every JavaScript object inherits from
 // Object.prototype (besides __proto__). Node kept the remote notes in a

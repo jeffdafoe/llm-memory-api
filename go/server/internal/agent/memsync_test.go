@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http/httptest"
 	"reflect"
@@ -503,3 +505,50 @@ func TestMemorySyncConversationFailures(t *testing.T) {
 type errorString string
 
 func (e errorString) Error() string { return string(e) }
+
+// A client that hangs up does not stop the sync: Node's queries ran on after
+// a disconnect. pgxmock fails a call on a done context, so each query here
+// would fail on the request's own context.
+func TestMemorySyncSurvivesHangUp(t *testing.T) {
+	rt, mock := syncRoutes(t)
+	rows := pgxmock.NewRows(listColumns)
+	listRow(rows, 1, "instructions/memory/remote.md", "2026-11-06T11:00:00Z")
+	mock.ExpectQuery(regexp.QuoteMeta("LOWER(d.slug) LIKE LOWER($4)")).
+		WithArgs("agent-a", pgxmock.AnyArg(), pgxmock.AnyArg(), "instructions/memory/%").
+		WillReturnRows(rows)
+	expectRead(mock, "instructions/memory/remote.md", true, nil, "R", "2026-11-06T11:00:00Z")
+
+	r := request(`{"memory":{"files":[]}}`, "agent-a", 11)
+	ctx, cancel := context.WithCancel(r.Context())
+	cancel()
+	rec := httptest.NewRecorder()
+	if err := rt.memorySync(rec, r.WithContext(ctx)); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"memory":{"actions":[{"filename":"remote.md","action":"pull","content":"R","title":null,"remote_updated_at":"2026-11-06T11:00:00.000Z"}]}}`
+	if rec.Body.String() != want {
+		t.Errorf("got %s", rec.Body)
+	}
+	testutil.WaitMet(t, mock)
+}
+
+// Past syncTimeout the next query fails, and the route returns the error
+// (the route wrapper's 500). Nothing after it runs.
+func TestMemorySyncDeadline(t *testing.T) {
+	saved := syncTimeout
+	syncTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { syncTimeout = saved })
+
+	rt, mock := syncRoutes(t)
+	mock.ExpectQuery(regexp.QuoteMeta("LOWER(d.slug) LIKE LOWER($4)")).
+		WithArgs("agent-a", pgxmock.AnyArg(), pgxmock.AnyArg(), "instructions/memory/%").
+		WillDelayFor(time.Second).
+		WillReturnRows(pgxmock.NewRows(listColumns))
+	err := rt.memorySync(httptest.NewRecorder(), request(`{"memory":{"files":[]}}`, "agent-a", 11))
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
