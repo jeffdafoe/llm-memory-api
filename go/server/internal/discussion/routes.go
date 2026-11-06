@@ -794,8 +794,6 @@ func (rt *Routes) deferInvite(w http.ResponseWriter, r *http.Request) error {
 			"Maximum deferrals reached ("+jsutil.NumberString(maxDefers)+"). Must join or let timeout expire.")
 	}
 
-	// The schema's chk_discussion_participants_status leaves 'deferred'
-	// out, so Postgres refuses this update, in Node as here.
 	if _, err := s.DB.Exec(ctx,
 		"UPDATE discussion_participants SET status = $1, deferred_at = NOW(), defer_count = defer_count + 1 WHERE discussion_id = $2 AND actor_id = $3",
 		"deferred", id.Param(), actor.ID); err != nil {

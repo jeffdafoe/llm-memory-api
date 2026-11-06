@@ -67,7 +67,6 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sessions := &auth.Sessions{DB: conn}
 	keys := &auth.APIKeys{DB: conn, Warnf: func(format string, args ...any) { log.Errorf(format, args...) }}
 	mem := &memory.Service{DB: conn, Config: store, Embedder: &memory.OpenAI{}, Errors: recorder}
-	agents := virtualagent.Seam{}
 	llm := &providers.Providers{Config: store, Log: log}
 	notesService := &notes.Service{
 		DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
@@ -82,9 +81,20 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	}
 	mailService.Agents = vaService
 	sysHandler := &system.Handler{Log: log}
-	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
+	// A discussion's virtual participants answer through the system
+	// handler's "virtual-agent" messages.
+	sysHandler.Register("virtual-agent", vaService.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
 	notifier := &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler}
+	// Chat calls the virtual agents the same way: a chat message to one is
+	// answered through HandleDirectChat, which sends its reply as chat.
+	chatService := &chat.Service{
+		DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: vaService, System: sysHandler,
+		Notifier: notifier,
+	}
+	vaService.Chat = chatService
+	discussions := &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier}
+	vaService.Discussions = discussions
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -99,19 +109,16 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 			APIKeys:  keys,
 			Errorf:   log.Errorf,
 		},
-		MCPAuth:    auth.NewMCPAuth(conn, store, actorCache, keys, bc),
-		Namespaces: &permissions.Namespaces{DB: conn},
-		Admin:      admin,
-		Errors:     recorder,
-		Memory:     mem,
-		Notes:      notesService,
-		Mail:       mailService,
-		System:     sysHandler,
-		Chat: &chat.Service{
-			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
-			Notifier: notifier,
-		},
-		Discussions: &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier},
+		MCPAuth:     auth.NewMCPAuth(conn, store, actorCache, keys, bc),
+		Namespaces:  &permissions.Namespaces{DB: conn},
+		Admin:       admin,
+		Errors:      recorder,
+		Memory:      mem,
+		Notes:       notesService,
+		Mail:        mailService,
+		System:      sysHandler,
+		Chat:        chatService,
+		Discussions: discussions,
 		Providers:   llm,
 		Agents:      vaService,
 		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
