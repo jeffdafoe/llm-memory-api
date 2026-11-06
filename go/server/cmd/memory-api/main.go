@@ -81,6 +81,8 @@ func run() error {
 	if err := services.Agents.StartErrorPing(ctx); err != nil {
 		return err
 	}
+	// server.js starts the stale-vote scanner next.
+	services.Discussions.StartStaleVoteScanner(ctx)
 
 	// The Node server failed to start when its cleanup scheduler threw (a
 	// missing config key, a schedule with no time to run); so does this.
