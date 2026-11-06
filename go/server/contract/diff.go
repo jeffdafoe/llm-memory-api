@@ -96,6 +96,11 @@ type Difference struct {
 type KnownDifference struct {
 	Where  string
 	Reason string
+	// Volatile marks a value that differs between two correct runs by
+	// design and is not shaped like anything the normalizer renames (the
+	// length of a response that carries a random passphrase). Such an entry
+	// may match nothing, and needs no go-server note item.
+	Volatile bool
 }
 
 func (k KnownDifference) matches(where string) bool {
@@ -176,7 +181,7 @@ func Compare(node, goRes Result, known []KnownDifference) (Report, error) {
 		}
 	}
 	for i, k := range known {
-		if !used[i] {
+		if !used[i] && !k.Volatile {
 			rep.Differences = append(rep.Differences, Difference{
 				Where: "known difference " + strconv.Quote(k.Where),
 				Node:  "(matched nothing)",

@@ -1,0 +1,853 @@
+{
+  "cimd": [
+    {
+      "input": "https://claude.ai/oauth/mcp-oauth-client-metadata",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.com/x",
+      "cimd": true
+    },
+    {
+      "input": "HTTPS://CLAUDE.AI/x",
+      "cimd": true
+    },
+    {
+      "input": "https://Claude.Ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/.",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/..",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/a/..",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/a/../",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/%2e",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/%2E%2e",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/./",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai//",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai/?x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai?x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai/x?y#",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai/x#",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai/x#frag",
+      "cimd": false
+    },
+    {
+      "input": "https://user@claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "https://:pass@claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "https://@claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://:@claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai@evil.example/x",
+      "cimd": false
+    },
+    {
+      "input": "https://evil.example\\@claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai\\x",
+      "cimd": true
+    },
+    {
+      "input": "https:claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https:/claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https:///claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https:\\\\claude.ai\\x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai:443/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai:0443/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai:/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai:444/x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai:65536/x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai:4a/x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai./x",
+      "cimd": false
+    },
+    {
+      "input": "https://%43laude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude%2Eai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude%2eai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude%zzai/x",
+      "cimd": false
+    },
+    {
+      "input": "https://clau de.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai.evil.example/x",
+      "cimd": false
+    },
+    {
+      "input": "https://claude.ai%2F.evil/x",
+      "cimd": false
+    },
+    {
+      "input": "http://claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "ftp://claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "wss://claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "/x",
+      "cimd": false
+    },
+    {
+      "input": "",
+      "cimd": false
+    },
+    {
+      "input": " https://claude.ai/x ",
+      "cimd": true
+    },
+    {
+      "input": "\thttps://claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://cla\tude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai/x\n",
+      "cimd": true
+    },
+    {
+      "input": "https://[::1]/x",
+      "cimd": false
+    },
+    {
+      "input": "https://[::1/x",
+      "cimd": false
+    },
+    {
+      "input": "https://127.0.0.1/x",
+      "cimd": false
+    },
+    {
+      "input": "blob:https://claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "blob:https://claude.ai",
+      "cimd": true
+    },
+    {
+      "input": "blob:https://claude.ai/",
+      "cimd": true
+    },
+    {
+      "input": "blob:https://claude.ai/x#f",
+      "cimd": false
+    },
+    {
+      "input": "blob:https://claude.ai/x#",
+      "cimd": true
+    },
+    {
+      "input": "blob:https://claude.ai/x?q",
+      "cimd": true
+    },
+    {
+      "input": "blob:http://claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "blob:https://u@claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "blob:https://claude.ai:444/x",
+      "cimd": false
+    },
+    {
+      "input": "blob:/x",
+      "cimd": false
+    },
+    {
+      "input": "blob://claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "blob:blob:https://claude.ai/x",
+      "cimd": false
+    },
+    {
+      "input": "BLOB:https://claude.ai/x",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cimd": true
+    },
+    {
+      "input": "https://claude.ai/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cimd": true
+    },
+    {
+      "input": "dcr.x.y",
+      "cimd": false
+    },
+    {
+      "input": "remi",
+      "cimd": false
+    },
+    {
+      "input": "https://ｃｌａｕｄｅ.ai/x",
+      "cimd": true
+    }
+  ],
+  "dcr": [
+    {
+      "uris": [
+        "https://claude.ai/api/mcp/auth_callback"
+      ],
+      "issuedAt": 1762378800,
+      "clientId": "dcr.eyJyIjpbImh0dHBzOi8vY2xhdWRlLmFpL2FwaS9tY3AvYXV0aF9jYWxsYmFjayJdLCJ0IjoxNzYyMzc4ODAwfQ.oKU98VWsIMH0pDtgjprNELsWBuyUED3YgIC8tHO9S5E",
+      "verified": {
+        "redirectUris": [
+          "https://claude.ai/api/mcp/auth_callback"
+        ],
+        "issuedAt": 1762378800
+      }
+    },
+    {
+      "uris": [
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback"
+      ],
+      "issuedAt": 1762378800,
+      "clientId": "dcr.eyJyIjpbImh0dHBzOi8vY2xhdWRlLmFpL2FwaS9tY3AvYXV0aF9jYWxsYmFjayIsImh0dHBzOi8vY2xhdWRlLmNvbS9hcGkvbWNwL2F1dGhfY2FsbGJhY2siXSwidCI6MTc2MjM3ODgwMH0.IK48HaVsiBqARaAS5YsXX7nEvCj0dllm7C-rbLl0XQg",
+      "verified": {
+        "redirectUris": [
+          "https://claude.ai/api/mcp/auth_callback",
+          "https://claude.com/api/mcp/auth_callback"
+        ],
+        "issuedAt": 1762378800
+      }
+    }
+  ],
+  "form": [
+    {
+      "input": "a=1",
+      "parsed": {
+        "a": "1"
+      }
+    },
+    {
+      "input": "a=1&a=2",
+      "parsed": {
+        "a": [
+          "1",
+          "2"
+        ]
+      }
+    },
+    {
+      "input": "a=1&[a]=2",
+      "parsed": {
+        "a": [
+          "1",
+          "2"
+        ]
+      }
+    },
+    {
+      "input": "[a]=2&a=1",
+      "parsed": {
+        "a": [
+          "2",
+          "1"
+        ]
+      }
+    },
+    {
+      "input": "a=1&[a]=",
+      "parsed": {
+        "a": "1"
+      }
+    },
+    {
+      "input": "a=&[a]=2",
+      "parsed": {
+        "a": [
+          "",
+          "2"
+        ]
+      }
+    },
+    {
+      "input": "a=1&a=",
+      "parsed": {
+        "a": [
+          "1",
+          ""
+        ]
+      }
+    },
+    {
+      "input": "a",
+      "parsed": {
+        "a": ""
+      }
+    },
+    {
+      "input": "a=",
+      "parsed": {
+        "a": ""
+      }
+    },
+    {
+      "input": "=x",
+      "parsed": {}
+    },
+    {
+      "input": "a=b=c",
+      "parsed": {
+        "a": "b=c"
+      }
+    },
+    {
+      "input": "a]=b=c",
+      "parsed": {
+        "a]": "b=c"
+      }
+    },
+    {
+      "input": "a=b]=c",
+      "parsed": {
+        "a=b]": "c"
+      }
+    },
+    {
+      "input": "a%5B%5D=1",
+      "parsed": {
+        "a[]": "1"
+      }
+    },
+    {
+      "input": "%5Ba%5D=1",
+      "parsed": {
+        "a": "1"
+      }
+    },
+    {
+      "input": "a+b=c+d",
+      "parsed": {
+        "a b": "c d"
+      }
+    },
+    {
+      "input": "a=%41%42",
+      "parsed": {
+        "a": "AB"
+      }
+    },
+    {
+      "input": "a=%E2%9C%93",
+      "parsed": {
+        "a": "✓"
+      }
+    },
+    {
+      "input": "a=%E2%9C",
+      "parsed": {
+        "a": "%E2%9C"
+      }
+    },
+    {
+      "input": "a=%zz+b",
+      "parsed": {
+        "a": "%zz b"
+      }
+    },
+    {
+      "input": "a=%C0%80",
+      "parsed": {
+        "a": "%C0%80"
+      }
+    },
+    {
+      "input": "a=%ED%A0%80",
+      "parsed": {
+        "a": "%ED%A0%80"
+      }
+    },
+    {
+      "input": "a=%F4%90%80%80",
+      "parsed": {
+        "a": "%F4%90%80%80"
+      }
+    },
+    {
+      "input": "grant%5Ftype=client_credentials",
+      "parsed": {
+        "grant_type": "client_credentials"
+      }
+    },
+    {
+      "input": "a=1&&b=2",
+      "parsed": {
+        "a": "1",
+        "b": "2"
+      }
+    },
+    {
+      "input": "&a=1&",
+      "parsed": {
+        "a": "1"
+      }
+    },
+    {
+      "input": "__proto__=x&a=1",
+      "parsed": {
+        "a": "1"
+      }
+    },
+    {
+      "input": "toString=1&a=2",
+      "parsed": {
+        "toString": "1",
+        "a": "2"
+      }
+    },
+    {
+      "input": "a[b]=1&a=2",
+      "parsed": {
+        "a[b]": "1",
+        "a": "2"
+      }
+    },
+    {
+      "input": "[]=1&a=2",
+      "parsed": {
+        "0": "1",
+        "a": "2"
+      }
+    },
+    {
+      "input": "[0]=1&a=2",
+      "parsed": {
+        "0": "1",
+        "a": "2"
+      }
+    },
+    {
+      "input": "a=%5Bx",
+      "parsed": {
+        "a": "[x"
+      }
+    },
+    {
+      "input": "a=%5Bx%zz",
+      "parsed": {
+        "a": "[x%zz"
+      }
+    },
+    {
+      "input": "state=st%3C%22%26%3E",
+      "parsed": {
+        "state": "st<\"&>"
+      }
+    }
+  ],
+  "query": [
+    {
+      "input": "a=1",
+      "parsed": {
+        "a": "1"
+      }
+    },
+    {
+      "input": "a=1&a=2&a=3",
+      "parsed": {
+        "a": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    },
+    {
+      "input": "a",
+      "parsed": {
+        "a": ""
+      }
+    },
+    {
+      "input": "a=",
+      "parsed": {
+        "a": ""
+      }
+    },
+    {
+      "input": "=b",
+      "parsed": {
+        "": "b"
+      }
+    },
+    {
+      "input": "=",
+      "parsed": {
+        "": ""
+      }
+    },
+    {
+      "input": "a=b=c",
+      "parsed": {
+        "a": "b=c"
+      }
+    },
+    {
+      "input": "&&a=1&&",
+      "parsed": {
+        "a": "1"
+      }
+    },
+    {
+      "input": "+=+",
+      "parsed": {
+        " ": " "
+      }
+    },
+    {
+      "input": "a+b=c+d",
+      "parsed": {
+        "a b": "c d"
+      }
+    },
+    {
+      "input": "a=%41",
+      "parsed": {
+        "a": "A"
+      }
+    },
+    {
+      "input": "a=%4",
+      "parsed": {
+        "a": "%4"
+      }
+    },
+    {
+      "input": "a=%4+1",
+      "parsed": {
+        "a": "%4 1"
+      }
+    },
+    {
+      "input": "a%4+1=x",
+      "parsed": {
+        "a%4 1": "x"
+      }
+    },
+    {
+      "input": "a=%E2%9C%93",
+      "parsed": {
+        "a": "✓"
+      }
+    },
+    {
+      "input": "a=%E2%9C",
+      "parsed": {
+        "a": "�"
+      }
+    },
+    {
+      "input": "a=%zz",
+      "parsed": {
+        "a": "%zz"
+      }
+    },
+    {
+      "input": "a=%zz%41",
+      "parsed": {
+        "a": "%zzA"
+      }
+    },
+    {
+      "input": "a=%FF%FF%41",
+      "parsed": {
+        "a": "��A"
+      }
+    },
+    {
+      "input": "a=%E2%28%A1",
+      "parsed": {
+        "a": "�(�"
+      }
+    },
+    {
+      "input": "a%41=%42",
+      "parsed": {
+        "aA": "B"
+      }
+    },
+    {
+      "input": "confirmed=1&confirmed=0",
+      "parsed": {
+        "confirmed": [
+          "1",
+          "0"
+        ]
+      }
+    },
+    {
+      "input": "__proto__=x",
+      "parsed": {
+        "__proto__": "x"
+      }
+    },
+    {
+      "input": "state=a+b%2Bc%2Fd%3Fe%3Df%26g",
+      "parsed": {
+        "state": "a b+c/d?e=f&g"
+      }
+    },
+    {
+      "input": "resource=https%3A%2F%2Fllm-memory.net%2Fmcp&resource=https%3A%2F%2Fllm-memory.net%2Fother",
+      "parsed": {
+        "resource": [
+          "https://llm-memory.net/mcp",
+          "https://llm-memory.net/other"
+        ]
+      }
+    }
+  ],
+  "continueURLs": [
+    {
+      "input": "response_type=code&client_id=remi&state=a+b%2Bc",
+      "url": "/authorize?response_type=code&client_id=remi&state=a+b%2Bc&confirmed=1"
+    },
+    {
+      "input": "confirmed=0&x=1&confirmed=2",
+      "url": "/authorize?confirmed=1&x=1"
+    },
+    {
+      "input": "x=1",
+      "url": "/authorize?x=1&confirmed=1"
+    },
+    {
+      "input": "x=%zz&y=%E2%9C%93&z=%E2%9C",
+      "url": "/authorize?x=%25zz&y=%E2%9C%93&z=%EF%BF%BD&confirmed=1"
+    },
+    {
+      "input": "a=b=c&&d&=e",
+      "url": "/authorize?a=b%3Dc&d=&=e&confirmed=1"
+    },
+    {
+      "input": "sp=a%20b&star=*&tilde=~&bang=!&q=%3F",
+      "url": "/authorize?sp=a+b&star=*&tilde=%7E&bang=%21&q=%3F&confirmed=1"
+    },
+    {
+      "input": "state=%FF%FF",
+      "url": "/authorize?state=%EF%BF%BD%EF%BF%BD&confirmed=1"
+    },
+    {
+      "input": "state=%E2%82",
+      "url": "/authorize?state=%EF%BF%BD&confirmed=1"
+    },
+    {
+      "input": "state=%E2%28%A1",
+      "url": "/authorize?state=%EF%BF%BD%28%EF%BF%BD&confirmed=1"
+    },
+    {
+      "input": "state=%C0%80%ED%A0%80%F4%90%80%80",
+      "url": "/authorize?state=%EF%BF%BD%EF%BF%BD%EF%BF%BD%EF%BF%BD%EF%BF%BD%EF%BF%BD%EF%BF%BD%EF%BF%BD%EF%BF%BD&confirmed=1"
+    },
+    {
+      "input": "state=%F0%9F%98",
+      "url": "/authorize?state=%EF%BF%BD&confirmed=1"
+    },
+    {
+      "input": "resource=https%3A%2F%2Fllm-memory.net%2Fmcp&resource=https%3A%2F%2Fllm-memory.net%2Fother&confirmed=0",
+      "url": "/authorize?resource=https%3A%2F%2Fllm-memory.net%2Fmcp&resource=https%3A%2F%2Fllm-memory.net%2Fother&confirmed=1"
+    }
+  ],
+  "negotiation": [
+    {
+      "accept": null,
+      "chosen": "text"
+    },
+    {
+      "accept": "",
+      "chosen": "text"
+    },
+    {
+      "accept": "*/*",
+      "chosen": "text"
+    },
+    {
+      "accept": "text/html",
+      "chosen": "html"
+    },
+    {
+      "accept": "text/plain",
+      "chosen": "text"
+    },
+    {
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "chosen": "html"
+    },
+    {
+      "accept": "application/json",
+      "chosen": ""
+    },
+    {
+      "accept": "text/*",
+      "chosen": "text"
+    },
+    {
+      "accept": "text/html;q=0.5, text/plain;q=0.4",
+      "chosen": "html"
+    },
+    {
+      "accept": "text/plain;q=0, text/html",
+      "chosen": "html"
+    },
+    {
+      "accept": "text/html;level=1",
+      "chosen": ""
+    },
+    {
+      "accept": "text/html;level",
+      "chosen": "html"
+    },
+    {
+      "accept": "text/html;q=abc",
+      "chosen": ""
+    },
+    {
+      "accept": "*/*;q=0.1, text/html;q=0.1",
+      "chosen": "html"
+    },
+    {
+      "accept": "TEXT/HTML",
+      "chosen": "html"
+    },
+    {
+      "accept": "text/html ; q=0.9, text/plain",
+      "chosen": "text"
+    },
+    {
+      "accept": "text/html;foo=\"a,b\";q=0.5, text/plain;q=0.4",
+      "chosen": "text"
+    },
+    {
+      "accept": "garbage",
+      "chosen": ""
+    },
+    {
+      "accept": "text/html;q=1e-1, text/plain;q=.05",
+      "chosen": "html"
+    }
+  ],
+  "pages": {
+    "connect": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <link rel=\"icon\" href=\"/static/favicon.ico\" sizes=\"any\">\n    <link rel=\"icon\" href=\"/static/favicon-32.png\" type=\"image/png\" sizes=\"32x32\">\n    <title>Connect — LLM Memory</title>\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n    <link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap\" rel=\"stylesheet\">\n    <style>\n        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }\n        :root {\n            --bg-primary: #0A0A0B;\n            --bg-secondary: #141416;\n            --text-primary: #EDEDEF;\n            --text-secondary: #8B8B8D;\n            --accent: #E5A652;\n            --border: rgba(255, 255, 255, 0.08);\n        }\n        html { font-size: 16px; -webkit-font-smoothing: antialiased; }\n        body {\n            font-family: 'Inter', sans-serif;\n            background: var(--bg-primary);\n            color: var(--text-primary);\n            min-height: 100vh;\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            padding: 16px;\n        }\n        .card {\n            background: var(--bg-secondary);\n            border: 1px solid var(--border);\n            border-radius: 12px;\n            padding: 32px;\n            max-width: 460px;\n            width: 100%;\n        }\n        .logo {\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            gap: 12px;\n            margin-bottom: 28px;\n        }\n        .logo img { width: 48px; height: 48px; }\n        .logo span { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }\n        .logo .accent { color: var(--accent); }\n        h2 { font-size: 20px; font-weight: 500; margin-bottom: 8px; text-align: center; }\n        .subtitle { font-size: 14px; color: var(--text-secondary); text-align: center; margin-bottom: 24px; }\n        p { font-size: 14px; line-height: 1.5; color: var(--text-secondary); }\n        p strong { color: var(--text-primary); font-weight: 500; }\n        .config-block {\n            background: var(--bg-primary);\n            border: 1px solid var(--border);\n            border-radius: 8px;\n            padding: 12px 16px;\n            font-family: 'JetBrains Mono', monospace;\n            font-size: 12px;\n            color: var(--text-secondary);\n            margin: 12px 0;\n            white-space: pre-wrap;\n            word-wrap: break-word;\n        }\n        .copy-btn {\n            display: inline-block;\n            padding: 6px 14px;\n            font-size: 13px;\n            font-weight: 500;\n            background: transparent;\n            color: var(--text-secondary);\n            border: 1px solid var(--border);\n            border-radius: 6px;\n            cursor: pointer;\n            font-family: 'Inter', sans-serif;\n            transition: color 0.2s;\n            margin-bottom: 20px;\n        }\n        .copy-btn:hover { color: var(--text-primary); }\n        .btn {\n            display: block;\n            width: 100%;\n            padding: 12px;\n            border-radius: 8px;\n            font-size: 15px;\n            font-weight: 500;\n            text-align: center;\n            text-decoration: none;\n            background: var(--accent);\n            color: var(--bg-primary);\n            margin-top: 16px;\n            transition: opacity 0.2s;\n        }\n        .btn:hover { opacity: 0.9; }\n        button.btn { border: none; cursor: pointer; font-family: 'Inter', sans-serif; }\n        label { display: block; font-size: 13px; color: var(--text-secondary); margin: 14px 0 6px; }\n        input[type=\"text\"], input[type=\"password\"] {\n            width: 100%;\n            padding: 10px 12px;\n            font-size: 15px;\n            font-family: 'Inter', sans-serif;\n            background: var(--bg-primary);\n            color: var(--text-primary);\n            border: 1px solid var(--border);\n            border-radius: 8px;\n        }\n        input:focus { outline: 1px solid var(--accent); }\n        .error { color: #E5484D; font-size: 14px; margin-top: 12px; }\n        .divider { border-top: 1px solid var(--border); margin: 24px 0 20px; }\n    </style>\n</head>\n<body>\n<div class=\"card\">\n    <div class=\"logo\">\n        <img src=\"/static/logo-mascot.png\" alt=\"\">\n        <span><span class=\"accent\">LLM</span> Memory</span>\n    </div>\n    <h2>Connecting as &lt;img src=x onerror=alert(1)&gt;</h2>\n    <div class=\"subtitle\">One more step, so Claude uses your memory in every chat.</div>\n    <p>claude.ai does not tell Claude to load your memory. Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>:</p>\n    <div class=\"config-block\" id=\"claudeInstructionsBlock\"># llm-memory\nMy long-term memory is the llm-memory connector.\nAt the start of every chat, call its read_instructions tool before you answer, and follow what it returns.\nIf the chat gets compacted, call read_instructions again.</div>\n    <button class=\"copy-btn\" type=\"button\" id=\"copyButton\">Copy instructions</button>\n    <p>You only need to do this once. If you already did it, press Continue.</p>\n    <a class=\"btn\" href=\"/authorize?a=1&amp;b=%22\">Continue</a>\n</div>\n<script>\ndocument.getElementById('copyButton').addEventListener('click', function (event) {\n    var button = event.currentTarget;\n    var text = document.getElementById('claudeInstructionsBlock').textContent;\n    var failed = function () { button.textContent = 'Copy failed — select the text and copy it'; };\n    if (!navigator.clipboard) {\n        failed();\n        return;\n    }\n    navigator.clipboard.writeText(text).then(function () {\n        button.textContent = 'Copied!';\n        setTimeout(function () { button.textContent = 'Copy instructions'; }, 2000);\n    }, failed);\n});\n</script>\n</body>\n</html>",
+    "login": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <link rel=\"icon\" href=\"/static/favicon.ico\" sizes=\"any\">\n    <link rel=\"icon\" href=\"/static/favicon-32.png\" type=\"image/png\" sizes=\"32x32\">\n    <title>Log in — LLM Memory</title>\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n    <link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap\" rel=\"stylesheet\">\n    <style>\n        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }\n        :root {\n            --bg-primary: #0A0A0B;\n            --bg-secondary: #141416;\n            --text-primary: #EDEDEF;\n            --text-secondary: #8B8B8D;\n            --accent: #E5A652;\n            --border: rgba(255, 255, 255, 0.08);\n        }\n        html { font-size: 16px; -webkit-font-smoothing: antialiased; }\n        body {\n            font-family: 'Inter', sans-serif;\n            background: var(--bg-primary);\n            color: var(--text-primary);\n            min-height: 100vh;\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            padding: 16px;\n        }\n        .card {\n            background: var(--bg-secondary);\n            border: 1px solid var(--border);\n            border-radius: 12px;\n            padding: 32px;\n            max-width: 460px;\n            width: 100%;\n        }\n        .logo {\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            gap: 12px;\n            margin-bottom: 28px;\n        }\n        .logo img { width: 48px; height: 48px; }\n        .logo span { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }\n        .logo .accent { color: var(--accent); }\n        h2 { font-size: 20px; font-weight: 500; margin-bottom: 8px; text-align: center; }\n        .subtitle { font-size: 14px; color: var(--text-secondary); text-align: center; margin-bottom: 24px; }\n        p { font-size: 14px; line-height: 1.5; color: var(--text-secondary); }\n        p strong { color: var(--text-primary); font-weight: 500; }\n        .config-block {\n            background: var(--bg-primary);\n            border: 1px solid var(--border);\n            border-radius: 8px;\n            padding: 12px 16px;\n            font-family: 'JetBrains Mono', monospace;\n            font-size: 12px;\n            color: var(--text-secondary);\n            margin: 12px 0;\n            white-space: pre-wrap;\n            word-wrap: break-word;\n        }\n        .copy-btn {\n            display: inline-block;\n            padding: 6px 14px;\n            font-size: 13px;\n            font-weight: 500;\n            background: transparent;\n            color: var(--text-secondary);\n            border: 1px solid var(--border);\n            border-radius: 6px;\n            cursor: pointer;\n            font-family: 'Inter', sans-serif;\n            transition: color 0.2s;\n            margin-bottom: 20px;\n        }\n        .copy-btn:hover { color: var(--text-primary); }\n        .btn {\n            display: block;\n            width: 100%;\n            padding: 12px;\n            border-radius: 8px;\n            font-size: 15px;\n            font-weight: 500;\n            text-align: center;\n            text-decoration: none;\n            background: var(--accent);\n            color: var(--bg-primary);\n            margin-top: 16px;\n            transition: opacity 0.2s;\n        }\n        .btn:hover { opacity: 0.9; }\n        button.btn { border: none; cursor: pointer; font-family: 'Inter', sans-serif; }\n        label { display: block; font-size: 13px; color: var(--text-secondary); margin: 14px 0 6px; }\n        input[type=\"text\"], input[type=\"password\"] {\n            width: 100%;\n            padding: 10px 12px;\n            font-size: 15px;\n            font-family: 'Inter', sans-serif;\n            background: var(--bg-primary);\n            color: var(--text-primary);\n            border: 1px solid var(--border);\n            border-radius: 8px;\n        }\n        input:focus { outline: 1px solid var(--accent); }\n        .error { color: #E5484D; font-size: 14px; margin-top: 12px; }\n        .divider { border-top: 1px solid var(--border); margin: 24px 0 20px; }\n    </style>\n</head>\n<body>\n<div class=\"card\">\n    <div class=\"logo\">\n        <img src=\"/static/logo-mascot.png\" alt=\"\">\n        <span><span class=\"accent\">LLM</span> Memory</span>\n    </div>\n    <h2>Connect claude.ai</h2>\n    <div class=\"subtitle\">to your LLM Memory agent</div>\n    <p><strong>First, so Claude uses your memory in every chat:</strong> claude.ai does not tell Claude to load your memory. Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>. You only need to do this once.</p>\n    <div class=\"config-block\" id=\"claudeInstructionsBlock\"># llm-memory\nMy long-term memory is the llm-memory connector.\nAt the start of every chat, call its read_instructions tool before you answer, and follow what it returns.\nIf the chat gets compacted, call read_instructions again.</div>\n    <button class=\"copy-btn\" type=\"button\" id=\"copyButton\">Copy instructions</button>\n    <div class=\"divider\"></div>\n    <p><strong>Then log in</strong> with your agent name and the password you chose at signup.</p>\n    <form method=\"post\" action=\"/authorize\">\n        <input type=\"hidden\" name=\"response_type\" value=\"code\">\n        <input type=\"hidden\" name=\"client_id\" value=\"https://claude.ai/oauth/mcp-oauth-client-metadata\">\n        <input type=\"hidden\" name=\"redirect_uri\" value=\"https://claude.ai/api/mcp/auth_callback\">\n        <input type=\"hidden\" name=\"state\" value=\"&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;\">\n        <input type=\"hidden\" name=\"code_challenge\" value=\"abc\">\n        <label for=\"agent\">Agent name</label>\n        <input type=\"text\" id=\"agent\" name=\"agent\" value=\"\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" required>\n        <label for=\"password\">Password</label>\n        <input type=\"password\" id=\"password\" name=\"password\" autocomplete=\"current-password\" required>\n        <button class=\"btn\" type=\"submit\">Log in and connect</button>\n    </form>\n</div>\n<script>\ndocument.getElementById('copyButton').addEventListener('click', function (event) {\n    var button = event.currentTarget;\n    var text = document.getElementById('claudeInstructionsBlock').textContent;\n    var failed = function () { button.textContent = 'Copy failed — select the text and copy it'; };\n    if (!navigator.clipboard) {\n        failed();\n        return;\n    }\n    navigator.clipboard.writeText(text).then(function () {\n        button.textContent = 'Copied!';\n        setTimeout(function () { button.textContent = 'Copy instructions'; }, 2000);\n    }, failed);\n});\n</script>\n</body>\n</html>",
+    "loginError": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <link rel=\"icon\" href=\"/static/favicon.ico\" sizes=\"any\">\n    <link rel=\"icon\" href=\"/static/favicon-32.png\" type=\"image/png\" sizes=\"32x32\">\n    <title>Log in — LLM Memory</title>\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n    <link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap\" rel=\"stylesheet\">\n    <style>\n        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }\n        :root {\n            --bg-primary: #0A0A0B;\n            --bg-secondary: #141416;\n            --text-primary: #EDEDEF;\n            --text-secondary: #8B8B8D;\n            --accent: #E5A652;\n            --border: rgba(255, 255, 255, 0.08);\n        }\n        html { font-size: 16px; -webkit-font-smoothing: antialiased; }\n        body {\n            font-family: 'Inter', sans-serif;\n            background: var(--bg-primary);\n            color: var(--text-primary);\n            min-height: 100vh;\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            padding: 16px;\n        }\n        .card {\n            background: var(--bg-secondary);\n            border: 1px solid var(--border);\n            border-radius: 12px;\n            padding: 32px;\n            max-width: 460px;\n            width: 100%;\n        }\n        .logo {\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            gap: 12px;\n            margin-bottom: 28px;\n        }\n        .logo img { width: 48px; height: 48px; }\n        .logo span { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }\n        .logo .accent { color: var(--accent); }\n        h2 { font-size: 20px; font-weight: 500; margin-bottom: 8px; text-align: center; }\n        .subtitle { font-size: 14px; color: var(--text-secondary); text-align: center; margin-bottom: 24px; }\n        p { font-size: 14px; line-height: 1.5; color: var(--text-secondary); }\n        p strong { color: var(--text-primary); font-weight: 500; }\n        .config-block {\n            background: var(--bg-primary);\n            border: 1px solid var(--border);\n            border-radius: 8px;\n            padding: 12px 16px;\n            font-family: 'JetBrains Mono', monospace;\n            font-size: 12px;\n            color: var(--text-secondary);\n            margin: 12px 0;\n            white-space: pre-wrap;\n            word-wrap: break-word;\n        }\n        .copy-btn {\n            display: inline-block;\n            padding: 6px 14px;\n            font-size: 13px;\n            font-weight: 500;\n            background: transparent;\n            color: var(--text-secondary);\n            border: 1px solid var(--border);\n            border-radius: 6px;\n            cursor: pointer;\n            font-family: 'Inter', sans-serif;\n            transition: color 0.2s;\n            margin-bottom: 20px;\n        }\n        .copy-btn:hover { color: var(--text-primary); }\n        .btn {\n            display: block;\n            width: 100%;\n            padding: 12px;\n            border-radius: 8px;\n            font-size: 15px;\n            font-weight: 500;\n            text-align: center;\n            text-decoration: none;\n            background: var(--accent);\n            color: var(--bg-primary);\n            margin-top: 16px;\n            transition: opacity 0.2s;\n        }\n        .btn:hover { opacity: 0.9; }\n        button.btn { border: none; cursor: pointer; font-family: 'Inter', sans-serif; }\n        label { display: block; font-size: 13px; color: var(--text-secondary); margin: 14px 0 6px; }\n        input[type=\"text\"], input[type=\"password\"] {\n            width: 100%;\n            padding: 10px 12px;\n            font-size: 15px;\n            font-family: 'Inter', sans-serif;\n            background: var(--bg-primary);\n            color: var(--text-primary);\n            border: 1px solid var(--border);\n            border-radius: 8px;\n        }\n        input:focus { outline: 1px solid var(--accent); }\n        .error { color: #E5484D; font-size: 14px; margin-top: 12px; }\n        .divider { border-top: 1px solid var(--border); margin: 24px 0 20px; }\n    </style>\n</head>\n<body>\n<div class=\"card\">\n    <div class=\"logo\">\n        <img src=\"/static/logo-mascot.png\" alt=\"\">\n        <span><span class=\"accent\">LLM</span> Memory</span>\n    </div>\n    <h2>Connect claude.com</h2>\n    <div class=\"subtitle\">to your LLM Memory agent</div>\n    <p><strong>First, so Claude uses your memory in every chat:</strong> claude.ai does not tell Claude to load your memory. Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>. You only need to do this once.</p>\n    <div class=\"config-block\" id=\"claudeInstructionsBlock\"># llm-memory\nMy long-term memory is the llm-memory connector.\nAt the start of every chat, call its read_instructions tool before you answer, and follow what it returns.\nIf the chat gets compacted, call read_instructions again.</div>\n    <button class=\"copy-btn\" type=\"button\" id=\"copyButton\">Copy instructions</button>\n    <div class=\"divider\"></div>\n    <p><strong>Then log in</strong> with your agent name and the password you chose at signup.</p>\n    <form method=\"post\" action=\"/authorize\">\n        <input type=\"hidden\" name=\"response_type\" value=\"code\">\n        <label for=\"agent\">Agent name</label>\n        <input type=\"text\" id=\"agent\" name=\"agent\" value=\"o&#39;brien &amp; co\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" required>\n        <label for=\"password\">Password</label>\n        <input type=\"password\" id=\"password\" name=\"password\" autocomplete=\"current-password\" required>\n        <div class=\"error\" role=\"alert\">Wrong agent name or password.</div>\n        <button class=\"btn\" type=\"submit\">Log in and connect</button>\n    </form>\n</div>\n<script>\ndocument.getElementById('copyButton').addEventListener('click', function (event) {\n    var button = event.currentTarget;\n    var text = document.getElementById('claudeInstructionsBlock').textContent;\n    var failed = function () { button.textContent = 'Copy failed — select the text and copy it'; };\n    if (!navigator.clipboard) {\n        failed();\n        return;\n    }\n    navigator.clipboard.writeText(text).then(function () {\n        button.textContent = 'Copied!';\n        setTimeout(function () { button.textContent = 'Copy instructions'; }, 2000);\n    }, failed);\n});\n</script>\n</body>\n</html>"
+  }
+}

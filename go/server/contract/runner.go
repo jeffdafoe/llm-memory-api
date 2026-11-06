@@ -57,6 +57,14 @@ type Step struct {
 	// ("session_token", "data.0.id"). The raw value, before normalization,
 	// is what later steps get.
 	Capture map[string]string
+	// CaptureLocation maps a name to a query parameter of the Location
+	// header's URL (the code in an OAuth redirect).
+	CaptureLocation map[string]string
+	// Random lists dot paths in the JSON response whose values are random by
+	// design but not shaped like the tokens the normalizer recognizes (a
+	// passphrase of words, a clock reading in seconds). Each such value is
+	// renamed like a random value wherever it appears.
+	Random []string
 
 	Settle bool
 	// Until, on a settle step, waits for an explicit condition (a reply row
@@ -105,6 +113,7 @@ type rawStep struct {
 	status int
 	header http.Header
 	body   []byte
+	random []string // raw values at the step's Random paths
 }
 
 type rawSide struct {
@@ -317,6 +326,32 @@ func (r *Runner) request(ctx context.Context, client *http.Client, t *Target, st
 			vars[name] = got.Text()
 		}
 	}
+	if len(st.CaptureLocation) > 0 {
+		loc, err := url.Parse(resp.Header.Get("Location"))
+		if err != nil {
+			return fail(fmt.Errorf("capture: Location: %w", err))
+		}
+		for name, param := range st.CaptureLocation {
+			got := loc.Query().Get(param)
+			if got == "" {
+				return fail(fmt.Errorf("capture %s: no %q in Location %q (status %d)", name, param, resp.Header.Get("Location"), resp.StatusCode))
+			}
+			vars[name] = got
+		}
+	}
+	if len(st.Random) > 0 {
+		v, err := ParseJSON(data)
+		if err != nil {
+			return fail(fmt.Errorf("random: status %d, response is not JSON", resp.StatusCode))
+		}
+		for _, p := range st.Random {
+			got, ok := v.Path(p)
+			if !ok || got.Kind == Null {
+				return fail(fmt.Errorf("random: no value at %q (status %d)", p, resp.StatusCode))
+			}
+			res.random = append(res.random, got.Text())
+		}
+	}
 	return res, nil
 }
 
@@ -396,6 +431,11 @@ func (r *Runner) settle(ctx context.Context, t *Target, st Step) error {
 // their random values in the same sequence.
 func normalizeSide(side rawSide, t *Target, outboundMultiset bool) Result {
 	n := NewNormalizer(t.BaseURL)
+	for _, s := range side.steps {
+		for _, raw := range s.random {
+			n.AddRandom(raw)
+		}
+	}
 	var res Result
 	for _, s := range side.steps {
 		res.Steps = append(res.Steps, StepResult{

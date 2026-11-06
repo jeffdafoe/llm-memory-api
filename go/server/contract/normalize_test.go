@@ -149,3 +149,47 @@ func TestSortMultisetUsesKnownNames(t *testing.T) {
 		t.Fatalf("order changed the result:\n%s\n%s", a, b)
 	}
 }
+
+func TestAddRandomRenamesWholeValuesOnly(t *testing.T) {
+	n := NewNormalizer()
+	n.AddRandom("plaza-oyster-tidal")
+	n.AddRandom("1762378800")
+	if v := n.Value(Str("plaza-oyster-tidal")); v.Str != "<rand-1>" {
+		t.Fatalf("%+v", v)
+	}
+	if got := n.String("pass plaza-oyster-tidal"); got != "pass plaza-oyster-tidal" {
+		t.Fatalf("substring renamed: %q", got)
+	}
+	v := n.Value(Value{Kind: Number, Num: "1762378800"})
+	if v.Kind != Number || v.Num != "<rand-2>" {
+		t.Fatalf("%+v", v)
+	}
+	if v := n.Value(Value{Kind: Number, Num: "5"}); v.Kind != Number || v.Num != "5" {
+		t.Fatalf("%+v", v)
+	}
+}
+
+// A short value declared random does not hide a difference in text that
+// contains it, and a number against a string at a random path still differs.
+func TestRandomValuesDoNotHideDifferences(t *testing.T) {
+	side := func(msg string, issued Value) Result {
+		body := Value{Kind: Object, Members: []Member{{Key: "issued", Value: issued}, {Key: "msg", Value: Str(msg)}}}
+		return Result{Steps: []StepResult{{Label: "GET /x", Response: Response{Status: 200, Body: Body{IsJSON: true, JSON: body}}}}}
+	}
+	normalize := func(r Result, raw string) Result {
+		n := NewNormalizer()
+		n.AddRandom(raw)
+		r.Steps[0].Response.Body.JSON = n.Value(r.Steps[0].Response.Body.JSON)
+		return r
+	}
+	node := normalize(side("took 1 try", Value{Kind: Number, Num: "1"}), "1")
+	goRes := normalize(side("took 2 tries", Value{Kind: Number, Num: "1"}), "1")
+	if rep, _ := Compare(node, goRes, nil); rep.OK() {
+		t.Fatal("a difference in text containing the random value was hidden")
+	}
+	node = normalize(side("same", Value{Kind: Number, Num: "123"}), "123")
+	goRes = normalize(side("same", Str("123")), "123")
+	if rep, _ := Compare(node, goRes, nil); rep.OK() {
+		t.Fatal("a number against a string at a random path compared equal")
+	}
+}

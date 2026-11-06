@@ -82,3 +82,9 @@ func WriteOptions(w http.ResponseWriter, allow string) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(allow))
 }
+
+// Handles reports whether any route is registered at the path below the
+// prefix, for any method.
+func (m *RawMux) Handles(path string) bool {
+	return m.routes[strings.TrimPrefix(path, m.prefix)] != nil
+}

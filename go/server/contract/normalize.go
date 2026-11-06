@@ -41,6 +41,28 @@ type Normalizer struct {
 	// a value it already named keeps that name, any other random value
 	// becomes <rand>.
 	mask *Normalizer
+	// literals are raw values a step declared random (Step.Random).
+	literals []string
+}
+
+// AddRandom declares raw a random value: a JSON string or number equal to
+// it, as a whole value, is renamed like any other random value. Text that
+// merely contains it is left alone, so a short value cannot mask an
+// unrelated difference.
+func (n *Normalizer) AddRandom(raw string) {
+	if raw == "" || n.isLiteral(raw) {
+		return
+	}
+	n.literals = append(n.literals, raw)
+}
+
+func (n *Normalizer) isLiteral(s string) bool {
+	for _, l := range n.literals {
+		if l == s {
+			return true
+		}
+	}
+	return false
 }
 
 // NewNormalizer returns a Normalizer for one server. origins are that
@@ -66,7 +88,7 @@ func NewNormalizer(origins ...string) *Normalizer {
 // only in which known token they carry still sort apart; a value not yet
 // named is <rand>.
 func (n *Normalizer) masking() *Normalizer {
-	return &Normalizer{origins: n.origins, mask: n}
+	return &Normalizer{origins: n.origins, mask: n, literals: n.literals}
 }
 
 // Names returns the placeholder each raw random value got, for debugging a
@@ -176,7 +198,16 @@ func splitKeepSeparators(s string) []string {
 // as written.
 func (n *Normalizer) Value(v Value) Value {
 	switch v.Kind {
+	case Number:
+		// The placeholder stays a number, so a number on one side and a
+		// string on the other still differ.
+		if n.isLiteral(v.Num) {
+			return Value{Kind: Number, Num: n.random(v.Num)}
+		}
 	case String:
+		if n.isLiteral(v.Str) {
+			return Str(n.random(v.Str))
+		}
 		return Str(n.String(v.Str))
 	case Array:
 		out := Value{Kind: Array, Items: make([]Value, len(v.Items))}

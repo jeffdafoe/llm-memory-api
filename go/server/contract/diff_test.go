@@ -167,3 +167,15 @@ func TestCompareDuplicateAndEmptyKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestVolatileKnownDifferenceMayMatchNothing(t *testing.T) {
+	res := Result{Steps: []StepResult{{Label: "GET /x", Response: Response{Status: 200}}}}
+	rep, err := Compare(res, res, []KnownDifference{{Where: "table request_log row *", Reason: "random length", Volatile: true}})
+	if err != nil || !rep.OK() {
+		t.Fatalf("%v %s", err, rep)
+	}
+	rep, _ = Compare(res, res, []KnownDifference{{Where: "table request_log row *", Reason: "stale"}})
+	if rep.OK() {
+		t.Fatal("a stale non-volatile entry passed")
+	}
+}
