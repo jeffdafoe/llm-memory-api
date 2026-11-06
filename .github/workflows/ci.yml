@@ -287,9 +287,11 @@ jobs:
           echo "settings did not change after the reload" >&2
           exit 1
 
+      # The suite runs about ten minutes on a runner, the go test default
+      # timeout, so it gets its own bound.
       - name: Contract tests
         working-directory: go/server
-        run: go test -tags contract -count=1 -v ./contract/
+        run: go test -tags contract -count=1 -timeout 30m -v ./contract/
 
   # Per-commit build of what the deploy installs (LLM-904): the Go server
   # binary and the admin UI's Vite output, published with their checksums as
