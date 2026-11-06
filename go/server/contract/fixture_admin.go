@@ -13,7 +13,8 @@ import (
 
 // applyAdminFixture adds the limited admin the admin cases need for
 // permission, ownership and delegation refusals: a dashboard password,
-// dashboard:read, agents:write and notes:read but not *:*, a web session,
+// dashboard:read and agents:write but not *:* (no notes, comms, logs or
+// access grant: the content cases expect those refusals), a web session,
 // and no realm. It created two actors: limited-agent (an agent with an API
 // session, findable by the share search) and limited-va (a virtual agent).
 // It runs last, so the actor ids the other fixtures create do not move.
@@ -32,7 +33,7 @@ func applyAdminFixture(ctx context.Context, tx pgx.Tx) error {
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO admin_permissions (actor_id, resource, action)
-         VALUES ($1, 'dashboard', 'read'), ($1, 'agents', 'write'), ($1, 'notes', 'read')`, id); err != nil {
+         VALUES ($1, 'dashboard', 'read'), ($1, 'agents', 'write')`, id); err != nil {
 		return err
 	}
 	if err := insertSession(ctx, tx, id, creds["admin-limited-web"], "limited admin web session", "web"); err != nil {

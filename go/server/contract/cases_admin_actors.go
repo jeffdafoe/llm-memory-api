@@ -222,7 +222,18 @@ var adminActorDeleteCases = []Scenario{
 
 var adminActorSearchCases = []Scenario{
 	postCase("admin actors searchable", actorsSearchablePath, "admin-web", `{"query":"LIM"}`),
-	postCase("admin actors searchable excludes oneself", actorsSearchablePath, "admin-limited-web", `{}`),
+	{
+		// The search needs notes:read, which the fixture's limited admin
+		// does not hold; granted here before its first request, so no
+		// permission cache holds the old set.
+		Name: "admin actors searchable excludes oneself",
+		Steps: []Step{
+			{SQL: `INSERT INTO admin_permissions (actor_id, resource, action)
+                   SELECT id, 'notes', 'read' FROM actors WHERE name = 'contract-admin-limited'`},
+			adminPost(actorsSearchablePath, "admin-limited-web", `{}`),
+		},
+	},
+	postCase("admin actors searchable needs notes read", actorsSearchablePath, "admin-limited-web", `{}`),
 	postCase("admin actors searchable wildcard characters", actorsSearchablePath, "admin-web", `{"query":"%_"}`),
 	noBodyPost("admin actors searchable no body", actorsSearchablePath, "admin-web"),
 	postCase("admin actors searchable number query", actorsSearchablePath, "admin-web", `{"query":5}`,
