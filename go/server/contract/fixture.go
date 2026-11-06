@@ -20,9 +20,11 @@ const (
 	AgentAName    = "agent-a"
 	AgentBName    = "agent-b"
 	adminPassword = "contract-admin-password"
-	// LimitedAdminName holds only dashboard:read (fixture_admin.go).
+	// LimitedAdminName is an admin without *:* (fixture_admin.go).
 	LimitedAdminName     = "contract-admin-limited"
 	limitedAdminPassword = "contract-admin-limited-password"
+	limitedAgentName     = "limited-agent"
+	limitedVAName        = "limited-va"
 )
 
 // fixedSecret is a stable 64-hex value per name, used for tokens, keys and
@@ -48,6 +50,7 @@ func Credentials() map[string]string {
 		// The limited admin (fixture_admin.go).
 		"admin-limited-password": limitedAdminPassword,
 		"admin-limited-web":      fixedSecret("limited admin web session"),
+		"limited-agent-session":  fixedSecret("limited agent api session"),
 		"agent-a-passphrase":     fixedSecret("agent-a passphrase"),
 		"agent-a-session":        fixedSecret("agent-a api session"),
 		"agent-a-key":            fixedSecret("agent-a api key"),
