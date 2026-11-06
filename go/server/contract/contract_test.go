@@ -196,6 +196,7 @@ func runScenario(t *testing.T, sc Scenario) {
 			Snapshot:    s.db.Snapshot,
 			Exec:        s.db.Exec,
 			RunJob:      s.jobs.Run,
+			Holds:       s.db.Holds,
 		}
 	}
 	r := &Runner{Fake: fake}

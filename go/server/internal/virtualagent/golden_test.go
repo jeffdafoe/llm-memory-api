@@ -40,6 +40,8 @@ type outcome struct {
 type queryRec struct {
 	Kind   string    `json:"kind"`
 	Params []*string `json:"params"`
+	// Timer is the activity spinner's off-switch, made after a timer.
+	Timer bool `json:"timer,omitempty"`
 }
 
 type logRec struct {
@@ -87,20 +89,29 @@ type answer struct {
 }
 
 type scenario struct {
-	Name    string                     `json:"name"`
-	Config  map[string]string          `json:"config"`
-	Rows    map[string]json.RawMessage `json:"rows"`
-	Fail    map[string]string          `json:"fail"`
-	Answers []answer                   `json:"answers"`
-	Clock   float64                    `json:"clock"`
-	Outcome outcome                    `json:"outcome"`
-	Queries []queryRec                 `json:"queries"`
-	Logs    []logRec                   `json:"logs"`
-	Events  []eventRec                 `json:"events"`
-	Notes   []noteRec                  `json:"notes"`
-	Created []createdRec               `json:"created"`
-	Calls   []callRec                  `json:"calls"`
-	Timers  []float64                  `json:"timers"`
+	Name   string                     `json:"name"`
+	Config map[string]string          `json:"config"`
+	Unset  []string                   `json:"unset"`
+	Rows   map[string]json.RawMessage `json:"rows"`
+	Fail   map[string]string          `json:"fail"`
+	// FailNth fails the nth call of a kind with its message; null passes.
+	FailNth     map[string][]*string `json:"failNth"`
+	NotesIn     map[string]string    `json:"notesIn"`
+	Search      json.RawMessage      `json:"search"`
+	SearchError string               `json:"searchError"`
+	Answers     []answer             `json:"answers"`
+	Clock       float64              `json:"clock"`
+	Outcome     outcome              `json:"outcome"`
+	Queries     []queryRec           `json:"queries"`
+	Logs        []logRec             `json:"logs"`
+	Events      []eventRec           `json:"events"`
+	Notes       []noteRec            `json:"notes"`
+	Created     []createdRec         `json:"created"`
+	Calls       []callRec            `json:"calls"`
+	Timers      []float64            `json:"timers"`
+	Reads       []readRec            `json:"reads"`
+	Searches    []searchRec          `json:"searches"`
+	Errors      []logRec             `json:"errors"`
 }
 
 type goldenFile struct {
@@ -195,6 +206,8 @@ var baseConfig = map[string]string{
 	"virtual_agent_learning_enabled":           "true",
 	"virtual_agent_learning_min_tokens":        "20",
 	"virtual_agent_error_ping_interval":        "15",
+	"global_bootstrap":                         "",
+	"people_context_preamble":                  "Your impressions follow.",
 }
 
 type mapConfig map[string]string
@@ -215,6 +228,9 @@ type recorder struct {
 	mu     sync.Mutex
 	clock  float64
 	counts map[string]int
+	nth    map[string]int
+	// slept holds the contexts Sleep was called with.
+	slept  map[context.Context]bool
 	nCalls int
 
 	// block makes a query kind wait for its context to end; onCall runs
@@ -222,13 +238,16 @@ type recorder struct {
 	block  map[string]bool
 	onCall func()
 
-	queries []queryRec
-	logs    []logRec
-	events  []eventRec
-	notes   []noteRec
-	created []createdRec
-	calls   []callRec
-	timers  []float64
+	queries  []queryRec
+	logs     []logRec
+	events   []eventRec
+	notes    []noteRec
+	created  []createdRec
+	calls    []callRec
+	timers   []float64
+	reads    []readRec
+	searches []searchRec
+	errors   []logRec
 }
 
 var kinds = []struct {
@@ -245,6 +264,8 @@ var kinds = []struct {
 	{"status", regexp.MustCompile(`UPDATE actors SET status`)},
 	{"dream-mode", regexp.MustCompile(`SELECT agc\.dream_mode`)},
 	{"errored-scan", regexp.MustCompile(`WHERE agc\.virtual = TRUE AND ac\.status`)},
+	{"mail-load", regexp.MustCompile(`JOIN actors fa ON fa\.id = m\.from_actor_id`)},
+	{"mail-ack", regexp.MustCompile(`UPDATE mail SET acked_at = NOW\(\)`)},
 }
 
 // paramText is a Go query argument as the text Postgres receives, to
@@ -290,15 +311,31 @@ func (r *recorder) query(ctx context.Context, sql string, args []any) (string, [
 	for i, a := range args {
 		params[i] = paramText(r.t, a)
 	}
+	// The spinner's off-switch runs on the context it slept on; Node's ran
+	// inside its setTimeout callback.
+	r.mu.Lock()
+	timer := kind == "active-off" && r.slept[ctx]
+	r.mu.Unlock()
+	rows, err := r.record(kind, params, timer)
+	return kind, rows, err
+}
+
+// record logs one query (or one mail send, kind "mail-send"), fails it as
+// the scenario says, and answers from the scenario's rows.
+func (r *recorder) record(kind string, params []*string, timer bool) ([]any, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.queries = append(r.queries, queryRec{kind, params})
+	r.queries = append(r.queries, queryRec{kind, params, timer})
+	r.nth[kind]++
+	if nth := r.sc.FailNth[kind]; r.nth[kind] <= len(nth) && nth[r.nth[kind]-1] != nil {
+		return nil, errors.New(*nth[r.nth[kind]-1])
+	}
 	if msg := r.sc.Fail[kind]; msg != "" {
-		return kind, nil, errors.New(msg)
+		return nil, errors.New(msg)
 	}
 	raw := r.sc.Rows[kind]
 	if len(raw) == 0 {
-		return kind, nil, nil
+		return nil, nil
 	}
 	v, err := jsutil.Parse(raw)
 	if err != nil {
@@ -312,7 +349,7 @@ func (r *recorder) query(ctx context.Context, sql string, args []any) (string, [
 			rows, _ = rows[n-1].([]any)
 		}
 	}
-	return kind, rows, nil
+	return rows, nil
 }
 
 // assign scans a golden row value into a destination.
@@ -492,17 +529,20 @@ func (r *recorder) CreateProvider(provider, model, apiKey string, conf any) (pro
 		} else {
 			sys.Static, sys.Dynamic = &system.Static, &system.Dynamic
 		}
-		o := jsutil.NewObject()
+		// No options is Node's undefined, which JSON.stringify leaves out.
+		optsText := ""
 		if opts != nil {
+			o := jsutil.NewObject()
 			if opts.Tools != nil {
 				o.Set("tools", opts.Tools)
 			}
 			if opts.Messages != nil {
 				o.Set("messages", opts.Messages)
 			}
+			optsText = jsutil.Marshal(o)
 		}
 		r.mu.Lock()
-		r.calls = append(r.calls, callRec{sys, user, jsutil.Marshal(o)})
+		r.calls = append(r.calls, callRec{sys, user, optsText})
 		n := r.nCalls
 		r.nCalls++
 		onCall := r.onCall
@@ -563,7 +603,7 @@ func resultFrom(t *testing.T, raw json.RawMessage) *providers.Result {
 // newService builds the service over a scenario's stubs.
 func newService(t *testing.T, sc *scenario) (*Service, *recorder) {
 	t.Helper()
-	r := &recorder{t: t, sc: sc, counts: map[string]int{}, clock: sc.Clock}
+	r := &recorder{t: t, sc: sc, counts: map[string]int{}, nth: map[string]int{}, slept: map[context.Context]bool{}, clock: sc.Clock}
 	if r.clock == 0 {
 		r.clock = 1793990000000
 	}
@@ -574,8 +614,11 @@ func newService(t *testing.T, sc *scenario) (*Service, *recorder) {
 	for k, v := range sc.Config {
 		cfg[k] = v
 	}
+	for _, k := range sc.Unset {
+		delete(cfg, k)
+	}
 	s := &Service{
-		DB: fakeDB{r}, Config: cfg, Actors: r, Log: r, Events: r, Providers: r, Notes: r,
+		DB: fakeDB{r}, Config: cfg, Actors: r, Log: r, Events: r, Providers: r, Notes: r, Memory: r, Mail: r,
 		Now: func() time.Time {
 			r.mu.Lock()
 			defer r.mu.Unlock()
@@ -583,6 +626,7 @@ func newService(t *testing.T, sc *scenario) (*Service, *recorder) {
 		},
 		Sleep: func(ctx context.Context, ms float64) error {
 			r.mu.Lock()
+			r.slept[ctx] = true
 			r.timers = append(r.timers, ms)
 			r.mu.Unlock()
 			return nil

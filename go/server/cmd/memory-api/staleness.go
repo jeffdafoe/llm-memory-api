@@ -18,7 +18,6 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mail"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/server"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/staleness"
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
 )
 
 // envFile is where the service's environment lives; the root cron job that
@@ -55,7 +54,9 @@ func stalenessCheck(args []string) int {
 		defer pool.Close()
 		actorCache := actors.NewCache(pool)
 		log := logger.New(pool, actorCache, server.LogDir())
-		mailer := &mail.Service{DB: pool, Actors: actorCache, Log: log, Agents: virtualagent.Seam{}}
+		// The report is mailed from "system", which never triggers a
+		// virtual agent, so mail needs none.
+		mailer := &mail.Service{DB: pool, Actors: actorCache, Log: log}
 		check = staleness.New(
 			func(ctx context.Context) (string, error) {
 				var num string

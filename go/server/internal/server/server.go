@@ -72,6 +72,14 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
 		Enricher: &notes.GatedEnricher{Config: store},
 	}
+	// Mail and the virtual agents call each other: a mail to a virtual
+	// agent triggers its reply, which is sent as mail.
+	mailService := &mail.Service{DB: conn, Actors: actorCache, Log: log}
+	vaService := &virtualagent.Service{
+		DB: conn, Config: store, Actors: actorCache, Log: log, Events: bc, Providers: llm,
+		Notes: notesService, Memory: mem, Mail: mailService,
+	}
+	mailService.Agents = vaService
 	sysHandler := &system.Handler{Log: log}
 	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
@@ -96,7 +104,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Errors:     recorder,
 		Memory:     mem,
 		Notes:      notesService,
-		Mail:       &mail.Service{DB: conn, Actors: actorCache, Log: log, Agents: agents},
+		Mail:       mailService,
 		System:     sysHandler,
 		Chat: &chat.Service{
 			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
@@ -104,10 +112,8 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		},
 		Discussions: &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier},
 		Providers:   llm,
-		Agents: &virtualagent.Service{
-			DB: conn, Config: store, Actors: actorCache, Log: log, Events: bc, Providers: llm, Notes: notesService,
-		},
-		Visibility: &visibility.Visibility{DB: conn, Admin: admin},
+		Agents:      vaService,
+		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
 	}
 }
 

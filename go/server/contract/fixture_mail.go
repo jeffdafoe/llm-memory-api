@@ -11,8 +11,8 @@ import (
 
 // The fixture's virtual agent: created by the admin, with no
 // virtual_agent_access rows, so agent-a and agent-b may not use it and mail
-// to it gets the unanswerable notice back. No case mails a virtual agent the
-// sender may use: Node would call the provider, which Go does not port yet.
+// to it gets the unanswerable notice back. The ones va-user may use are in
+// fixture_va.go.
 const VirtualAgentName = "helper-va"
 
 // Fixed mail ids, so cases can name fixture messages.

@@ -86,6 +86,12 @@ func BackgroundAfter(prev <-chan struct{}, fn func(ctx context.Context)) (starte
 }
 
 func (r *runner) after(prev <-chan struct{}, fn func(ctx context.Context)) bool {
+	return r.start(prev, fn, true)
+}
+
+// start tracks fn and runs it once prev (if any) is closed, on a context
+// bounded by backgroundTimeout when bounded is set.
+func (r *runner) start(prev <-chan struct{}, fn func(ctx context.Context), bounded bool) bool {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -98,11 +104,23 @@ func (r *runner) after(prev <-chan struct{}, fn func(ctx context.Context)) bool 
 		if prev != nil {
 			<-prev
 		}
+		if !bounded {
+			fn(r.ctx)
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.ctx, backgroundTimeout)
 		defer cancel()
 		fn(ctx)
 	}()
 	return true
+}
+
+// BackgroundUnbounded is Background without the time bound, for work that
+// waits on outside calls longer than backgroundTimeout: a virtual agent's
+// reply to mail, with its provider call and retry backoff. Its context ends
+// only when DrainBackground cancels the running jobs.
+func BackgroundUnbounded(fn func(ctx context.Context)) (started bool) {
+	return jobs.start(nil, fn, false)
 }
 
 // DrainBackground stops new background jobs, waits up to timeout for the

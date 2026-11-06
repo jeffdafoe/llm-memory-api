@@ -114,6 +114,9 @@ type Target struct {
 	// log lines. nil refuses those steps.
 	Exec   func(ctx context.Context, sql string) error
 	RunJob func(ctx context.Context, job string) (string, error)
+	// Holds runs a query returning one boolean on the server's database,
+	// for an Until condition; nil when there is no database.
+	Holds func(ctx context.Context, sql string, args ...any) (bool, error)
 }
 
 // Runner runs scenarios against pairs of servers.

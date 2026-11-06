@@ -387,6 +387,13 @@ func (d *ScenarioDB) Fingerprint(ctx context.Context) (string, error) {
 	return strings.Join(out, " "), rows.Err()
 }
 
+// Holds runs a query that returns one boolean.
+func (d *ScenarioDB) Holds(ctx context.Context, sql string, args ...any) (bool, error) {
+	var ok bool
+	err := d.pool.QueryRow(ctx, sql, args...).Scan(&ok)
+	return ok, err
+}
+
 // Busy counts the other client connections to this database that are
 // running a statement (a commit waiting on the disk included) or sit inside
 // a transaction. The pool connects as the superuser, so it sees the state of
