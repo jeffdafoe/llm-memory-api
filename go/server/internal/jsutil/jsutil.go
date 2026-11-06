@@ -472,8 +472,12 @@ func isDecimalLiteral(s string) bool {
 	return i == len(s)
 }
 
-// NumberString is String(x) for a finite number. encoding/json formats
-// float64 values the way ES6 Number.prototype.toString does.
+// NumberString is String(x) for a finite number, formatted as encoding/json
+// formats a float64 (the ES6 Number.prototype.toString rule): fixed notation,
+// exponent notation below 1e-6 and from 1e21, the exponent not padded. The
+// steps are copied from encoding/json's floatEncoder rather than called
+// through json.Marshal, so code scanning does not treat the text as JSON
+// that could hold a quote.
 func NumberString(x float64) string {
 	switch {
 	case math.IsNaN(x):
@@ -486,7 +490,20 @@ func NumberString(x float64) string {
 		// String(-0) is "0"; encoding/json writes "-0".
 		return "0"
 	}
-	b, _ := json.Marshal(x)
+	format := byte('f')
+	abs := math.Abs(x)
+	if abs < 1e-6 || abs >= 1e21 {
+		format = 'e'
+	}
+	b := strconv.AppendFloat(nil, x, format, -1, 64)
+	if format == 'e' {
+		// e-09 becomes e-9.
+		n := len(b)
+		if n >= 4 && b[n-4] == 'e' && b[n-3] == '-' && b[n-2] == '0' {
+			b[n-2] = b[n-1]
+			b = b[:n-1]
+		}
+	}
 	return string(b)
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"reflect"
 	"testing"
 	"time"
@@ -166,6 +167,29 @@ func TestNumberString(t *testing.T) {
 	}
 	if fmt.Sprint(Num(1.5)) != "1.5" {
 		t.Error("Num")
+	}
+}
+
+// NumberString copies encoding/json's float64 formatting; every finite
+// non-zero value must give json.Marshal's bytes.
+func TestNumberStringMatchesEncodingJSON(t *testing.T) {
+	values := []float64{1e-6, math.Nextafter(1e-6, 0), 1e21, math.Nextafter(1e21, 0), 1e-9, 1e-10, 1.5e-300,
+		math.SmallestNonzeroFloat64, math.MaxFloat64, -1e-7, -1e21, 123456789.125, -0.5, 5e-324}
+	rng := rand.New(rand.NewPCG(1, 2))
+	for range 1_000_000 {
+		values = append(values, math.Float64frombits(rng.Uint64()))
+	}
+	for _, x := range values {
+		if math.IsNaN(x) || math.IsInf(x, 0) || x == 0 {
+			continue
+		}
+		want, err := json.Marshal(x)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := NumberString(x); got != string(want) {
+			t.Fatalf("NumberString(%b) = %s, json.Marshal gives %s", math.Float64bits(x), got, want)
+		}
 	}
 }
 

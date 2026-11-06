@@ -20,6 +20,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mail"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mcp"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/oauth"
@@ -58,6 +59,7 @@ type Services struct {
 	Providers   *providers.Providers
 	Agents      *virtualagent.Service
 	Visibility  *visibility.Visibility
+	MCP         *mcp.Server
 }
 
 // NewServices wires the shared services over one database and config store.
@@ -101,6 +103,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	vaService.Chat = chatService
 	discussions := &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier}
 	vaService.Discussions = discussions
+	namespaces := &permissions.Namespaces{DB: conn}
 	s := &Services{
 		DB:       conn,
 		Config:   store,
@@ -117,7 +120,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 			Errorf:   log.Errorf,
 		},
 		MCPAuth:     auth.NewMCPAuth(conn, store, actorCache, keys, bc),
-		Namespaces:  &permissions.Namespaces{DB: conn},
+		Namespaces:  namespaces,
 		Admin:       admin,
 		Errors:      recorder,
 		Memory:      mem,
@@ -129,6 +132,10 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Providers:   llm,
 		Agents:      vaService,
 		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
+		MCP: &mcp.Server{
+			DB: conn, Config: store, Log: log, Events: bc, Namespaces: namespaces,
+			Shares: &permissions.NoteShares{DB: conn}, Notes: notesService, Memory: mem,
+		},
 	}
 	hub.Validate = adminTokenValidator(s.SessionAuth, sessions, log.Errorf)
 	return s
@@ -218,6 +225,10 @@ func Handler(s *Services) http.Handler {
 	// on to the middleware.
 	authMux := (&admin.Verify{Sessions: s.Sessions, Admin: s.Admin, Log: s.Log}).Mux(v1Chain)
 
+	// /mcp: HEAD is protocol discovery with no auth; every other method goes
+	// through the MCP bearer check to the MCP handler.
+	mcpChain := s.MCPAuth.Middleware(s.MCP)
+
 	// Top-level routes outside /v1, with no auth: OAuth (mounted before /mcp
 	// and /v1 in Node) and registration (after them; no path overlaps).
 	top := httpapi.NewRawMux("", http.HandlerFunc(httpapi.NotFound))
@@ -242,6 +253,10 @@ func Handler(s *Services) http.Handler {
 			httpapi.WriteOptions(w, "GET, HEAD")
 		case p == admin.VerifyPath:
 			authMux.ServeHTTP(w, r)
+		case p == "/mcp" && r.Method == http.MethodHead:
+			mcp.ServeHEAD(w)
+		case p == "/mcp":
+			mcpChain.ServeHTTP(w, r)
 		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
 			v1Chain.ServeHTTP(w, r)
 		case top.Handles(p):

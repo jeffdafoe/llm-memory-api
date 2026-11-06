@@ -26,6 +26,8 @@ var panelAgents = []fixtureVirtualAgent{
 
 // discussionSay is vaUser's message to a discussion, sent by the admin on
 // its behalf; the chat send starts the virtual-agent trigger.
+const leaveRaceReason = "the failure post's virtual-agent notification and the leave event are written concurrently; their ids depend on which insert runs first"
+
 func discussionSay(discussionID int, message string) Step {
 	return Step{Method: "POST", Path: chatSendPath, Auth: "admin-web", Header: jsonType,
 		Body: fmt.Sprintf(`{"from_agent":%q,"discussion_id":%d,"message":%q}`, vaUser, discussionID, message)}
@@ -130,6 +132,14 @@ var vaDiscussionCases = []Scenario{
 		// post, the leave and its event, and the agent's error status.
 		Name:    "discussion virtual participant whose provider fails",
 		Replies: []QueuedReply{anthropicError},
-		Steps:   []Step{discussionSay(failingDiscussion, "Good evening."), panelFailed(panelAgents[0].name, failingDiscussion)},
+		// The failure post starts a virtual-agent notification and the leave
+		// starts its event, neither awaited: which text gets the lower id is
+		// a race in both servers. linked_text still checks each delivery.
+		Known: []KnownDifference{
+			{Where: "table chat_message_texts row *.id", Volatile: true, Reason: leaveRaceReason},
+			{Where: "table chat_messages row *.id", Volatile: true, Reason: leaveRaceReason},
+			{Where: "table chat_messages row *.message_text_id", Volatile: true, Reason: leaveRaceReason},
+		},
+		Steps: []Step{discussionSay(failingDiscussion, "Good evening."), panelFailed(panelAgents[0].name, failingDiscussion)},
 	},
 }

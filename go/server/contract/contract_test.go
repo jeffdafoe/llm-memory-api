@@ -197,6 +197,11 @@ func runScenario(t *testing.T, sc Scenario) {
 			Exec:        s.db.Exec,
 			RunJob:      s.jobs.Run,
 			Holds:       s.db.Holds,
+			RunMCPClient: (&MCPClientRunner{
+				Dir:    filepath.Join(harness.repoRoot, "node", "api"),
+				Script: filepath.Join(harness.repoRoot, "go", "server", "contract", "mcpclient", "mcpclient.js"),
+				URL:    s.proc.BaseURL + "/mcp",
+			}).Run,
 		}
 	}
 	r := &Runner{Fake: fake}

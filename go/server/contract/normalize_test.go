@@ -14,6 +14,8 @@ func TestNormalizeTimestamps(t *testing.T) {
 		"2026-11-05T14:22:55":                   "<ts>",
 		"expires 2026-11-05T14:22:55.311Z soon": "expires <ts> soon",
 		"2026-11-05":                            "2026-11-05",
+		"(updated Fri Nov 06 2026 18:21:15 GMT+0000 (Coordinated Universal Time))": "(updated <ts>)",
+		"Wed Jul 01 2026 08:00:00 GMT-0400 (Eastern Daylight Time)":                "<ts>",
 	}
 	for in, want := range cases {
 		if got := n.String(in); got != want {

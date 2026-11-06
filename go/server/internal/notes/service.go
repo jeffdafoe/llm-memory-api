@@ -39,6 +39,26 @@ type Service struct {
 	Enricher Enricher
 }
 
+// DuplicateSlugError is a save's 409 at a slug that already holds a live
+// note. It unwraps to the apierr.Error the routes answer with; the MCP tool
+// rewrites the message from Slug and Namespace, as Node read them off the
+// thrown error.
+type DuplicateSlugError struct {
+	API       *apierr.Error
+	Slug      string
+	Namespace string
+}
+
+func (e *DuplicateSlugError) Error() string { return e.API.Error() }
+
+func (e *DuplicateSlugError) Unwrap() error { return e.API }
+
+// ChangedNote is the row an edit or a move returns.
+type ChangedNote = changedNote
+
+// Note returns the edited row, or nil when the update touched none.
+func (e Edited) Note() *ChangedNote { return e.changedNote }
+
 // Time is a timestamptz in a response, as node-postgres put it in JSON.
 type Time = *string
 
@@ -334,8 +354,12 @@ func (s *Service) Save(ctx context.Context, in SaveInput) (SavedNote, error) {
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				return SavedNote{}, apierr.WithCode(http.StatusConflict, "DUPLICATE_SLUG",
-					`Note already exists at slug "`+slug+`" in namespace "`+in.Namespace+`". Use edit_note to update existing notes, or pass upsert:true to overwrite.`)
+				return SavedNote{}, &DuplicateSlugError{
+					API: apierr.WithCode(http.StatusConflict, "DUPLICATE_SLUG",
+						`Note already exists at slug "`+slug+`" in namespace "`+in.Namespace+`". Use edit_note to update existing notes, or pass upsert:true to overwrite.`),
+					Slug:      slug,
+					Namespace: in.Namespace,
+				}
 			}
 			return SavedNote{}, err
 		}
