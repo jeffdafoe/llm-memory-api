@@ -161,15 +161,16 @@ var adminLogCases = []Scenario{
 	})},
 	{
 		Name: "admin api log",
-		Steps: steps(routeShape(adminAPILog), []Step{
+		// The listing is in request_log id order, and each row is written in
+		// the background, so every request settles before the next.
+		Steps: settleEach(steps(routeShape(adminAPILog), []Step{
 			{Method: "POST", Path: noRoutePath, Auth: "agent-a-session", Header: jsonType, Body: `{}`},
 			{Method: "GET", Path: "/health"},
-			{Settle: true},
 			adminPost(adminAPILog, `{}`),
 			adminPost(adminAPILog, `{"limit":1}`),
 			adminPost(adminAPILog, `{"since_id":1}`),
 			adminPost(adminAPILog, `{"since_id":"x"}`),
-		}),
+		})),
 		Known: []KnownDifference{apiLogDuration(9), apiLogDuration(10), apiLogDuration(11)},
 	},
 	{Name: "admin api log filtered", Steps: []Step{
@@ -181,7 +182,8 @@ var adminLogCases = []Scenario{
 	}},
 	{
 		Name: "admin error log",
-		Steps: steps(routeShape(adminErrorLog), []Step{
+		// error_log rows are written in the background too.
+		Steps: settleEach(steps(routeShape(adminErrorLog), []Step{
 			// A logged 404 (attributed to agent-a) and a logged 400.
 			{Method: "POST", Path: readPath, Auth: "agent-a-session", Header: jsonType, Body: `{"namespace":"agent-a","slug":"no/such"}`},
 			adminPost(adminNotesSave, `{"namespace":"contract-admin","slug":"x","title":"T","content":""}`),
@@ -189,7 +191,7 @@ var adminLogCases = []Scenario{
 			adminPost(adminErrorLog, `{}`),
 			adminPost(adminErrorLog, `{"limit":1}`),
 			adminPost(adminErrorLog, `{"since_id":1}`),
-		}),
+		})),
 		Known: []KnownDifference{{
 			Where:  "step * POST /v1/admin/error-log: body.entries.*.error_detail",
 			Reason: "error_detail is Node's stack trace and Go's %+v of the error (go-server note, Known differences)",
@@ -201,6 +203,15 @@ var adminLogCases = []Scenario{
                SELECT id, 'guide_shown', 'claude-code' FROM actors WHERE name = 'agent-a'`},
 		adminPost(adminFunnel, `{}`),
 	})},
+}
+
+// settleEach puts a settle after every step.
+func settleEach(in []Step) []Step {
+	var out []Step
+	for _, st := range in {
+		out = append(out, st, Step{Settle: true})
+	}
+	return out
 }
 
 func itoa(n int) string {
