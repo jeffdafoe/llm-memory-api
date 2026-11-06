@@ -294,3 +294,55 @@ func TestMaskVolatileLengths(t *testing.T) {
 		t.Error("the input row was changed in place")
 	}
 }
+
+// SQL steps run on each side and are not compared; a job step's log lines
+// are compared as its body, timestamps normalized.
+func TestRunnerSQLAndJobSteps(t *testing.T) {
+	run := func(goLine string) (Outcome, []string, error) {
+		f := NewFakeUpstream()
+		defer f.Close()
+		_, node := newFakeServer(t, f, "node", "")
+		_, goTarget := newFakeServer(t, f, "go", "")
+		var mu sync.Mutex
+		var ran []string
+		for _, tg := range []*Target{node, goTarget} {
+			line := "[cleanup] 2026-11-06T05:00:00.000Z cron-trigger: {\"schedule\":\"0 5 * * *\"}"
+			if tg.Name == "go" && goLine != "" {
+				line = goLine
+			}
+			name := tg.Name
+			tg.Exec = func(_ context.Context, sql string) error {
+				mu.Lock()
+				ran = append(ran, name+" "+sql)
+				mu.Unlock()
+				return nil
+			}
+			tg.RunJob = func(_ context.Context, job string) (string, error) { return line, nil }
+		}
+		r := &Runner{Fake: f, QuietFor: 50 * time.Millisecond, SettleLimit: 5 * time.Second}
+		out, err := r.Run(context.Background(), Scenario{Name: "job", Steps: []Step{{SQL: "SELECT 1"}, {Job: "cleanup"}}}, node, goTarget)
+		return out, ran, err
+	}
+
+	out, ran, err := run("[cleanup] 2026-11-06T05:00:00.123Z cron-trigger: {\"schedule\":\"0 5 * * *\"}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Report.OK() {
+		t.Fatalf("same lines at other times differ:\n%s", out.Report)
+	}
+	if len(ran) != 2 {
+		t.Fatalf("SQL ran %v", ran)
+	}
+	if got := out.Node.Steps[0].Response.Body.Text; got != `[cleanup] <ts> cron-trigger: {"schedule":"0 5 * * *"}` {
+		t.Fatalf("job body %q", got)
+	}
+
+	out, _, err = run("[cleanup] 2026-11-06T05:00:00.000Z cron-trigger: {\"schedule\":\"0 6 * * *\"}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Report.OK() || !strings.Contains(out.Report.String(), "job cleanup") {
+		t.Fatalf("a different log line was not reported:\n%s", out.Report)
+	}
+}

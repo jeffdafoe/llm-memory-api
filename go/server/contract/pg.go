@@ -320,6 +320,13 @@ func (c *Cluster) dropDatabase(ctx context.Context, name string) error {
 	return err
 }
 
+// Exec runs sql on the copy as the superuser. With no arguments pgx sends
+// it as one simple query, so it may hold several statements.
+func (d *ScenarioDB) Exec(ctx context.Context, sql string) error {
+	_, err := d.pool.Exec(ctx, sql)
+	return err
+}
+
 // Drop removes the copy.
 func (d *ScenarioDB) Drop(ctx context.Context) error {
 	d.pool.Close()
