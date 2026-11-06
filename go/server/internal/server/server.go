@@ -73,6 +73,17 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sysHandler := &system.Handler{Log: log}
 	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
+	// Chat and the virtual agents call each other: a chat message to a
+	// virtual agent is answered through HandleDirectChat, which sends its
+	// reply as a chat message.
+	vaService := &virtualagent.Service{
+		DB: conn, Config: store, Actors: actorCache, Log: log, Events: bc, Providers: llm, Notes: notesService,
+	}
+	chatService := &chat.Service{
+		DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: vaService, System: sysHandler,
+		Notifier: &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler},
+	}
+	vaService.Chat = chatService
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -95,14 +106,9 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Notes:      notesService,
 		Mail:       &mail.Service{DB: conn, Actors: actorCache, Log: log, Agents: agents},
 		System:     sysHandler,
-		Chat: &chat.Service{
-			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
-			Notifier: &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler},
-		},
-		Providers: llm,
-		Agents: &virtualagent.Service{
-			DB: conn, Config: store, Actors: actorCache, Log: log, Events: bc, Providers: llm, Notes: notesService,
-		},
+		Chat:       chatService,
+		Providers:  llm,
+		Agents:     vaService,
 		Visibility: &visibility.Visibility{DB: conn, Admin: admin},
 	}
 }

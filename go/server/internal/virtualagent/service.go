@@ -25,6 +25,7 @@ type Config interface {
 // Logger writes activity lines (logger.Logger).
 type Logger interface {
 	Log(subsystem, action string, details logger.Fields)
+	LogError(subsystem, action string, opts logger.ErrorOpts)
 }
 
 // Actors resolves agent names (actors.Cache).
@@ -54,6 +55,8 @@ type Service struct {
 	Events    events.Broadcaster
 	Providers Providers
 	Notes     NoteSaver
+	// Chat sends the replies and notices of direct chat.
+	Chat ChatSender
 
 	// Now is the clock; tests replace it.
 	Now func() time.Time
@@ -66,6 +69,8 @@ type Service struct {
 	overrideMu    sync.Mutex
 	overrideCache map[string]overrideEntry
 	pingOnce      sync.Once
+	sceneCache    sceneCache
+	contextLoader contextLoader
 }
 
 func (s *Service) now() time.Time {

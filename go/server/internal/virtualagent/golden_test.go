@@ -221,6 +221,8 @@ type recorder struct {
 	// inside each provider call.
 	block  map[string]bool
 	onCall func()
+	// logError records LogError (chat_golden_test.go); nil drops it.
+	logError func(subsystem, action string, opts logger.ErrorOpts)
 
 	queries []queryRec
 	logs    []logRec
@@ -245,6 +247,9 @@ var kinds = []struct {
 	{"status", regexp.MustCompile(`UPDATE actors SET status`)},
 	{"dream-mode", regexp.MustCompile(`SELECT agc\.dream_mode`)},
 	{"errored-scan", regexp.MustCompile(`WHERE agc\.virtual = TRUE AND ac\.status`)},
+	// Direct chat (chat_golden_test.go).
+	{"chat-history", regexp.MustCompile(`JOIN actors fa ON fa\.id = cmt\.from_actor_id\s+JOIN actors ta`)},
+	{"chat-ack", regexp.MustCompile(`UPDATE chat_messages SET acked_at = NOW\(\) WHERE id = \$1 AND to_actor_id`)},
 }
 
 // paramText is a Go query argument as the text Postgres receives, to
@@ -350,6 +355,17 @@ func assign(dest, v any) error {
 		*d = b
 	case *[]byte:
 		*d = []byte(jsutil.Marshal(v))
+	case **time.Time:
+		if v == nil {
+			*d = nil
+			return nil
+		}
+		s, _ := v.(string)
+		ts, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			return err
+		}
+		*d = &ts
 	default:
 		return fmt.Errorf("unsupported scan target %T", dest)
 	}
@@ -439,6 +455,12 @@ func (r *recorder) Log(subsystem, action string, details logger.Fields) {
 	r.mu.Unlock()
 }
 
+func (r *recorder) LogError(subsystem, action string, opts logger.ErrorOpts) {
+	if r.logError != nil {
+		r.logError(subsystem, action, opts)
+	}
+}
+
 func (r *recorder) Broadcast(event string, data any) {
 	b, err := jsonutil.Marshal(data)
 	if err != nil {
@@ -494,11 +516,17 @@ func (r *recorder) CreateProvider(provider, model, apiKey string, conf any) (pro
 		}
 		o := jsutil.NewObject()
 		if opts != nil {
+			if opts.Cache != nil {
+				o.Set("cache", opts.Cache)
+			}
 			if opts.Tools != nil {
 				o.Set("tools", opts.Tools)
 			}
 			if opts.Messages != nil {
 				o.Set("messages", opts.Messages)
+			}
+			if opts.TurnContext != nil {
+				o.Set("turnContext", opts.TurnContext)
 			}
 		}
 		r.mu.Lock()
