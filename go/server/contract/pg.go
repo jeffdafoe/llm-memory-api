@@ -36,6 +36,10 @@ var multisetTables = map[string][]string{
 	// saves several (memory-sync), their chunks are inserted in whatever
 	// order the embedding calls return.
 	"memory_chunks": {"id"},
+	// Both servers write the call log fire-and-forget after the model call
+	// (Go on a goroutine), so a job that calls several models in a row
+	// (a dream) inserts them in timing order.
+	"virtual_agent_calls": {"id"},
 }
 
 // tableOrder replaces primary-key order for tables whose key is random
