@@ -3,10 +3,11 @@ package virtualagent
 import (
 	"context"
 	"math"
+	"strconv"
+	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/pgbind"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 )
 
@@ -101,33 +102,68 @@ func orZero(v any) any {
 // bindJS is a JavaScript value as node-postgres bound it (prepareValue):
 // null for null and undefined, a number as its JS text, true / false as
 // text, an array as a Postgres array literal, an object as JSON.stringify.
-// Postgres then reads the text for the column's type, so a value it cannot
-// read is refused with its own message, as for Node.
+// The parameter is text, which Postgres reads for the column's type, so a
+// value it cannot read is refused with its own message, as for Node.
 func bindJS(v any) any {
+	text, ok := prepareValue(v)
+	if !ok {
+		return nil
+	}
+	if _, isNumber := jsutil.AsFloat(v); isNumber {
+		return jsutil.Number(text)
+	}
+	return text
+}
+
+// prepareValue is node-postgres's prepareValue for a jsutil value; ok is
+// false for its null.
+func prepareValue(v any) (string, bool) {
 	switch x := v.(type) {
 	case nil:
-		return nil
+		return "", false
 	case string:
-		return x
+		return x, true
 	case bool:
-		if x {
-			return "true"
-		}
-		return "false"
-	case int:
-		return jsutil.Num(float64(x))
-	case float64:
-		return jsutil.Num(x)
+		return strconv.FormatBool(x), true
 	case []any:
-		return pgbind.Value([]byte(jsutil.Marshal(x)))
+		return arrayString(x), true
+	case *jsutil.Object:
+		return jsutil.Marshal(x), true
 	}
 	if v == jsutil.Undefined {
-		return nil
+		return "", false
 	}
 	if f, ok := jsutil.AsFloat(v); ok {
-		return jsutil.Num(f)
+		return jsutil.NumberString(f), true
 	}
-	return jsutil.Marshal(v)
+	return jsutil.Marshal(v), true
+}
+
+// arrayString is node-postgres's array literal: null and undefined elements
+// are NULL, a nested array nests, anything else is its prepared text in
+// double quotes with backslash and quote escaped.
+func arrayString(a []any) string {
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, item := range a {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		if item == nil || item == jsutil.Undefined {
+			b.WriteString("NULL")
+			continue
+		}
+		if nested, ok := item.([]any); ok {
+			b.WriteString(arrayString(nested))
+			continue
+		}
+		text, _ := prepareValue(item)
+		text = strings.ReplaceAll(text, `\`, "\\\\")
+		text = strings.ReplaceAll(text, `"`, `\"`)
+		b.WriteString(`"` + text + `"`)
+	}
+	b.WriteByte('}')
+	return b.String()
 }
 
 // logJS makes a JavaScript value encodable in a log line, as

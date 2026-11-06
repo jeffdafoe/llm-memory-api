@@ -91,6 +91,27 @@ func BuildProviderConf(a *Agent) (any, error) {
 	return o, nil
 }
 
+// RateLimitedError is Invoke's refusal while the agent is rate-limited; the
+// /agent/tick route answers it with 429.
+type RateLimitedError struct{ Agent string }
+
+func (e *RateLimitedError) Error() string {
+	return "Agent " + e.Agent + " is rate-limited"
+}
+
+// OverCostLimitError is Invoke's refusal when the agent is over its daily or
+// monthly cost limit; the /agent/tick route answers it with 402.
+type OverCostLimitError struct{ Agent, Reason string }
+
+func (e *OverCostLimitError) Error() string {
+	return "Agent " + e.Agent + " over cost limit: " + e.Reason
+}
+
+// bookkeepingTimeout bounds each write after the provider call. They run
+// detached from the caller (Node finished them after a client hung up), so
+// without a bound a stuck database would hold the call forever.
+var bookkeepingTimeout = 30 * time.Second
+
 // InvokeOptions are invokeAgent's options.
 type InvokeOptions struct {
 	// SystemPrompt replaces the agent's startup_instructions when set.
@@ -174,7 +195,7 @@ func (s *Service) Invoke(ctx context.Context, agentName string, opts InvokeOptio
 			return nil, err
 		}
 		if limited {
-			return nil, errors.New("Agent " + agentName + " is rate-limited")
+			return nil, &RateLimitedError{Agent: agentName}
 		}
 	}
 	if !opts.SkipCostLimit {
@@ -183,7 +204,7 @@ func (s *Service) Invoke(ctx context.Context, agentName string, opts InvokeOptio
 			return nil, err
 		}
 		if reason != "" {
-			return nil, errors.New("Agent " + agentName + " over cost limit: " + reason)
+			return nil, &OverCostLimitError{Agent: agentName, Reason: reason}
 		}
 	}
 
@@ -225,8 +246,19 @@ func (s *Service) Invoke(ctx context.Context, agentName string, opts InvokeOptio
 	}
 
 	// The bookkeeping after the call runs whether or not the caller is
-	// still waiting, as Node's did.
-	after := context.WithoutCancel(ctx)
+	// still waiting, as Node's did, each write with its own bound so a
+	// stuck one does not stop the next.
+	detached := context.WithoutCancel(ctx)
+	clearActive := func() {
+		c, cancel := context.WithTimeout(detached, bookkeepingTimeout)
+		defer cancel()
+		s.DB.Exec(c, "UPDATE actors SET active_since = NULL, last_seen = NOW() WHERE id = $1", actor.ID)
+	}
+	record := func(usage providers.Usage, status, message string) (int, error) {
+		c, cancel := context.WithTimeout(detached, bookkeepingTimeout)
+		defer cancel()
+		return s.recordUsage(c, agentName, provider, model, usage, opts.Context, status, message)
+	}
 	start := s.now()
 	var result *providers.Result
 	if opts.Retry {
@@ -236,17 +268,17 @@ func (s *Service) Invoke(ctx context.Context, agentName string, opts InvokeOptio
 	}
 	if err != nil {
 		duration := s.now().Sub(start)
-		usageID, usageErr := s.recordUsage(after, agentName, provider, model, providers.Usage{}, opts.Context, "error", err.Error())
+		usageID, usageErr := record(providers.Usage{}, "error", err.Error())
 		s.goLogCall(CallLog{
 			ActorID: actor.ID, AgentName: agentName, Context: opts.Context,
 			Provider: provider, Model: model,
 			SystemPrompt: &system, UserMessage: opts.UserMessage,
 			Err: err, Duration: duration, UsageID: usageIDOrNil(usageID, usageErr),
 		})
-		s.DB.Exec(after, "UPDATE actors SET active_since = NULL, last_seen = NOW() WHERE id = $1", actor.ID)
+		clearActive()
 		return nil, err
 	}
-	s.DB.Exec(after, "UPDATE actors SET active_since = NULL, last_seen = NOW() WHERE id = $1", actor.ID)
+	clearActive()
 
 	duration := s.now().Sub(start)
 	finish := result.FinishReason
@@ -267,7 +299,7 @@ func (s *Service) Invoke(ctx context.Context, agentName string, opts InvokeOptio
 	if err != nil {
 		return nil, err
 	}
-	usageID, err := s.recordUsage(after, agentName, provider, model, result.Usage, opts.Context, "", "")
+	usageID, err := record(result.Usage, "", "")
 	if err != nil {
 		return nil, err
 	}

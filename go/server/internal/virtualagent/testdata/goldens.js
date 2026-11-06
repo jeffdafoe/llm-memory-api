@@ -241,6 +241,13 @@ async function main() {
         return { value: v, fallback: f, out: c, total1: t.totalDelayMsForCadence(c, 1), total5: t.totalDelayMsForCadence(c, 5) };
     });
 
+    // node-postgres's prepareValue over JSON values (query parameters).
+    out.prepare = [
+        '[1,2]', '[[1,null],["a\\"b\\\\c"]]', '[{"k":[1,"x"]},true,null,"q"]', '[1e400]', '1e400', '{"a":1e400}',
+        '"str"', 'true', 'false', 'null', '[[]]', '[]', '-0', '[-0]', '0.1', '[1.5e-7]', '12345678901234567890',
+        '[["a",["b",null]],[]]', '{"toPostgres":"x"}', '[{"a":"b\\"c"}]', '["\u00e9\ud83d\ude00"]',
+    ].map(j => { const v = prepareValue(JSON.parse(j)); return { in: j, out: v === undefined ? null : v }; });
+
     out.extraction = [['discussion', 'the plan'], ['chat', 'other'], ['mail', ''], ['other', 'x']].map(([type, hint]) => ({ type, hint, out: t.buildExtractionPrompt(type, hint) }));
 
     out.limits = [

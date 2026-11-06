@@ -115,6 +115,10 @@ type goldenFile struct {
 		Total1   float64   `json:"total1"`
 		Total5   float64   `json:"total5"`
 	} `json:"cadence"`
+	Prepare []struct {
+		In  string  `json:"in"`
+		Out *string `json:"out"`
+	} `json:"prepare"`
 	Extraction []struct {
 		Type string `json:"type"`
 		Hint string `json:"hint"`
@@ -213,6 +217,11 @@ type recorder struct {
 	counts map[string]int
 	nCalls int
 
+	// block makes a query kind wait for its context to end; onCall runs
+	// inside each provider call.
+	block  map[string]bool
+	onCall func()
+
 	queries []queryRec
 	logs    []logRec
 	events  []eventRec
@@ -260,7 +269,7 @@ func paramText(t *testing.T, v any) *string {
 	return s(fmt.Sprint(v))
 }
 
-func (r *recorder) query(sql string, args []any) (string, []any, error) {
+func (r *recorder) query(ctx context.Context, sql string, args []any) (string, []any, error) {
 	kind := ""
 	for _, k := range kinds {
 		if k.re.MatchString(sql) {
@@ -270,6 +279,12 @@ func (r *recorder) query(sql string, args []any) (string, []any, error) {
 	}
 	if kind == "" {
 		r.t.Fatalf("unclassified query: %s", sql)
+	}
+	if r.block[kind] {
+		<-ctx.Done()
+	}
+	if err := ctx.Err(); err != nil {
+		return kind, nil, err
 	}
 	params := make([]*string, len(args))
 	for i, a := range args {
@@ -361,7 +376,7 @@ func scanRow(row any, dest []any) error {
 type fakeDB struct{ r *recorder }
 
 func (f fakeDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	_, _, err := f.r.query(sql, args)
+	_, _, err := f.r.query(ctx, sql, args)
 	return pgconn.CommandTag{}, err
 }
 
@@ -381,12 +396,12 @@ func (r fakeRow) Scan(dest ...any) error {
 }
 
 func (f fakeDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
-	_, rows, err := f.r.query(sql, args)
+	_, rows, err := f.r.query(ctx, sql, args)
 	return fakeRow{rows, err}
 }
 
 func (f fakeDB) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-	_, rows, err := f.r.query(sql, args)
+	_, rows, err := f.r.query(ctx, sql, args)
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +505,11 @@ func (r *recorder) CreateProvider(provider, model, apiKey string, conf any) (pro
 		r.calls = append(r.calls, callRec{sys, user, jsutil.Marshal(o)})
 		n := r.nCalls
 		r.nCalls++
+		onCall := r.onCall
 		r.mu.Unlock()
+		if onCall != nil {
+			onCall()
+		}
 		a := r.sc.Answers[min(n, len(r.sc.Answers)-1)]
 		if a.Error != "" {
 			if a.Status != nil {
@@ -1031,5 +1050,117 @@ func TestPingMatchesNode(t *testing.T) {
 			s.pingErroredAgents(context.Background())
 			compare(t, &c, r, outcome{})
 		})
+	}
+}
+
+func TestPrepareValueMatchesNode(t *testing.T) {
+	for _, c := range loadGoldens(t).Prepare {
+		v, err := jsutil.Parse([]byte(c.In))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got *string
+		if text, ok := prepareValue(v); ok {
+			got = &text
+		}
+		if jsonOf(got) != jsonOf(c.Out) {
+			t.Errorf("%s: got %s want %s", c.In, jsonOf(got), jsonOf(c.Out))
+		}
+	}
+}
+
+// bookkeepingScenario is an Invoke whose agent loads and whose limits pass.
+func bookkeepingScenario(answers string) *scenario {
+	sc := &scenario{Rows: map[string]json.RawMessage{
+		"load-agent":   json.RawMessage(`[{"actor_id":7,"agent":"va","virtual":true,"provider":"anthropic","model":"claude-haiku-4-5","api_key":"enc","configuration":"{\"_configVersion\":1}","startup_instructions":"S","personality":null,"expertise":[],"cost_budget_daily":null,"cost_budget_monthly":null,"cache_prompts":false,"learning_enabled":true,"max_tokens":null,"temperature":null}]`),
+		"cost-sums":    json.RawMessage(`[{"cost_today":"0","cost_monthly":"0"}]`),
+		"usage-insert": json.RawMessage(`[{"id":5}]`),
+	}}
+	if err := json.Unmarshal([]byte(answers), &sc.Answers); err != nil {
+		panic(err)
+	}
+	return sc
+}
+
+func (r *recorder) kinds() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, q := range r.queries {
+		out = append(out, q.Kind)
+	}
+	return out
+}
+
+// A caller that hangs up during the provider call does not lose the usage
+// row, the active-state reset or the call log.
+func TestInvokeBookkeepingSurvivesCancel(t *testing.T) {
+	sc := bookkeepingScenario(`[{"result":{"text":"ok","tool_calls":[],"usage":{"input_tokens":1,"output_tokens":1},"finish_reason":"end_turn","truncated":false}}]`)
+	s, r := newService(t, sc)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.onCall = cancel
+	if _, err := s.Invoke(ctx, "va", InvokeOptions{UserMessage: "Hi", Context: "tick"}); err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(strings.Join(r.kinds(), ","), "call-insert") && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	got := strings.Join(r.kinds(), ",")
+	for _, k := range []string{"active-off", "usage-insert", "call-insert"} {
+		if !strings.Contains(got, k) {
+			t.Errorf("%s missing after the caller hung up: %s", k, got)
+		}
+	}
+}
+
+// A stuck usage write gives up after bookkeepingTimeout, and the
+// active-state reset still runs with its own bound.
+func TestInvokeBookkeepingIsBounded(t *testing.T) {
+	old := bookkeepingTimeout
+	bookkeepingTimeout = 50 * time.Millisecond
+	defer func() { bookkeepingTimeout = old }()
+	sc := bookkeepingScenario(`[{"error":"provider down","status":503}]`)
+	s, r := newService(t, sc)
+	r.block = map[string]bool{"usage-insert": true}
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Invoke(context.Background(), "va", InvokeOptions{UserMessage: "Hi"})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "provider down" {
+			t.Fatalf("Invoke error = %v, want the provider's", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Invoke did not return while the usage write was stuck")
+	}
+	got := strings.Join(r.kinds(), ",")
+	if !strings.Contains(got, "active-off") {
+		t.Errorf("active-off missing after a stuck usage write: %s", got)
+	}
+	if strings.Contains(got, "usage-insert") {
+		t.Errorf("the stuck usage write should not have completed: %s", got)
+	}
+}
+
+// The tick route tells the two refusals apart by type.
+func TestInvokeRefusalsAreTyped(t *testing.T) {
+	sc := bookkeepingScenario(`[{"result":{"text":"ok","tool_calls":[],"usage":{"input_tokens":1,"output_tokens":1},"finish_reason":"end_turn","truncated":false}}]`)
+	sc.Config = map[string]string{"virtual_agent_rate_limit": "0"}
+	s, _ := newService(t, sc)
+	_, err := s.Invoke(context.Background(), "va", InvokeOptions{UserMessage: "Hi"})
+	var rl *RateLimitedError
+	if !errors.As(err, &rl) || err.Error() != "Agent va is rate-limited" {
+		t.Errorf("rate limit: got %v", err)
+	}
+	sc = bookkeepingScenario(`[]`)
+	sc.Rows["cost-sums"] = json.RawMessage(`[{"cost_today":"5","cost_monthly":"5"}]`)
+	s, _ = newService(t, sc)
+	_, err = s.Invoke(context.Background(), "va", InvokeOptions{UserMessage: "Hi"})
+	var oc *OverCostLimitError
+	if !errors.As(err, &oc) || err.Error() != "Agent va over cost limit: Daily cost limit exceeded ($5.0000 / $1.00)" {
+		t.Errorf("cost limit: got %v", err)
 	}
 }
