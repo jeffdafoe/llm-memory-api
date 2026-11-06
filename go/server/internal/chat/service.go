@@ -455,9 +455,16 @@ func (s *Service) Send(ctx context.Context, in SendInput) (sent *Sent, pending P
 
 	if in.DiscussionID != 0 && in.FromAgent != "system" && s.Notifier != nil {
 		payload := notifyPayload{Type: "virtual-agent", DiscussionID: in.DiscussionID, TriggerType: "message"}
-		db.Background(func(ctx context.Context) {
-			s.Notifier.NotifySystem(ctx, payload)
-		})
+		// Node did not await notifySystem, but its INSERTs were queued on
+		// the pool before chatSend returned, so they always took their ids
+		// before the caller's next write (a virtual agent's next post). A
+		// goroutine could lose that race under load, so the two rows are
+		// written here; NotifySystem still runs the handler in the
+		// background. A failure is ignored, as Node's .catch did, and a
+		// client hanging up does not stop it.
+		notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postCommitTimeout)
+		s.Notifier.NotifySystem(notifyCtx, payload)
+		cancel()
 	}
 
 	if !in.PersistOnly && in.DiscussionID == 0 && in.FromAgent != "system" {

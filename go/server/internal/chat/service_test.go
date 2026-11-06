@@ -372,7 +372,11 @@ func TestSendDiscussion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testutil.WaitMet(t, mock)
+	// The notification's rows are written before Send returns, so they
+	// take their ids before the caller's next write.
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
 }
 
 // A sender without access to a virtual agent gets the notice back from it,
