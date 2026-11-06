@@ -17,8 +17,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/activity"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apibase"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/cleanup"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/cron"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/server"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/watchdog"
@@ -73,6 +76,14 @@ func run() error {
 	// server.js starts the stale-vote scanner next.
 	services.Discussions.StartStaleVoteScanner(ctx)
 
+	// The Node server failed to start when its cleanup scheduler threw (a
+	// missing config key, a schedule with no time to run); so does this.
+	cleanupTask, err := (&cleanup.Job{DB: pool, Config: store, Log: services.Log}).Start()
+	if err != nil {
+		pool.Close()
+		return fmt.Errorf("cleanup scheduler: %w", err)
+	}
+
 	// Loopback by default: nginx and the salem engine reach the server on
 	// 127.0.0.1. The login rate limits trust the X-Forwarded-For hop nginx
 	// appends, so a request that reached this port directly could forge its
@@ -87,12 +98,24 @@ func run() error {
 
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
+		stopJobs(cleanupTask)
+		pool.Close()
 		return err
 	}
 	// The bound port, not the setting: with PORT=0 the OS picks it, and the
 	// contract harness reads it from this line.
 	fmt.Printf("Memory API listening on %s:%d\n", host, listener.Addr().(*net.TCPAddr).Port)
 	watchdog.Start(services.Log)
+
+	sweeper := &activity.Sweeper{DB: pool, Events: services.Events, Errorf: services.Log.Errorf}
+	// Run drains its own sweeps once ctx ends; sweptClean says whether
+	// they all returned.
+	sweeperDone := make(chan struct{})
+	sweptClean := true
+	go func() {
+		sweptClean = sweeper.Run(ctx, backgroundDrain)
+		close(sweeperDone)
+	}()
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -101,6 +124,7 @@ func run() error {
 
 	select {
 	case err := <-serveErr:
+		stopJobs(cleanupTask)
 		pool.Close()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -109,18 +133,34 @@ func run() error {
 	case <-ctx.Done():
 	}
 
-	// Stop taking requests and let the running ones finish. Past the grace
-	// period the remaining connections are closed, which cancels their
-	// requests' contexts and so their queries. Then the background writes are
-	// drained. pool.Close waits for every borrowed connection, so it gets a
-	// deadline too; past it the process exits anyway, and Postgres drops the
-	// connections when the process is gone. Total time is bounded by
-	// shutdownGrace + 2*backgroundDrain + poolCloseWait.
+	// No new cleanup runs or sweeps from here; the stale-activity sweeper
+	// drains its sweeps in progress on its own (2*backgroundDrain at most,
+	// from now). Stop taking requests
+	// and let the running ones finish. Past the grace period the remaining
+	// connections are closed, which cancels their requests' contexts and so
+	// their queries. Then a running cleanup pass gets backgroundDrain to
+	// finish before its context is cancelled (each decay note and each
+	// retention stage is one transaction, so a cancel rolls back whole
+	// steps), and the background writes are drained. pool.Close waits for
+	// every borrowed connection, so it gets a deadline too; past it the
+	// process exits anyway, and Postgres drops the connections when the
+	// process is gone. Total time is bounded by shutdownGrace +
+	// 4*backgroundDrain + poolCloseWait.
+	if cleanupTask != nil {
+		cleanupTask.Stop()
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 	err = srv.Shutdown(shutdownCtx)
 	if err != nil {
 		srv.Close()
+	}
+	if !stopJobs(cleanupTask) {
+		fmt.Fprintln(os.Stderr, "memory-api: cleanup pass still running at shutdown")
+	}
+	<-sweeperDone
+	if !sweptClean {
+		fmt.Fprintln(os.Stderr, "memory-api: stale-activity sweep still running at shutdown")
 	}
 	if !db.DrainBackground(backgroundDrain) {
 		fmt.Fprintln(os.Stderr, "memory-api: background writes still running at shutdown")
@@ -136,4 +176,13 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "memory-api: database pool did not close in time")
 	}
 	return err
+}
+
+// stopJobs stops the cleanup schedule and drains a pass in progress. It
+// reports whether nothing was left running.
+func stopJobs(task *cron.Task) bool {
+	if task == nil {
+		return true
+	}
+	return task.Drain(backgroundDrain)
 }

@@ -39,9 +39,11 @@ type QueuedReply struct {
 	Reply    Reply
 }
 
-// Step is an HTTP request, or a settle when Settle is true. Path, header
-// values and Body may use {{name}}, which is replaced by a value captured
-// earlier on the same server or by a credential of that server's Target.
+// Step is an HTTP request, a settle when Settle is true, a statement on the
+// server's database when SQL is set, or one pass of a background job when
+// Job is set. Path, header values and Body may use {{name}}, which is
+// replaced by a value captured earlier on the same server or by a credential
+// of that server's Target.
 type Step struct {
 	Label  string // defaults to "METHOD path"
 	Method string
@@ -77,6 +79,15 @@ type Step struct {
 	// Until, on a settle step, waits for an explicit condition (a reply row
 	// written, for example) instead of quiet.
 	Until func(ctx context.Context, t *Target) (bool, error)
+
+	// SQL runs on the server's database copy as the superuser, the same text
+	// on both sides: rows or config a later job step reads. It is not
+	// compared, and a failure is a harness failure.
+	SQL string
+	// Job runs one pass of a background job (Target.RunJob) against the
+	// server's database copy. The job's log lines are compared as the
+	// step's body, and its writes with the tables.
+	Job string
 }
 
 // Target is one server under test.
@@ -99,6 +110,10 @@ type Target struct {
 	// Snapshot reads every compared table after the steps; nil means no
 	// rows are compared.
 	Snapshot func(ctx context.Context) ([]Table, error)
+	// Exec runs an SQL step; RunJob runs a job step and returns the job's
+	// log lines. nil refuses those steps.
+	Exec   func(ctx context.Context, sql string) error
+	RunJob func(ctx context.Context, job string) (string, error)
 }
 
 // Runner runs scenarios against pairs of servers.
@@ -194,6 +209,26 @@ func (r *Runner) runSide(ctx context.Context, sc Scenario, t *Target) (rawSide, 
 			if err := r.settle(ctx, t, st); err != nil {
 				return side, fmt.Errorf("%s: step %d settle: %w", t.Name, i+1, err)
 			}
+			continue
+		}
+		if st.SQL != "" {
+			if t.Exec == nil {
+				return side, fmt.Errorf("%s: step %d: target cannot run SQL", t.Name, i+1)
+			}
+			if err := t.Exec(ctx, st.SQL); err != nil {
+				return side, fmt.Errorf("%s: step %d SQL: %w", t.Name, i+1, err)
+			}
+			continue
+		}
+		if st.Job != "" {
+			if t.RunJob == nil {
+				return side, fmt.Errorf("%s: step %d: target cannot run jobs", t.Name, i+1)
+			}
+			out, err := t.RunJob(ctx, st.Job)
+			if err != nil {
+				return side, fmt.Errorf("%s: step %d job %s: %w", t.Name, i+1, st.Job, err)
+			}
+			side.steps = append(side.steps, rawStep{label: "job " + st.Job, header: http.Header{}, body: []byte(out)})
 			continue
 		}
 		step, err := r.request(ctx, client, t, st, vars)

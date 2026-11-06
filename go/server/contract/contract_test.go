@@ -24,6 +24,7 @@ var harness struct {
 	cluster  *Cluster
 	repoRoot string
 	goBin    string
+	jobBin   string
 }
 
 func TestMain(m *testing.M) {
@@ -63,6 +64,12 @@ func runMain(m *testing.M) int {
 		}
 		harness.goBin = bin
 	}
+	jobBin, err := BuildJobRunner(filepath.Join(root, "go", "server"), tmp)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "contract:", err)
+		return 1
+	}
+	harness.jobBin = jobBin
 
 	cluster, err := NewCluster(pgURL)
 	if err != nil {
@@ -122,6 +129,7 @@ func runScenario(t *testing.T, sc Scenario) {
 		name string
 		db   *ScenarioDB
 		proc *ServerProcess
+		jobs *JobRunner
 		err  error
 	}
 	sides := []*side{{name: "node"}, {name: "go"}}
@@ -147,12 +155,17 @@ func runScenario(t *testing.T, sc Scenario) {
 			DatabaseURL: harness.cluster.URL(s.db.Name, true),
 			LogDir:      filepath.Join(logRoot, s.name),
 		}
+		s.jobs = &JobRunner{Spec: spec, Fake: fake}
 		if s.name == "node" {
 			spec.Command = []string{"node", "src/server.js"}
 			spec.Dir = filepath.Join(harness.repoRoot, "node", "api")
+			s.jobs.Command = []string{"node", filepath.Join(harness.repoRoot, "go", "server", "contract", "runjob", "runjob.js")}
+			s.jobs.Dir = spec.Dir
 		} else {
 			spec.Command = []string{harness.goBin}
 			spec.Dir = logRoot
+			s.jobs.Command = []string{harness.jobBin}
+			s.jobs.Dir = logRoot
 		}
 		wg.Add(1)
 		go func(s *side, spec ServerSpec) {
@@ -181,6 +194,8 @@ func runScenario(t *testing.T, sc Scenario) {
 			Fingerprint: s.db.Fingerprint,
 			Busy:        s.db.Busy,
 			Snapshot:    s.db.Snapshot,
+			Exec:        s.db.Exec,
+			RunJob:      s.jobs.Run,
 		}
 	}
 	r := &Runner{Fake: fake}
