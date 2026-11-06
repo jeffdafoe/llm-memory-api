@@ -194,8 +194,16 @@ pool.init().then(() => config.init()).then(() => {
     const { startWatchdog } = require('./services/watchdog');
     startWatchdog();
 
-    const server = app.listen(port, host, () => {
-        console.log(`Memory API listening on ${host}:${port}`);
+    // Express 5 calls this callback with the error when the bind fails (for
+    // example, the port is taken). Rethrow it so the process exits non-zero;
+    // without this it logged "listening" and then exited 0 with nothing to
+    // run. The logged port is the bound one: with PORT=0 the OS picks it,
+    // and the contract harness reads it from this line.
+    const server = app.listen(port, host, (err) => {
+        if (err) {
+            throw err;
+        }
+        console.log(`Memory API listening on ${host}:${server.address().port}`);
     });
 
     // Clear stale activity spinners — if an agent hasn't made any API request
