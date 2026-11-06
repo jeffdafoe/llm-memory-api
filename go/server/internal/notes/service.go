@@ -441,6 +441,29 @@ type ListedNoteWithDeleted struct {
 // updated_at_exact is the microsecond text memory-sync passes back to a
 // conditional delete.
 func (s *Service) List(ctx context.Context, in ListInput) (any, error) {
+	plain, withDeleted, err := s.list(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	if in.IncludeDeleted {
+		return struct {
+			Notes []ListedNoteWithDeleted `json:"notes"`
+		}{withDeleted}, nil
+	}
+	return struct {
+		Notes []ListedNote `json:"notes"`
+	}{plain}, nil
+}
+
+// ListLive is List without deleted notes, as rows for a caller that uses
+// them itself (memory-sync). IncludeDeleted is ignored.
+func (s *Service) ListLive(ctx context.Context, in ListInput) ([]ListedNote, error) {
+	in.IncludeDeleted = false
+	plain, _, err := s.list(ctx, in)
+	return plain, err
+}
+
+func (s *Service) list(ctx context.Context, in ListInput) ([]ListedNote, []ListedNoteWithDeleted, error) {
 	deletedFilter, deletedCol := " AND d.deleted_at IS NULL", ""
 	if in.IncludeDeleted {
 		deletedFilter, deletedCol = "", ", d.deleted_at"
@@ -471,7 +494,7 @@ func (s *Service) List(ctx context.Context, in ListInput) (any, error) {
 
 	rows, err := s.DB.Query(ctx, sql, params...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
 	plain := []ListedNote{}
@@ -484,7 +507,7 @@ func (s *Service) List(ctx context.Context, in ListInput) (any, error) {
 			dest = append(dest, &deleted)
 		}
 		if err := rows.Scan(dest...); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		n.CreatedAt, n.UpdatedAt, n.LastAccessed = jsTime(created), jsTime(updated), jsTime(accessed)
 		if in.IncludeDeleted {
@@ -494,16 +517,9 @@ func (s *Service) List(ctx context.Context, in ListInput) (any, error) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if in.IncludeDeleted {
-		return struct {
-			Notes []ListedNoteWithDeleted `json:"notes"`
-		}{withDeleted}, nil
-	}
-	return struct {
-		Notes []ListedNote `json:"notes"`
-	}{plain}, nil
+	return plain, withDeleted, nil
 }
 
 // Note is a read response. TotalLines is set for a paginated read.

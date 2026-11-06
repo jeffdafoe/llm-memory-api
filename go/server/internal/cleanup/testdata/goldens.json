@@ -1,0 +1,3726 @@
+{
+ "pass": [
+  {
+   "name": "full pass",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "5",
+    "conversation_retention_days": "30"
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": [
+      [
+       11,
+       "agent-a",
+       "notes/old",
+       "note",
+       null,
+       "2025-01-01T00:00:00.123456Z",
+       "2025-01-02T03:04:05.000Z",
+       null
+      ],
+      [
+       12,
+       "shared",
+       "learnings/x",
+       "learning",
+       " Episodic ",
+       "2024-06-01T10:00:00.000Z",
+       null,
+       "2024-07-01T00:00:00.999999Z"
+      ]
+     ]
+    },
+    {
+     "match": "UPDATE documents SET deleted_at = NOW() WHERE id = $1",
+     "columns": [
+      "content_length"
+     ],
+     "rows": [
+      [
+       120
+      ]
+     ]
+    },
+    {
+     "match": "INSERT INTO namespace_usage",
+     "rowCount": 1
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 2
+    },
+    {
+     "match": "UPDATE documents SET deleted_at = NOW() WHERE id = $1",
+     "columns": [
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 0
+    },
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ]
+     ]
+    },
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": [
+      [
+       "agent-a",
+       "conversations/s1",
+       500
+      ],
+      [
+       "agent-b",
+       "conversations/s2",
+       null
+      ],
+      [
+       "agent-a",
+       "conversations/s3",
+       70
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 1
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 1
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 1
+    },
+    {
+     "match": "INSERT INTO namespace_usage",
+     "rowCount": 1
+    },
+    {
+     "match": "INSERT INTO namespace_usage",
+     "rowCount": 1
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": [
+      [
+       "agent-a",
+       "conversations/old"
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 0
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    },
+    {
+     "sql": "UPDATE documents SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING LENGTH(content) AS content_length",
+     "params": [
+      "11"
+     ]
+    },
+    {
+     "sql": "\n        INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at)\n        VALUES ($1, $2, $3, NOW())\n        ON CONFLICT (namespace) DO UPDATE SET\n            note_count = GREATEST(0, namespace_usage.note_count + $2),\n            total_bytes = GREATEST(0, namespace_usage.total_bytes + $3),\n            updated_at = NOW()\n    ",
+     "params": [
+      "agent-a",
+      "-1",
+      "-120"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "agent-a",
+      "notes/old"
+     ]
+    },
+    {
+     "sql": "UPDATE documents SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING LENGTH(content) AS content_length",
+     "params": [
+      "12"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "shared",
+      "learnings/x"
+     ]
+    },
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "5"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "31"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "agent-a",
+      "conversations/s1"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "agent-b",
+      "conversations/s2"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "agent-a",
+      "conversations/s3"
+     ]
+    },
+    {
+     "sql": "\n        INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at)\n        VALUES ($1, $2, $3, NOW())\n        ON CONFLICT (namespace) DO UPDATE SET\n            note_count = GREATEST(0, namespace_usage.note_count + $2),\n            total_bytes = GREATEST(0, namespace_usage.total_bytes + $3),\n            updated_at = NOW()\n    ",
+     "params": [
+      "agent-a",
+      "-2",
+      "-570"
+     ]
+    },
+    {
+     "sql": "\n        INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at)\n        VALUES ($1, $2, $3, NOW())\n        ON CONFLICT (namespace) DO UPDATE SET\n            note_count = GREATEST(0, namespace_usage.note_count + $2),\n            total_bytes = GREATEST(0, namespace_usage.total_bytes + $3),\n            updated_at = NOW()\n    ",
+     "params": [
+      "agent-b",
+      "-1",
+      "0"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "31"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "agent-a",
+      "conversations/old"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-found",
+     "{\"count\":2,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "decay-deleted",
+     "{\"namespace\":\"agent-a\",\"slug\":\"notes/old\",\"kind\":\"note\",\"cognitiveType\":null,\"created\":\"2025-01-01T00:00:00.123Z\",\"lastAccessed\":null}"
+    ],
+    [
+     "cleanup",
+     "decay-deleted",
+     "{\"namespace\":\"shared\",\"slug\":\"learnings/x\",\"kind\":\"learning\",\"cognitiveType\":\" Episodic \",\"created\":\"2024-06-01T10:00:00.000Z\",\"lastAccessed\":\"2024-07-01T00:00:00.999Z\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":2,\"total\":2,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":2,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "call-logs-purged",
+     "{\"purged\":3,\"retentionDays\":5}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-complete",
+     "{\"result\":{\"purged\":3,\"retentionDays\":5}}"
+    ],
+    [
+     "cleanup",
+     "conversations-retired",
+     "{\"softDeleted\":3,\"purged\":1,\"chunkErrors\":0,\"retentionDays\":30}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":3,\"purged\":1,\"chunkErrors\":0,\"retentionDays\":30}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "everything off",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "cleanup_enabled TRUE is off",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "TRUE",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "nothing decays, garbage retention values",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "0",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "0",
+    "search_decay_halflife_reflective": "0",
+    "va_call_log_retention_days": "abc",
+    "conversation_retention_days": "-1"
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"No decaying note types configured\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"No decaying note types\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "missing half-life key",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-error",
+     "{\"error\":\"Config key \\\"search_decay_halflife_note\\\" not found. Was config.init() called?\"}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-decay-error",
+     "Config key \"search_decay_halflife_note\" not found. Was config.init() called?"
+    ]
+   ]
+  },
+  {
+   "name": "missing purge and retention keys",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180"
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-error",
+     "{\"error\":\"Config key \\\"va_call_log_retention_days\\\" not found. Was config.init() called?\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-error",
+     "{\"error\":\"Config key \\\"conversation_retention_days\\\" not found. Was config.init() called?\"}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-purge-error",
+     "Config key \"va_call_log_retention_days\" not found. Was config.init() called?"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-error",
+     "Config key \"conversation_retention_days\" not found. Was config.init() called?"
+    ]
+   ]
+  },
+  {
+   "name": "missing threshold key",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-error",
+     "{\"error\":\"Config key \\\"cleanup_decay_threshold\\\" not found. Was config.init() called?\"}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-decay-error",
+     "Config key \"cleanup_decay_threshold\" not found. Was config.init() called?"
+    ]
+   ]
+  },
+  {
+   "name": "missing enabled key",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-error",
+     "{\"error\":\"Config key \\\"cleanup_enabled\\\" not found. Was config.init() called?\"}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-decay-error",
+     "Config key \"cleanup_enabled\" not found. Was config.init() called?"
+    ]
+   ]
+  },
+  {
+   "name": "nothing found",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "5",
+    "conversation_retention_days": "30"
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    },
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    },
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "5"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "31"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "31"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":30}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "decay select fails",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "error": "canceling statement due to statement timeout"
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-error",
+     "{\"error\":\"canceling statement due to statement timeout\"}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-decay-error",
+     "canceling statement due to statement timeout"
+    ]
+   ]
+  },
+  {
+   "name": "decay row errors",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": [
+      [
+       21,
+       "agent-a",
+       "notes/a",
+       "note",
+       null,
+       "2025-01-01T00:00:00.000Z",
+       null,
+       null
+      ],
+      [
+       22,
+       "agent-a",
+       "notes/b",
+       "note",
+       null,
+       "2025-01-01T00:00:00.000Z",
+       null,
+       null
+      ],
+      [
+       23,
+       "agent-a",
+       "notes/c",
+       "note",
+       null,
+       "2025-01-01T00:00:00.000Z",
+       null,
+       null
+      ]
+     ]
+    },
+    {
+     "match": "UPDATE documents SET deleted_at = NOW() WHERE id = $1",
+     "error": "deadlock detected"
+    },
+    {
+     "match": "UPDATE documents SET deleted_at = NOW() WHERE id = $1",
+     "columns": [
+      "content_length"
+     ],
+     "rows": [
+      [
+       5
+      ]
+     ]
+    },
+    {
+     "match": "INSERT INTO namespace_usage",
+     "rowCount": 1
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "error": "could not serialize access"
+    },
+    {
+     "match": "UPDATE documents SET deleted_at = NOW() WHERE id = $1",
+     "columns": [
+      "content_length"
+     ],
+     "rows": [
+      [
+       0
+      ]
+     ]
+    },
+    {
+     "match": "INSERT INTO namespace_usage",
+     "rowCount": 1
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 1
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    },
+    {
+     "sql": "UPDATE documents SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING LENGTH(content) AS content_length",
+     "params": [
+      "21"
+     ]
+    },
+    {
+     "sql": "UPDATE documents SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING LENGTH(content) AS content_length",
+     "params": [
+      "22"
+     ]
+    },
+    {
+     "sql": "\n        INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at)\n        VALUES ($1, $2, $3, NOW())\n        ON CONFLICT (namespace) DO UPDATE SET\n            note_count = GREATEST(0, namespace_usage.note_count + $2),\n            total_bytes = GREATEST(0, namespace_usage.total_bytes + $3),\n            updated_at = NOW()\n    ",
+     "params": [
+      "agent-a",
+      "-1",
+      "-5"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "agent-a",
+      "notes/b"
+     ]
+    },
+    {
+     "sql": "UPDATE documents SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING LENGTH(content) AS content_length",
+     "params": [
+      "23"
+     ]
+    },
+    {
+     "sql": "\n        INSERT INTO namespace_usage (namespace, note_count, total_bytes, updated_at)\n        VALUES ($1, $2, $3, NOW())\n        ON CONFLICT (namespace) DO UPDATE SET\n            note_count = GREATEST(0, namespace_usage.note_count + $2),\n            total_bytes = GREATEST(0, namespace_usage.total_bytes + $3),\n            updated_at = NOW()\n    ",
+     "params": [
+      "agent-a",
+      "-1",
+      "0"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "agent-a",
+      "notes/c"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-found",
+     "{\"count\":3,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "decay-delete-error",
+     "{\"namespace\":\"agent-a\",\"slug\":\"notes/a\",\"error\":\"deadlock detected\"}"
+    ],
+    [
+     "cleanup",
+     "decay-delete-error",
+     "{\"namespace\":\"agent-a\",\"slug\":\"notes/b\",\"error\":\"could not serialize access\"}"
+    ],
+    [
+     "cleanup",
+     "decay-deleted",
+     "{\"namespace\":\"agent-a\",\"slug\":\"notes/c\",\"kind\":\"note\",\"cognitiveType\":null,\"created\":\"2025-01-01T00:00:00.000Z\",\"lastAccessed\":null}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":1,\"total\":3,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":1,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "purge fails",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "5",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "error": "interval out of range"
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "5"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-error",
+     "{\"error\":\"interval out of range\"}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-purge-error",
+     "interval out of range"
+    ]
+   ]
+  },
+  {
+   "name": "retention stage 1 fails",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "30"
+   },
+   "script": [
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind",
+     "error": "relation \"documents\" does not exist"
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "31"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-error",
+     "{\"error\":\"relation \\\"documents\\\" does not exist\"}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-conversations-error",
+     "relation \"documents\" does not exist"
+    ]
+   ]
+  },
+  {
+   "name": "retention only tombstones",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "0"
+   },
+   "script": [
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": [
+      [
+       "a",
+       "conversations/x"
+      ],
+      [
+       "b",
+       "conversations/y"
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 1
+    },
+    {
+     "match": "DELETE FROM memory_chunks",
+     "rowCount": 1
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "1"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "1"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "a",
+      "conversations/x"
+     ]
+    },
+    {
+     "sql": "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
+     "params": [
+      "b",
+      "conversations/y"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversations-retired",
+     "{\"softDeleted\":0,\"purged\":2,\"chunkErrors\":0,\"retentionDays\":0}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":2,\"chunkErrors\":0,\"retentionDays\":0}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"abc\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "abc",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"0\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"-0\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "-0",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"-0.5\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "-0.5",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "-0.5",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":-0.5}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":-0.5}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \" 0.1x\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": " 0.1x",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.1",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.1}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.1}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"Infinity\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "Infinity",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "Infinity",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":null}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":null}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"-Infinity\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "-Infinity",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "-Infinity",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":null}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":null}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"1e-3\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "1e-3",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.001",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.001}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.001}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \".5\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": ".5",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.5",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.5}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.5}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"5.\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "5.",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "5",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":5}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":5}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"0x10\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0x10",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "threshold \"\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1) OR (d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $5::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $6::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $7::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $8::numeric) < $1))",
+     "params": [
+      "0.05",
+      "60",
+      "90",
+      "180",
+      "30",
+      "30",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_note\":\"45\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "45",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "0",
+    "search_decay_halflife_reflective": "0",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1))",
+     "params": [
+      "0.05",
+      "45"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_episodic\":\"0\",\"search_decay_halflife_reflective\":\"180\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "0",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "0",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1))",
+     "params": [
+      "0.05",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_episodic\":\"\",\"search_decay_halflife_reflective\":\"   \"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "0",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "",
+    "search_decay_halflife_reflective": "   ",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'reflective' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1))",
+     "params": [
+      "0.05",
+      "90",
+      "180"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_note\":\"-45\",\"search_decay_halflife_reflective\":\"-1\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "-45",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "0",
+    "search_decay_halflife_reflective": "-1",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 1,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"No decaying note types configured\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"No decaying note types\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_note\":\"45\",\"search_decay_halflife_dream\":\"30\",\"search_decay_halflife_episodic\":\"90\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "45",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "0",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'dream' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1))",
+     "params": [
+      "0.05",
+      "45",
+      "30",
+      "90"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_note\":\"\",\"search_decay_halflife_dream\":\"soon\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "soon",
+    "search_decay_halflife_episodic": "0",
+    "search_decay_halflife_reflective": "0",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 1,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"No decaying note types configured\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"No decaying note types\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_task\":\"0x10\",\"search_decay_halflife_learning\":\"1e2\",\"search_decay_halflife_note\":\".5\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0x10",
+    "search_decay_halflife_learning": "1e2",
+    "search_decay_halflife_note": ".5",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "0",
+    "search_decay_halflife_reflective": "0",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'task' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (d.kind = 'learning' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1) OR (d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $4::numeric) < $1))",
+     "params": [
+      "0.05",
+      "16",
+      "100",
+      "0.5"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_conversation\":\" 7 \",\"search_decay_halflife_dream\":\"-0\",\"search_decay_halflife_episodic\":\"Infinity\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "0",
+    "search_decay_halflife_conversation": " 7 ",
+    "search_decay_halflife_dream": "-0",
+    "search_decay_halflife_episodic": "Infinity",
+    "search_decay_halflife_reflective": "0",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'conversation' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1))",
+     "params": [
+      "0.05",
+      "7",
+      "90"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_reflective\":\"-Infinity\",\"search_decay_halflife_note\":\"1e400\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "1e400",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "0",
+    "search_decay_halflife_reflective": "-Infinity",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 1,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"No decaying note types configured\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"No decaying note types\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "half-lives {\"search_decay_halflife_episodic\":\"12345678901234567890\",\"search_decay_halflife_note\":\"0.1\"}",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "true",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "0",
+    "search_decay_halflife_learning": "0",
+    "search_decay_halflife_note": "0.1",
+    "search_decay_halflife_conversation": "0",
+    "search_decay_halflife_dream": "0",
+    "search_decay_halflife_episodic": "12345678901234567890",
+    "search_decay_halflife_reflective": "0",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [
+    {
+     "match": "FROM documents d",
+     "columns": [
+      "id",
+      "namespace",
+      "slug",
+      "kind",
+      "cognitive_type",
+      "created_at",
+      "updated_at",
+      "last_accessed"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id, namespace, slug, kind,\n                d.metadata->>'cognitive_type' AS cognitive_type,\n                d.created_at, d.updated_at, d.last_accessed\n         FROM documents d\n         WHERE d.deleted_at IS NULL AND ((d.kind = 'note' AND (d.metadata->>'cognitive_type' IS NULL OR LOWER(TRIM(d.metadata->>'cognitive_type')) NOT IN ('episodic', 'reflective')) AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $2::numeric) < $1) OR (LOWER(TRIM(d.metadata->>'cognitive_type')) = 'episodic' AND POWER(0.5, EXTRACT(EPOCH FROM (NOW() - GREATEST(d.created_at, COALESCE(d.updated_at, d.created_at), COALESCE(d.last_accessed, d.created_at)))) / 86400.0 / $3::numeric) < $1))",
+     "params": [
+      "0.05",
+      "0.1",
+      "12345678901234567000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-complete",
+     "{\"deleted\":0,\"threshold\":0.05}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"deleted\":0,\"threshold\":0.05}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \"1e3\" retention \"1e21\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "1e3",
+    "conversation_retention_days": "1e21"
+   },
+   "script": [
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "1"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "1e+21"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "1e+21"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "call-logs-purged",
+     "{\"purged\":1,\"retentionDays\":1}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":1}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":1e+21}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \"99999999999999999999999\" retention \"-0\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "99999999999999999999999",
+    "conversation_retention_days": "-0"
+   },
+   "script": [
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "1e+23"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "1"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "1"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "call-logs-purged",
+     "{\"purged\":1,\"retentionDays\":1e+23}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":1e+23}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":0}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \" 7days\" retention \" 7 \"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": " 7days",
+    "conversation_retention_days": " 7 "
+   },
+   "script": [
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "8"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "8"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "call-logs-purged",
+     "{\"purged\":1,\"retentionDays\":7}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":7}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":7}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \"0x1A\" retention \"0x10\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0x1A",
+    "conversation_retention_days": "0x10"
+   },
+   "script": [
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "26"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "17"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "17"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "call-logs-purged",
+     "{\"purged\":1,\"retentionDays\":26}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":26}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":16}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \"-5\" retention \"30.5\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "-5",
+    "conversation_retention_days": "30.5"
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \"  12\" retention \"Infinity\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "  12",
+    "conversation_retention_days": "Infinity"
+   },
+   "script": [
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "12"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "call-logs-purged",
+     "{\"purged\":1,\"retentionDays\":12}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":12}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \"3.9\" retention \"1e2\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "3.9",
+    "conversation_retention_days": "1e2"
+   },
+   "script": [
+    {
+     "match": "DELETE FROM virtual_agent_calls",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "DELETE FROM virtual_agent_calls\n         WHERE created_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING id",
+     "params": [
+      "3"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "101"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "call-logs-purged",
+     "{\"purged\":1,\"retentionDays\":3}"
+    ],
+    [
+     "cleanup",
+     "cron-purge-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":3}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":100}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "numbers purge \"\" retention \"007\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "",
+    "conversation_retention_days": "007"
+   },
+   "script": [
+    {
+     "match": "SET deleted_at = NOW()\n         WHERE kind = 'conversation'",
+     "columns": [
+      "namespace",
+      "slug",
+      "content_length"
+     ],
+     "rows": []
+    },
+    {
+     "match": "SET content = ''",
+     "columns": [
+      "namespace",
+      "slug"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "UPDATE documents\n         SET deleted_at = NOW()\n         WHERE kind = 'conversation' AND deleted_at IS NULL\n           AND COALESCE(\n                   CASE WHEN pg_input_is_valid(metadata->>'session_date', 'date')\n                        THEN (metadata->>'session_date')::date END,\n                   created_at::date\n               ) < (NOW() - INTERVAL '1 day' * $1)::date\n         RETURNING namespace, slug, LENGTH(content) AS content_length",
+     "params": [
+      "8"
+     ]
+    },
+    {
+     "sql": "UPDATE documents\n         SET content = '',\n             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('purged_at', NOW())\n         WHERE kind = 'conversation' AND deleted_at IS NOT NULL\n           AND metadata->>'purged_at' IS NULL\n           AND deleted_at < NOW() - INTERVAL '1 day' * $1\n         RETURNING namespace, slug",
+     "params": [
+      "8"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":7}}"
+    ]
+   ],
+   "errors": []
+  }
+ ],
+ "start": [
+  {
+   "schedule": "0 5 * * *",
+   "started": true,
+   "threw": "",
+   "logs": [
+    [
+     "cleanup",
+     "scheduler",
+     "{\"message\":\"Cleanup scheduler started\",\"schedule\":\"0 5 * * *\"}"
+    ]
+   ]
+  },
+  {
+   "schedule": "",
+   "started": false,
+   "threw": "",
+   "logs": [
+    [
+     "cleanup",
+     "scheduler",
+     "{\"message\":\"No cleanup_cron_schedule configured, scheduler disabled\"}"
+    ]
+   ]
+  },
+  {
+   "schedule": " ",
+   "started": false,
+   "threw": "",
+   "logs": [
+    [
+     "cleanup",
+     "scheduler-error",
+     "{\"message\":\"Invalid cron expression:  \"}"
+    ]
+   ]
+  },
+  {
+   "schedule": "bogus",
+   "started": false,
+   "threw": "",
+   "logs": [
+    [
+     "cleanup",
+     "scheduler-error",
+     "{\"message\":\"Invalid cron expression: bogus\"}"
+    ]
+   ]
+  },
+  {
+   "schedule": "0 0 30W 2 *",
+   "started": false,
+   "threw": "Could not find next matching date within reasonable time range",
+   "logs": []
+  },
+  {
+   "schedule": "@daily",
+   "started": true,
+   "threw": "",
+   "logs": [
+    [
+     "cleanup",
+     "scheduler",
+     "{\"message\":\"Cleanup scheduler started\",\"schedule\":\"@daily\"}"
+    ]
+   ]
+  },
+  {
+   "schedule": "61 * * * *",
+   "started": false,
+   "threw": "",
+   "logs": [
+    [
+     "cleanup",
+     "scheduler-error",
+     "{\"message\":\"Invalid cron expression: 61 * * * *\"}"
+    ]
+   ]
+  },
+  {
+   "schedule": null,
+   "started": false,
+   "threw": "Config key \"cleanup_cron_schedule\" not found. Was config.init() called?",
+   "logs": []
+  }
+ ]
+}

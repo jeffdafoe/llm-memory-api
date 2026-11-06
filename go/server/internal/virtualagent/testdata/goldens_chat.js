@@ -52,7 +52,11 @@ function kindOf(sql) {
 // the scenario says (failNth: the nth call of a kind; null passes), and
 // answers from the scenario's rows.
 function record(kind, params) {
-    rec.queries.push({ kind, params: (params || []).map(p => { const v = prepareValue(p); return v === undefined ? null : v; }) });
+    // timer marks a query made from a setTimeout callback (the activity
+    // spinner's off-switch), as goldens.js does.
+    const q = { kind, params: (params || []).map(p => { const v = prepareValue(p); return v === undefined ? null : v; }) };
+    if (inTimer) q.timer = true;
+    rec.queries.push(q);
     const n = (rec.nth[kind] = (rec.nth[kind] || 0) + 1);
     const nth = (scenario.failNth || {})[kind] || [];
     if (n <= nth.length && nth[n - 1] !== null) throw new Error(nth[n - 1]);
@@ -179,7 +183,15 @@ global.Date = class extends RealDate {
     }
     static now() { return clock; }
 };
-global.setTimeout = (fn, ms) => { rec.timers.push(ms); Promise.resolve().then(fn); return { unref() {} }; };
+let inTimer = false;
+global.setTimeout = (fn, ms) => {
+    rec.timers.push(ms);
+    Promise.resolve().then(() => {
+        inTimer = true;
+        try { fn(); } finally { inTimer = false; }
+    });
+    return { unref() {} };
+};
 
 const file = path.join(api, 'services/virtual-agent.js');
 const src = fs.readFileSync(file, 'utf8') + '\nmodule.exports.__t = { wrapBlock, stabilizeHistoryWindow, pruneSimHistory, paraphraseToolCall, formatGapMarker, buildCurrentTurnContext, buildToolUseMessages, trimHeadToUserMessage, extractCoLocatedNames, rememberSceneCoLocated, recallSceneCoLocated, forgetSceneCoLocated, collectDistinctSpeakers, scanForImpersonation, isStopUnsupportedError, stripSimToolInstructions, formatRelativeTime, buildDirectChatUserMessage, buildDirectChatSystemPrompt, buildSimChatSystemPrompt, buildSimCourtSystemPrompt, buildSimReflectionSystemPrompt, historyCapFor };\n';

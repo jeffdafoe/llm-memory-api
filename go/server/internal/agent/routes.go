@@ -55,6 +55,9 @@ type Routes struct {
 	// Now is the clock for session expiry and the prune cutoff; nil is
 	// time.Now.
 	Now func() time.Time
+	// Location is the zone memory-sync reads a local mtime ("...T10:00"
+	// with no offset) in, as V8 used the process's zone; nil is time.Local.
+	Location *time.Location
 }
 
 // TokenCache is the /v1 auth middleware's token cache (auth.SessionAuth),
@@ -81,6 +84,7 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	route("signup-event", "signup-event", rt.signupEvent)
 	route("instructions/read", "instructions-read", rt.instructionsRead)
 	route("instructions/save", "instructions-save", rt.instructionsSave)
+	route("memory/sync", "memory-sync", rt.memorySync)
 	route("sync-mappings", "sync-mappings", rt.syncMappings)
 	route("config", "agent-config", rt.agentConfig)
 }

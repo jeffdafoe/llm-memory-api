@@ -199,7 +199,7 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 	if err := applyMailFixture(ctx, tx, adminID, agents); err != nil {
 		return err
 	}
-	if err := applyVirtualAgentFixture(ctx, tx, adminID, agents); err != nil {
+	if err := applyVirtualAgentFixture(ctx, tx, adminID); err != nil {
 		return err
 	}
 	if err := applyVAChatFixture(ctx, tx, adminID, agents); err != nil {

@@ -1,0 +1,929 @@
+{
+  "is_safe_filename": [
+    {
+      "in": "\"foo.md\"",
+      "out": true
+    },
+    {
+      "in": "\"foo\"",
+      "out": true
+    },
+    {
+      "in": "\"\"",
+      "out": false
+    },
+    {
+      "in": "\".\"",
+      "out": false
+    },
+    {
+      "in": "\"..\"",
+      "out": false
+    },
+    {
+      "in": "\".hidden\"",
+      "out": false
+    },
+    {
+      "in": "\"a/b\"",
+      "out": false
+    },
+    {
+      "in": "\"a\\\\b\"",
+      "out": false
+    },
+    {
+      "in": "\"..md\"",
+      "out": false
+    },
+    {
+      "in": "\"a..b\"",
+      "out": true
+    },
+    {
+      "in": "\"x.\"",
+      "out": true
+    },
+    {
+      "in": "\" \"",
+      "out": true
+    },
+    {
+      "in": "\"-\"",
+      "out": true
+    },
+    {
+      "in": "\"constructor\"",
+      "out": true
+    },
+    {
+      "in": "\"__proto__\"",
+      "out": true
+    },
+    {
+      "in": "\"日本.md\"",
+      "out": true
+    },
+    {
+      "in": "\"a\\u0000b\"",
+      "out": true
+    },
+    {
+      "in": "null",
+      "out": false
+    },
+    {
+      "in": "1",
+      "out": false
+    },
+    {
+      "in": "true",
+      "out": false
+    },
+    {
+      "in": "[\"a\"]",
+      "out": false
+    },
+    {
+      "in": "{}",
+      "out": false
+    },
+    {
+      "in": "\"/\"",
+      "out": false
+    },
+    {
+      "in": "\"\\\\\"",
+      "out": false
+    }
+  ],
+  "extract_title": [
+    {
+      "content": "---\nname: Some Title\n---\nbody",
+      "filename": "f.md",
+      "out": "Some Title"
+    },
+    {
+      "content": "---\nname:   Padded Title   \n---\n",
+      "filename": "f.md",
+      "out": "Padded Title"
+    },
+    {
+      "content": "---\ntype: x\nname: Second Line\ndescription: y\n---\n",
+      "filename": "f.md",
+      "out": "Second Line"
+    },
+    {
+      "content": "---\nusername: alice\n---\n",
+      "filename": "f.md",
+      "out": "alice"
+    },
+    {
+      "content": "---\nname: No Close\n",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "---\nname: Last line no newline---",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "---   \nname: Spaces after dashes\n---",
+      "filename": "f.md",
+      "out": "Spaces after dashes"
+    },
+    {
+      "content": "---\r\nname: CRLF\r\n---\r\n",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "---\nname: CR in value\r\n---\n",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "---\nname:\n\nAfter Blank\n---\n",
+      "filename": "f.md",
+      "out": "After Blank"
+    },
+    {
+      "content": "---\nname:  nbsp \n---\n",
+      "filename": "f.md",
+      "out": "nbsp"
+    },
+    {
+      "content": "--- name: ls\n---",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "---\nname: a b\n---",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "---\nname: first\nname: second\n---",
+      "filename": "f.md",
+      "out": "first"
+    },
+    {
+      "content": "---\n---\nname: after close\n---",
+      "filename": "f.md",
+      "out": "after close"
+    },
+    {
+      "content": "---\nname: x\n",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "---\nname: x\n--",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": " ---\nname: lead space\n---",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "# Heading One\nbody",
+      "filename": "f.md",
+      "out": "Heading One"
+    },
+    {
+      "content": "intro\n# Later Heading\n",
+      "filename": "f.md",
+      "out": "Later Heading"
+    },
+    {
+      "content": "intro\r# After CR\n",
+      "filename": "f.md",
+      "out": "After CR"
+    },
+    {
+      "content": "intro # After LS\n",
+      "filename": "f.md",
+      "out": "After LS"
+    },
+    {
+      "content": "#NoSpace\n# With Space",
+      "filename": "f.md",
+      "out": "With Space"
+    },
+    {
+      "content": "## Two hashes\n",
+      "filename": "f.md",
+      "out": "f"
+    },
+    {
+      "content": "#\n\nHeading After Blank",
+      "filename": "f.md",
+      "out": "Heading After Blank"
+    },
+    {
+      "content": "#   \n",
+      "filename": "f.md",
+      "out": ""
+    },
+    {
+      "content": "# Trailing spaces   \n",
+      "filename": "f.md",
+      "out": "Trailing spaces"
+    },
+    {
+      "content": "# Title\r\nbody",
+      "filename": "f.md",
+      "out": "Title"
+    },
+    {
+      "content": "# nbsp heading",
+      "filename": "f.md",
+      "out": "nbsp heading"
+    },
+    {
+      "content": "# 日本語 😀",
+      "filename": "f.md",
+      "out": "日本語 😀"
+    },
+    {
+      "content": "---\nname: Frontmatter Wins\n---\n# Heading",
+      "filename": "f.md",
+      "out": "Frontmatter Wins"
+    },
+    {
+      "content": "plain text",
+      "filename": "my_note-name.md",
+      "out": "my note name"
+    },
+    {
+      "content": "",
+      "filename": "my_note-name.md",
+      "out": "my note name"
+    },
+    {
+      "content": "",
+      "filename": "file.md.md",
+      "out": "file.md"
+    },
+    {
+      "content": "",
+      "filename": "file.MD",
+      "out": "file.MD"
+    },
+    {
+      "content": "",
+      "filename": "noext",
+      "out": "noext"
+    },
+    {
+      "content": "",
+      "filename": "a.mdx",
+      "out": "a.mdx"
+    },
+    {
+      "content": "",
+      "filename": "__-__",
+      "out": "     "
+    },
+    {
+      "content": "   ",
+      "filename": "blank_title.md",
+      "out": "blank title"
+    }
+  ],
+  "dates": [
+    {
+      "in": "\"2026-11-06T15:07:00.1234567Z\"",
+      "truthy": true,
+      "ms": 1793977620123
+    },
+    {
+      "in": "\"2026-11-06T15:07:00Z\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.123Z\"",
+      "truthy": true,
+      "ms": 1793977620123
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.1Z\"",
+      "truthy": true,
+      "ms": 1793977620100
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.12Z\"",
+      "truthy": true,
+      "ms": 1793977620120
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.123456789Z\"",
+      "truthy": true,
+      "ms": 1793977620123
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.9999Z\"",
+      "truthy": true,
+      "ms": 1793977620999
+    },
+    {
+      "in": "\"2026-11-06T15:07Z\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-11-06T15:07\"",
+      "truthy": true,
+      "ms": 1793995620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00\"",
+      "truthy": true,
+      "ms": 1793995620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.5\"",
+      "truthy": true,
+      "ms": 1793995620500
+    },
+    {
+      "in": "\"2026-11-06\"",
+      "truthy": true,
+      "ms": 1793923200000
+    },
+    {
+      "in": "\"2026-11\"",
+      "truthy": true,
+      "ms": 1793491200000
+    },
+    {
+      "in": "\"2026\"",
+      "truthy": true,
+      "ms": 1767225600000
+    },
+    {
+      "in": "\"+002026-11-06T00:00:00Z\"",
+      "truthy": true,
+      "ms": 1793923200000
+    },
+    {
+      "in": "\"-000001-01-01T00:00:00Z\"",
+      "truthy": true,
+      "ms": -62198755200000
+    },
+    {
+      "in": "\"-000000-01-01T00:00:00Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"+002026\"",
+      "truthy": true,
+      "ms": 1767225600000
+    },
+    {
+      "in": "\"0000-01-01T00:00:00Z\"",
+      "truthy": true,
+      "ms": -62167219200000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00+01:00\"",
+      "truthy": true,
+      "ms": 1793974020000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00-05:00\"",
+      "truthy": true,
+      "ms": 1793995620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00-0500\"",
+      "truthy": true,
+      "ms": 1793995620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00+01\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.123+01:00\"",
+      "truthy": true,
+      "ms": 1793974020123
+    },
+    {
+      "in": "\"2026-11-06T15:07:00+24:00\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:07:00+23:59\"",
+      "truthy": true,
+      "ms": 1793891280000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00+00:60\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06 15:07:00\"",
+      "truthy": true,
+      "ms": 1793995620000
+    },
+    {
+      "in": "\"2026-11-06 15:07:00Z\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-11-06t15:07:00z\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00z\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-11-06t15:07:00Z\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-02-30\"",
+      "truthy": true,
+      "ms": 1772409600000
+    },
+    {
+      "in": "\"2026-02-29\"",
+      "truthy": true,
+      "ms": 1772323200000
+    },
+    {
+      "in": "\"2024-02-29\"",
+      "truthy": true,
+      "ms": 1709164800000
+    },
+    {
+      "in": "\"2026-04-31\"",
+      "truthy": true,
+      "ms": 1777593600000
+    },
+    {
+      "in": "\"2026-13-01\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-00-01\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-00\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-02-30T00:00:00Z\"",
+      "truthy": true,
+      "ms": 1772409600000
+    },
+    {
+      "in": "\"2026-11-06T24:00:00Z\"",
+      "truthy": true,
+      "ms": 1794009600000
+    },
+    {
+      "in": "\"2026-11-06T24:00:00.000Z\"",
+      "truthy": true,
+      "ms": 1794009600000
+    },
+    {
+      "in": "\"2026-11-06T24:00:01Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T24:00\"",
+      "truthy": true,
+      "ms": 1794027600000
+    },
+    {
+      "in": "\"2026-11-06T23:60:00Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T23:59:60Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T25:00:00Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T24:00:00.5Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T24:00:00.0Z\"",
+      "truthy": true,
+      "ms": 1794009600000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.000+00:00\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00-00:00\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.123456Z\"",
+      "truthy": true,
+      "ms": 1793977620123
+    },
+    {
+      "in": "\"2026-07-01T12:00:00\"",
+      "truthy": true,
+      "ms": 1782921600000
+    },
+    {
+      "in": "\"+012345-07-01T00:00:00\"",
+      "truthy": true,
+      "ms": 327419035200000
+    },
+    {
+      "in": "\"-000001-01-01\"",
+      "truthy": true,
+      "ms": -62198755200000
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.1234567+05:30\"",
+      "truthy": true,
+      "ms": 1793957820123
+    },
+    {
+      "in": "\"2026-11-06T15:07:00Zjunk\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"10/09/2026\"",
+      "truthy": true,
+      "ms": 1791518400000
+    },
+    {
+      "in": "\"Oct 9 2026\"",
+      "truthy": true,
+      "ms": 1791518400000
+    },
+    {
+      "in": "\"Fri, 06 Nov 2026 15:07:00 GMT\"",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "\"2026/11/06\"",
+      "truthy": true,
+      "ms": 1793941200000
+    },
+    {
+      "in": "\"\"",
+      "truthy": false,
+      "ms": null
+    },
+    {
+      "in": "\" \"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"garbage\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"1700000000000\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026x\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:07:00.Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:07:00,123Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-6\"",
+      "truthy": true,
+      "ms": 1793941200000
+    },
+    {
+      "in": "\"026-11-06\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"20261106\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:7\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:07:0\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"+275760-09-13T00:00:00.000Z\"",
+      "truthy": true,
+      "ms": 8640000000000000
+    },
+    {
+      "in": "\"+275760-09-13T00:00:00.001Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"-271821-04-20T00:00:00Z\"",
+      "truthy": true,
+      "ms": -8640000000000000
+    },
+    {
+      "in": "\"-271821-04-19T23:59:59.999Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"+275760-09-13\"",
+      "truthy": true,
+      "ms": 8640000000000000
+    },
+    {
+      "in": "\"+275761-01-01\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"12345-01-01\"",
+      "truthy": true,
+      "ms": 327403400400000
+    },
+    {
+      "in": "\"+12345-01-01\"",
+      "truthy": true,
+      "ms": 327403400400000
+    },
+    {
+      "in": "\" 2026-11-06T15:07:00Z\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:07:00Z \"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-11-06T15:07:00Z\\n\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"2026-03-08T02:30:00\"",
+      "truthy": true,
+      "ms": 1772955000000
+    },
+    {
+      "in": "\"2026-03-08T03:30:00\"",
+      "truthy": true,
+      "ms": 1772955000000
+    },
+    {
+      "in": "\"2026-03-08T01:59:59.999\"",
+      "truthy": true,
+      "ms": 1772953199999
+    },
+    {
+      "in": "\"2026-11-01T01:30:00\"",
+      "truthy": true,
+      "ms": 1793511000000
+    },
+    {
+      "in": "\"2026-11-01T00:59:59\"",
+      "truthy": true,
+      "ms": 1793509199000
+    },
+    {
+      "in": "\"2026-11-01T02:00:00\"",
+      "truthy": true,
+      "ms": 1793516400000
+    },
+    {
+      "in": "\"1970-01-01T00:00:00Z\"",
+      "truthy": true,
+      "ms": 0
+    },
+    {
+      "in": "\"1969-12-31T23:59:59.999Z\"",
+      "truthy": true,
+      "ms": -1
+    },
+    {
+      "in": "\"0001-01-01T00:00:00Z\"",
+      "truthy": true,
+      "ms": -62135596800000
+    },
+    {
+      "in": "\"1800-06-01T12:00:00\"",
+      "truthy": true,
+      "ms": -5351555038000
+    },
+    {
+      "in": "\"\\u0032026-11-06\"",
+      "truthy": true,
+      "ms": 1793923200000
+    },
+    {
+      "in": "\"２026-11-06\"",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "1",
+      "truthy": true,
+      "ms": 1
+    },
+    {
+      "in": "0",
+      "truthy": false,
+      "ms": 0
+    },
+    {
+      "in": "-1",
+      "truthy": true,
+      "ms": -1
+    },
+    {
+      "in": "1.5",
+      "truthy": true,
+      "ms": 1
+    },
+    {
+      "in": "-1.5",
+      "truthy": true,
+      "ms": -1
+    },
+    {
+      "in": "1e20",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "8640000000000000",
+      "truthy": true,
+      "ms": 8640000000000000
+    },
+    {
+      "in": "8640000000000001",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "-8640000000000000",
+      "truthy": true,
+      "ms": -8640000000000000
+    },
+    {
+      "in": "-8640000000000001",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "1700000000000",
+      "truthy": true,
+      "ms": 1700000000000
+    },
+    {
+      "in": "1700000000000.9",
+      "truthy": true,
+      "ms": 1700000000000
+    },
+    {
+      "in": "-0",
+      "truthy": false,
+      "ms": 0
+    },
+    {
+      "in": "1e400",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "true",
+      "truthy": true,
+      "ms": 1
+    },
+    {
+      "in": "false",
+      "truthy": false,
+      "ms": 0
+    },
+    {
+      "in": "null",
+      "truthy": false,
+      "ms": 0
+    },
+    {
+      "in": "[]",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "[1700000000000]",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "[\"2026-11-06T15:07:00Z\"]",
+      "truthy": true,
+      "ms": 1793977620000
+    },
+    {
+      "in": "[[\"2026\"]]",
+      "truthy": true,
+      "ms": 1767225600000
+    },
+    {
+      "in": "[null]",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "[1, 2]",
+      "truthy": true,
+      "ms": 978411600000
+    },
+    {
+      "in": "{}",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "{\"toString\": 1}",
+      "truthy": true,
+      "error": "Cannot convert object to primitive value"
+    },
+    {
+      "in": "[{\"toString\": 1}]",
+      "truthy": true,
+      "error": "Cannot convert object to primitive value"
+    },
+    {
+      "in": "{\"valueOf\": 1}",
+      "truthy": true,
+      "ms": null
+    },
+    {
+      "in": "\"0\"",
+      "truthy": true,
+      "ms": 946702800000
+    }
+  ]
+}

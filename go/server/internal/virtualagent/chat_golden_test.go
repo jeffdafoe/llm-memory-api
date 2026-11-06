@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -465,7 +464,7 @@ func (h *chatHarness) Send(ctx context.Context, in chat.SendInput) (*chat.Sent, 
 		calls = &c
 	}
 	params := []*string{&in.FromAgent, &to, text(in.Message), text(in.SceneID), text(in.SceneStructure), text(in.ConversationID), calls, b(in.IsError), b(in.AckOnInsert)}
-	if _, err := h.r.record("chat-send", params); err != nil {
+	if _, err := h.r.record("chat-send", params, false); err != nil {
 		return nil, nil, err
 	}
 	return &chat.Sent{}, nil, nil
@@ -568,24 +567,27 @@ func compareChat(t *testing.T, want *chatScenario, r *recorder, got []string) {
 		t.Errorf("outcomes:\n got %s\nwant %s", jsonOf(got), jsonOf(wantOutcomes))
 	}
 
-	cutAll := func(n int) int {
-		if want.Unordered {
-			return 0
+	// Rows Go writes in the background float: the call log, the spinner's
+	// off-switch (timer-marked) and the transcript; in an unordered
+	// scenario, everything.
+	queryLane := func(i, cut int, q queryRec) string {
+		if want.Unordered || q.Timer || backgroundQueries[q.Kind] {
+			return floating
 		}
-		return n
+		return ""
 	}
-	gq, gqr := split(r.queries, cutAll(len(r.queries)), func(q queryRec) bool { return backgroundQueries[q.Kind] })
-	wq, wqr := split(want.Queries, cutAll(len(want.Queries)), func(q queryRec) bool { return backgroundQueries[q.Kind] })
-	gl, glr := split(r.logs, cutAll(len(r.logs)), func(l logRec) bool { return backgroundLogs[l.Action] })
-	wl, wlr := split(want.Logs, cutAll(len(want.Logs)), func(l logRec) bool { return backgroundLogs[l.Action] })
+	logLane := func(i, cut int, l logRec) string {
+		if want.Unordered || backgroundLogs[l.Action] {
+			return floating
+		}
+		return ""
+	}
+	compareLanes(t, "queries", r.queries, want.Queries, noTail[queryRec], lane(queryLane))
+	compareLanes(t, "logs", r.logs, want.Logs, noTail[logRec], lane(logLane))
 	for _, c := range []struct {
 		name      string
 		got, want string
 	}{
-		{"queries in order", strings.Join(gq, "\n"), strings.Join(wq, "\n")},
-		{"queries in the background", strings.Join(gqr, "\n"), strings.Join(wqr, "\n")},
-		{"logs in order", strings.Join(gl, "\n"), strings.Join(wl, "\n")},
-		{"logs in the background", strings.Join(glr, "\n"), strings.Join(wlr, "\n")},
 		{"events", sortedJSON(r.events), sortedJSON(want.Events)},
 		{"timers", sortedJSON(r.timers), sortedJSON(want.Timers)},
 		{"notes", sortedJSON(r.notes), sortedJSON(want.Notes)},

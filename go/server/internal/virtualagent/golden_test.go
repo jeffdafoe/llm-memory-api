@@ -40,6 +40,8 @@ type outcome struct {
 type queryRec struct {
 	Kind   string    `json:"kind"`
 	Params []*string `json:"params"`
+	// Timer is the activity spinner's off-switch, made after a timer.
+	Timer bool `json:"timer,omitempty"`
 }
 
 type logRec struct {
@@ -227,6 +229,8 @@ type recorder struct {
 	clock  float64
 	counts map[string]int
 	nth    map[string]int
+	// slept holds the contexts Sleep was called with.
+	slept  map[context.Context]bool
 	nCalls int
 
 	// block makes a query kind wait for its context to end; onCall runs
@@ -310,16 +314,21 @@ func (r *recorder) query(ctx context.Context, sql string, args []any) (string, [
 	for i, a := range args {
 		params[i] = paramText(r.t, a)
 	}
-	rows, err := r.record(kind, params)
+	// The spinner's off-switch runs on the context it slept on; Node's ran
+	// inside its setTimeout callback.
+	r.mu.Lock()
+	timer := kind == "active-off" && r.slept[ctx]
+	r.mu.Unlock()
+	rows, err := r.record(kind, params, timer)
 	return kind, rows, err
 }
 
 // record logs one query (or one mail send, kind "mail-send"), fails it as
 // the scenario says, and answers from the scenario's rows.
-func (r *recorder) record(kind string, params []*string) ([]any, error) {
+func (r *recorder) record(kind string, params []*string, timer bool) ([]any, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.queries = append(r.queries, queryRec{kind, params})
+	r.queries = append(r.queries, queryRec{kind, params, timer})
 	r.nth[kind]++
 	if nth := r.sc.FailNth[kind]; r.nth[kind] <= len(nth) && nth[r.nth[kind]-1] != nil {
 		return nil, errors.New(*nth[r.nth[kind]-1])
@@ -614,7 +623,7 @@ func resultFrom(t *testing.T, raw json.RawMessage) *providers.Result {
 // newService builds the service over a scenario's stubs.
 func newService(t *testing.T, sc *scenario) (*Service, *recorder) {
 	t.Helper()
-	r := &recorder{t: t, sc: sc, counts: map[string]int{}, nth: map[string]int{}, clock: sc.Clock}
+	r := &recorder{t: t, sc: sc, counts: map[string]int{}, nth: map[string]int{}, slept: map[context.Context]bool{}, clock: sc.Clock}
 	if r.clock == 0 {
 		r.clock = 1793990000000
 	}
@@ -637,6 +646,7 @@ func newService(t *testing.T, sc *scenario) (*Service, *recorder) {
 		},
 		Sleep: func(ctx context.Context, ms float64) error {
 			r.mu.Lock()
+			r.slept[ctx] = true
 			r.timers = append(r.timers, ms)
 			r.mu.Unlock()
 			return nil

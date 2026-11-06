@@ -55,7 +55,9 @@ function kindOf(sql) {
 // the scenario's failure for it: fail[kind] for every call, failNth[kind][n]
 // for the nth (null lets that call through).
 function record(kind, params) {
-    rec.queries.push({ kind, params });
+    // timer marks a query made from a setTimeout callback (the activity
+    // spinner's off-switch), so the Go test can tell whose it is.
+    rec.queries.push(inTimer ? { kind, params, timer: true } : { kind, params });
     const n = (rec.nth[kind] = (rec.nth[kind] || 0) + 1);
     const nth = ((scenario.failNth || {})[kind] || [])[n - 1];
     if (nth) throw new Error(nth);
@@ -171,7 +173,15 @@ global.Date = class extends RealDate {
 };
 // setTimeout runs at once and records its delay (the retry sleeps, the
 // activity spinner's off-switch).
-global.setTimeout = (fn, ms) => { rec.timers.push(ms); Promise.resolve().then(fn); return { unref() {} }; };
+let inTimer = false;
+global.setTimeout = (fn, ms) => {
+    rec.timers.push(ms);
+    Promise.resolve().then(() => {
+        inTimer = true;
+        try { fn(); } finally { inTimer = false; }
+    });
+    return { unref() {} };
+};
 
 const file = path.join(api, 'services/virtual-agent.js');
 const src = fs.readFileSync(file, 'utf8') + '\nmodule.exports.__t = { buildMailSystemPrompt, buildMailUserMessage, formatDuration, missingConfigParts, buildProviderConf, parseBackoffCadence, totalDelayMsForCadence, buildExtractionPrompt, isRateLimited, recordCall, rateLimitResumeSeconds, retryWithBackoff, logCall, logTranscript, extractLearnings, withActivityIndicator, pingErroredAgents };\n';
