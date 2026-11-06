@@ -32,6 +32,10 @@ var multisetTables = map[string][]string{
 	// error_detail is the stack trace in Node and Go's %+v of the error:
 	// implementation text, never the same.
 	"error_log": {"id", "error_detail"},
+	// A note save indexes the note in the background; when one request
+	// saves several (memory-sync), their chunks are inserted in whatever
+	// order the embedding calls return.
+	"memory_chunks": {"id"},
 }
 
 // tableOrder replaces primary-key order for tables whose key is random
@@ -317,6 +321,13 @@ func (c *Cluster) dropDatabase(ctx context.Context, name string) error {
 	}
 	defer conn.Close(ctx)
 	_, err = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)")
+	return err
+}
+
+// Exec runs sql on the copy as the superuser. With no arguments pgx sends
+// it as one simple query, so it may hold several statements.
+func (d *ScenarioDB) Exec(ctx context.Context, sql string) error {
+	_, err := d.pool.Exec(ctx, sql)
 	return err
 }
 

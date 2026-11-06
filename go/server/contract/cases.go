@@ -22,7 +22,7 @@ import (
 // /v1/admin/login is not used with POST: Go lets it through auth but has not
 // ported it, so an accepted request there gets Node's login route and Go's
 // 404.
-var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases, memoryCases, notesCases, grepCases, mailCases, vaMailCases, chatCases, agentCases, oauthCases, registrationCases)
+var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases, memoryCases, notesCases, grepCases, mailCases, vaMailCases, chatCases, agentCases, oauthCases, registrationCases, cleanupCases)
 
 const (
 	bodyPath    = "/contract/body"
