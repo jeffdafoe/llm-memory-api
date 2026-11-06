@@ -229,6 +229,9 @@ type recorder struct {
 	clock  float64
 	counts map[string]int
 	nth    map[string]int
+	// sql is the text each query kind was last sent with
+	// (chat_golden_test.go compares the direct-chat kinds with Node's).
+	sql map[string]string
 	// slept holds the contexts Sleep was called with.
 	slept  map[context.Context]bool
 	nCalls int
@@ -266,6 +269,9 @@ var kinds = []struct {
 	{"errored-scan", regexp.MustCompile(`WHERE agc\.virtual = TRUE AND ac\.status`)},
 	{"mail-load", regexp.MustCompile(`JOIN actors fa ON fa\.id = m\.from_actor_id`)},
 	{"mail-ack", regexp.MustCompile(`UPDATE mail SET acked_at = NOW\(\)`)},
+	// Direct chat (chat_golden_test.go).
+	{"chat-history", regexp.MustCompile(`JOIN actors fa ON fa\.id = cmt\.from_actor_id\s+JOIN actors ta`)},
+	{"chat-ack", regexp.MustCompile(`UPDATE chat_messages SET acked_at = NOW\(\) WHERE id = \$1 AND to_actor_id`)},
 }
 
 // paramText is a Go query argument as the text Postgres receives, to
@@ -315,6 +321,10 @@ func (r *recorder) query(ctx context.Context, sql string, args []any) (string, [
 	// inside its setTimeout callback.
 	r.mu.Lock()
 	timer := kind == "active-off" && r.slept[ctx]
+	if r.sql == nil {
+		r.sql = map[string]string{}
+	}
+	r.sql[kind] = sql
 	r.mu.Unlock()
 	rows, err := r.record(kind, params, timer)
 	return kind, rows, err
@@ -387,6 +397,17 @@ func assign(dest, v any) error {
 		*d = b
 	case *[]byte:
 		*d = []byte(jsutil.Marshal(v))
+	case **time.Time:
+		if v == nil {
+			*d = nil
+			return nil
+		}
+		s, _ := v.(string)
+		ts, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			return err
+		}
+		*d = &ts
 	default:
 		return fmt.Errorf("unsupported scan target %T", dest)
 	}
@@ -533,11 +554,17 @@ func (r *recorder) CreateProvider(provider, model, apiKey string, conf any) (pro
 		optsText := ""
 		if opts != nil {
 			o := jsutil.NewObject()
+			if opts.Cache != nil {
+				o.Set("cache", opts.Cache)
+			}
 			if opts.Tools != nil {
 				o.Set("tools", opts.Tools)
 			}
 			if opts.Messages != nil {
 				o.Set("messages", opts.Messages)
+			}
+			if opts.TurnContext != nil {
+				o.Set("turnContext", opts.TurnContext)
 			}
 			optsText = jsutil.Marshal(o)
 		}

@@ -16,6 +16,9 @@ type fixtureVirtualAgent struct {
 	noKey                 bool
 	// dailyBudget nil is the config default.
 	dailyBudget *string
+	// extraConf is more members of the configuration JSON, after
+	// _configVersion.
+	extraConf string
 }
 
 var zeroBudget = "0"
@@ -29,6 +32,10 @@ var fixtureVirtualAgents = []fixtureVirtualAgent{
 	{name: "va-xai", provider: "xai", model: "grok-4.1-fast-reasoning", configVersion: 1},
 	{name: "va-no-key", provider: "anthropic", model: "claude-haiku-4-5", configVersion: 1, noKey: true},
 	{name: "va-no-budget", provider: "anthropic", model: "claude-haiku-4-5", configVersion: 1, dailyBudget: &zeroBudget},
+	// One call per 90 s window; the cooldown is a setting parseInt cannot
+	// read (NaN), which /agent/rate-limit reports as null.
+	{name: "va-paced", provider: "anthropic", model: "claude-haiku-4-5", configVersion: 1,
+		extraConf: `,"rate_limit":1,"rate_window_seconds":"90","cooldown_seconds":"soon"`},
 }
 
 // vaMailed waits until the virtual agent has sent vaUser n mails and its
