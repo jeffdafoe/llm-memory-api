@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -382,24 +383,81 @@ func sendDiscussionPost(ctx context.Context, s *Service) error {
 	return err
 }
 
+// gatedDB holds the notifier's first QueryRow whose SQL contains match
+// until release is closed, and signals started when it gets there. After
+// the release a cancelled context fails the query, as a real database
+// would.
+type gatedDB struct {
+	pgxmock.PgxPoolIface
+	match            string
+	started, release chan struct{}
+	once             sync.Once
+}
+
+func newGatedDB(mock pgxmock.PgxPoolIface, match string) *gatedDB {
+	return &gatedDB{PgxPoolIface: mock, match: match, started: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (g *gatedDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if strings.Contains(sql, g.match) {
+		held := false
+		g.once.Do(func() { held = true })
+		if held {
+			close(g.started)
+			<-g.release
+			if err := ctx.Err(); err != nil {
+				return errRow{err}
+			}
+		}
+	}
+	return g.PgxPoolIface.QueryRow(ctx, sql, args...)
+}
+
+// waitFor fails the test when ch is not closed within two seconds.
+func waitFor(t *testing.T, ch <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for %s", what)
+	}
+}
+
+// sendInBackground runs the post and closes the returned channel when Send
+// returns, with its error in *err.
+func sendInBackground(ctx context.Context, s *Service, err *error) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		*err = sendDiscussionPost(ctx, s)
+		close(done)
+	}()
+	return done
+}
+
 // A discussion post notifies the system with a virtual-agent "message"
-// payload. Send waits for the notification's two rows, so they take their
-// ids before the caller's next write: with the first insert held for
-// 150 ms, Send takes at least that long and both inserts are done when it
-// returns.
+// payload. Send waits for both of the notification's rows, so they take
+// their ids before the caller's next write: with the second insert held,
+// Send has not returned.
 func TestSendDiscussion(t *testing.T) {
 	s, mock, _, _ := newService(t)
+	gate := newGatedDB(mock, "INSERT INTO chat_messages (message_text_id, to_actor_id)")
+	s.Notifier.DB = gate
 	expectDiscussionPost(mock)
-	expectNoticeText(mock).WillDelayFor(150 * time.Millisecond).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(101, sentAt))
+	expectNoticeText(mock).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(101, sentAt))
 	expectNoticeDelivery(mock)
 
-	start := time.Now()
-	if err := sendDiscussionPost(context.Background(), s); err != nil {
-		t.Fatal(err)
+	var err error
+	done := sendInBackground(context.Background(), s, &err)
+	waitFor(t, gate.started, "the notice delivery insert")
+	select {
+	case <-done:
+		t.Fatal("Send returned before the notice delivery was written")
+	case <-time.After(50 * time.Millisecond):
 	}
-	if elapsed := time.Since(start); elapsed < 150*time.Millisecond {
-		t.Errorf("Send returned after %v, before the notification was written", elapsed)
+	close(gate.release)
+	waitFor(t, done, "Send")
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
@@ -421,23 +479,27 @@ func TestSendDiscussionNoticeFails(t *testing.T) {
 	}
 }
 
-// A client that hangs up while the notification is being written does not
-// stop it: the send is committed, as in Node.
+// A client that hangs up while the notification is being written (after
+// the send's commit) does not stop it: the request is cancelled while the
+// notice insert is held, and both notice rows are still written.
 func TestSendDiscussionNoticeSurvivesHangUp(t *testing.T) {
 	s, mock, _, _ := newService(t)
+	gate := newGatedDB(mock, "INSERT INTO chat_message_texts (message, from_actor_id, discussion_id, sent_at)")
+	s.Notifier.DB = gate
 	expectDiscussionPost(mock)
-	expectNoticeText(mock).WillDelayFor(300 * time.Millisecond).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(101, sentAt))
+	expectNoticeText(mock).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(101, sentAt))
 	expectNoticeDelivery(mock)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	time.AfterFunc(100*time.Millisecond, cancel)
-	if err := sendDiscussionPost(ctx, s); err != nil {
+	var err error
+	done := sendInBackground(ctx, s, &err)
+	waitFor(t, gate.started, "the notice text insert")
+	cancel()
+	close(gate.release)
+	waitFor(t, done, "Send")
+	if err != nil {
 		t.Fatal(err)
-	}
-	if ctx.Err() == nil {
-		t.Fatal("the request was not cancelled during the notification")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
