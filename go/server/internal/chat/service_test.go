@@ -351,8 +351,9 @@ func TestSendEveryone(t *testing.T) {
 // A discussion message goes to the joined participants and triggers the
 // discussion's virtual agents through a system-to-system message, written
 // in the background; no direct-chat check runs.
-func TestSendDiscussion(t *testing.T) {
-	s, mock, _, _ := newService(t)
+// expectDiscussionPost expects agent-a's post to discussion 7 (one other
+// participant), up to the commit.
+func expectDiscussionPost(mock pgxmock.PgxPoolIface) {
 	expectActor(mock, "agent-a", 11)
 	mock.ExpectQuery("FROM discussion_participants dp").WithArgs(jsutil.Num(7), "joined", 11).
 		WillReturnRows(pgxmock.NewRows([]string{"agent"}).AddRow("agent-b"))
@@ -362,18 +363,82 @@ func TestSendDiscussion(t *testing.T) {
 	expectDelivery(mock, 100, 12, false, 500)
 	mock.ExpectCommit()
 	expectActor(mock, "system", 1)
-	mock.ExpectQuery("INSERT INTO chat_message_texts \\(message, from_actor_id, discussion_id, sent_at\\)").
-		WithArgs(`{"type":"virtual-agent","discussionId":7,"triggerType":"message"}`, 1, nil).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(101, sentAt))
-	mock.ExpectQuery("INSERT INTO chat_messages \\(message_text_id, to_actor_id\\)").WithArgs(101, 1).
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(501))
+}
 
-	_, _, err := s.Send(context.Background(), SendInput{FromAgent: "agent-a", DiscussionID: 7, Message: str("in the room")})
-	if err != nil {
+const discussionNotice = `{"type":"virtual-agent","discussionId":7,"triggerType":"message"}`
+
+func expectNoticeText(mock pgxmock.PgxPoolIface) *pgxmock.ExpectedQuery {
+	return mock.ExpectQuery(`INSERT INTO chat_message_texts \(message, from_actor_id, discussion_id, sent_at\)`).
+		WithArgs(discussionNotice, 1, nil)
+}
+
+func expectNoticeDelivery(mock pgxmock.PgxPoolIface) {
+	mock.ExpectQuery(`INSERT INTO chat_messages \(message_text_id, to_actor_id\)`).WithArgs(101, 1).
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(501))
+}
+
+func sendDiscussionPost(ctx context.Context, s *Service) error {
+	_, _, err := s.Send(ctx, SendInput{FromAgent: "agent-a", DiscussionID: 7, Message: str("in the room")})
+	return err
+}
+
+// A discussion post notifies the system with a virtual-agent "message"
+// payload. Send waits for the notification's two rows, so they take their
+// ids before the caller's next write: with the first insert held for
+// 150 ms, Send takes at least that long and both inserts are done when it
+// returns.
+func TestSendDiscussion(t *testing.T) {
+	s, mock, _, _ := newService(t)
+	expectDiscussionPost(mock)
+	expectNoticeText(mock).WillDelayFor(150 * time.Millisecond).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(101, sentAt))
+	expectNoticeDelivery(mock)
+
+	start := time.Now()
+	if err := sendDiscussionPost(context.Background(), s); err != nil {
 		t.Fatal(err)
 	}
-	// The notification's rows are written before Send returns, so they
-	// take their ids before the caller's next write.
+	if elapsed := time.Since(start); elapsed < 150*time.Millisecond {
+		t.Errorf("Send returned after %v, before the notification was written", elapsed)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// A failed notification does not fail the committed send, as Node's
+// .catch(() => {}) did.
+func TestSendDiscussionNoticeFails(t *testing.T) {
+	s, mock, _, _ := newService(t)
+	expectDiscussionPost(mock)
+	expectNoticeText(mock).WillReturnError(errors.New("connection reset"))
+
+	if err := sendDiscussionPost(context.Background(), s); err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// A client that hangs up while the notification is being written does not
+// stop it: the send is committed, as in Node.
+func TestSendDiscussionNoticeSurvivesHangUp(t *testing.T) {
+	s, mock, _, _ := newService(t)
+	expectDiscussionPost(mock)
+	expectNoticeText(mock).WillDelayFor(300 * time.Millisecond).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(101, sentAt))
+	expectNoticeDelivery(mock)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(100*time.Millisecond, cancel)
+	if err := sendDiscussionPost(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() == nil {
+		t.Fatal("the request was not cancelled during the notification")
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
 	}
