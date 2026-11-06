@@ -20,6 +20,9 @@ const (
 	AgentAName    = "agent-a"
 	AgentBName    = "agent-b"
 	adminPassword = "contract-admin-password"
+	// LimitedAdminName holds only dashboard:read (fixture_admin.go).
+	LimitedAdminName     = "contract-admin-limited"
+	limitedAdminPassword = "contract-admin-limited-password"
 )
 
 // fixedSecret is a stable 64-hex value per name, used for tokens, keys and
@@ -40,14 +43,17 @@ func fixedSalt(name string) string {
 // body.
 func Credentials() map[string]string {
 	creds := map[string]string{
-		"admin-password":     adminPassword,
-		"admin-web":          fixedSecret("admin web session"),
-		"agent-a-passphrase": fixedSecret("agent-a passphrase"),
-		"agent-a-session":    fixedSecret("agent-a api session"),
-		"agent-a-key":        fixedSecret("agent-a api key"),
-		"agent-b-passphrase": fixedSecret("agent-b passphrase"),
-		"agent-b-session":    fixedSecret("agent-b api session"),
-		"agent-b-key":        fixedSecret("agent-b api key"),
+		"admin-password": adminPassword,
+		"admin-web":      fixedSecret("admin web session"),
+		// The limited admin (fixture_admin.go).
+		"admin-limited-password": limitedAdminPassword,
+		"admin-limited-web":      fixedSecret("limited admin web session"),
+		"agent-a-passphrase":     fixedSecret("agent-a passphrase"),
+		"agent-a-session":        fixedSecret("agent-a api session"),
+		"agent-a-key":            fixedSecret("agent-a api key"),
+		"agent-b-passphrase":     fixedSecret("agent-b passphrase"),
+		"agent-b-session":        fixedSecret("agent-b api session"),
+		"agent-b-key":            fixedSecret("agent-b api key"),
 		// Stored, but refused: the session expired a day before the
 		// template was built, and the key is revoked.
 		"agent-b-expired-session": fixedSecret("agent-b expired session"),
@@ -91,8 +97,8 @@ var fixtureConfig = map[string]string{
 // read and write "agent-a". Then the notes and chunks searches run against
 // (fixture_memory.go), the mail and virtual agent (fixture_mail.go), the
 // discussion and chat messages (fixture_chat.go), the OAuth and
-// registration rows (fixture_oauth.go), and what the /v1/agent routes read
-// (fixture_agent.go).
+// registration rows (fixture_oauth.go), what the /v1/agent routes read
+// (fixture_agent.go), and the limited admin (fixture_admin.go).
 func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 	creds := Credentials()
 	tx, err := conn.Begin(ctx)
@@ -227,6 +233,9 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 		return err
 	}
 	if err := applyAgentFixture(ctx, tx, adminID, agents); err != nil {
+		return err
+	}
+	if err := applyAdminFixture(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
