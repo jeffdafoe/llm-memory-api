@@ -374,7 +374,7 @@ func (d *ScenarioDB) Busy(ctx context.Context) (int, error) {
 	var n int
 	err := d.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
         WHERE datname = current_database() AND pid <> pg_backend_pid()
-          AND backend_type = 'client backend' AND state <> 'idle'`).Scan(&n)
+          AND backend_type = 'client backend' AND state IS DISTINCT FROM 'idle'`).Scan(&n)
 	return n, err
 }
 

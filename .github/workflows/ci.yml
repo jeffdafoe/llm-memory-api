@@ -269,13 +269,23 @@ jobs:
       # DATABASE forces a checkpoint. With fsync on, those checkpoints flood
       # the runner's disk and stall commits and server start-up. This Postgres
       # goes away with the job, so durability buys nothing here.
+      # pg_reload_conf() only signals the reload, so the step waits until a
+      # new connection sees all three settings off.
       - name: Turn off fsync on the test Postgres
-        run: >-
-          docker exec ${{ job.services.postgres.id }} psql -U postgres
-          -c "ALTER SYSTEM SET fsync = off"
-          -c "ALTER SYSTEM SET synchronous_commit = off"
-          -c "ALTER SYSTEM SET full_page_writes = off"
-          -c "SELECT pg_reload_conf()"
+        run: |
+          psql() { docker exec ${{ job.services.postgres.id }} psql -U postgres -v ON_ERROR_STOP=1 -tA "$@"; }
+          psql -c "ALTER SYSTEM SET fsync = off" \
+               -c "ALTER SYSTEM SET synchronous_commit = off" \
+               -c "ALTER SYSTEM SET full_page_writes = off"
+          test "$(psql -c "SELECT pg_reload_conf()")" = t
+          for i in $(seq 1 50); do
+            if [ "$(psql -c "SELECT current_setting('fsync') = 'off' AND current_setting('synchronous_commit') = 'off' AND current_setting('full_page_writes') = 'off'")" = t ]; then
+              exit 0
+            fi
+            sleep 0.2
+          done
+          echo "settings did not change after the reload" >&2
+          exit 1
 
       - name: Contract tests
         working-directory: go/server
