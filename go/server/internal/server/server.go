@@ -13,6 +13,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/discussion"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
@@ -48,6 +49,7 @@ type Services struct {
 	Mail        *mail.Service
 	System      *system.Handler
 	Chat        *chat.Service
+	Discussions *discussion.Service
 	Visibility  *visibility.Visibility
 }
 
@@ -65,6 +67,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sysHandler := &system.Handler{Log: log}
 	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
+	notifier := &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler}
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -92,9 +95,10 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		System: sysHandler,
 		Chat: &chat.Service{
 			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
-			Notifier: &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler},
+			Notifier: notifier,
 		},
-		Visibility: &visibility.Visibility{DB: conn, Admin: admin},
+		Discussions: &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier},
+		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
 	}
 }
 
@@ -126,6 +130,7 @@ func Handler(s *Services) http.Handler {
 	(&notes.Routes{Service: s.Notes, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	(&mail.Routes{Service: s.Mail, Router: s.Router}).Register(v1)
 	(&chat.Routes{Service: s.Chat, Router: s.Router}).Register(v1)
+	(&discussion.Routes{Service: s.Discussions, Router: s.Router}).Register(v1)
 	(&agent.Routes{
 		DB: s.DB, Config: s.Config, Log: s.Log, Router: s.Router, Events: s.Events,
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,

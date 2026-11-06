@@ -66,6 +66,8 @@ func run() error {
 	}
 
 	services := server.NewServices(pool, store, server.LogDir())
+	// server.js starts the stale-vote scanner after the config load.
+	services.Discussions.StartStaleVoteScanner(ctx)
 
 	// Loopback by default: nginx and the salem engine reach the server on
 	// 127.0.0.1. The login rate limits trust the X-Forwarded-For hop nginx
