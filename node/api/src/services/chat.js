@@ -219,6 +219,12 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // across all texts, which would alias N broadcasts onto one id and
     // confuse any admin reader keying by delivery).
     const deliveryIdByTextId = new Map();
+    // Every delivery id per recipient (LLM-948). A toolCallResults send makes
+    // one delivery row per tool result, and the VA must ack all of them —
+    // acking only the last one left the other N-1 rows unacked forever.
+    // Kept apart from `results`, which is returned to the HTTP caller as
+    // to_agents and must keep its shape.
+    const deliveryIdsByRecipient = new Map();
     const results = [];
     const allDeliveryIds = [];
 
@@ -229,18 +235,18 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
         for (const [idx, spec] of rowSpecs.entries()) {
             const textResult = await client.query(
                 `INSERT INTO chat_message_texts
-                    (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error, conversation_id)
+                    (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, scene_id, scene_structure, is_error, conversation_id)
                  VALUES (
-                    $1, $2, $3, NOW(), $4, $5, $6, $7,
-                    COALESCE($8, CASE
-                        WHEN $7::uuid IS NULL THEN NULL
+                    $1, $2, $3, NOW(), $4, $5, $6,
+                    COALESCE($7, CASE
+                        WHEN $6::uuid IS NULL THEN NULL
                         ELSE (
                             SELECT scene_structure FROM chat_message_texts
-                             WHERE scene_id = $7::uuid AND scene_structure IS NOT NULL
+                             WHERE scene_id = $6::uuid AND scene_structure IS NOT NULL
                              ORDER BY id ASC LIMIT 1
                         )
                     END),
-                    $9, $10
+                    $8, $9
                  )
                  RETURNING id, sent_at`,
                 [
@@ -254,10 +260,10 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     // it on follow-up rows.
                     idx === 0 && toolCalls !== null ? JSON.stringify(toolCalls) : null,
                     spec.toolCallId,
-                    // tools_offered likewise belongs to the first row only
-                    // (it's a property of the assistant turn that elicited
-                    // these tool results, not of each result individually).
-                    idx === 0 && toolsOffered !== null ? JSON.stringify(toolsOffered) : null,
+                    // tools_offered is not stored (LLM-948): the full tool
+                    // schemas were most of the table's bytes and nothing read
+                    // them back. The offered tool names are logged on the
+                    // virtual_agent_calls row instead.
                     sceneId,
                     sceneStructure,
                     isError,
@@ -284,6 +290,8 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
         for (const recipient of recipients) {
             const toActor = recipientActors.get(recipient);
             let lastDeliveryId = null;
+            const recipientDeliveryIds = [];
+            deliveryIdsByRecipient.set(recipient, recipientDeliveryIds);
             for (const t of insertedTexts) {
                 const result = await client.query(
                     `INSERT INTO chat_messages (message_text_id, to_actor_id, acked_at)
@@ -293,6 +301,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                 );
                 lastDeliveryId = result.rows[0].id;
                 allDeliveryIds.push(lastDeliveryId);
+                recipientDeliveryIds.push(lastDeliveryId);
                 // Track first-recipient delivery per text for the
                 // broadcast loop (the broadcast event is logically
                 // per-text, with to_agents naming all recipients —
@@ -412,8 +421,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                                 continue;
                             }
                         }
-                        const msgRow = results.find(r => r.agent === row.agent);
-                        dispatches.push({ agent: row.agent, msgId: msgRow ? msgRow.id : null });
+                        dispatches.push({ agent: row.agent, msgIds: deliveryIdsByRecipient.get(row.agent) || [] });
                     }
                     // The discriminator for handleDirectChat's
                     // tool-result-follow-up branch is an explicit
@@ -436,7 +444,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                     // fire-and-forget (and leave wait-mode to reject).
                     if (dispatches.length === 1) {
                         const d = dispatches[0];
-                        pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgId, {
+                        pendingReplyPromise = handleDirectChat(d.agent, fromAgent, message, d.msgIds, {
                             toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, historyScope, ackReplyOnInsert: wait, ephemeralContext, stableContext,
                             notifyUnanswerable,
                         });
@@ -448,7 +456,7 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
                         // route rejects that combination), so ackReplyOnInsert
                         // stays false here.
                         for (const d of dispatches) {
-                            handleDirectChat(d.agent, fromAgent, message, d.msgId, {
+                            handleDirectChat(d.agent, fromAgent, message, d.msgIds, {
                                 toolsOffered, isToolResultCall, sceneId, sceneStructure, conversationId, simActorId, simActorName, historyScope, ephemeralContext, stableContext,
                             }).catch(() => {});
                         }
@@ -469,7 +477,7 @@ async function chatReceive(agent, discussionId, afterId, fromAgent) {
     const actor = await requireByName(agent);
 
     let query = `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
-                        cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
+                        cmt.tool_calls, cmt.tool_call_id
                  FROM chat_messages cm
                  JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
                  JOIN actors fa ON fa.id = cmt.from_actor_id

@@ -12,6 +12,8 @@
 //      retention window later. Lived in scripts/db-cleanup.sh until LLM-642;
 //      it moved here so the quota accounting and the tombstone semantics sit
 //      next to the code that depends on them.
+//   4. Sim chat retention — hard-deletes salem chat older than
+//      sim_chat_retention_days (LLM-948).
 
 const pool = require('../db');
 const config = require('./config');
@@ -212,6 +214,61 @@ async function purgeCallLogs() {
     return { purged, retentionDays };
 }
 
+// The service account all salem traffic flows through: routes/chat.js accepts
+// the sim fields only from it, so every sim chat text was either sent by it or
+// delivered to it.
+const SIM_ENGINE_AGENT = 'salem-engine';
+const SIM_CHAT_PURGE_BATCH = 5000;
+
+// Hard-delete sim chat older than sim_chat_retention_days (LLM-948). Nothing
+// reads these rows past the VA history window (virtual_agent_chat_history_hours)
+// except the admin chat viewer looking back, and without retention the table
+// grew by about 450 MB a month. Discussion chat and agent-to-agent chat are
+// never touched.
+//
+// Batched so the first run (most of the table) is many short statements, not
+// one huge transaction. Each statement deletes a batch of texts and their
+// delivery rows together: the chat_messages foreign key is NO ACTION, which is
+// checked at the end of the statement, after both deletes.
+async function purgeSimChat() {
+    const retentionDays = parseInt(config.get('sim_chat_retention_days')) || 0;
+    if (retentionDays <= 0) {
+        return { purged: 0 };
+    }
+
+    const engine = await pool.query('SELECT id FROM actors WHERE name = $1', [SIM_ENGINE_AGENT]);
+    if (engine.rows.length === 0) {
+        return { purged: 0, retentionDays };
+    }
+    const engineId = engine.rows[0].id;
+
+    let purged = 0;
+    for (;;) {
+        const result = await pool.query(
+            `WITH doomed AS (
+                 SELECT t.id FROM chat_message_texts t
+                 WHERE t.discussion_id IS NULL
+                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1
+                   AND (t.from_actor_id = $2
+                        OR EXISTS (SELECT 1 FROM chat_messages cm
+                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))
+                 LIMIT $3
+             ), deliveries AS (
+                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)
+             )
+             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)`,
+            [retentionDays, engineId, SIM_CHAT_PURGE_BATCH]
+        );
+        purged += result.rowCount;
+        if (result.rowCount < SIM_CHAT_PURGE_BATCH) break;
+    }
+
+    if (purged > 0) {
+        logCleanup('sim-chat-purged', { purged, retentionDays });
+    }
+    return { purged, retentionDays };
+}
+
 // Resolve the two conversation retention windows from the raw
 // conversation_retention_days value. Returns null when retention is off:
 // absent, blank, unparseable, fractional or negative. Same conservative
@@ -383,9 +440,20 @@ function startCleanupScheduler() {
             logCleanup('cron-conversations-error', { error: err.message });
             logError('cleanup', 'cron-conversations-error', { message: err.message, detail: err.stack });
         }
+
+        // Task 4: Sim chat retention (hard-delete)
+        try {
+            const result = await purgeSimChat();
+            if (result.purged > 0) {
+                logCleanup('cron-sim-chat-complete', { result });
+            }
+        } catch (err) {
+            logCleanup('cron-sim-chat-error', { error: err.message });
+            logError('cleanup', 'cron-sim-chat-error', { message: err.message, detail: err.stack });
+        }
     });
 
     logCleanup('scheduler', { message: 'Cleanup scheduler started', schedule });
 }
 
-module.exports = { runDecayCleanup, purgeCallLogs, retireConversations, startCleanupScheduler, buildDecayConditions, conversationRetentionWindows };
+module.exports = { runDecayCleanup, purgeCallLogs, purgeSimChat, retireConversations, startCleanupScheduler, buildDecayConditions, conversationRetentionWindows };

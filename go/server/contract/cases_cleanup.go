@@ -85,4 +85,28 @@ INSERT INTO virtual_agent_calls (actor_id, provider, model, created_at)
     SELECT id, 'anthropic', 'claude-x', NOW() - age
     FROM actors, (VALUES (INTERVAL '10 days'), (INTERVAL '3 days'), (INTERVAL '1 hour')) AS ages(age)
     WHERE name = 'agent-a';
+-- Sim chat for the retention purge (sim_chat_retention_days, 14 in seed.sql):
+-- the two old texts the engine sent or was sent go; the recent one, the old
+-- engine line in a discussion, and old chat between other agents stay.
+WITH t AS (
+    INSERT INTO chat_message_texts (message, from_actor_id, discussion_id, sent_at)
+    SELECT v.message, f.id, v.discussion_id, NOW() - v.age
+    FROM (VALUES
+        ('old engine tick', 'salem-engine', NULL::int, INTERVAL '20 days'),
+        ('old reply to the engine', 'agent-a', NULL::int, INTERVAL '20 days'),
+        ('recent engine tick', 'salem-engine', NULL::int, INTERVAL '2 days'),
+        ('old engine discussion line', 'salem-engine', 101, INTERVAL '20 days'),
+        ('old agent chat', 'agent-a', NULL::int, INTERVAL '20 days')
+    ) AS v(message, sender, discussion_id, age)
+    JOIN actors f ON f.name = v.sender
+    RETURNING id, message
+)
+INSERT INTO chat_messages (message_text_id, to_actor_id)
+SELECT t.id, r.id
+FROM t
+JOIN (VALUES
+    ('old engine tick', 'agent-a'), ('old reply to the engine', 'salem-engine'), ('recent engine tick', 'agent-a'),
+    ('old engine discussion line', 'agent-a'), ('old agent chat', 'agent-b')
+) AS d(message, recipient) ON d.message = t.message
+JOIN actors r ON r.name = d.recipient;
 `

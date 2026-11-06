@@ -55,6 +55,9 @@ type CallLog struct {
 	ConversationID string
 	SimActorID     string
 	SimActorName   string
+	// ToolNames are the names of the tools offered on a tool-use call; nil
+	// is NULL.
+	ToolNames []string
 }
 
 // goLogCall writes the call row in the background; a failure is logged and
@@ -108,14 +111,14 @@ func (s *Service) LogCall(ctx context.Context, c CallLog) {
               response, status, status_code, error_message,
               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
               cost, duration_ms, usage_id, scene_id, conversation_id,
-              sim_actor_id, sim_actor_name, served_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+              sim_actor_id, sim_actor_name, served_by, tool_names)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
 		c.ActorID, nullable(c.Context), nullable(c.ContextID), c.Provider, c.Model, system, nullable(c.UserMessage),
 		response, status, code, errorMessage,
 		bindJS(orZero(usage.InputTokens)), bindJS(orZero(usage.OutputTokens)),
 		bindJS(orZero(usage.CacheReadInputTokens)), bindJS(orZero(usage.CacheCreationInputTokens)),
 		cost, duration, usageID, nullable(c.SceneID), nullable(c.ConversationID),
-		nullable(c.SimActorID), nullable(c.SimActorName), servedBy)
+		nullable(c.SimActorID), nullable(c.SimActorName), servedBy, c.ToolNames)
 	if err != nil {
 		s.logVA("call-log-error", logger.Fields{{Key: "agent", Value: c.AgentName}, {Key: "error", Value: err.Error()}})
 	}

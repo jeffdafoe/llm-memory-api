@@ -766,6 +766,17 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
     await saveNote(agentName, title, content, slug, agentName);
 }
 
+// Names of the tools offered on a tool-use call, for virtual_agent_calls.tool_names
+// (LLM-948). Tools are the engine's neutral { name, description, parameters }
+// shape; an entry without a string name is skipped, the same rule the provider
+// layer applies. Returns null when no tools were offered.
+function offeredToolNames(toolsOffered) {
+    if (!Array.isArray(toolsOffered) || toolsOffered.length === 0) return null;
+    return toolsOffered
+        .filter(t => t && typeof t === 'object' && typeof t.name === 'string')
+        .map(t => t.name);
+}
+
 // Log a virtual agent call to the virtual_agent_calls table.
 // Captures full request/response for diagnostics and fine-tuning.
 // Fire-and-forget — call with .catch() from the handler.
@@ -789,6 +800,10 @@ async function logTranscript(agentName, systemPrompt, userMessage, response, usa
 //   simActorId     — in-world actor id a shared-VA turn is FOR (MEM-139/LLM-236);
 //                    NULL outside sim ticks and for village-level cascades
 //   simActorName   — that actor's display name (<=100 chars)
+//   toolNames      — names of the tools offered on a tool-use call (LLM-948),
+//                    from offeredToolNames(); NULL for plain-text calls. Lets a
+//                    debugger answer "was tool X offered on this turn?" without
+//                    storing the full schemas.
 async function logCall(options) {
     try {
         // Extract the static portion of the system prompt (skip RAG context)
@@ -814,8 +829,8 @@ async function logCall(options) {
               response, status, status_code, error_message,
               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
               cost, duration_ms, usage_id, scene_id, conversation_id,
-              sim_actor_id, sim_actor_name, served_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+              sim_actor_id, sim_actor_name, served_by, tool_names)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
             [
                 options.actorId,
                 options.context || null,
@@ -840,6 +855,7 @@ async function logCall(options) {
                 options.simActorId || null,
                 options.simActorName || null,
                 usage.served_by || null,
+                options.toolNames || null,
             ]
         );
     } catch (err) {
@@ -975,7 +991,7 @@ async function loadChatHistory(discussionId, limit) {
 // Uses a time window from config (virtual_agent_chat_history_hours) with a count cap
 // to keep context relevant without including stale messages from days ago.
 //
-// MEM-119: now also returns tool_calls / tool_call_id / tools_offered so
+// MEM-119: now also returns tool_calls / tool_call_id so
 // the tool-use branch in handleDirectChat can rebuild OpenAI-shape messages[]
 // honoring assistant/tool roles. Plain-text callers ignore them.
 //
@@ -1025,7 +1041,7 @@ async function loadDirectChatHistory(agent1, agent2, sceneId, maxMessages = MAX_
     // assisted on the actor-pair predicate).
     const result = await pool.query(
         `SELECT fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
-                cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
+                cmt.tool_calls, cmt.tool_call_id
          FROM chat_messages cm
          JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
          JOIN actors fa ON fa.id = cmt.from_actor_id
@@ -2659,7 +2675,9 @@ function trimHeadToUserMessage(messages) {
 
 // Handle a direct chat message sent to a virtual agent (no discussion).
 // Called from chatSend when a non-virtual agent messages a virtual one.
-// messageId is the chat_messages.id of the incoming message (for acking after response).
+// messageIds are the chat_messages.id delivery rows of the incoming send, all
+// acked after the response (LLM-948: a tool-results send has one row per
+// result). A single id is also accepted.
 //
 // MEM-119: opts may carry toolsOffered (array of tool defs) and toolCallId
 // (string linking to a prior assistant tool_call). When toolsOffered is set,
@@ -2697,7 +2715,7 @@ function unanswerableNotice(agentName, reason, missing) {
         + `Its owner can add ${missing.length === 1 ? 'it' : 'them'} in the dashboard (Agents → ${agentName}).`;
 }
 
-async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageId, opts) {
+async function handleDirectChat(virtualAgentName, fromAgent, messageText, messageIds, opts) {
     const toolsOffered = opts && opts.toolsOffered ? opts.toolsOffered : null;
     const sceneId = opts && opts.sceneId !== undefined ? opts.sceneId : null;
     // sceneStructure (MEM-130): forwarded from the original /chat/send so
@@ -3127,6 +3145,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             provider: agent.provider, model: agent.model,
             systemPrompt, userMessage: loggedUserMessage, response: loggedResponse, usage, cost: chatCost,
             durationMs: chatDurationMs, usageId: chatUsageId, sceneId, conversationId, simActorId, simActorName,
+            toolNames: offeredToolNames(toolsOffered),
         }).catch(() => {});
 
         // Send response as direct chat back to the sender. Tool-use replies
@@ -3147,11 +3166,18 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
         if (opts && opts.ackReplyOnInsert) replyOpts.ackOnInsert = true;
         await chatSend(agent.agent, [fromAgent], null, response, replyOpts);
 
-        // Ack the incoming message (virtual agent "read" it)
-        if (messageId) {
+        // Ack the incoming message (virtual agent "read" it) — every delivery
+        // row of the send, not just the last.
+        let ackIds = [];
+        if (Array.isArray(messageIds)) {
+            ackIds = messageIds.filter(Boolean);
+        } else if (messageIds) {
+            ackIds = [messageIds];
+        }
+        if (ackIds.length > 0) {
             await pool.query(
-                'UPDATE chat_messages SET acked_at = NOW() WHERE id = $1 AND to_actor_id = $2 AND acked_at IS NULL',
-                [messageId, agent.actor_id]
+                'UPDATE chat_messages SET acked_at = NOW() WHERE id = ANY($1) AND to_actor_id = $2 AND acked_at IS NULL',
+                [ackIds, agent.actor_id]
             );
         }
 
@@ -3194,6 +3220,7 @@ async function handleDirectChat(virtualAgentName, fromAgent, messageText, messag
             systemPrompt: typeof systemPrompt !== 'undefined' ? systemPrompt : null,
             userMessage: typeof loggedUserMessage !== 'undefined' ? loggedUserMessage : messageText,
             error: err, durationMs: chatErrDuration, usageId: chatFailUsageId, sceneId, conversationId, simActorId, simActorName,
+            toolNames: offeredToolNames(toolsOffered),
         }).catch(() => {});
         logError('virtual-agent', 'direct-chat-error', {
             agent: virtualAgentName,

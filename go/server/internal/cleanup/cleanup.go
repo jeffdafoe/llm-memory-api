@@ -9,8 +9,10 @@
 //  3. Conversation retention soft-deletes conversation notes older than
 //     conversation_retention_days, then turns them into tombstones (content
 //     emptied, metadata.purged_at set) a retention window later.
+//  4. Sim chat retention hard-deletes salem chat older than
+//     sim_chat_retention_days.
 //
-// The three run in that order on cleanup_cron_schedule, each on its own, so
+// The four run in that order on cleanup_cron_schedule, each on its own, so
 // one failing does not stop the others.
 package cleanup
 
@@ -318,6 +320,71 @@ func (j *Job) PurgeCallLogs(ctx context.Context) (logger.Fields, int64, error) {
 	return result, purged, nil
 }
 
+// simEngineAgent is the service account all salem traffic flows through: the
+// chat route accepts the sim fields only from it, so every sim chat text was
+// sent by it or delivered to it.
+const simEngineAgent = "salem-engine"
+
+// simChatPurgeBatch is the texts one purge statement deletes.
+const simChatPurgeBatch = 5000
+
+// PurgeSimChat hard-deletes sim chat past sim_chat_retention_days (parseInt,
+// 0 or less is off). Discussion chat and agent-to-agent chat are never
+// touched. It deletes in batches, each one statement that removes a batch of
+// texts and their delivery rows together (the chat_messages foreign key is NO
+// ACTION, checked at the end of the statement). It returns the result object
+// and the number of texts deleted.
+func (j *Job) PurgeSimChat(ctx context.Context) (logger.Fields, int64, error) {
+	raw, err := j.Config.Get("sim_chat_retention_days")
+	if err != nil {
+		return nil, 0, err
+	}
+	days, ok := jsutil.ParseInt(raw)
+	if !ok || days <= 0 {
+		return logger.Fields{{Key: "purged", Value: 0}}, 0, nil
+	}
+	retention := logger.Fields{{Key: "purged", Value: 0}, {Key: "retentionDays", Value: jsNumber(days)}}
+
+	var engineID int64
+	err = j.DB.QueryRow(ctx, `SELECT id FROM actors WHERE name = $1`, simEngineAgent).Scan(&engineID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return retention, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var purged int64
+	for {
+		tag, err := j.DB.Exec(ctx, `WITH doomed AS (
+                 SELECT t.id FROM chat_message_texts t
+                 WHERE t.discussion_id IS NULL
+                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1
+                   AND (t.from_actor_id = $2
+                        OR EXISTS (SELECT 1 FROM chat_messages cm
+                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))
+                 LIMIT $3
+             ), deliveries AS (
+                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)
+             )
+             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)`,
+			jsutil.Num(days), engineID, simChatPurgeBatch)
+		if err != nil {
+			return nil, 0, err
+		}
+		purged += tag.RowsAffected()
+		if tag.RowsAffected() < simChatPurgeBatch {
+			break
+		}
+	}
+
+	result := logger.Fields{{Key: "purged", Value: purged}, {Key: "retentionDays", Value: jsNumber(days)}}
+	if purged > 0 {
+		j.log("sim-chat-purged", result)
+	}
+	return result, purged, nil
+}
+
 // Windows are the two conversation retention windows, in days: from a
 // session's date to its soft delete, and from the soft delete to the
 // tombstone.
@@ -478,7 +545,7 @@ func (j *Job) retireStage(ctx context.Context, sql string, days float64, credit 
 	return len(retired), nil
 }
 
-// Pass is one scheduled run: the three tasks in order, each failure logged
+// Pass is one scheduled run: the four tasks in order, each failure logged
 // (and recorded in error_log) without stopping the others. A task that
 // shutdown cancelled ends the pass; the tasks after it do not start.
 func (j *Job) Pass(ctx context.Context, schedule string) {
@@ -506,6 +573,15 @@ func (j *Job) Pass(ctx context.Context, schedule string) {
 		j.fail("cron-conversations-error", err)
 	} else {
 		j.log("cron-conversations-complete", logger.Fields{{Key: "result", Value: result}})
+	}
+	if ctx.Err() != nil {
+		return
+	}
+
+	if result, purged, err := j.PurgeSimChat(ctx); err != nil {
+		j.fail("cron-sim-chat-error", err)
+	} else if purged > 0 {
+		j.log("cron-sim-chat-complete", logger.Fields{{Key: "result", Value: result}})
 	}
 }
 

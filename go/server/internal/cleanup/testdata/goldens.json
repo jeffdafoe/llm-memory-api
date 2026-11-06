@@ -14,7 +14,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "5",
-    "conversation_retention_days": "30"
+    "conversation_retention_days": "30",
+    "sim_chat_retention_days": "14"
    },
    "script": [
     {
@@ -160,6 +161,21 @@
     {
      "match": "DELETE FROM memory_chunks",
      "rowCount": 0
+    },
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 2
     }
    ],
    "unused": 0,
@@ -272,6 +288,20 @@
       "agent-a",
       "conversations/old"
      ]
+    },
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
     }
    ],
    "logs": [
@@ -324,6 +354,16 @@
      "cleanup",
      "cron-conversations-complete",
      "{\"result\":{\"softDeleted\":3,\"purged\":1,\"chunkErrors\":0,\"retentionDays\":30}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":2,\"retentionDays\":14}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":2,\"retentionDays\":14}}"
     ]
    ],
    "errors": []
@@ -342,7 +382,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -390,7 +431,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -438,7 +480,8 @@
     "search_decay_halflife_episodic": "0",
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "abc",
-    "conversation_retention_days": "-1"
+    "conversation_retention_days": "-1",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -485,7 +528,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -532,7 +576,8 @@
     "search_decay_halflife_conversation": "30",
     "search_decay_halflife_dream": "30",
     "search_decay_halflife_episodic": "90",
-    "search_decay_halflife_reflective": "180"
+    "search_decay_halflife_reflective": "180",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -590,7 +635,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -638,7 +684,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -687,7 +734,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "5",
-    "conversation_retention_days": "30"
+    "conversation_retention_days": "30",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -801,7 +849,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -869,7 +918,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1087,7 +1137,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "5",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1158,7 +1209,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": "30"
+    "conversation_retention_days": "30",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1206,6 +1258,588 @@
    ]
   },
   {
+   "name": "sim chat one batch",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "14"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 7
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":7,\"retentionDays\":14}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":7,\"retentionDays\":14}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat several batches",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "14"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 5000
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 5000
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 0
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":10000,\"retentionDays\":14}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":10000,\"retentionDays\":14}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat nothing old",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "14"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 0
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat no engine actor",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "14"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": []
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat engine lookup fails",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "14"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "error": "connection terminated"
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-error",
+     "{\"error\":\"connection terminated\"}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-sim-chat-error",
+     "connection terminated"
+    ]
+   ]
+  },
+  {
+   "name": "sim chat purge fails",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "14"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 5000
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "error": "interval out of range"
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "14",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-error",
+     "{\"error\":\"interval out of range\"}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-sim-chat-error",
+     "interval out of range"
+    ]
+   ]
+  },
+  {
+   "name": "sim chat missing key",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": ""
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-error",
+     "{\"error\":\"Config key \\\"sim_chat_retention_days\\\" not found. Was config.init() called?\"}"
+    ]
+   ],
+   "errors": [
+    [
+     "cleanup",
+     "cron-sim-chat-error",
+     "Config key \"sim_chat_retention_days\" not found. Was config.init() called?"
+    ]
+   ]
+  },
+  {
    "name": "retention only tombstones",
    "config": {
     "cleanup_cron_schedule": "0 5 * * *",
@@ -1219,7 +1853,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": "0"
+    "conversation_retention_days": "0",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1329,7 +1964,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1406,7 +2042,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1483,7 +2120,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1560,7 +2198,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1637,7 +2276,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1714,7 +2354,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1791,7 +2432,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1868,7 +2510,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -1945,7 +2588,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2022,7 +2666,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2099,7 +2744,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2176,7 +2822,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2253,7 +2900,8 @@
     "search_decay_halflife_episodic": "0",
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2324,7 +2972,8 @@
     "search_decay_halflife_episodic": "0",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2395,7 +3044,8 @@
     "search_decay_halflife_episodic": "",
     "search_decay_halflife_reflective": "   ",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2467,7 +3117,8 @@
     "search_decay_halflife_episodic": "0",
     "search_decay_halflife_reflective": "-1",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2530,7 +3181,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2603,7 +3255,8 @@
     "search_decay_halflife_episodic": "0",
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2666,7 +3319,8 @@
     "search_decay_halflife_episodic": "0",
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2739,7 +3393,8 @@
     "search_decay_halflife_episodic": "Infinity",
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2811,7 +3466,8 @@
     "search_decay_halflife_episodic": "0",
     "search_decay_halflife_reflective": "-Infinity",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2874,7 +3530,8 @@
     "search_decay_halflife_episodic": "12345678901234567890",
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -2946,7 +3603,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "1e3",
-    "conversation_retention_days": "1e21"
+    "conversation_retention_days": "1e21",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -3047,7 +3705,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "99999999999999999999999",
-    "conversation_retention_days": "-0"
+    "conversation_retention_days": "-0",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -3148,7 +3807,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": " 7days",
-    "conversation_retention_days": " 7 "
+    "conversation_retention_days": " 7 ",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -3249,7 +3909,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0x1A",
-    "conversation_retention_days": "0x10"
+    "conversation_retention_days": "0x10",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -3350,7 +4011,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "-5",
-    "conversation_retention_days": "30.5"
+    "conversation_retention_days": "30.5",
+    "sim_chat_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -3398,7 +4060,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "  12",
-    "conversation_retention_days": "Infinity"
+    "conversation_retention_days": "Infinity",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -3475,7 +4138,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "3.9",
-    "conversation_retention_days": "1e2"
+    "conversation_retention_days": "1e2",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -3576,7 +4240,8 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "",
-    "conversation_retention_days": "007"
+    "conversation_retention_days": "007",
+    "sim_chat_retention_days": "0"
    },
    "script": [
     {
@@ -3632,6 +4297,603 @@
      "cleanup",
      "cron-conversations-complete",
      "{\"result\":{\"softDeleted\":0,\"purged\":0,\"chunkErrors\":0,\"retentionDays\":7}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \"abc\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "abc"
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \"-3\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "-3"
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \" 7days\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": " 7days"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 1
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "7",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":1,\"retentionDays\":7}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":7}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \"1e3\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "1e3"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 1
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "1",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":1,\"retentionDays\":1}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":1}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \"0x10\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "0x10"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 1
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "16",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":1,\"retentionDays\":16}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":16}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \"3.9\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "3.9"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 1
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "3",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":1,\"retentionDays\":3}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":3}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \"\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": ""
+   },
+   "script": [],
+   "unused": 0,
+   "queries": [],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ]
+   ],
+   "errors": []
+  },
+  {
+   "name": "sim chat days \"99999999999999999999999\"",
+   "config": {
+    "cleanup_cron_schedule": "0 5 * * *",
+    "cleanup_enabled": "false",
+    "cleanup_decay_threshold": "0.05",
+    "search_decay_halflife_task": "60",
+    "search_decay_halflife_learning": "90",
+    "search_decay_halflife_note": "180",
+    "search_decay_halflife_conversation": "30",
+    "search_decay_halflife_dream": "30",
+    "search_decay_halflife_episodic": "90",
+    "search_decay_halflife_reflective": "180",
+    "va_call_log_retention_days": "0",
+    "conversation_retention_days": "",
+    "sim_chat_retention_days": "99999999999999999999999"
+   },
+   "script": [
+    {
+     "match": "SELECT id FROM actors WHERE name = $1",
+     "columns": [
+      "id"
+     ],
+     "rows": [
+      [
+       46
+      ]
+     ]
+    },
+    {
+     "match": "DELETE FROM chat_message_texts WHERE id IN",
+     "rowCount": 1
+    }
+   ],
+   "unused": 0,
+   "queries": [
+    {
+     "sql": "SELECT id FROM actors WHERE name = $1",
+     "params": [
+      "salem-engine"
+     ]
+    },
+    {
+     "sql": "WITH doomed AS (\n                 SELECT t.id FROM chat_message_texts t\n                 WHERE t.discussion_id IS NULL\n                   AND t.sent_at < NOW() - INTERVAL '1 day' * $1\n                   AND (t.from_actor_id = $2\n                        OR EXISTS (SELECT 1 FROM chat_messages cm\n                                   WHERE cm.message_text_id = t.id AND cm.to_actor_id = $2))\n                 LIMIT $3\n             ), deliveries AS (\n                 DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM doomed)\n             )\n             DELETE FROM chat_message_texts WHERE id IN (SELECT id FROM doomed)",
+     "params": [
+      "1e+23",
+      "46",
+      "5000"
+     ]
+    }
+   ],
+   "logs": [
+    [
+     "cleanup",
+     "cron-trigger",
+     "{\"schedule\":\"0 5 * * *\"}"
+    ],
+    [
+     "cleanup",
+     "decay-skip",
+     "{\"reason\":\"cleanup_enabled is false\"}"
+    ],
+    [
+     "cleanup",
+     "cron-decay-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"disabled\"}}"
+    ],
+    [
+     "cleanup",
+     "conversation-skip",
+     "{\"reason\":\"conversation_retention_days is unset or invalid\"}"
+    ],
+    [
+     "cleanup",
+     "cron-conversations-complete",
+     "{\"result\":{\"skipped\":true,\"reason\":\"no retention window\"}}"
+    ],
+    [
+     "cleanup",
+     "sim-chat-purged",
+     "{\"purged\":1,\"retentionDays\":1e+23}"
+    ],
+    [
+     "cleanup",
+     "cron-sim-chat-complete",
+     "{\"result\":{\"purged\":1,\"retentionDays\":1e+23}}"
     ]
    ],
    "errors": []
