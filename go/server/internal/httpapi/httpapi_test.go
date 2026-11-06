@@ -317,6 +317,12 @@ func TestMCPDisplayPath(t *testing.T) {
 		`{"method":"initialize"}`:                               "/mcp → initialize",
 		`{"method":""}`:                                         "/mcp",
 		`[{"method":"initialize"}]`:                             "/mcp",
+		`{"method":"tools/list","params":[1]}`:                  "/mcp → tools/list",
+		`{"method":"tools/call","params":"x"}`:                  "/mcp → tools/call",
+		`{"method":"tools/call","params":{"name":5}}`:           "/mcp → 5",
+		`{"method":5}`:                                          "/mcp → 5",
+		`{"method":{}}`:                                         "/mcp → [object Object]",
+		`{"method":["a","b"]}`:                                  "/mcp → a,b",
 	}
 	for body, want := range cases {
 		if got := mcpDisplayPath([]byte(body), "/mcp"); got != want {
@@ -442,6 +448,26 @@ func TestReplaceInvalidUTF8MatchesNode(t *testing.T) {
 	for _, tc := range cases {
 		if got := string(replaceInvalidUTF8([]byte(tc.in))); got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// type-is 2.1 matches the media type alone; a malformed parameter section
+// still parses the body.
+func TestIsJSONTypeMatchesTypeIs(t *testing.T) {
+	for ct, want := range map[string]bool{
+		"application/json":                true,
+		"Application/JSON; charset=utf-8": true,
+		" application/json\t; a":          true,
+		"application/json; a":             true,
+		`application/json; profile="a,b"`: true,
+		"application/json, text/plain":    false,
+		"application/vnd.api+json":        false,
+		"text/plain":                      false,
+		"":                                false,
+	} {
+		if got := isJSONType(ct); got != want {
+			t.Errorf("%q: %v", ct, got)
 		}
 	}
 }

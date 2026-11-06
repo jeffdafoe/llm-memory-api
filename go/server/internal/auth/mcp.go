@@ -131,7 +131,9 @@ func (m *MCPAuth) Middleware(next http.Handler) http.Handler {
 		header := r.Header.Get("Authorization")
 		if strings.HasPrefix(header, "Bearer ") {
 			token = header[len("Bearer "):]
-		} else if q := r.URL.Query().Get("token"); q != "" {
+		} else if q, ok := httpapi.Query(r).String("token"); ok && q != "" {
+			// req.query.token as Express parsed it: a repeated name is an
+			// array, which is not a token.
 			token = q
 		} else {
 			m.challenge(w, r)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 )
 
 // requestLogExcluded are path prefixes left out of request_log: dashboard
@@ -119,49 +120,35 @@ func (rl *RequestLog) Middleware(next http.Handler) http.Handler {
 }
 
 // mcpDisplayPath names the JSON-RPC method of an MCP request, and the tool for
-// tools/call, so request_log shows "/mcp → save_note" instead of "/mcp".
+// tools/call, so request_log shows "/mcp → save_note" instead of "/mcp". The
+// values are joined as JavaScript string concatenation joins them, and a
+// falsy method or name (missing, null, false, 0, "") names nothing.
 func mcpDisplayPath(body json.RawMessage, path string) string {
 	if body == nil {
 		return path
 	}
-	var rpc struct {
-		Method json.RawMessage `json:"method"`
-		Params struct {
-			Name json.RawMessage `json:"name"`
-		} `json:"params"`
-	}
-	if json.Unmarshal(body, &rpc) != nil {
+	v, err := jsutil.Parse(body)
+	if err != nil {
 		return path
 	}
-	method := jsText(rpc.Method)
-	if method == "" {
+	rpc, ok := v.(*jsutil.Object)
+	if !ok {
 		return path
 	}
+	method := rpc.Value("method")
 	if method == "tools/call" {
-		name := jsText(rpc.Params.Name)
-		if name != "" {
-			return path + " → " + name
+		if params, ok := rpc.Value("params").(*jsutil.Object); ok && jsutil.Truthy(params.Value("name")) {
+			if name, err := jsutil.ValueString(params.Value("name")); err == nil {
+				return path + " → " + name
+			}
 		}
 	}
-	return path + " → " + method
-}
-
-// jsText renders a JSON value the way JavaScript string concatenation would,
-// and returns "" for the values JavaScript treats as false (missing, null,
-// false, 0, "").
-func jsText(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
+	if jsutil.Truthy(method) {
+		if text, err := jsutil.ValueString(method); err == nil {
+			return path + " → " + text
+		}
 	}
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return s
-	}
-	text := string(raw)
-	if text == "null" || text == "false" || text == "0" {
-		return ""
-	}
-	return text
+	return path
 }
 
 // recordingWriter captures the status and the number of body bytes written.

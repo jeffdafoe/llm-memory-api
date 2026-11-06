@@ -1,0 +1,900 @@
+[
+    {
+        "name": "search",
+        "description": "Search memory for relevant notes using semantic similarity. If you have not called read_instructions in this conversation, call it first.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query"
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace to search (default: agent namespace, \"*\" for all)"
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Max results (default: 5)"
+                }
+            },
+            "required": [
+                "query"
+            ]
+        }
+    },
+    {
+        "name": "save_note",
+        "description": "Save a note to memory. Creates a new note — fails if slug already exists (use edit_note to update). Auto-indexes into vector DB. If you have not called read_instructions in this conversation, call it first.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Note title"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Note content (markdown)"
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace (default: agent namespace)"
+                },
+                "slug": {
+                    "type": "string",
+                    "description": "URL slug (auto-generated from title if omitted)"
+                }
+            },
+            "required": [
+                "title",
+                "content"
+            ]
+        }
+    },
+    {
+        "name": "list_notes",
+        "description": "List all notes in a namespace",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace (default: agent namespace)"
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Max results (default: 50)"
+                },
+                "offset": {
+                    "type": "number",
+                    "description": "Pagination offset (default: 0)"
+                },
+                "prefix": {
+                    "type": "string",
+                    "description": "Filter by slug prefix (e.g., \"notes/\" to list only notes in that path). Results sorted by slug when prefix is used."
+                }
+            }
+        }
+    },
+    {
+        "name": "read_note",
+        "description": "Read a note's content. Returns the full content by default. For large notes, use `offset` (1-indexed line number) and `limit` (line count, default 2000 when offset is given, max 10000) to paginate; paginated responses are prefixed with `[lines N-M of TOTAL]\\n\\n` (or `[lines N- of TOTAL]\\n\\n` with an empty body when offset is past end). If you have not called read_instructions in this conversation, call it first.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace (default: agent namespace)"
+                },
+                "slug": {
+                    "type": "string",
+                    "description": "Note slug"
+                },
+                "offset": {
+                    "type": "number",
+                    "description": "1-indexed line number to start reading from. If limit is also absent, the full note is returned unpaginated."
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Max lines to return. Defaults to 2000 when offset is supplied. Hard cap: 10000."
+                }
+            },
+            "required": [
+                "slug"
+            ]
+        }
+    },
+    {
+        "name": "delete_note",
+        "description": "Delete a note by slug (also removes vector chunks)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace (default: agent namespace)"
+                },
+                "slug": {
+                    "type": "string",
+                    "description": "Note slug"
+                }
+            },
+            "required": [
+                "slug"
+            ]
+        }
+    },
+    {
+        "name": "restore_note",
+        "description": "Restore a previously deleted note. Recovers the most recently deleted version and its vector chunks.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace (default: agent namespace)"
+                },
+                "slug": {
+                    "type": "string",
+                    "description": "Note slug to restore"
+                }
+            },
+            "required": [
+                "slug"
+            ]
+        }
+    },
+    {
+        "name": "edit_note",
+        "description": "Edit a note by replacing a specific text string. Like search-and-replace — finds old_string in the note and replaces it with new_string. Fails if old_string is not found or appears more than once (unless replace_all is true).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string",
+                    "description": "Note slug to edit"
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace (default: agent namespace)"
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "The exact text to find and replace"
+                },
+                "new_string": {
+                    "type": "string",
+                    "description": "The replacement text"
+                },
+                "replace_all": {
+                    "type": "boolean",
+                    "description": "Replace all occurrences (default: false — requires old_string to be unique)"
+                }
+            },
+            "required": [
+                "slug",
+                "old_string",
+                "new_string"
+            ]
+        }
+    },
+    {
+        "name": "move_note",
+        "description": "Move/rename a note by changing its slug. Also updates associated vector chunks. Optionally move to a different namespace.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string",
+                    "description": "Current slug of the note"
+                },
+                "new_slug": {
+                    "type": "string",
+                    "description": "New slug for the note"
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Current namespace (default: agent namespace)"
+                },
+                "new_namespace": {
+                    "type": "string",
+                    "description": "Target namespace (optional, defaults to current namespace)"
+                }
+            },
+            "required": [
+                "slug",
+                "new_slug"
+            ]
+        }
+    },
+    {
+        "name": "move_folder",
+        "description": "Bulk-move notes by slug prefix: every note whose slug starts with from_prefix is rewritten to to_prefix (e.g. \"tasks/x/\" → \"tasks/done/x/\"). Bulk alternative to move_note. Prefix match is literal, not path-aware — end prefixes with \"/\" so you don't catch siblings like \"tasks/x-other\". Refuses on a destination collision unless overwrite_slugs is set; dry_run previews.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from_prefix": {
+                    "type": "string",
+                    "description": "Source slug prefix to move from (e.g. \"tasks/dev-2337/\")"
+                },
+                "to_prefix": {
+                    "type": "string",
+                    "description": "Destination slug prefix to move to (e.g. \"tasks/done/dev-2337/\"). May be empty string to move notes to the namespace root."
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace (default: agent namespace)"
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Preview only: report how many notes would move and which destination slugs conflict, without changing anything (default: false)"
+                },
+                "overwrite_slugs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Destination slugs to soft-delete before moving, to resolve conflicts. Any conflict not listed here is skipped (its source note stays put). Omit to refuse the move when conflicts exist."
+                }
+            },
+            "required": [
+                "from_prefix",
+                "to_prefix"
+            ]
+        }
+    },
+    {
+        "name": "grep",
+        "description": "Search notes for text matches (case-insensitive). Returns matching lines with line numbers and ±2 lines of surrounding context by default. Widen or narrow the window with `context_before`/`context_after` (or `context` for both); max 50 lines per direction, `context: 0` disables context entirely. Pass `regex: true` to treat the pattern as a JavaScript regex (still case-insensitive); default is an exact substring. Output format: match lines prefixed `> NNNN: `, context lines prefixed `  NNNN: `, notes separated by `---`, non-contiguous context blocks within a single note separated by `--`.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text to search for. Case-insensitive substring by default; treated as a regex when regex=true."
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Namespace to search (default: agent namespace, \"*\" for all)"
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Max matching notes to return (default: 20)"
+                },
+                "context_before": {
+                    "type": "number",
+                    "description": "Lines of context before each match (default: 2, max: 50)"
+                },
+                "context_after": {
+                    "type": "number",
+                    "description": "Lines of context after each match (default: 2, max: 50)"
+                },
+                "context": {
+                    "type": "number",
+                    "description": "Symmetric shortcut setting both context_before and context_after. Specific params win when both are supplied."
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat pattern as a case-insensitive JavaScript regex (default: false). Patterns are length-capped at 200 chars and screened for catastrophic-backtracking shapes (ReDoS); unsafe patterns return 400."
+                }
+            },
+            "required": [
+                "pattern"
+            ]
+        }
+    },
+    {
+        "name": "read_instructions",
+        "description": "Read your startup instructions, context, and identity documents (including your soul document when dream processing is enabled). Call this at the start of every conversation, before anything else.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "save_instructions",
+        "description": "Save your startup instructions. These are read at session start to configure your behavior. Overwrites any existing instructions.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The instructions text to save (markdown)"
+                }
+            },
+            "required": [
+                "content"
+            ]
+        }
+    },
+    {
+        "name": "chat_send",
+        "description": "Send a chat message to another agent. Use to=\"*\" to broadcast to all registered agents.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": "Recipient agent (e.g., \"home\", \"work\") or \"*\" for broadcast"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Message to send"
+                },
+                "from": {
+                    "type": "string",
+                    "description": "Sender agent (default: configured agent)"
+                },
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Send to all joined participants in a discussion (alternative to \"to\"). Resolves recipients from joined participants."
+                }
+            },
+            "required": [
+                "message"
+            ]
+        }
+    },
+    {
+        "name": "chat_receive",
+        "description": "Check for unread chat messages. Returns unacked messages. Call chat_ack with the IDs after processing.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent to check messages for (default: configured agent)"
+                },
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Filter to messages from a specific discussion."
+                }
+            }
+        }
+    },
+    {
+        "name": "chat_ack",
+        "description": "Acknowledge specific chat messages as read. Acked messages will not appear in future receives.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "Array of message IDs to ack (from receive results)"
+                }
+            },
+            "required": [
+                "ids"
+            ]
+        }
+    },
+    {
+        "name": "chat_status",
+        "description": "Get chat status for an agent: pending message count, last message time, last ack time.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent to check status for (default: configured agent)"
+                },
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Filter to a specific discussion. Omit for regular chat only."
+                }
+            }
+        }
+    },
+    {
+        "name": "mail_send",
+        "description": "Send mail to another agent. Mail is stored in the API database until the recipient acks it. Returns the mail UUID — save it to match replies via in_reply_to.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": "Recipient agent (e.g., \"home\", \"work\")"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Mail subject line"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Mail body (markdown)"
+                },
+                "from": {
+                    "type": "string",
+                    "description": "Sender agent (default: configured agent)"
+                },
+                "in_reply_to": {
+                    "type": "string",
+                    "description": "UUID of the message this is replying to (for threading)"
+                }
+            },
+            "required": [
+                "to",
+                "subject",
+                "body"
+            ]
+        }
+    },
+    {
+        "name": "mail_check",
+        "description": "List unread mail with subject, sender, date, and body preview (no full body). Use this to see what is waiting, then call mail_receive with specific IDs to read individual messages.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent to check mail for (default: configured agent)"
+                }
+            }
+        }
+    },
+    {
+        "name": "mail_receive",
+        "description": "Read full mail content by ID. Requires specific message IDs — use mail_check first to list unread mail and get IDs, then call this with those IDs, then mail_ack after processing.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent to check mail for (default: configured agent)"
+                },
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Mail UUIDs to read (required — get these from mail_check)"
+                }
+            },
+            "required": [
+                "ids"
+            ]
+        }
+    },
+    {
+        "name": "mail_ack",
+        "description": "Manually ack specific mail messages by UUID. Use this if mail_receive failed after downloading but before acking.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Array of mail UUIDs to ack"
+                }
+            },
+            "required": [
+                "ids"
+            ]
+        }
+    },
+    {
+        "name": "mail_edit",
+        "description": "Edit an unsent (unacked) mail message. Only the sender can edit, and only before the recipient acks it. Use to fix mistakes in mail you just sent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Mail UUID to edit"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "New subject (optional if body provided)"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "New body (optional if subject provided)"
+                }
+            },
+            "required": [
+                "id"
+            ]
+        }
+    },
+    {
+        "name": "mail_unsend",
+        "description": "Unsend (delete) a mail message you sent, before the recipient acks it. Only the sender can unsend.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Mail UUID to unsend"
+                }
+            },
+            "required": [
+                "id"
+            ]
+        }
+    },
+    {
+        "name": "mail_sent",
+        "description": "Get mail you have sent. Returns sent messages with delivery status (whether recipient has acked).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent to check sent mail for (default: configured agent)"
+                },
+                "to": {
+                    "type": "string",
+                    "description": "Filter by recipient agent name"
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Max results (default: 50)"
+                },
+                "offset": {
+                    "type": "number",
+                    "description": "Pagination offset (default: 0)"
+                }
+            }
+        }
+    },
+    {
+        "name": "mail_history",
+        "description": "Get previously received and acked mail. Returns your read inbox history.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent to check history for (default: configured agent)"
+                },
+                "from": {
+                    "type": "string",
+                    "description": "Filter by sender agent name"
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Max results (default: 50)"
+                },
+                "offset": {
+                    "type": "number",
+                    "description": "Pagination offset (default: 0)"
+                }
+            }
+        }
+    },
+    {
+        "name": "agent_status",
+        "description": "Get presence info for all agents: online/offline status, last seen time, expertise areas, and unread chat/mail counts for the querying agent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent requesting presence info (default: configured agent). Unread counts are relative to this agent."
+                }
+            }
+        }
+    },
+    {
+        "name": "update_expertise",
+        "description": "Update your areas of expertise. Other agents see this when deciding who to include in discussions.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "expertise": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "List of expertise areas (e.g. [\"codebase\", \"devops\", \"payments\"])"
+                }
+            },
+            "required": [
+                "expertise"
+            ]
+        }
+    },
+    {
+        "name": "update_profile",
+        "description": "Update your agent profile (provider and/or model). Provider is the AI company (e.g. \"anthropic\", \"openai\"). Model is the specific model (e.g. \"claude-4-sonnet\", \"gpt-5.3-codex\").",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "description": "AI provider (e.g. \"anthropic\", \"openai\", \"google\")"
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model name (e.g. \"claude-4-sonnet\", \"gpt-5.3-codex\")"
+                }
+            }
+        }
+    },
+    {
+        "name": "activity_start",
+        "description": "Signal that you are actively working on a task. Shows an activity indicator to other agents and in the admin dashboard.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "activity_stop",
+        "description": "Signal that you have finished working. Clears the activity indicator.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "discussion_create",
+        "description": "Create a new discussion with specified participants. Creator is auto-added as joined; others are invited.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "description": "Discussion topic"
+                },
+                "participants": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "List of participant agent names (must include creator)"
+                },
+                "created_by": {
+                    "type": "string",
+                    "description": "Creator agent (default: configured agent)"
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Discussion mode: \"realtime\" (transport + subagent, live back-and-forth) or \"async\" (independent investigation + direct voting). Default: realtime"
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Optional background/context for the discussion (max 10k chars). Visible to joining agents via discussion_status."
+                }
+            },
+            "required": [
+                "topic",
+                "participants"
+            ]
+        }
+    },
+    {
+        "name": "discussion_list",
+        "description": "List discussions, optionally filtered by status and/or agent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "description": "Filter by status: active, concluded, timed_out"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Filter to discussions this agent participates in"
+                }
+            }
+        }
+    },
+    {
+        "name": "discussion_status",
+        "description": "Get full status of a discussion: details, participants, and votes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Discussion ID"
+                }
+            },
+            "required": [
+                "discussion_id"
+            ]
+        }
+    },
+    {
+        "name": "discussion_pending",
+        "description": "Check for discussions needing attention: pending invitations and open votes awaiting your ballot.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Agent to check for (default: configured agent)"
+                }
+            }
+        }
+    },
+    {
+        "name": "discussion_conclude",
+        "description": "Manually conclude an active discussion.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Discussion ID"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Agent concluding (default: configured agent)"
+                }
+            },
+            "required": [
+                "discussion_id"
+            ]
+        }
+    },
+    {
+        "name": "discussion_cancel",
+        "description": "Cancel an active or waiting discussion. Sets status to cancelled and outcome to abandoned.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Discussion ID"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Agent cancelling (default: configured agent)"
+                }
+            },
+            "required": [
+                "discussion_id"
+            ]
+        }
+    },
+    {
+        "name": "discussion_join",
+        "description": "Join a discussion you have been invited to.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Discussion ID"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Agent joining (default: configured agent)"
+                }
+            },
+            "required": [
+                "discussion_id"
+            ]
+        }
+    },
+    {
+        "name": "discussion_leave",
+        "description": "Leave a discussion you are participating in.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Discussion ID"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Agent leaving (default: configured agent)"
+                }
+            },
+            "required": [
+                "discussion_id"
+            ]
+        }
+    },
+    {
+        "name": "discussion_defer",
+        "description": "Defer a discussion invitation for later. Acknowledges the invitation without joining, pauses the timeout clock. Can re-defer up to a configurable maximum (default: 3). Resume later by calling discussion_join.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Discussion ID"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Agent deferring (default: configured agent)"
+                }
+            },
+            "required": [
+                "discussion_id"
+            ]
+        }
+    },
+    {
+        "name": "discussion_vote_propose",
+        "description": "Propose a vote in a discussion. Use type \"conclude\" for ending the discussion, \"general\" for other decisions. Choices are integers; describe options in the question text.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "discussion_id": {
+                    "type": "number",
+                    "description": "Discussion ID"
+                },
+                "question": {
+                    "type": "string",
+                    "description": "Vote question (include numbered options, e.g. \"1=approve 2=reject\")"
+                },
+                "type": {
+                    "type": "string",
+                    "description": "Vote type: \"general\" or \"conclude\" (default: general)"
+                },
+                "threshold": {
+                    "type": "string",
+                    "description": "Pass threshold: \"unanimous\" or \"majority\" (default: unanimous)"
+                },
+                "closes_at": {
+                    "type": "string",
+                    "description": "Optional ISO timestamp when vote auto-closes"
+                },
+                "proposed_by": {
+                    "type": "string",
+                    "description": "Proposing agent (default: configured agent)"
+                }
+            },
+            "required": [
+                "discussion_id",
+                "question"
+            ]
+        }
+    },
+    {
+        "name": "discussion_vote_cast",
+        "description": "Cast a ballot on an open vote. Choice is an integer matching the options in the question.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "vote_id": {
+                    "type": "number",
+                    "description": "Vote ID"
+                },
+                "choice": {
+                    "type": "number",
+                    "description": "Integer choice (matching options in the question)"
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Optional reason for your choice"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Voting agent (default: configured agent)"
+                }
+            },
+            "required": [
+                "vote_id",
+                "choice"
+            ]
+        }
+    },
+    {
+        "name": "discussion_vote_status",
+        "description": "Get status and ballots for a specific vote.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "vote_id": {
+                    "type": "number",
+                    "description": "Vote ID"
+                }
+            },
+            "required": [
+                "vote_id"
+            ]
+        }
+    }
+]

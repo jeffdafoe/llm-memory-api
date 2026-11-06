@@ -734,22 +734,18 @@ func (rt *Routes) instructionsRead(w http.ResponseWriter, r *http.Request) error
 		return nil
 	}
 	ctx := r.Context()
-	var startup, dreamMode *string
-	err := rt.DB.QueryRow(ctx, "SELECT startup_instructions, dream_mode FROM agent_configuration WHERE actor_id = $1",
-		httpapi.StateOf(r).ActorID).Scan(&startup, &dreamMode)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	// An agent with no agent_configuration row reads as one with nothing set.
+	config, _, err := LoadInstructions(ctx, rt.DB, httpapi.StateOf(r).ActorID)
+	if err != nil {
 		return err
 	}
 	var instructions *string
-	if startup != nil && *startup != "" {
-		s := *startup
+	if config.Startup != nil && *config.Startup != "" {
+		s := *config.Startup
 		instructions = &s
 	}
 
-	// 'sim-shared' pools many villagers under one agent whose souls live in
-	// the engine (LLM-199), not in a context/soul note, so like 'none' it
-	// takes neither the bootstrap nor the soul.
-	if dreamMode != nil && *dreamMode != "" && *dreamMode != "none" && *dreamMode != "sim-shared" {
+	if config.Dreams() {
 		bootstrap, err := rt.Config.Get("dream_bootstrap")
 		if err != nil {
 			return err
@@ -807,8 +803,7 @@ func (rt *Routes) instructionsSave(w http.ResponseWriter, r *http.Request) error
 		s = sanitize.Content(s)
 		content = &s
 	}
-	if _, err := rt.DB.Exec(r.Context(), "UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2",
-		content, httpapi.StateOf(r).ActorID); err != nil {
+	if err := SaveInstructions(r.Context(), rt.DB, httpapi.StateOf(r).ActorID, content); err != nil {
 		return err
 	}
 	length := 0

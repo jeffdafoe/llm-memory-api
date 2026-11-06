@@ -65,15 +65,13 @@ func hasBody(r *http.Request) bool {
 	return ok
 }
 
+// isJSONType is type-is 2.1's match for express.json: the text before the
+// first ";", trimmed of spaces and tabs and lower-cased (content-type 2.1's
+// parse without parameters), is application/json. A malformed parameter
+// section does not matter.
 func isJSONType(contentType string) bool {
-	if contentType == "" {
-		return false
-	}
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return false
-	}
-	return mediaType == "application/json"
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	return strings.ToLower(strings.Trim(mediaType, " 	")) == "application/json"
 }
 
 // charsetDecoders are the charsets body-parser (through iconv-lite) decodes
