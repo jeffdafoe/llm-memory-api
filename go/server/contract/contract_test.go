@@ -19,7 +19,8 @@ import (
 // CONTRACT_PG_URL set to a superuser URL of a Postgres 17 + pgvector server
 // and npm ci done in node/api. CONTRACT_GO_BIN uses a prebuilt Go server;
 // CONTRACT_OUT writes each scenario's normalized results there;
-// CONTRACT_PARALLEL sets how many scenarios run at once (default 4).
+// CONTRACT_PARALLEL sets how many scenarios run at once (default 4);
+// CONTRACT_SHARD=i/n runs only the i-th of n shards (shard.go).
 var harness struct {
 	cluster  *Cluster
 	repoRoot string
@@ -99,13 +100,32 @@ func TestContract(t *testing.T) {
 	if v, err := strconv.Atoi(os.Getenv("CONTRACT_PARALLEL")); err == nil && v > 0 {
 		parallel = v
 	}
-	sem := make(chan struct{}, parallel)
+	index, count, err := parseShard(os.Getenv("CONTRACT_SHARD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The name check covers every scenario, not only this shard's, so a
+	// duplicate fails on every shard.
 	seen := map[string]bool{}
-	for _, sc := range Scenarios {
+	selected := 0
+	for pos, sc := range Scenarios {
 		if seen[sc.Name] {
 			t.Fatalf("two scenarios are named %q", sc.Name)
 		}
 		seen[sc.Name] = true
+		if inShard(pos, index, count) {
+			selected++
+		}
+	}
+	if selected == 0 {
+		t.Fatalf("shard %d/%d has no scenarios (%d in all)", index, count, len(Scenarios))
+	}
+	t.Logf("shard %d/%d: %d of %d scenarios", index, count, selected, len(Scenarios))
+	sem := make(chan struct{}, parallel)
+	for pos, sc := range Scenarios {
+		if !inShard(pos, index, count) {
+			continue
+		}
 		t.Run(sc.Name, func(t *testing.T) {
 			t.Parallel()
 			sem <- struct{}{}

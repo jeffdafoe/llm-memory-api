@@ -230,9 +230,16 @@ jobs:
   # its own copy of a template database built from migrations/, and the
   # responses, the rows written and the provider calls must match. The test
   # builds the template, the Go binary and the fake provider server itself.
-  contract:
-    name: Contract
+  # The scenarios split round-robin over the shards (contract/shard.go); each
+  # shard does its own setup. The shard count is in the matrix and in
+  # CONTRACT_SHARD below: change both together.
+  contract-shard:
+    name: Contract shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -247,6 +254,7 @@ jobs:
           --health-retries 10
     env:
       CONTRACT_PG_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      CONTRACT_SHARD: ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@v7
 
@@ -287,11 +295,27 @@ jobs:
           echo "settings did not change after the reload" >&2
           exit 1
 
-      # The suite runs about ten minutes on a runner, the go test default
-      # timeout, so it gets its own bound.
+      # The whole suite runs about ten minutes on one runner, the go test
+      # default timeout, so the step gets its own bound.
       - name: Contract tests
         working-directory: go/server
         run: go test -tags contract -count=1 -timeout 30m -v ./contract/
+
+  # The required status check on main is "Contract". It passes only when every
+  # shard passed: a failed, cancelled or skipped shard fails it, which is why
+  # it runs on always().
+  contract:
+    name: Contract
+    needs: contract-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All shards passed
+        env:
+          RESULT: ${{ needs.contract-shard.result }}
+        run: |
+          echo "contract shards: $RESULT"
+          test "$RESULT" = success
 
   # Per-commit build of what the deploy installs (LLM-904): the Go server
   # binary and the admin UI's Vite output, published with their checksums as
