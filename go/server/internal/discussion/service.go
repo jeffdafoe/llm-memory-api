@@ -87,23 +87,14 @@ func later(ctx context.Context, fn func(ctx context.Context)) {
 	done := make(chan struct{})
 	order.last = done
 	order.mu.Unlock()
-	run := func() {
-		started := db.Background(func(ctx context.Context) {
-			defer close(done)
-			fn(ctx)
-		})
-		if !started {
-			close(done)
-		}
+	// Tracked from now, so a shutdown drain waits for it; its deadline
+	// starts when prev has ended.
+	if !db.BackgroundAfter(prev, func(ctx context.Context) {
+		defer close(done)
+		fn(ctx)
+	}) {
+		close(done)
 	}
-	if prev == nil {
-		run()
-		return
-	}
-	go func() {
-		<-prev
-		run()
-	}()
 }
 
 // background is later with a failure written to stderr as

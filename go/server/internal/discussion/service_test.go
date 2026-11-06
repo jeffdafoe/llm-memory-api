@@ -10,11 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v6"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
@@ -539,7 +541,8 @@ func TestDeadlinesInMilliseconds(t *testing.T) {
 }
 
 // A job under InOrder starts after the one before it ends, with a deadline
-// of its own.
+// of its own: queued behind a job held for 300 ms, its deadline is that much
+// later than the first job's.
 func TestLaterOrderAndDeadline(t *testing.T) {
 	ctx := InOrder(context.Background())
 	var got []string
@@ -549,24 +552,27 @@ func TestLaterOrderAndDeadline(t *testing.T) {
 		got = append(got, s)
 		mu.Unlock()
 	}
+	firstDeadline := make(chan time.Time, 1)
 	release := make(chan struct{})
-	deadlines := make(chan time.Time, 1)
+	secondDeadline := make(chan time.Time, 1)
 	finished := make(chan struct{})
 	later(ctx, func(ctx context.Context) {
+		d, _ := ctx.Deadline()
+		firstDeadline <- d
 		<-release
 		add("first")
 	})
 	later(ctx, func(ctx context.Context) {
 		add("second")
 		d, _ := ctx.Deadline()
-		deadlines <- d
+		secondDeadline <- d
 	})
 	later(ctx, func(ctx context.Context) {
 		add("third")
 		close(finished)
 	})
-	time.Sleep(50 * time.Millisecond)
-	waited := time.Now()
+	d1 := <-firstDeadline
+	time.Sleep(300 * time.Millisecond)
 	close(release)
 	select {
 	case <-finished:
@@ -576,13 +582,34 @@ func TestLaterOrderAndDeadline(t *testing.T) {
 	if strings.Join(got, ",") != "first,second,third" {
 		t.Errorf("order %v", got)
 	}
-	if d := <-deadlines; d.Before(waited.Add(29 * time.Second)) {
-		t.Errorf("second job's deadline %v started before the first ended (%v)", d, waited)
+	if gap := (<-secondDeadline).Sub(d1); gap < 250*time.Millisecond {
+		t.Errorf("second job's deadline only %v after the first's: it started with the first", gap)
 	}
 }
 
-// Conclude's participant messages do not wait on the event: a failed event
-// still lets them through.
+// blockingDB holds the queries whose first argument is block until release
+// is closed, and reports every other query's SQL on seen.
+type blockingDB struct {
+	db.DB
+	block   any
+	release chan struct{}
+	seen    chan string
+}
+
+func (b *blockingDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if len(args) > 0 && args[0] == b.block {
+		<-b.release
+	} else {
+		select {
+		case b.seen <- sql:
+		default:
+		}
+	}
+	return b.DB.QueryRow(ctx, sql, args...)
+}
+
+// Conclude's participant messages do not wait on the event: with the event
+// insert held, the participant's delivery is still written.
 func TestConcludeChainsAreIndependent(t *testing.T) {
 	ctx := InOrder(context.Background())
 	s, mock := newService(t)
@@ -609,6 +636,8 @@ func TestConcludeChainsAreIndependent(t *testing.T) {
 	mock.ExpectQuery(q("SELECT ac.name AS agent FROM discussion_participants dp")).WithArgs(num("7"), 2).
 		WillReturnRows(pgxmock.NewRows([]string{"agent"}).AddRow("agent-b"))
 	mock.ExpectQuery(q(insertTextSQL)).WithArgs("Discussion concluded by agent-a", 1, num("7")).WillReturnError(errors.New("event failed"))
+	held := &blockingDB{DB: mock, block: "Discussion concluded by agent-a", release: make(chan struct{}), seen: make(chan string, 64)}
+	s.Notifier.DB = held
 	mock.ExpectQuery(q(insertTextSQL)).WithArgs(`Discussion #7 ("Plan") was concluded by agent-a`, 1, nil).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
 	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 3).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
@@ -617,5 +646,16 @@ func TestConcludeChainsAreIndependent(t *testing.T) {
 	if err != nil || res.Status != "concluded" || res.Outcome != "consensus" {
 		t.Fatalf("%+v %v", res, err)
 	}
+	deadline := time.After(2 * time.Second)
+	for delivered := false; !delivered; {
+		select {
+		case sql := <-held.seen:
+			delivered = strings.HasPrefix(sql, insertDeliverySQL)
+		case <-deadline:
+			close(held.release)
+			t.Fatal("the participant delivery waited for the held event")
+		}
+	}
+	close(held.release)
 	testutil.WaitMet(t, mock)
 }

@@ -53,17 +53,21 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-var (
-	backgroundMu     sync.Mutex
-	backgroundClosed bool
-	background       sync.WaitGroup
-	backgroundCtx    context.Context
-	cancelBackground context.CancelFunc
-)
-
-func init() {
-	backgroundCtx, cancelBackground = context.WithCancel(context.Background())
+// runner tracks fire-and-forget jobs so shutdown can wait for them.
+type runner struct {
+	mu     sync.Mutex
+	closed bool
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
 }
+
+func newRunner() *runner {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &runner{ctx: ctx, cancel: cancel}
+}
+
+var jobs = newRunner()
 
 // Background runs fn on its own goroutine with a fresh, bounded context. Use it
 // for writes whose failure must never affect the request that caused them.
@@ -71,16 +75,30 @@ func init() {
 // Once DrainBackground has started, new jobs are dropped; started reports
 // whether fn was scheduled.
 func Background(fn func(ctx context.Context)) (started bool) {
-	backgroundMu.Lock()
-	if backgroundClosed {
-		backgroundMu.Unlock()
+	return jobs.after(nil, fn)
+}
+
+// BackgroundAfter is Background for a job that must wait for an earlier one:
+// it is tracked from now, so a drain waits for it, but it starts, and its
+// bounded context is made, only when prev is closed.
+func BackgroundAfter(prev <-chan struct{}, fn func(ctx context.Context)) (started bool) {
+	return jobs.after(prev, fn)
+}
+
+func (r *runner) after(prev <-chan struct{}, fn func(ctx context.Context)) bool {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
 		return false
 	}
-	background.Add(1)
-	backgroundMu.Unlock()
+	r.wg.Add(1)
+	r.mu.Unlock()
 	go func() {
-		defer background.Done()
-		ctx, cancel := context.WithTimeout(backgroundCtx, backgroundTimeout)
+		defer r.wg.Done()
+		if prev != nil {
+			<-prev
+		}
+		ctx, cancel := context.WithTimeout(r.ctx, backgroundTimeout)
 		defer cancel()
 		fn(ctx)
 	}()
@@ -91,13 +109,17 @@ func Background(fn func(ctx context.Context)) (started bool) {
 // running ones, then cancels them and waits up to timeout again. It reports
 // whether every job returned. Call it at shutdown, before the pool closes.
 func DrainBackground(timeout time.Duration) bool {
-	backgroundMu.Lock()
-	backgroundClosed = true
-	backgroundMu.Unlock()
+	return jobs.drain(timeout)
+}
+
+func (r *runner) drain(timeout time.Duration) bool {
+	r.mu.Lock()
+	r.closed = true
+	r.mu.Unlock()
 
 	done := make(chan struct{})
 	go func() {
-		background.Wait()
+		r.wg.Wait()
 		close(done)
 	}()
 	select {
@@ -105,7 +127,7 @@ func DrainBackground(timeout time.Duration) bool {
 		return true
 	case <-time.After(timeout):
 	}
-	cancelBackground()
+	r.cancel()
 	select {
 	case <-done:
 		return true
