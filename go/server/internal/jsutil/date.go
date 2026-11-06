@@ -249,3 +249,12 @@ func DateValue(v any, loc *time.Location) (ms float64, ok bool, err error) {
 	ms, ok = timeClip(n)
 	return ms, ok, nil
 }
+
+// LocalDate is new Date(year, month - 1, day, hour, minute, second, ms) for
+// a process in zone loc: the wall-clock time read with V8's rule for DST
+// changes (localToUTC). node-postgres builds its date and timestamp values
+// this way.
+func LocalDate(year int, month time.Month, day, hour, minute, second, ms int, loc *time.Location) time.Time {
+	wall := float64(time.Date(year, month, day, hour, minute, second, ms*int(time.Millisecond), time.UTC).UnixMilli())
+	return time.UnixMilli(int64(localToUTC(wall, loc))).UTC()
+}
