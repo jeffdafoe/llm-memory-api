@@ -103,6 +103,9 @@ func run() error {
 		Handler:           server.Handler(services),
 		ReadHeaderTimeout: 30 * time.Second,
 	}
+	// Shutdown does not track hijacked connections, so the admin WebSocket
+	// clients are dropped when it starts.
+	srv.RegisterOnShutdown(services.Hub.Close)
 
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
@@ -114,6 +117,8 @@ func run() error {
 	// contract harness reads it from this line.
 	fmt.Printf("Memory API listening on %s:%d\n", host, listener.Addr().(*net.TCPAddr).Port)
 	watchdog.Start(services.Log)
+	// The admin WebSocket ping timer (events.js's setInterval).
+	go services.Hub.Run(ctx)
 
 	sweeper := &activity.Sweeper{DB: pool, Events: services.Events, Errorf: services.Log.Errorf}
 	// Run drains its own sweeps once ctx ends; sweptClean says whether
