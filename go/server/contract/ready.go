@@ -12,9 +12,11 @@ import (
 
 // Each server is started with PORT=0, so the OS gives it a free port at
 // bind time, and the harness learns the port from the server's own start
-// line. Nothing is reserved and released first, so a server of a parallel
-// case can never take the port in between, and a /health answer always
-// comes from the process that printed the line.
+// line. Nothing is reserved and released first, so the race where a
+// parallel case's server takes the port before this one binds it is gone.
+// What is left: a server that binds, prints its line and then dies frees
+// the port, and the OS could hand it to another server before the exit is
+// seen; the exit check after the 200 rejects only a death already noticed.
 
 // listeningLine is the line both servers print once they are bound:
 // node/api/src/server.js and go/server/cmd/memory-api print
@@ -60,9 +62,9 @@ func awaitReady(ctx context.Context, r readiness, limit time.Duration) (string, 
 			}
 		}
 		if baseURL != "" && r.healthy(ctx, baseURL) {
-			// A server that bound the port and then died frees it; the
-			// exit check after the 200 keeps a later owner's answer from
-			// counting.
+			// A server that bound the port and then died frees it. A
+			// child whose exit has been seen by now is not ready, even
+			// with a 200 from whatever answers on that port.
 			select {
 			case <-r.done:
 				return "", fmt.Errorf("exited: %v", r.exitErr())
