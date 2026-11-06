@@ -86,6 +86,9 @@ type answer struct {
 	Result json.RawMessage `json:"result"`
 	Error  string          `json:"error"`
 	Status *int            `json:"status"`
+	// During are triggers that arrive while this call runs
+	// (discussion_golden_test.go); not when the last answer repeats.
+	During []json.RawMessage `json:"during"`
 }
 
 type scenario struct {
@@ -93,7 +96,9 @@ type scenario struct {
 	Config map[string]string          `json:"config"`
 	Unset  []string                   `json:"unset"`
 	Rows   map[string]json.RawMessage `json:"rows"`
-	Fail   map[string]string          `json:"fail"`
+	// RowsBy answers a kind by its first parameter, before Rows.
+	RowsBy map[string]map[string]json.RawMessage `json:"rowsBy"`
+	Fail   map[string]string                     `json:"fail"`
 	// FailNth fails the nth call of a kind with its message; null passes.
 	FailNth     map[string][]*string `json:"failNth"`
 	NotesIn     map[string]string    `json:"notesIn"`
@@ -229,6 +234,9 @@ type recorder struct {
 	clock  float64
 	counts map[string]int
 	nth    map[string]int
+	// sql is the text each query kind was last sent with
+	// (chat_golden_test.go compares the direct-chat kinds with Node's).
+	sql map[string]string
 	// slept holds the contexts Sleep was called with.
 	slept  map[context.Context]bool
 	nCalls int
@@ -237,6 +245,11 @@ type recorder struct {
 	// inside each provider call.
 	block  map[string]bool
 	onCall func()
+	// onDuring handles an answer's During triggers inside the call.
+	onDuring func(payload json.RawMessage)
+	// project keeps only these columns of a kind's golden rows (Node read
+	// `SELECT *` where Go names the columns).
+	project map[string][]string
 
 	queries  []queryRec
 	logs     []logRec
@@ -266,6 +279,16 @@ var kinds = []struct {
 	{"errored-scan", regexp.MustCompile(`WHERE agc\.virtual = TRUE AND ac\.status`)},
 	{"mail-load", regexp.MustCompile(`JOIN actors fa ON fa\.id = m\.from_actor_id`)},
 	{"mail-ack", regexp.MustCompile(`UPDATE mail SET acked_at = NOW\(\)`)},
+	// Direct chat (chat_golden_test.go).
+	{"chat-history", regexp.MustCompile(`JOIN actors fa ON fa\.id = cmt\.from_actor_id\s+JOIN actors ta`)},
+	{"chat-ack", regexp.MustCompile(`UPDATE chat_messages SET acked_at = NOW\(\) WHERE id = \$1 AND to_actor_id`)},
+	// Discussions (discussion_golden_test.go).
+	{"discussion-load", regexp.MustCompile(`FROM discussions WHERE id = \$1`)},
+	{"participants-load", regexp.MustCompile(`FROM discussion_participants dp`)},
+	{"discussion-history", regexp.MustCompile(`SELECT DISTINCT ON \(cmt\.id\)`)},
+	{"vote-question", regexp.MustCompile(`SELECT question FROM discussion_votes`)},
+	{"ballot-check", regexp.MustCompile(`SELECT 1 FROM discussion_ballots`)},
+	{"ballot-insert", regexp.MustCompile(`INSERT INTO discussion_ballots`)},
 }
 
 // paramText is a Go query argument as the text Postgres receives, to
@@ -315,6 +338,10 @@ func (r *recorder) query(ctx context.Context, sql string, args []any) (string, [
 	// inside its setTimeout callback.
 	r.mu.Lock()
 	timer := kind == "active-off" && r.slept[ctx]
+	if r.sql == nil {
+		r.sql = map[string]string{}
+	}
+	r.sql[kind] = sql
 	r.mu.Unlock()
 	rows, err := r.record(kind, params, timer)
 	return kind, rows, err
@@ -334,6 +361,13 @@ func (r *recorder) record(kind string, params []*string, timer bool) ([]any, err
 		return nil, errors.New(msg)
 	}
 	raw := r.sc.Rows[kind]
+	if by, ok := r.sc.RowsBy[kind]; ok {
+		key := "null"
+		if len(params) > 0 && params[0] != nil {
+			key = *params[0]
+		}
+		raw = by[key]
+	}
 	if len(raw) == 0 {
 		return nil, nil
 	}
@@ -343,11 +377,29 @@ func (r *recorder) record(kind string, params []*string, timer bool) ([]any, err
 	}
 	rows, _ := v.([]any)
 	if len(rows) > 0 {
-		if _, queue := rows[0].([]any); queue {
+		if _, queue := rows[0].([]any); queue && r.sc.RowsBy[kind] == nil {
 			r.counts[kind]++
 			n := min(r.counts[kind], len(rows))
 			rows, _ = rows[n-1].([]any)
 		}
+	}
+	if kind == "discussion-history" {
+		// Golden histories are oldest first; the query returns newest first.
+		rows = append([]any(nil), rows...)
+		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+			rows[i], rows[j] = rows[j], rows[i]
+		}
+	}
+	if cols := r.project[kind]; cols != nil {
+		projected := make([]any, len(rows))
+		for i, row := range rows {
+			o := jsutil.NewObject()
+			for _, c := range cols {
+				o.Set(c, row.(*jsutil.Object).Value(c))
+			}
+			projected[i] = o
+		}
+		rows = projected
 	}
 	return rows, nil
 }
@@ -387,6 +439,17 @@ func assign(dest, v any) error {
 		*d = b
 	case *[]byte:
 		*d = []byte(jsutil.Marshal(v))
+	case **time.Time:
+		if v == nil {
+			*d = nil
+			return nil
+		}
+		s, _ := v.(string)
+		ts, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			return err
+		}
+		*d = &ts
 	default:
 		return fmt.Errorf("unsupported scan target %T", dest)
 	}
@@ -533,11 +596,20 @@ func (r *recorder) CreateProvider(provider, model, apiKey string, conf any) (pro
 		optsText := ""
 		if opts != nil {
 			o := jsutil.NewObject()
+			if opts.Cache != nil {
+				o.Set("cache", opts.Cache)
+			}
+			if opts.Stop != nil {
+				o.Set("stop", opts.Stop)
+			}
 			if opts.Tools != nil {
 				o.Set("tools", opts.Tools)
 			}
 			if opts.Messages != nil {
 				o.Set("messages", opts.Messages)
+			}
+			if opts.TurnContext != nil {
+				o.Set("turnContext", opts.TurnContext)
 			}
 			optsText = jsutil.Marshal(o)
 		}
@@ -545,12 +617,17 @@ func (r *recorder) CreateProvider(provider, model, apiKey string, conf any) (pro
 		r.calls = append(r.calls, callRec{sys, user, optsText})
 		n := r.nCalls
 		r.nCalls++
-		onCall := r.onCall
+		onCall, onDuring := r.onCall, r.onDuring
 		r.mu.Unlock()
 		if onCall != nil {
 			onCall()
 		}
 		a := r.sc.Answers[min(n, len(r.sc.Answers)-1)]
+		if n < len(r.sc.Answers) && onDuring != nil {
+			for _, p := range a.During {
+				onDuring(p)
+			}
+		}
 		if a.Error != "" {
 			if a.Status != nil {
 				return nil, &providers.APIError{Status: *a.Status, Message: a.Error}
@@ -989,8 +1066,8 @@ func TestTranscriptMatchesNode(t *testing.T) {
 			if m, ok := args[6].(*jsutil.Object); ok {
 				meta.RequestingAgent, _ = m.Value("requestingAgent").(string)
 				meta.Model, _ = m.Value("model").(string)
-				if d, ok := jsutil.AsFloat(m.Value("discussionId")); ok {
-					meta.DiscussionID = int(d)
+				if d := m.Value("discussionId"); jsutil.Truthy(d) {
+					meta.DiscussionID, _ = jsutil.ValueString(d)
 				}
 			}
 			user, _ := args[2].(string)

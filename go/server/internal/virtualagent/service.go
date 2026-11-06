@@ -71,6 +71,11 @@ type Service struct {
 	Notes     NoteStore
 	Memory    Searcher
 	Mail      Mailer
+	// Chat sends the replies and notices of direct chat and discussions.
+	Chat ChatSender
+	// Discussions evaluates a virtual participant's ballot and takes it out
+	// of a discussion after a failure.
+	Discussions Discussions
 
 	// Now is the clock; tests replace it.
 	Now func() time.Time
@@ -83,6 +88,14 @@ type Service struct {
 	overrideMu    sync.Mutex
 	overrideCache map[string]overrideEntry
 	pingOnce      sync.Once
+	sceneCache    sceneCache
+	// inFlight holds the discussion generations running now, by
+	// "<discussion>:<agent>" (Node's inFlightVA).
+	inFlightMu sync.Mutex
+	inFlight   map[string]*inFlight
+	// beforeRerunCheck runs after a discussion generation, before its rerun
+	// check; tests set it.
+	beforeRerunCheck func(key string)
 }
 
 func (s *Service) now() time.Time {

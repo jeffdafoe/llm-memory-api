@@ -415,8 +415,8 @@ func TestMailHelpersMatchNode(t *testing.T) {
 		if got := unanswerableNotice(c.Agent, c.Reason, c.Missing); got != c.Out {
 			t.Errorf("notice %s %v: got %q want %q", c.Reason, c.Missing, got, c.Out)
 		}
-		if got := (Seam{}).UnanswerableNotice(c.Agent, c.Reason, c.Missing); got != c.Out {
-			t.Errorf("Seam notice %s: got %q", c.Reason, got)
+		if got := (&Service{}).UnanswerableNotice(c.Agent, c.Reason, c.Missing); got != c.Out {
+			t.Errorf("Service notice %s: got %q", c.Reason, got)
 		}
 	}
 	for _, c := range g.Missing {

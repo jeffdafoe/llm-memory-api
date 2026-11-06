@@ -3,7 +3,6 @@ package virtualagent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"math/rand/v2"
 	"strings"
@@ -129,8 +128,9 @@ var localZone = time.Local
 // TranscriptMeta is the header of a logged transcript.
 type TranscriptMeta struct {
 	RequestingAgent string
-	DiscussionID    int
-	Model           string
+	// DiscussionID is the id as the trigger sent it; "" for none.
+	DiscussionID string
+	Model        string
 }
 
 // maxTranscriptContext bounds the system prompt plus the user message, in
@@ -177,8 +177,8 @@ func (s *Service) LogTranscript(ctx context.Context, agentName string, system pr
 	if meta.RequestingAgent != "" {
 		lines = append(lines, "- **From:** "+meta.RequestingAgent)
 	}
-	if meta.DiscussionID != 0 {
-		lines = append(lines, fmt.Sprintf("- **Discussion:** #%d", meta.DiscussionID))
+	if meta.DiscussionID != "" {
+		lines = append(lines, "- **Discussion:** #"+meta.DiscussionID)
 	}
 	if meta.Model != "" {
 		lines = append(lines, "- **Model:** "+meta.Model)

@@ -42,7 +42,7 @@ func fixedSalt(name string) string {
 // one in Auth (sent as a bearer token) or as {{name}} in a path, header or
 // body.
 func Credentials() map[string]string {
-	return map[string]string{
+	creds := map[string]string{
 		"admin-password": adminPassword,
 		"admin-web":      fixedSecret("admin web session"),
 		// The limited admin (fixture_admin.go).
@@ -59,6 +59,11 @@ func Credentials() map[string]string {
 		"agent-b-expired-session": fixedSecret("agent-b expired session"),
 		"agent-b-revoked-key":     fixedSecret("agent-b revoked key"),
 	}
+	// Each fixture virtual agent's API key, for /agent/tick as itself.
+	for _, va := range fixtureVirtualAgents {
+		creds[va.name+"-key"] = vaKey(va.name)
+	}
+	return creds
 }
 
 // Fixed values for the two secrets seed.sql leaves empty, so Node and Go
@@ -79,6 +84,10 @@ var fixtureConfig = map[string]string{
 	// within a settle.
 	"virtual_agent_retry_backoff":              "1",
 	"virtual_agent_retry_backoff_client_error": "1",
+	// Seconds: a discussion's virtual participants answer after 1 s, the
+	// next one 1 s later, so a wave ends within a settle.
+	"virtual_agent_response_delay_seconds":   "1",
+	"virtual_agent_response_stagger_seconds": "1",
 }
 
 // applyFixture writes the harness data on top of seed.sql: config, an admin
@@ -208,10 +217,16 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 	if err := applyVirtualAgentFixture(ctx, tx, adminID); err != nil {
 		return err
 	}
+	if err := applyVAChatFixture(ctx, tx, adminID, agents); err != nil {
+		return err
+	}
 	if err := applyChatFixture(ctx, tx, adminID, agents); err != nil {
 		return err
 	}
 	if err := applyDiscussionFixture(ctx, tx, adminID, agents); err != nil {
+		return err
+	}
+	if err := applyVADiscussionFixture(ctx, tx, adminID); err != nil {
 		return err
 	}
 	if err := applyOAuthFixture(ctx, tx, agents); err != nil {
