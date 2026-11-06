@@ -88,6 +88,10 @@ type Step struct {
 	// server's database copy. The job's log lines are compared as the
 	// step's body, and its writes with the tables.
 	Job string
+
+	// WS is a WebSocket step (ws.go): a raw upgrade request, or a read,
+	// ping or close on a connection an earlier step opened.
+	WS *WSStep
 }
 
 // Target is one server under test.
@@ -206,6 +210,12 @@ func (r *Runner) runSide(ctx context.Context, sc Scenario, t *Target) (rawSide, 
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	defer client.CloseIdleConnections()
+	conns := map[string]*wsConn{}
+	defer func() {
+		for _, c := range conns {
+			c.conn.Close()
+		}
+	}()
 
 	for i, st := range sc.Steps {
 		if st.Settle {
@@ -232,6 +242,14 @@ func (r *Runner) runSide(ctx context.Context, sc Scenario, t *Target) (rawSide, 
 				return side, fmt.Errorf("%s: step %d job %s: %w", t.Name, i+1, st.Job, err)
 			}
 			side.steps = append(side.steps, rawStep{label: "job " + st.Job, header: http.Header{}, body: []byte(out)})
+			continue
+		}
+		if st.WS != nil {
+			step, err := r.wsStep(ctx, t, st, vars, conns)
+			if err != nil {
+				return side, fmt.Errorf("%s: step %d %s: %w", t.Name, i+1, wsLabel(st.WS), err)
+			}
+			side.steps = append(side.steps, step)
 			continue
 		}
 		step, err := r.request(ctx, client, t, st, vars)
