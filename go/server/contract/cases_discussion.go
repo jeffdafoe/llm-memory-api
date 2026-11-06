@@ -254,6 +254,18 @@ var discussionDeferCases = []Scenario{
 	postCase("discussion defer unknown", discussionDeferPath, "agent-a-session", `{"discussion_id":999}`),
 	postCase("discussion defer not a participant", discussionDeferPath, "admin-web", `{"discussion_id":`+waitingDiscussion+`,"agent":"contract-admin"}`),
 	postCase("discussion defer without an id", discussionDeferPath, "agent-b-session", `{}`),
+	{
+		// A deferred participant can defer again, and pending lists the
+		// discussion under deferred_discussions.
+		Name: "discussion defer twice, then pending",
+		Steps: []Step{
+			discussionPost(discussionDeferPath, "agent-b-session", `{"discussion_id":`+waitingDiscussion+`}`),
+			settleStep,
+			discussionPost(discussionDeferPath, "agent-b-session", `{"discussion_id":`+waitingDiscussion+`}`),
+			settleStep,
+			discussionPost(discussionPendingPath, "agent-b-session", `{}`),
+		},
+	},
 }
 
 var discussionLeaveCases = []Scenario{

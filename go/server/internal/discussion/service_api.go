@@ -565,8 +565,6 @@ type DeferResult struct {
 // Defer is discussionDefer: an invited (or already deferred) participant
 // puts the invitation off, up to max_defer_count times, and the
 // discussion's timeout moves to discussion_defer_timeout minutes from now.
-// The schema refuses the deferred status (LLM-938), so the update fails, in
-// Node as here.
 func (s *Service) Defer(ctx context.Context, discussionID ID, agent string) (*DeferResult, error) {
 	if !discussionID.Truthy() || agent == "" {
 		return nil, apierr.New(http.StatusBadRequest, "Required fields: discussion_id, agent")
