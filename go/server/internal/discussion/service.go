@@ -72,6 +72,12 @@ func InOrder(ctx context.Context) context.Context {
 	return context.WithValue(ctx, orderKey{}, &jobOrder{})
 }
 
+// unordered is ctx with InOrder lifted: a job started under it runs at
+// once, beside the ordered ones, as a Node call that nothing waited for.
+func unordered(ctx context.Context) context.Context {
+	return context.WithValue(ctx, orderKey{}, (*jobOrder)(nil))
+}
+
 // later runs fn after the response, as Node's un-awaited calls ran: on its
 // own context, which a client hanging up does not cancel. Under InOrder it
 // starts when the job before it has ended, with a deadline of its own, so a

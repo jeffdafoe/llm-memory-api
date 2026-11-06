@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v6"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
@@ -606,6 +607,32 @@ func (b *blockingDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.
 		}
 	}
 	return b.DB.QueryRow(ctx, sql, args...)
+}
+
+func (b *blockingDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	select {
+	case b.seen <- sql:
+	default:
+	}
+	return b.DB.Exec(ctx, sql, args...)
+}
+
+// waitSeen waits for a query whose SQL starts with prefix; it releases the
+// held query and fails the test after two seconds.
+func (b *blockingDB) waitSeen(t *testing.T, prefix, what string) {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case sql := <-b.seen:
+			if strings.HasPrefix(sql, prefix) {
+				return
+			}
+		case <-deadline:
+			close(b.release)
+			t.Fatal(what + " waited for the held event")
+		}
+	}
 }
 
 // Conclude's participant messages do not wait on the event: with the event

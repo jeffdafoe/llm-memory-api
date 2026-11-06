@@ -224,8 +224,8 @@ func TestLeaveReevaluatesOpenVotes(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("joined"))
 	mock.ExpectExec(q("UPDATE discussion_participants SET status = $1 WHERE discussion_id = $2 AND actor_id = $3")).WithArgs("left", num("7"), 2).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	// The event, then the open votes evaluated again: the one left joined
-	// voter has voted, so the vote closes.
+	// The event and, beside it, the open votes evaluated again: the one
+	// joined voter left has voted, so the vote closes.
 	expectActorByName(mock, "system", 10)
 	mock.ExpectQuery(q(insertTextSQL)).WithArgs("b left the discussion", 10, num("7")).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
 	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
@@ -237,10 +237,16 @@ func TestLeaveReevaluatesOpenVotes(t *testing.T) {
 	mock.ExpectExec(q("UPDATE discussion_votes SET status = $1, closed_at = NOW() WHERE id = $2")).WithArgs("closed", num("3")).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
+	held := &blockingDB{DB: mock, block: "b left the discussion", release: make(chan struct{}), seen: make(chan string, 64)}
+	s.DB, s.Notifier.DB = held, held
+
 	res, err := s.Leave(ctx, IntID(7), "b")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// With the event held, the satisfied vote still closes.
+	held.waitSeen(t, "UPDATE discussion_votes SET status", "the vote re-evaluation")
+	close(held.release)
 	if body, _ := json.Marshal(res); string(body) != `{"discussion_id":7,"agent":"b","status":"left"}` {
 		t.Errorf("answer %s", body)
 	}
@@ -252,23 +258,34 @@ func TestProposeNotifiesVirtualAgents(t *testing.T) {
 	s, mock := newService(t)
 	in := ProposeInput{DiscussionID: RawID(json.RawMessage(`"7"`)), ProposedBy: "a", Question: "Ship?", Type: RawID(json.RawMessage(`"conclude"`))}
 
+	// Warm the cache, so the two background jobs do not race to look the
+	// system actor up.
+	expectActorByName(mock, "system", 10)
+	if _, _, err := s.Actors.ResolveByName(ctx, "system"); err != nil {
+		t.Fatal(err)
+	}
 	expectActorByName(mock, "a", 1)
 	mock.ExpectQuery(q("SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2")).WithArgs("7", 1).
 		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("joined"))
 	mock.ExpectQuery(q("SELECT status FROM discussions WHERE id = $1")).WithArgs("7").WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("active"))
 	mock.ExpectQuery(q("INSERT INTO discussion_votes")).WithArgs("7", 1, "Ship?", "conclude", "unanimous", nil).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created_at"}).AddRow(301, fixedNow))
-	expectActorByName(mock, "system", 10)
 	mock.ExpectQuery(q(insertTextSQL)).WithArgs("a proposed conclude vote #301: Ship?", 10, "7").WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
 	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
 	mock.ExpectQuery(q(insertTextSQL)).WithArgs(`{"type":"virtual-agent","discussionId":"7","triggerType":"vote-proposed","voteId":301}`, 10, nil).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(51, fixedNow))
 	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(51, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(61))
 
+	held := &blockingDB{DB: mock, block: "a proposed conclude vote #301: Ship?", release: make(chan struct{}), seen: make(chan string, 64)}
+	s.Notifier.DB = held
+
 	res, err := s.Propose(ctx, in)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// With the event held, the notification's text is still written.
+	held.waitSeen(t, insertTextSQL, "the vote-proposed notification")
+	close(held.release)
 	body, _ := json.Marshal(res)
 	if string(body) != `{"vote":{"id":301,"discussion_id":"7","proposed_by":"a","question":"Ship?","type":"conclude","threshold":"unanimous","closes_at":null,"created_at":"2026-11-06T12:00:00.000Z"}}` {
 		t.Errorf("answer %s", body)

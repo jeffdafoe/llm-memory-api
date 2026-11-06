@@ -644,9 +644,9 @@ type LeaveResult struct {
 	Status       string `json:"status"`
 }
 
-// Leave is discussionLeave: the participant leaves, the discussion gets an
-// event line, and its open votes are evaluated again in the background (the
-// leaver may have been the last one who had not voted). The virtual agents
+// Leave is discussionLeave: the participant leaves, and in the background,
+// independently, the discussion gets an event line and its open votes are
+// evaluated again (the leaver may have been the last one who had not voted). The virtual agents
 // call it when one leaves a discussion.
 func (s *Service) Leave(ctx context.Context, discussionID ID, agent string) (*LeaveResult, error) {
 	if !discussionID.Truthy() || agent == "" {
@@ -670,7 +670,9 @@ func (s *Service) Leave(ctx context.Context, discussionID ID, agent string) (*Le
 	}
 	s.log("leave", logger.Fields{field("discussion_id", discussionID), field("agent", agent)})
 	s.sendEvent(ctx, discussionID, agent+" left the discussion", "Failed to send leave event")
-	later(ctx, func(ctx context.Context) {
+	// Node started the re-evaluation without waiting for the event; it
+	// writes no chat rows, so it runs beside it.
+	later(unordered(ctx), func(ctx context.Context) {
 		if err := s.reEvaluateOpenVotes(ctx, discussionID); err != nil {
 			s.log("leave-vote-reeval-error", logger.Fields{field("discussion_id", discussionID), field("error", err.Error())})
 		}
@@ -788,7 +790,10 @@ func (s *Service) Propose(ctx context.Context, in ProposeInput) (*ProposeResult,
 	s.log("vote_propose", logger.Fields{field("discussion_id", in.DiscussionID), field("vote_id", voteID), field("proposed_by", in.ProposedBy), field("question", in.Question), field("type", voteType)})
 	s.sendEvent(ctx, in.DiscussionID, in.ProposedBy+" proposed "+voteType+" vote #"+strconv.Itoa(voteID)+": "+in.Question, "Failed to send vote propose event")
 	vote := IntID(voteID)
-	s.notifyVirtualAgents(ctx, in.DiscussionID, "vote-proposed", &vote)
+	// Node started the notification without waiting for the event, so a
+	// stalled event does not hold the virtual agents' vote; which of the
+	// two texts inserts first is a race, in Node too.
+	s.notifyVirtualAgents(unordered(ctx), in.DiscussionID, "vote-proposed", &vote)
 	return &ProposeResult{Vote: ProposedVote{
 		ID: voteID, DiscussionID: in.DiscussionID, ProposedBy: in.ProposedBy, Question: in.Question,
 		Type: voteType, Threshold: threshold, ClosesAt: closesAt, CreatedAt: Timestamp{createdAt},
