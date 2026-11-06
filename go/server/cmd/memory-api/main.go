@@ -26,6 +26,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/cron"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/dream"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/server"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/watchdog"
 )
@@ -84,10 +85,20 @@ func run() error {
 	// server.js starts the stale-vote scanner next.
 	services.Discussions.StartStaleVoteScanner(ctx)
 
-	// The Node server failed to start when its cleanup scheduler threw (a
-	// missing config key, a schedule with no time to run); so does this.
+	// The Node server failed to start when its dream or cleanup scheduler
+	// threw (a missing config key, a schedule with no time to run); so does
+	// this. server.js starts the dream scheduler first.
+	dreamTask, err := (&dream.Job{
+		DB: pool, Conns: dream.Pool{Pool: pool}, Config: store, Log: services.Log,
+		Notes: services.Notes, Agents: services.Agents, Trust: services.Admin,
+	}).Start()
+	if err != nil {
+		pool.Close()
+		return fmt.Errorf("dream scheduler: %w", err)
+	}
 	cleanupTask, err := (&cleanup.Job{DB: pool, Config: store, Log: services.Log}).Start()
 	if err != nil {
+		stopJobs(dreamTask)
 		pool.Close()
 		return fmt.Errorf("cleanup scheduler: %w", err)
 	}
@@ -109,7 +120,7 @@ func run() error {
 
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
-		stopJobs(cleanupTask)
+		stopJobs(dreamTask, cleanupTask)
 		pool.Close()
 		return err
 	}
@@ -137,7 +148,7 @@ func run() error {
 
 	select {
 	case err := <-serveErr:
-		stopJobs(cleanupTask)
+		stopJobs(dreamTask, cleanupTask)
 		pool.Close()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -146,21 +157,25 @@ func run() error {
 	case <-ctx.Done():
 	}
 
-	// No new cleanup runs or sweeps from here; the stale-activity sweeper
-	// drains its sweeps in progress on its own (2*backgroundDrain at most,
-	// from now). Stop taking requests
+	// No new dream or cleanup runs or sweeps from here; the stale-activity
+	// sweeper drains its sweeps in progress on its own (2*backgroundDrain at
+	// most, from now). Stop taking requests
 	// and let the running ones finish. Past the grace period the remaining
 	// connections are closed, which cancels their requests' contexts and so
-	// their queries. Then a running cleanup pass gets backgroundDrain to
-	// finish before its context is cancelled (each decay note and each
-	// retention stage is one transaction, so a cancel rolls back whole
-	// steps), and the background writes are drained. pool.Close waits for
+	// their queries. Then a running dream run and cleanup pass get
+	// backgroundDrain to finish before their contexts are cancelled (each
+	// decay note and each retention stage is one transaction, so a cancel
+	// rolls back whole steps; a dream run stops at its next chunk, villager
+	// or agent and keeps the cursors it advanced), and the background writes
+	// are drained. pool.Close waits for
 	// every borrowed connection, so it gets a deadline too; past it the
 	// process exits anyway, and Postgres drops the connections when the
 	// process is gone. Total time is bounded by shutdownGrace +
 	// 4*backgroundDrain + poolCloseWait.
-	if cleanupTask != nil {
-		cleanupTask.Stop()
+	for _, task := range []*cron.Task{dreamTask, cleanupTask} {
+		if task != nil {
+			task.Stop()
+		}
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
@@ -168,8 +183,8 @@ func run() error {
 	if err != nil {
 		srv.Close()
 	}
-	if !stopJobs(cleanupTask) {
-		fmt.Fprintln(os.Stderr, "memory-api: cleanup pass still running at shutdown")
+	if !stopJobs(dreamTask, cleanupTask) {
+		fmt.Fprintln(os.Stderr, "memory-api: dream run or cleanup pass still running at shutdown")
 	}
 	<-sweeperDone
 	if !sweptClean {
@@ -191,11 +206,18 @@ func run() error {
 	return err
 }
 
-// stopJobs stops the cleanup schedule and drains a pass in progress. It
-// reports whether nothing was left running.
-func stopJobs(task *cron.Task) bool {
-	if task == nil {
-		return true
+// stopJobs stops the dream and cleanup schedules and drains the runs in
+// progress, at the same time. It reports whether nothing was left running.
+func stopJobs(tasks ...*cron.Task) bool {
+	clean := make(chan bool, len(tasks))
+	for _, task := range tasks {
+		go func() {
+			clean <- task == nil || task.Drain(backgroundDrain)
+		}()
 	}
-	return task.Drain(backgroundDrain)
+	all := true
+	for range tasks {
+		all = <-clean && all
+	}
+	return all
 }
