@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -71,6 +72,11 @@ type Job struct {
 	// chunks (milliseconds); tests replace them.
 	Now   func() time.Time
 	Sleep func(ctx context.Context, ms float64) error
+
+	// task is the running schedule. Start replaces it, as Node's
+	// startDreamScheduler stopped its scheduledTask (hot reload).
+	taskMu sync.Mutex
+	task   *cron.Task
 }
 
 func (j *Job) log(action string, details logger.Fields) {
@@ -114,7 +120,13 @@ func message(err error) string {
 	return err.Error()
 }
 
+// detail is error_log.detail: Node stored err.stack; Go stores the error's
+// %+v, as every ported job and route does (the contract harness never
+// compares the column).
 func detail(err error) string { return fmt.Sprintf("%+v", err) }
+
+// stopTask stops a replaced schedule; tests record it.
+var stopTask = (*cron.Task).Stop
 
 func str(s *string) string {
 	if s == nil {
@@ -301,8 +313,9 @@ func (j *Job) Run(ctx context.Context) (logger.Fields, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A loss after the last check would otherwise read as a clean run.
-	if err := lock.check(ctx); err != nil {
+	// A loss (or a shutdown) after the last check would otherwise read as
+	// a clean run.
+	if err := boundary(ctx, lock); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -876,6 +889,15 @@ func (j *Job) Start() (*cron.Task, error) {
 		j.log("scheduler-error", logger.Fields{{Key: "message", Value: "Invalid cron expression: " + schedule}})
 		return nil, nil
 	}
+	// A replacement that validates stops the running schedule, even when
+	// node-cron's schedule() then threw; an empty or refused one above
+	// leaves it running, as in Node.
+	j.taskMu.Lock()
+	defer j.taskMu.Unlock()
+	if j.task != nil {
+		stopTask(j.task)
+		j.task = nil
+	}
 	sched, err := cron.Parse(schedule)
 	if err != nil {
 		return nil, err
@@ -891,6 +913,7 @@ func (j *Job) Start() (*cron.Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	j.task = task
 	j.log("scheduler", logger.Fields{{Key: "message", Value: "Dream scheduler started"}, {Key: "schedule", Value: schedule}})
 	return task, nil
 }

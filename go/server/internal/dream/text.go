@@ -75,15 +75,20 @@ var signalPatterns = func() []*jsregex.Regexp {
 	return out
 }()
 
-// signalBudget bounds one line's matching. The patterns are linear, so it
-// is never reached in practice; a line that exhausts it counts as having
-// no signal (Known differences).
-const signalBudget = 1 << 26
+// signalBudget bounds one line's matching, shared by all the patterns. The
+// patterns are linear, so it is never reached in practice; a line that
+// exhausts it counts as having no signal (Known differences). A variable
+// for the tests.
+var signalBudget int64 = 1 << 26
 
 func hasSignal(line string) bool {
+	budget := jsregex.NewBudget(context.Background(), signalBudget)
 	for _, re := range signalPatterns {
-		ok, err := re.MatchString(line, jsregex.NewBudget(context.Background(), signalBudget))
-		if err == nil && ok {
+		ok, err := re.MatchString(line, budget)
+		if err != nil {
+			return false
+		}
+		if ok {
 			return true
 		}
 	}

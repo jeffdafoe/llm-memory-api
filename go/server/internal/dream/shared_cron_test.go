@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/cron"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsonutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
@@ -948,5 +949,86 @@ func TestCancelledRunStopsAndReleases(t *testing.T) {
 	}
 	if got := strings.Join(f.lock.kinds(), ","); got != "connect,acquire,unlock,release" {
 		t.Errorf("lock events %s", got)
+	}
+}
+
+// Review round 1: a cancel after the last cursor write, with no pause
+// after the agent, fails the run instead of reporting it clean.
+func TestCancelAfterTheLastCursorFailsTheRun(t *testing.T) {
+	db := &routeDB{agentRows: [][]any{dedicatedAgentRow("technical", midnightAlignedSince(0))}, chunk: emptyChunks, fallback: []any{true, false, nil}}
+	f := newCronFixture(db)
+	f.job.Config.(interface{ Set(string, string) }).Set("dream_interagent_delay", "0")
+	ctx, cancel := context.WithCancel(context.Background())
+	db.after = func(sql string) {
+		if strings.Contains(sql, "UPDATE agent_configuration SET last_dream_at") {
+			cancel()
+		}
+	}
+	_, err := f.job.Run(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err %v", err)
+	}
+	if len(db.agentCursorUpdates) != 1 {
+		t.Errorf("%d cursor updates", len(db.agentCursorUpdates))
+	}
+	if got := strings.Join(f.lock.kinds(), ","); got != "connect,acquire,unlock,release" {
+		t.Errorf("lock events %s", got)
+	}
+}
+
+// Review round 1: the signal budget is one per line, shared by the
+// patterns, and running out means no signal, even when a later pattern
+// would have matched.
+func TestSignalBudgetIsPerLine(t *testing.T) {
+	line := strings.Repeat("x", 5000) + " miss"
+	if !hasSignal(line) {
+		t.Fatal("the line has a signal under the real budget")
+	}
+	saved := signalBudget
+	defer func() { signalBudget = saved }()
+	signalBudget = 20000
+	if hasSignal(line) {
+		t.Error("an exhausted budget still found the last pattern's signal")
+	}
+	if hasSignal(strings.Repeat("y", 50000)) {
+		t.Error("an exhausted budget read as a signal")
+	}
+	if !hasSignal("remember") {
+		t.Error("a short line ran out of budget")
+	}
+}
+
+// Review round 1: starting again with a valid schedule replaces the
+// running one; an empty or refused schedule leaves it running.
+func TestStartReplacesTheRunningSchedule(t *testing.T) {
+	var stopped []*cron.Task
+	saved := stopTask
+	defer func() { stopTask = saved }()
+	stopTask = func(task *cron.Task) { stopped = append(stopped, task); task.Stop() }
+
+	store := storeOf(map[string]string{"dream_cron_schedule": "0 4 * * *"})
+	j := &Job{Config: store, Log: &eventLog{}}
+	first, err := j.Start()
+	if err != nil || first == nil {
+		t.Fatalf("first start: %v %v", first, err)
+	}
+	defer first.Stop()
+	for _, schedule := range []string{"", "not a cron"} {
+		store.Set("dream_cron_schedule", schedule)
+		if task, err := j.Start(); task != nil || err != nil {
+			t.Fatalf("start %q: %v %v", schedule, task, err)
+		}
+	}
+	if len(stopped) != 0 {
+		t.Fatalf("an empty or refused schedule stopped the running one")
+	}
+	store.Set("dream_cron_schedule", "0 5 * * *")
+	second, err := j.Start()
+	if err != nil || second == nil {
+		t.Fatalf("second start: %v %v", second, err)
+	}
+	defer second.Stop()
+	if len(stopped) != 1 || stopped[0] != first {
+		t.Errorf("stopped %v, want the first task", stopped)
 	}
 }
