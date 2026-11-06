@@ -366,6 +366,18 @@ func (d *ScenarioDB) Fingerprint(ctx context.Context) (string, error) {
 	return strings.Join(out, " "), rows.Err()
 }
 
+// Busy counts the other client connections to this database that are
+// running a statement (a commit waiting on the disk included) or sit inside
+// a transaction. The pool connects as the superuser, so it sees the state of
+// the servers' connections.
+func (d *ScenarioDB) Busy(ctx context.Context) (int, error) {
+	var n int
+	err := d.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+        WHERE datname = current_database() AND pid <> pg_backend_pid()
+          AND backend_type = 'client backend' AND state IS DISTINCT FROM 'idle'`).Scan(&n)
+	return n, err
+}
+
 // Snapshot reads every table as JSON rows in column order. row_to_json
 // keeps column order (jsonb would sort the keys); timestamps come out as ISO
 // strings and vectors as their text form.

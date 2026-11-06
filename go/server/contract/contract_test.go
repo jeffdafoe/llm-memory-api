@@ -179,6 +179,7 @@ func runScenario(t *testing.T, sc Scenario) {
 			BaseURL:     s.proc.BaseURL,
 			Credentials: Credentials(),
 			Fingerprint: s.db.Fingerprint,
+			Busy:        s.db.Busy,
 			Snapshot:    s.db.Snapshot,
 		}
 	}

@@ -224,6 +224,31 @@ func TestSortRecordedUsesAuth(t *testing.T) {
 	}
 }
 
+// A commit stalled on the disk leaves the fingerprint unchanged; settle must
+// wait for the busy connection, not end on the quiet fingerprint.
+func TestRunnerSettleWaitsForBusyConnections(t *testing.T) {
+	f := NewFakeUpstream()
+	defer f.Close()
+	r := &Runner{Fake: f, QuietFor: 50 * time.Millisecond, SettleLimit: 5 * time.Second}
+	start := time.Now()
+	busyFor := 400 * time.Millisecond
+	target := &Target{Name: "node", Side: "node",
+		Fingerprint: func(context.Context) (string, error) { return "request_log=0", nil },
+		Busy: func(context.Context) (int, error) {
+			if time.Since(start) < busyFor {
+				return 1, nil
+			}
+			return 0, nil
+		},
+	}
+	if err := r.settle(context.Background(), target, Step{Settle: true}); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took < busyFor {
+		t.Fatalf("settle ended after %s, while a connection was still busy", took)
+	}
+}
+
 func TestRunnerSettleTimeoutNamesWhatChanged(t *testing.T) {
 	f := NewFakeUpstream()
 	defer f.Close()
