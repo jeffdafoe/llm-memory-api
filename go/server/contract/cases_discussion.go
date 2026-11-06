@@ -1,6 +1,9 @@
 package contract
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // discussionCases cover the /v1/discussion routes against the discussion
 // fixture (fixture_discussion.go, and discussion 101 in fixture_chat.go).
@@ -254,6 +257,24 @@ var discussionDeferCases = []Scenario{
 	postCase("discussion defer unknown", discussionDeferPath, "agent-a-session", `{"discussion_id":999}`),
 	postCase("discussion defer not a participant", discussionDeferPath, "admin-web", `{"discussion_id":`+waitingDiscussion+`,"agent":"contract-admin"}`),
 	postCase("discussion defer without an id", discussionDeferPath, "agent-b-session", `{}`),
+	{
+		// A deferred participant can defer again, and pending lists the
+		// discussion under deferred_discussions. The Until step requires
+		// both defers to have been written, so the case cannot pass by
+		// failing the same way on both sides.
+		Name: "discussion defer twice, then pending",
+		Steps: []Step{
+			discussionPost(discussionDeferPath, "agent-b-session", `{"discussion_id":`+waitingDiscussion+`}`),
+			settleStep,
+			discussionPost(discussionDeferPath, "agent-b-session", `{"discussion_id":`+waitingDiscussion+`}`),
+			{Settle: true, Until: func(ctx context.Context, t *Target) (bool, error) {
+				return t.Holds(ctx, `SELECT EXISTS (SELECT 1 FROM discussion_participants dp JOIN actors a ON a.id = dp.actor_id
+                     WHERE dp.discussion_id = `+waitingDiscussion+` AND a.name = 'agent-b'
+                       AND dp.status = 'deferred' AND dp.defer_count = 2 AND dp.deferred_at IS NOT NULL)`)
+			}},
+			discussionPost(discussionPendingPath, "agent-b-session", `{}`),
+		},
+	},
 }
 
 var discussionLeaveCases = []Scenario{
