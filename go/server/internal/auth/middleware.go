@@ -78,6 +78,14 @@ func (a *SessionAuth) ForgetAgent(agent string) {
 	})
 }
 
+// ForgetActor drops every cached token of one actor: its API sessions, web
+// sessions and API keys. Actor deletion calls it after deleting the rows.
+func (a *SessionAuth) ForgetActor(actorID int) {
+	a.cache.DeleteFunc(func(_ string, s cachedSession) bool {
+		return s.actorID == actorID
+	})
+}
+
 func earlier(a, b time.Time) time.Time {
 	if a.Before(b) {
 		return a

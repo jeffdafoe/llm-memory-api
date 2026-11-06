@@ -146,7 +146,7 @@ func Handler(s *Services) http.Handler {
 	}
 	(&admin.Routes{
 		Common: adminCommon, Config: s.Config, Sessions: s.Sessions, SessionAuth: s.SessionAuth,
-		Providers: s.Providers,
+		Providers: s.Providers, Namespaces: s.Namespaces,
 	}).Register(adminMux)
 
 	// /v1: every route behind the session middleware and the last_seen

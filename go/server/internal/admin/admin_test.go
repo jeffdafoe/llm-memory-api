@@ -24,10 +24,15 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/visibility"
 )
 
-// fakeCache records what logout drops from the token cache.
-type fakeCache struct{ tokens []string }
+// fakeCache records what logout and actor deletion drop from the token
+// cache.
+type fakeCache struct {
+	tokens []string
+	actors []int
+}
 
-func (f *fakeCache) Forget(token string) { f.tokens = append(f.tokens, token) }
+func (f *fakeCache) Forget(token string)     { f.tokens = append(f.tokens, token) }
+func (f *fakeCache) ForgetActor(actorID int) { f.actors = append(f.actors, actorID) }
 
 var testNow = time.Date(2026, 11, 6, 12, 0, 0, 123456789, time.UTC)
 
@@ -50,6 +55,7 @@ func newRoutes(t *testing.T, values map[string]string) (*Routes, pgxmock.PgxPool
 		Sessions:    &auth.Sessions{DB: mock},
 		SessionAuth: tokens,
 		Providers:   &providers.Providers{Config: store, Log: log},
+		Namespaces:  &permissions.Namespaces{DB: mock},
 		Now:         func() time.Time { return testNow },
 	}
 	rt.Register(NewMux())
