@@ -68,12 +68,13 @@ func init() {
 // Background runs fn on its own goroutine with a fresh, bounded context. Use it
 // for writes whose failure must never affect the request that caused them.
 // The Node server did these as un-awaited promises with `.catch(() => {})`.
-// Once DrainBackground has started, new jobs are dropped.
-func Background(fn func(ctx context.Context)) {
+// Once DrainBackground has started, new jobs are dropped; started reports
+// whether fn was scheduled.
+func Background(fn func(ctx context.Context)) (started bool) {
 	backgroundMu.Lock()
 	if backgroundClosed {
 		backgroundMu.Unlock()
-		return
+		return false
 	}
 	background.Add(1)
 	backgroundMu.Unlock()
@@ -83,6 +84,7 @@ func Background(fn func(ctx context.Context)) {
 		defer cancel()
 		fn(ctx)
 	}()
+	return true
 }
 
 // DrainBackground stops new background jobs, waits up to timeout for the

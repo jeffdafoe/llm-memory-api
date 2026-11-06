@@ -73,7 +73,9 @@ func InOrder(ctx context.Context) context.Context {
 }
 
 // later runs fn after the response, as Node's un-awaited calls ran: on its
-// own context, which a client hanging up does not cancel.
+// own context, which a client hanging up does not cancel. Under InOrder it
+// starts when the job before it has ended, with a deadline of its own, so a
+// stalled job delays the next one but never spends its time.
 func later(ctx context.Context, fn func(ctx context.Context)) {
 	order, _ := ctx.Value(orderKey{}).(*jobOrder)
 	if order == nil {
@@ -85,17 +87,23 @@ func later(ctx context.Context, fn func(ctx context.Context)) {
 	done := make(chan struct{})
 	order.last = done
 	order.mu.Unlock()
-	db.Background(func(bctx context.Context) {
-		defer close(done)
-		if prev != nil {
-			select {
-			case <-prev:
-			case <-bctx.Done():
-				return
-			}
+	run := func() {
+		started := db.Background(func(ctx context.Context) {
+			defer close(done)
+			fn(ctx)
+		})
+		if !started {
+			close(done)
 		}
-		fn(bctx)
-	})
+	}
+	if prev == nil {
+		run()
+		return
+	}
+	go func() {
+		<-prev
+		run()
+	}()
 }
 
 // background is later with a failure written to stderr as
@@ -193,7 +201,7 @@ func (s *Service) EvaluateReadiness(ctx context.Context, discussionID ID) error 
 		return s.activate(ctx, discussionID, "all_joined")
 	}
 
-	if timeoutAt == nil || s.now().Before(*timeoutAt) {
+	if timeoutAt == nil || s.now().UnixMilli() < dateMS(*timeoutAt) {
 		return nil
 	}
 	if allRequiredJoined {
@@ -303,7 +311,7 @@ func (s *Service) EvaluateVote(ctx context.Context, voteID ID) error {
 	if err != nil {
 		return err
 	}
-	expired := closesAt != nil && !s.now().Before(*closesAt)
+	expired := closesAt != nil && s.now().UnixMilli() >= dateMS(*closesAt)
 	allVoted := totalBallots(counts) >= int64(participantCount)
 	if !allVoted && !expired {
 		return nil
@@ -530,22 +538,22 @@ func (s *Service) Conclude(ctx context.Context, discussionID ID, agent string, c
 	if err != nil {
 		return nil, err
 	}
-	// Node started the participant messages, then the event, without
-	// awaiting either. The event's text row comes first, because each
-	// message looks its recipient up before inserting; one job keeps that
-	// order. (Which delivery row Node wrote first was a race between the
-	// two commits.)
-	event := "Discussion " + newStatus + " by " + agent
+	// Node started the participant messages and the event without awaiting
+	// either; each runs on its own, so a stalled one costs the other
+	// nothing. Which inserts first is a race, in Node too.
 	notice := "Discussion #" + discussionID.String() + ` ("` + topic + `") was ` + newStatus + " by " + agent
-	param := discussionID.Param()
-	later(ctx, func(ctx context.Context) {
-		if _, err := s.Notifier.SendDiscussionEvent(ctx, param, event); err != nil {
-			s.Log.Errorf("Failed to send conclude event: %s", err)
-		}
-		if len(others) > 0 {
+	if len(others) > 0 {
+		db.Background(func(ctx context.Context) {
 			if _, err := s.Notifier.SendSystemMessageToMany(ctx, others, notice, nil); err != nil {
 				s.Log.Errorf("Failed to notify participants of conclude: %s", err)
 			}
+		})
+	}
+	event := "Discussion " + newStatus + " by " + agent
+	param := discussionID.Param()
+	db.Background(func(ctx context.Context) {
+		if _, err := s.Notifier.SendDiscussionEvent(ctx, param, event); err != nil {
+			s.Log.Errorf("Failed to send conclude event: %s", err)
 		}
 	})
 	return &ConcludeResult{DiscussionID: discussionID, Status: newStatus, Outcome: outcome}, nil

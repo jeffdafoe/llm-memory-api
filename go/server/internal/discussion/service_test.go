@@ -6,6 +6,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -493,4 +494,128 @@ func TestScanStaleVotes(t *testing.T) {
 	if err := mock2.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Node compared Dates: the deadline and the clock in the same millisecond
+// count as reached, whatever their microseconds.
+func TestDeadlinesInMilliseconds(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 6, 12, 0, 0, 123500000, time.UTC)
+	deadline := time.Date(2026, 11, 6, 12, 0, 0, 123900000, time.UTC)
+	nextMS := time.Date(2026, 11, 6, 12, 0, 0, 124000000, time.UTC)
+	if dateMS(deadline) != now.UnixMilli() || dateMS(nextMS) != now.UnixMilli()+1 {
+		t.Fatalf("dateMS %d %d, now %d", dateMS(deadline), dateMS(nextMS), now.UnixMilli())
+	}
+
+	s, mock := newService(t)
+	s.Now = func() time.Time { return now }
+	mock.ExpectQuery(q(voteHead)).WithArgs(num("3")).WillReturnRows(voteRow("open", 7, &deadline, "general", "unanimous"))
+	mock.ExpectQuery(q(joinedMembers)).WithArgs(7, "joined").WillReturnRows(joined(2))
+	mock.ExpectQuery(q(choiceCounts)).WithArgs(num("3")).WillReturnRows(counts())
+	mock.ExpectExec(q("UPDATE discussion_votes SET status = $1, closed_at = NOW() WHERE id = $2")).WithArgs("closed", num("3")).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	if err := s.EvaluateVote(ctx, IntID(3)); err != nil {
+		t.Fatal(err)
+	}
+	// One millisecond later is still open.
+	mock.ExpectQuery(q(voteHead)).WithArgs(num("4")).WillReturnRows(voteRow("open", 7, &nextMS, "general", "unanimous"))
+	mock.ExpectQuery(q(joinedMembers)).WithArgs(7, "joined").WillReturnRows(joined(2))
+	mock.ExpectQuery(q(choiceCounts)).WithArgs(num("4")).WillReturnRows(counts())
+	if err := s.EvaluateVote(ctx, IntID(4)); err != nil {
+		t.Fatal(err)
+	}
+	// The readiness timeout the same way.
+	mock.ExpectQuery(q(readinessHead)).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status", "timeout_at"}).AddRow("waiting", &deadline))
+	mock.ExpectQuery(q(readinessMembers)).WithArgs(num("7")).WillReturnRows(members([3]string{"b", "invited", "required"}))
+	mock.ExpectExec(q("UPDATE discussions SET status = $1, outcome = $2 WHERE id = $3")).WithArgs("timed_out", "abandoned", num("7")).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec(q(leaveAllSQL)).WithArgs(num("7")).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	if err := s.EvaluateReadiness(ctx, IntID(7)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A job under InOrder starts after the one before it ends, with a deadline
+// of its own.
+func TestLaterOrderAndDeadline(t *testing.T) {
+	ctx := InOrder(context.Background())
+	var got []string
+	var mu sync.Mutex
+	add := func(s string) {
+		mu.Lock()
+		got = append(got, s)
+		mu.Unlock()
+	}
+	release := make(chan struct{})
+	deadlines := make(chan time.Time, 1)
+	finished := make(chan struct{})
+	later(ctx, func(ctx context.Context) {
+		<-release
+		add("first")
+	})
+	later(ctx, func(ctx context.Context) {
+		add("second")
+		d, _ := ctx.Deadline()
+		deadlines <- d
+	})
+	later(ctx, func(ctx context.Context) {
+		add("third")
+		close(finished)
+	})
+	time.Sleep(50 * time.Millisecond)
+	waited := time.Now()
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("jobs did not finish")
+	}
+	if strings.Join(got, ",") != "first,second,third" {
+		t.Errorf("order %v", got)
+	}
+	if d := <-deadlines; d.Before(waited.Add(29 * time.Second)) {
+		t.Errorf("second job's deadline %v started before the first ended (%v)", d, waited)
+	}
+}
+
+// Conclude's participant messages do not wait on the event: a failed event
+// still lets them through.
+func TestConcludeChainsAreIndependent(t *testing.T) {
+	ctx := InOrder(context.Background())
+	s, mock := newService(t)
+	expectActor := func(name string, id int) {
+		mock.ExpectQuery(q(actorByName)).WithArgs(name).WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(id, name))
+	}
+	// Warm the cache, so the two jobs do not race to look the system actor up.
+	expectActor("system", 1)
+	expectActor("agent-b", 3)
+	for _, name := range []string{"system", "agent-b"} {
+		if _, _, err := s.Actors.ResolveByName(ctx, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expectActor("agent-a", 2)
+	mock.ExpectQuery(q("SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2")).WithArgs(num("7"), 2).
+		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("joined"))
+	mock.ExpectQuery(q("SELECT status, created_by_actor_id, topic FROM discussions WHERE id = $1")).WithArgs(num("7")).
+		WillReturnRows(pgxmock.NewRows([]string{"status", "created_by_actor_id", "topic"}).AddRow("active", 2, "Plan"))
+	mock.ExpectQuery(q(closedGeneral)).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"id", "threshold"}))
+	mock.ExpectExec(q("UPDATE discussions SET status = $1, concluded_at = NOW(), outcome = $2 WHERE id = $3")).
+		WithArgs("concluded", "consensus", num("7")).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec(q(leaveAllSQL)).WithArgs(num("7")).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
+	mock.ExpectQuery(q("SELECT ac.name AS agent FROM discussion_participants dp")).WithArgs(num("7"), 2).
+		WillReturnRows(pgxmock.NewRows([]string{"agent"}).AddRow("agent-b"))
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs("Discussion concluded by agent-a", 1, num("7")).WillReturnError(errors.New("event failed"))
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs(`Discussion #7 ("Plan") was concluded by agent-a`, 1, nil).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
+	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 3).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
+
+	res, err := s.Conclude(ctx, IntID(7), "agent-a", false)
+	if err != nil || res.Status != "concluded" || res.Outcome != "consensus" {
+		t.Fatalf("%+v %v", res, err)
+	}
+	testutil.WaitMet(t, mock)
 }

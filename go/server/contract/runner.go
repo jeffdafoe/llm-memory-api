@@ -214,6 +214,7 @@ func (r *Runner) runSide(ctx context.Context, sc Scenario, t *Target) (rawSide, 
 		if err != nil {
 			return side, fmt.Errorf("%s: snapshot: %w", t.Name, err)
 		}
+		linkChatDeliveries(tables)
 		side.tables = tables
 	}
 	return side, nil

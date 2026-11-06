@@ -2,6 +2,7 @@ package discussion
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
 	"time"
 
@@ -85,6 +86,15 @@ func minutesFromNow(now time.Time, minutes string) (t time.Time, param any, vali
 	}
 	t = time.UnixMilli(int64(ms))
 	return t, t, true
+}
+
+// dateMS is a timestamptz as node-postgres made it a Date, in milliseconds:
+// 1000 * parseFloat(fraction), truncated, as jsutil.DateISO reads it.
+// Node compared deadlines as Dates, so a deadline in the current
+// millisecond has passed whatever its microseconds.
+func dateMS(t time.Time) int64 {
+	us := t.Nanosecond() / 1000
+	return t.Unix()*1000 + int64(math.Trunc(1000*(float64(us)/1e6)))
 }
 
 // jsDate is a Date set from JavaScript (Date.now(), new Date()): milliseconds.

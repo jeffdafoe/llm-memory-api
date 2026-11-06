@@ -194,8 +194,10 @@ var discussionPendingCases = []Scenario{
 
 // deliveryRace is a conclude or cancel: Node started the participant
 // messages and the discussion event without awaiting either, so which chain
-// took the lower ids was a race between commits. The chat tables are
-// ordered by content (pg.go tableOrder), so only the ids are let go.
+// took the lower ids was a race between commits. The texts are ordered by
+// content (pg.go tableOrder) and each delivery carries the content of the
+// text it points at (linkChatDeliveries), so only the ids are let go and
+// the link from delivery to text is still compared.
 var deliveryRace = []KnownDifference{
 	{Where: "table chat_message_texts row *.id", Volatile: true, Reason: raceReason},
 	{Where: "table chat_messages row *.id", Volatile: true, Reason: raceReason},
