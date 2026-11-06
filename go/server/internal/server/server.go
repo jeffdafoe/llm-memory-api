@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/agent"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
@@ -24,6 +25,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/visibility"
 )
 
 // Services are the long-lived pieces routes share.
@@ -46,6 +48,7 @@ type Services struct {
 	Mail        *mail.Service
 	System      *system.Handler
 	Chat        *chat.Service
+	Visibility  *visibility.Visibility
 }
 
 // NewServices wires the shared services over one database and config store.
@@ -61,6 +64,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	agents := virtualagent.Seam{}
 	sysHandler := &system.Handler{Log: log}
 	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
+	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -77,7 +81,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		},
 		MCPAuth:    auth.NewMCPAuth(conn, store, actorCache, keys, bc),
 		Namespaces: &permissions.Namespaces{DB: conn},
-		Admin:      &permissions.Admin{DB: conn, Errorf: log.Errorf},
+		Admin:      admin,
 		Errors:     recorder,
 		Memory:     mem,
 		Notes: &notes.Service{
@@ -90,6 +94,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
 			Notifier: &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler},
 		},
+		Visibility: &visibility.Visibility{DB: conn, Admin: admin},
 	}
 }
 
@@ -121,6 +126,11 @@ func Handler(s *Services) http.Handler {
 	(&notes.Routes{Service: s.Notes, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	(&mail.Routes{Service: s.Mail, Router: s.Router}).Register(v1)
 	(&chat.Routes{Service: s.Chat, Router: s.Router}).Register(v1)
+	(&agent.Routes{
+		DB: s.DB, Config: s.Config, Log: s.Log, Router: s.Router, Events: s.Events,
+		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
+		Namespaces: s.Namespaces, Visibility: s.Visibility,
+	}).Register(v1)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
 
 	// Top-level routes outside /v1, with no auth: OAuth (mounted before /mcp

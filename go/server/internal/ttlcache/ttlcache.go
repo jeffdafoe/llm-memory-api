@@ -93,6 +93,19 @@ func (c *Cache[K, V]) Delete(key K) {
 	c.mu.Unlock()
 }
 
+// DeleteFunc drops every entry the function matches and invalidates every
+// load in flight, which may be loading an entry it would have matched.
+func (c *Cache[K, V]) DeleteFunc(match func(key K, value V) bool) {
+	c.mu.Lock()
+	for k, e := range c.entries {
+		if match(k, e.value) {
+			delete(c.entries, k)
+		}
+	}
+	c.gen++
+	c.mu.Unlock()
+}
+
 // Clear drops every entry and invalidates every load in flight.
 func (c *Cache[K, V]) Clear() {
 	c.mu.Lock()

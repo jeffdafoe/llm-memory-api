@@ -68,6 +68,16 @@ func (a *SessionAuth) Forget(token string) {
 	a.cache.Delete(token)
 }
 
+// ForgetAgent drops every cached token of one agent (API sessions and API
+// keys). Passphrase rotation calls it after deleting the agent's sessions.
+// Like Node's loop over the cache, it also drops the agent's API-key entries,
+// which the next request then looks up again.
+func (a *SessionAuth) ForgetAgent(agent string) {
+	a.cache.DeleteFunc(func(_ string, s cachedSession) bool {
+		return !s.isUser && s.agent == agent
+	})
+}
+
 func earlier(a, b time.Time) time.Time {
 	if a.Before(b) {
 		return a

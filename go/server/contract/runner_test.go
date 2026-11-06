@@ -263,3 +263,34 @@ func TestRunnerSettleTimeoutNamesWhatChanged(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Only the response_length of the VolatileLength step's own rows is masked:
+// same method and path with another status, and every other field, stay.
+func TestMaskVolatileLengths(t *testing.T) {
+	parse := func(s string) Value {
+		v, err := ParseJSON([]byte(s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	rows := []Value{
+		parse(`{"method":"POST","path":"/api/register","status":200,"response_length":167}`),
+		parse(`{"method":"POST","path":"/api/register","status":409,"response_length":90}`),
+		parse(`{"method":"POST","path":"/api/check-name","status":200,"response_length":40}`),
+	}
+	got := maskVolatileLengths(rows, map[string]bool{"POST /api/register 200": true})
+	want := []string{
+		`{"method":"POST","path":"/api/register","status":200,"response_length":"<volatile-length>"}`,
+		`{"method":"POST","path":"/api/register","status":409,"response_length":90}`,
+		`{"method":"POST","path":"/api/check-name","status":200,"response_length":40}`,
+	}
+	for i := range want {
+		if got[i].Compact() != want[i] {
+			t.Errorf("row %d: %s", i, got[i].Compact())
+		}
+	}
+	if rows[0].Compact() == want[0] {
+		t.Error("the input row was changed in place")
+	}
+}

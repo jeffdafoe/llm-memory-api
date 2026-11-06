@@ -40,6 +40,9 @@ var multisetTables = map[string][]string{
 // orders them the same on both sides.
 var tableOrder = map[string]string{
 	"mail": "sent_at, subject, body",
+	// The fixture's sessions share one created_at; an actor's two API
+	// sessions differ in expiry.
+	"sessions": "created_at, actor_id, kind, expires_at",
 }
 
 // Cluster is the Postgres server the harness runs on, reached as a superuser

@@ -179,3 +179,27 @@ func TestVolatileKnownDifferenceMayMatchNothing(t *testing.T) {
 		t.Fatal("a stale non-volatile entry passed")
 	}
 }
+
+// A "*" inside a known difference matches any run of characters, so an
+// entry can allow one field of every row without allowing the rows.
+func TestKnownDifferenceGlob(t *testing.T) {
+	k := KnownDifference{Where: "table request_log row *.response_length"}
+	for where, want := range map[string]bool{
+		"table request_log row 4.response_length":  true,
+		"table request_log row 12.response_length": true,
+		"table request_log row 4.status":           false,
+		"table request_log: row count":             false,
+		"table request_log row 4.response_length2": false,
+	} {
+		if got := k.matches(where); got != want {
+			t.Errorf("%s: %v", where, got)
+		}
+	}
+	prefix := KnownDifference{Where: "table chat_message*"}
+	if !prefix.matches("table chat_message_texts row 1.body") || prefix.matches("table mail row 1.body") {
+		t.Error("trailing star is no longer a prefix")
+	}
+	if (KnownDifference{Where: "a*a"}).matches("a") {
+		t.Error("overlapping parts matched")
+	}
+}

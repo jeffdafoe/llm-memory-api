@@ -1,4 +1,6 @@
-package registration
+// Package diceware makes the passphrases agents log in with (signup and
+// passphrase rotation).
+package diceware
 
 import (
 	"crypto/rand"
@@ -16,11 +18,11 @@ var wordlistText string
 
 var wordlist = strings.Fields(wordlistText)
 
-// passphrase is three distinct words in random order joined with '-', as
+// Passphrase is three distinct words in random order joined with '-', as
 // generatePassphrase(3).join('-'): the package samples three distinct
 // indexes and shuffles them, which is a uniform draw of an ordered triple of
 // distinct words.
-func passphrase() string {
+func Passphrase() string {
 	picked := map[int]bool{}
 	words := make([]string, 0, 3)
 	for len(words) < 3 {
