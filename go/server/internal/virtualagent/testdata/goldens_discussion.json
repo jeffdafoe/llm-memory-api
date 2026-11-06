@@ -14081,7 +14081,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -14230,6 +14230,58 @@
       "error",
       "invalid input syntax for type integer: \"1.5\""
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "invalid input syntax for type integer: \"1.5\"",
+      "error",
+      null,
+      "invalid input syntax for type integer: \"1.5\"",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: invalid input syntax for type integer: \"1.5\"",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -14247,6 +14299,11 @@
      "subsystem": "virtual-agent",
      "action": "usage-recorded",
      "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "events": [
@@ -14257,6 +14314,10 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "notes": [],
@@ -14298,7 +14359,13 @@
      "slug": "context/people/wendy"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"invalid input syntax for type integer: \\\"1.5\\\"\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "delay and stagger",
@@ -17921,7 +17988,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -18010,6 +18077,150 @@
       "error",
       "Anthropic API error 500: overloaded"
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "Anthropic API error 500: overloaded",
+      "error",
+      "500",
+      "Anthropic API error 500: overloaded",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: Anthropic API error 500: overloaded",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "ezekiel-crane"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "8"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "8"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "8"
+     ],
+     "timer": true
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "8",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      "discussion",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "8",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are ezekiel-crane.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"ezekiel-crane\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening, friends. What shall we bring to the fair?\"}]\n</Conversation>",
+      "A fine idea.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "ezekiel-crane",
+      "null",
+      "101",
+      "A fine idea.",
+      "false"
+     ]
+    },
+    {
+     "kind": "dream-mode",
+     "params": [
+      "ezekiel-crane"
+     ]
     }
    ],
    "logs": [
@@ -18022,6 +18233,21 @@
      "subsystem": "virtual-agent",
      "action": "usage-recorded",
      "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"ezekiel-crane\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"context\":\"discussion\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "responded",
+     "details": "{\"discussionId\":101,\"agent\":\"ezekiel-crane\",\"triggerType\":\"message\",\"responseLength\":12}"
     }
    ],
    "events": [
@@ -18032,10 +18258,36 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"ezekiel-crane\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"ezekiel-crane\",\"active\":false}"
     }
    ],
-   "notes": [],
+   "notes": [
+    {
+     "namespace": "ezekiel-crane",
+     "title": "discussion — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** discussion\n- **Discussion:** #101\n- **Model:** claude-haiku-4-5\n- **Tokens:** 120 in / 30 out\n\n## System Prompt\n\n<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are ezekiel-crane.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"ezekiel-crane\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>\n\n## User Message\n\n<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening, friends. What shall we bring to the fair?\"}]\n</Conversation>\n\n## Response\n\nA fine idea.",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "ezekiel-crane"
+    }
+   ],
    "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    },
     {
      "provider": "anthropic",
      "model": "claude-haiku-4-5",
@@ -18051,15 +18303,29 @@
      },
      "user": "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening, friends. What shall we bring to the fair?\"}]\n</Conversation>",
      "opts": "{\"cache\":true,\"stop\":[\"\\n{\\\"sender\\\":\\\"\"]}"
+    },
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are ezekiel-crane.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"ezekiel-crane\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nReply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants' messages. End when your own message is complete.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening, friends. What shall we bring to the fair?\"}]\n</Conversation>",
+     "opts": "{\"cache\":true,\"stop\":[\"\\n{\\\"sender\\\":\\\"\"]}"
     }
    ],
    "timers": [
+    3000,
     3000
    ],
    "searches": [
     {
      "query": "Plan the harvest fair",
      "namespace": "prudence",
+     "limit": 5
+    },
+    {
+     "query": "Plan the harvest fair",
+     "namespace": "ezekiel-crane",
      "limit": 5
     }
    ],
@@ -18075,9 +18341,27 @@
     {
      "namespace": "prudence",
      "slug": "context/people/ezekiel-crane"
+    },
+    {
+     "namespace": "ezekiel-crane",
+     "slug": "context/soul"
+    },
+    {
+     "namespace": "ezekiel-crane",
+     "slug": "context/people/wendy"
+    },
+    {
+     "namespace": "ezekiel-crane",
+     "slug": "context/people/prudence"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"Anthropic API error 500: overloaded\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "provider failure single agent",
@@ -18235,7 +18519,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -18324,6 +18608,58 @@
       "error",
       "Anthropic API error 500: overloaded"
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "Anthropic API error 500: overloaded",
+      "error",
+      "500",
+      "Anthropic API error 500: overloaded",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: Anthropic API error 500: overloaded",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -18341,6 +18677,11 @@
      "subsystem": "virtual-agent",
      "action": "usage-recorded",
      "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "events": [
@@ -18351,6 +18692,10 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "notes": [],
@@ -18396,7 +18741,2078 @@
      "slug": "context/people/ezekiel-crane"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"Anthropic API error 500: overloaded\",\"statusCode\":500}"
+    }
+   ]
+  },
+  {
+   "name": "malfunction post fails",
+   "config": {},
+   "unset": [],
+   "rows": {
+    "discussion-load": [
+     {
+      "id": 101,
+      "topic": "Plan the harvest fair",
+      "status": "active",
+      "channel": null,
+      "created_at": "2026-11-06T17:33:20.000Z",
+      "concluded_at": null,
+      "mode": "realtime",
+      "context": null,
+      "timeout_at": "2026-11-06T19:33:20.000Z",
+      "outcome": null,
+      "created_by_actor_id": 13
+     }
+    ],
+    "participants-load": [
+     {
+      "agent": "wendy",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "prudence",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "ezekiel-crane",
+      "status": "joined",
+      "role": "required"
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "ballot-check": [],
+    "discussion-history": [
+     [
+      {
+       "id": 90,
+       "from_agent": "wendy",
+       "message": "Good evening, friends. What shall we bring to the fair?",
+       "sent_at": "2026-11-06T18:33:10.000Z"
+      }
+     ]
+    ]
+   },
+   "rowsBy": {
+    "load-agent": {
+     "prudence": [
+      {
+       "actor_id": 7,
+       "agent": "prudence",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are prudence.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "ezekiel-crane": [
+      {
+       "actor_id": 8,
+       "agent": "ezekiel-crane",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are ezekiel-crane.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "wendy": [
+      {
+       "actor_id": 13,
+       "agent": "wendy",
+       "virtual": false,
+       "provider": null,
+       "model": null,
+       "api_key": null,
+       "configuration": null,
+       "startup_instructions": "You are wendy.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "home": []
+    }
+   },
+   "fail": {
+    "chat-send": "chat down"
+   },
+   "failNth": {},
+   "answers": [
+    {
+     "error": "Anthropic API error 500: overloaded",
+     "status": 500
+    },
+    {
+     "result": {
+      "text": "A fine idea.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
+   "clock": 1793990000000,
+   "unordered": false,
+   "payloads": [
+    "{\"type\":\"virtual-agent\",\"discussionId\":101,\"triggerType\":\"message\"}"
+   ],
+   "outcomes": [
+    {
+     "error": "chat down"
+    }
+   ],
+   "handled": [],
+   "queries": [
+    {
+     "kind": "discussion-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "participants-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "wendy"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "ezekiel-crane"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ],
+     "timer": true
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "discussion",
+      "error",
+      "Anthropic API error 500: overloaded"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "Anthropic API error 500: overloaded",
+      "error",
+      "500",
+      "Anthropic API error 500: overloaded",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: Anthropic API error 500: overloaded",
+      "false"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "processing",
+     "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\",\"ezekiel-crane\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":false}"
+    }
+   ],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are prudence.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"prudence\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nReply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants' messages. End when your own message is complete.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening, friends. What shall we bring to the fair?\"}]\n</Conversation>",
+     "opts": "{\"cache\":true,\"stop\":[\"\\n{\\\"sender\\\":\\\"\"]}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "searches": [
+    {
+     "query": "Plan the harvest fair",
+     "namespace": "prudence",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "prudence",
+     "slug": "context/soul"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/wendy"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/ezekiel-crane"
+    }
+   ],
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"Anthropic API error 500: overloaded\",\"statusCode\":500}"
+    }
+   ]
+  },
+  {
+   "name": "leave fails",
+   "config": {},
+   "unset": [],
+   "rows": {
+    "discussion-load": [
+     {
+      "id": 101,
+      "topic": "Plan the harvest fair",
+      "status": "active",
+      "channel": null,
+      "created_at": "2026-11-06T17:33:20.000Z",
+      "concluded_at": null,
+      "mode": "realtime",
+      "context": null,
+      "timeout_at": "2026-11-06T19:33:20.000Z",
+      "outcome": null,
+      "created_by_actor_id": 13
+     }
+    ],
+    "participants-load": [
+     {
+      "agent": "wendy",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "prudence",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "ezekiel-crane",
+      "status": "joined",
+      "role": "required"
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "ballot-check": [],
+    "discussion-history": [
+     [
+      {
+       "id": 90,
+       "from_agent": "wendy",
+       "message": "Good evening.",
+       "sent_at": "2026-11-06T18:33:10.000Z"
+      },
+      {
+       "id": 91,
+       "from_agent": "ezekiel-crane",
+       "message": "Evening.",
+       "sent_at": "2026-11-06T18:33:11.000Z"
+      },
+      {
+       "id": 92,
+       "from_agent": "wendy",
+       "message": "Prudence, shall we walk?",
+       "sent_at": "2026-11-06T18:33:12.000Z"
+      }
+     ]
+    ]
+   },
+   "rowsBy": {
+    "load-agent": {
+     "prudence": [
+      {
+       "actor_id": 7,
+       "agent": "prudence",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are prudence.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "ezekiel-crane": [
+      {
+       "actor_id": 8,
+       "agent": "ezekiel-crane",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are ezekiel-crane.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "wendy": [
+      {
+       "actor_id": 13,
+       "agent": "wendy",
+       "virtual": false,
+       "provider": null,
+       "model": null,
+       "api_key": null,
+       "configuration": null,
+       "startup_instructions": "You are wendy.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "home": []
+    }
+   },
+   "fail": {
+    "discussion-leave": "Agent is not a participant in this discussion"
+   },
+   "failNth": {},
+   "answers": [
+    {
+     "error": "Anthropic API error 500: overloaded",
+     "status": 500
+    }
+   ],
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
+   "clock": 1793990000000,
+   "unordered": false,
+   "payloads": [
+    "{\"type\":\"virtual-agent\",\"discussionId\":101,\"triggerType\":\"message\"}"
+   ],
+   "outcomes": [
+    {
+     "ok": null
+    }
+   ],
+   "handled": [],
+   "queries": [
+    {
+     "kind": "discussion-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "participants-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "wendy"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "ezekiel-crane"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ],
+     "timer": true
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "discussion",
+      "error",
+      "Anthropic API error 500: overloaded"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "Anthropic API error 500: overloaded",
+      "error",
+      "500",
+      "Anthropic API error 500: overloaded",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: Anthropic API error 500: overloaded",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "addressed",
+     "details": "{\"discussionId\":101,\"from\":\"wendy\",\"addressed\":[\"prudence\"],\"skipped\":[\"ezekiel-crane\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "processing",
+     "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-leave-failed",
+     "details": "{\"agent\":\"prudence\",\"discussionId\":101,\"error\":\"Agent is not a participant in this discussion\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are prudence.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"prudence\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nReply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants' messages. End when your own message is complete.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening.\"},{\"sender\":\"ezekiel-crane\",\"content\":\"Evening.\"},{\"sender\":\"wendy\",\"content\":\"Prudence, shall we walk?\"}]\n</Conversation>",
+     "opts": "{\"cache\":true,\"stop\":[\"\\n{\\\"sender\\\":\\\"\"]}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "searches": [
+    {
+     "query": "Plan the harvest fair",
+     "namespace": "prudence",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "prudence",
+     "slug": "context/soul"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/wendy"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/ezekiel-crane"
+    }
+   ],
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"Anthropic API error 500: overloaded\",\"statusCode\":500}"
+    }
+   ]
+  },
+  {
+   "name": "error status fails",
+   "config": {},
+   "unset": [],
+   "rows": {
+    "discussion-load": [
+     {
+      "id": 101,
+      "topic": "Plan the harvest fair",
+      "status": "active",
+      "channel": null,
+      "created_at": "2026-11-06T17:33:20.000Z",
+      "concluded_at": null,
+      "mode": "realtime",
+      "context": null,
+      "timeout_at": "2026-11-06T19:33:20.000Z",
+      "outcome": null,
+      "created_by_actor_id": 13
+     }
+    ],
+    "participants-load": [
+     {
+      "agent": "wendy",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "prudence",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "ezekiel-crane",
+      "status": "joined",
+      "role": "required"
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "ballot-check": [],
+    "discussion-history": [
+     [
+      {
+       "id": 90,
+       "from_agent": "wendy",
+       "message": "Good evening, friends. What shall we bring to the fair?",
+       "sent_at": "2026-11-06T18:33:10.000Z"
+      }
+     ]
+    ]
+   },
+   "rowsBy": {
+    "load-agent": {
+     "prudence": [
+      {
+       "actor_id": 7,
+       "agent": "prudence",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are prudence.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "ezekiel-crane": [
+      {
+       "actor_id": 8,
+       "agent": "ezekiel-crane",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are ezekiel-crane.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "wendy": [
+      {
+       "actor_id": 13,
+       "agent": "wendy",
+       "virtual": false,
+       "provider": null,
+       "model": null,
+       "api_key": null,
+       "configuration": null,
+       "startup_instructions": "You are wendy.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "home": []
+    }
+   },
+   "fail": {
+    "status": "status down"
+   },
+   "failNth": {},
+   "answers": [
+    {
+     "error": "Anthropic API error 500: overloaded",
+     "status": 500
+    },
+    {
+     "result": {
+      "text": "A fine idea.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
+   "clock": 1793990000000,
+   "unordered": false,
+   "payloads": [
+    "{\"type\":\"virtual-agent\",\"discussionId\":101,\"triggerType\":\"message\"}"
+   ],
+   "outcomes": [
+    {
+     "error": "status down"
+    }
+   ],
+   "handled": [],
+   "queries": [
+    {
+     "kind": "discussion-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "participants-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "wendy"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "ezekiel-crane"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ],
+     "timer": true
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "discussion",
+      "error",
+      "Anthropic API error 500: overloaded"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "Anthropic API error 500: overloaded",
+      "error",
+      "500",
+      "Anthropic API error 500: overloaded",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: Anthropic API error 500: overloaded",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "processing",
+     "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\",\"ezekiel-crane\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":false}"
+    }
+   ],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are prudence.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"prudence\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nReply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants' messages. End when your own message is complete.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening, friends. What shall we bring to the fair?\"}]\n</Conversation>",
+     "opts": "{\"cache\":true,\"stop\":[\"\\n{\\\"sender\\\":\\\"\"]}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "searches": [
+    {
+     "query": "Plan the harvest fair",
+     "namespace": "prudence",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "prudence",
+     "slug": "context/soul"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/wendy"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/ezekiel-crane"
+    }
+   ],
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"Anthropic API error 500: overloaded\",\"statusCode\":500}"
+    }
+   ]
+  },
+  {
+   "name": "failure usage and call rows fail",
+   "config": {},
+   "unset": [],
+   "rows": {
+    "discussion-load": [
+     {
+      "id": 101,
+      "topic": "Plan the harvest fair",
+      "status": "active",
+      "channel": null,
+      "created_at": "2026-11-06T17:33:20.000Z",
+      "concluded_at": null,
+      "mode": "realtime",
+      "context": null,
+      "timeout_at": "2026-11-06T19:33:20.000Z",
+      "outcome": null,
+      "created_by_actor_id": 13
+     }
+    ],
+    "participants-load": [
+     {
+      "agent": "wendy",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "prudence",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "ezekiel-crane",
+      "status": "joined",
+      "role": "required"
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "ballot-check": [],
+    "discussion-history": [
+     [
+      {
+       "id": 90,
+       "from_agent": "wendy",
+       "message": "Good evening.",
+       "sent_at": "2026-11-06T18:33:10.000Z"
+      },
+      {
+       "id": 91,
+       "from_agent": "ezekiel-crane",
+       "message": "Evening.",
+       "sent_at": "2026-11-06T18:33:11.000Z"
+      },
+      {
+       "id": 92,
+       "from_agent": "wendy",
+       "message": "Prudence, shall we walk?",
+       "sent_at": "2026-11-06T18:33:12.000Z"
+      }
+     ]
+    ]
+   },
+   "rowsBy": {
+    "load-agent": {
+     "prudence": [
+      {
+       "actor_id": 7,
+       "agent": "prudence",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are prudence.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "ezekiel-crane": [
+      {
+       "actor_id": 8,
+       "agent": "ezekiel-crane",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are ezekiel-crane.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "wendy": [
+      {
+       "actor_id": 13,
+       "agent": "wendy",
+       "virtual": false,
+       "provider": null,
+       "model": null,
+       "api_key": null,
+       "configuration": null,
+       "startup_instructions": "You are wendy.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "home": []
+    }
+   },
+   "fail": {
+    "usage-insert": "insert failed",
+    "call-insert": "call log down"
+   },
+   "failNth": {},
+   "answers": [
+    {
+     "error": "API error 503: busy",
+     "status": 503
+    }
+   ],
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
+   "clock": 1793990000000,
+   "unordered": false,
+   "payloads": [
+    "{\"type\":\"virtual-agent\",\"discussionId\":101,\"triggerType\":\"message\"}"
+   ],
+   "outcomes": [
+    {
+     "ok": null
+    }
+   ],
+   "handled": [],
+   "queries": [
+    {
+     "kind": "discussion-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "participants-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "wendy"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "ezekiel-crane"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ],
+     "timer": true
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "discussion",
+      "error",
+      "API error 503: busy"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "API error 503: busy",
+      "error",
+      "503",
+      "API error 503: busy",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: API error 503: busy",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "addressed",
+     "details": "{\"discussionId\":101,\"from\":\"wendy\",\"addressed\":[\"prudence\"],\"skipped\":[\"ezekiel-crane\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "processing",
+     "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "call-log-error",
+     "details": "{\"agent\":\"prudence\",\"error\":\"call log down\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are prudence.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"prudence\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nReply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants' messages. End when your own message is complete.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening.\"},{\"sender\":\"ezekiel-crane\",\"content\":\"Evening.\"},{\"sender\":\"wendy\",\"content\":\"Prudence, shall we walk?\"}]\n</Conversation>",
+     "opts": "{\"cache\":true,\"stop\":[\"\\n{\\\"sender\\\":\\\"\"]}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "searches": [
+    {
+     "query": "Plan the harvest fair",
+     "namespace": "prudence",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "prudence",
+     "slug": "context/soul"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/wendy"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/ezekiel-crane"
+    }
+   ],
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"API error 503: busy\",\"statusCode\":500}"
+    }
+   ]
+  },
+  {
+   "name": "rerun history load fails",
+   "config": {},
+   "unset": [],
+   "rows": {
+    "discussion-load": [
+     {
+      "id": 101,
+      "topic": "Plan the harvest fair",
+      "status": "active",
+      "channel": null,
+      "created_at": "2026-11-06T17:33:20.000Z",
+      "concluded_at": null,
+      "mode": "realtime",
+      "context": null,
+      "timeout_at": "2026-11-06T19:33:20.000Z",
+      "outcome": null,
+      "created_by_actor_id": 13
+     }
+    ],
+    "participants-load": [
+     {
+      "agent": "wendy",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "prudence",
+      "status": "joined",
+      "role": "required"
+     },
+     {
+      "agent": "ezekiel-crane",
+      "status": "joined",
+      "role": "required"
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "ballot-check": [],
+    "discussion-history": [
+     [
+      {
+       "id": 90,
+       "from_agent": "wendy",
+       "message": "Good evening.",
+       "sent_at": "2026-11-06T18:33:10.000Z"
+      },
+      {
+       "id": 91,
+       "from_agent": "ezekiel-crane",
+       "message": "Evening.",
+       "sent_at": "2026-11-06T18:33:11.000Z"
+      },
+      {
+       "id": 92,
+       "from_agent": "wendy",
+       "message": "Prudence, shall we walk?",
+       "sent_at": "2026-11-06T18:33:12.000Z"
+      }
+     ]
+    ]
+   },
+   "rowsBy": {
+    "load-agent": {
+     "prudence": [
+      {
+       "actor_id": 7,
+       "agent": "prudence",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are prudence.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "ezekiel-crane": [
+      {
+       "actor_id": 8,
+       "agent": "ezekiel-crane",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are ezekiel-crane.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "wendy": [
+      {
+       "actor_id": 13,
+       "agent": "wendy",
+       "virtual": false,
+       "provider": null,
+       "model": null,
+       "api_key": null,
+       "configuration": null,
+       "startup_instructions": "You are wendy.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     "home": []
+    }
+   },
+   "fail": {},
+   "failNth": {
+    "discussion-history": [
+     null,
+     null,
+     null,
+     "history down"
+    ]
+   },
+   "answers": [
+    {
+     "result": {
+      "text": "Gladly.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     },
+     "during": [
+      {
+       "type": "virtual-agent",
+       "discussionId": 101,
+       "triggerType": "message"
+      }
+     ]
+    }
+   ],
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
+   "clock": 1793990000000,
+   "unordered": false,
+   "payloads": [
+    "{\"type\":\"virtual-agent\",\"discussionId\":101,\"triggerType\":\"message\"}"
+   ],
+   "outcomes": [
+    {
+     "ok": null
+    }
+   ],
+   "handled": [
+    {
+     "ok": null
+    }
+   ],
+   "queries": [
+    {
+     "kind": "discussion-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "participants-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "wendy"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "ezekiel-crane"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "discussion-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "participants-load",
+     "params": [
+      "101"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "wendy"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "ezekiel-crane"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ],
+     "timer": true
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      "discussion",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are prudence.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"prudence\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening.\"},{\"sender\":\"ezekiel-crane\",\"content\":\"Evening.\"},{\"sender\":\"wendy\",\"content\":\"Prudence, shall we walk?\"}]\n</Conversation>",
+      "Gladly.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "Gladly.",
+      "false"
+     ]
+    },
+    {
+     "kind": "dream-mode",
+     "params": [
+      "prudence"
+     ]
+    },
+    {
+     "kind": "discussion-history",
+     "params": [
+      "101",
+      "50"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "discussion",
+      "error",
+      "history down"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "history down",
+      "error",
+      null,
+      "history down",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: history down",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "addressed",
+     "details": "{\"discussionId\":101,\"from\":\"wendy\",\"addressed\":[\"prudence\"],\"skipped\":[\"ezekiel-crane\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "processing",
+     "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "addressed",
+     "details": "{\"discussionId\":101,\"from\":\"wendy\",\"addressed\":[\"prudence\"],\"skipped\":[\"ezekiel-crane\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "processing",
+     "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "coalesce-trigger",
+     "details": "{\"discussionId\":101,\"agent\":\"prudence\",\"triggerType\":\"message\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"context\":\"discussion\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "responded",
+     "details": "{\"discussionId\":101,\"agent\":\"prudence\",\"triggerType\":\"message\",\"responseLength\":7}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
+   "notes": [
+    {
+     "namespace": "prudence",
+     "title": "discussion — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** discussion\n- **Discussion:** #101\n- **Model:** claude-haiku-4-5\n- **Tokens:** 120 in / 30 out\n\n## System Prompt\n\n<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are prudence.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"prudence\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>\n\n## User Message\n\n<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening.\"},{\"sender\":\"ezekiel-crane\",\"content\":\"Evening.\"},{\"sender\":\"wendy\",\"content\":\"Prudence, shall we walk?\"}]\n</Conversation>\n\n## Response\n\nGladly.",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "prudence"
+    }
+   ],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are prudence.\n</Instructions>\n\n<Discussion purpose=\"active-context\">\nThe discussion you are participating in. Stable for the life of the discussion.\n\nYou are \"prudence\", a participant in discussion #101.\nTopic: Plan the harvest fair\nMode: realtime\n</Discussion>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nReply with your own message content only — plain text, no JSON wrapper, no sender labels, no additional entries, no continuation of other participants' messages. End when your own message is complete.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live conversation, oldest first. The last entry is the message you are replying to. Each entry has the shape {\"sender\": <who>, \"content\": <what they said>}.\n\n[{\"sender\":\"wendy\",\"content\":\"Good evening.\"},{\"sender\":\"ezekiel-crane\",\"content\":\"Evening.\"},{\"sender\":\"wendy\",\"content\":\"Prudence, shall we walk?\"}]\n</Conversation>",
+     "opts": "{\"cache\":true,\"stop\":[\"\\n{\\\"sender\\\":\\\"\"]}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "searches": [
+    {
+     "query": "Plan the harvest fair",
+     "namespace": "prudence",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "prudence",
+     "slug": "context/soul"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/wendy"
+    },
+    {
+     "namespace": "prudence",
+     "slug": "context/people/ezekiel-crane"
+    }
+   ],
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"history down\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "stale configuration",
@@ -18549,7 +20965,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -18613,6 +21029,58 @@
       "error",
       "Stale configuration for agent \"prudence\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "Stale configuration for agent \"prudence\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.",
+      "error",
+      null,
+      "Stale configuration for agent \"prudence\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: Stale configuration for agent \"prudence\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -18630,16 +21098,32 @@
      "subsystem": "virtual-agent",
      "action": "usage-recorded",
      "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
-   "events": [],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
    "notes": [],
    "created": [],
    "calls": [],
    "timers": [],
    "searches": [],
    "reads": [],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"Stale configuration for agent \\\"prudence\\\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "unsupported provider",
@@ -18792,7 +21276,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -18852,6 +21336,58 @@
      "params": [
       "7"
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "unknown-provider",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "Unsupported provider: unknown-provider",
+      "error",
+      null,
+      "Unsupported provider: unknown-provider",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: Unsupported provider: unknown-provider",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -18864,9 +21400,19 @@
      "subsystem": "virtual-agent",
      "action": "processing",
      "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
-   "events": [],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
+    }
+   ],
    "notes": [],
    "created": [],
    "calls": [],
@@ -18892,7 +21438,13 @@
      "slug": "context/people/ezekiel-crane"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"Unsupported provider: unknown-provider\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "stop unsupported retries without stop",
@@ -19477,7 +22029,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -19579,6 +22131,58 @@
       "error",
       "API error 500: down"
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "API error 500: down",
+      "error",
+      "500",
+      "API error 500: down",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: API error 500: down",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -19601,6 +22205,11 @@
      "subsystem": "virtual-agent",
      "action": "usage-recorded",
      "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "events": [
@@ -19619,6 +22228,10 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "notes": [],
@@ -19673,7 +22286,13 @@
      "slug": "context/people/ezekiel-crane"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"API error 500: down\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "impersonation cut",
@@ -21384,7 +24003,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -21527,6 +24146,58 @@
       "error",
       "chat down"
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "chat down",
+      "error",
+      null,
+      "chat down",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: chat down",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -21549,6 +24220,11 @@
      "subsystem": "virtual-agent",
      "action": "usage-recorded",
      "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "events": [
@@ -21559,6 +24235,10 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "notes": [],
@@ -21604,7 +24284,13 @@
      "slug": "context/people/ezekiel-crane"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"chat down\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "usage insert fails",
@@ -21772,7 +24458,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -21877,6 +24563,58 @@
       "error",
       "insert failed"
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "insert failed",
+      "error",
+      null,
+      "insert failed",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: insert failed",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -21889,6 +24627,11 @@
      "subsystem": "virtual-agent",
      "action": "processing",
      "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "events": [
@@ -21899,6 +24642,10 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "notes": [],
@@ -21944,7 +24691,13 @@
      "slug": "context/people/ezekiel-crane"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"insert failed\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "no pricing",
@@ -22110,7 +24863,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -22183,6 +24936,58 @@
       "7"
      ],
      "timer": true
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "not-a-model",
+      null,
+      null,
+      "No pricing data for anthropic/not-a-model — cannot calculate cost",
+      "error",
+      null,
+      "No pricing data for anthropic/not-a-model — cannot calculate cost",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: No pricing data for anthropic/not-a-model — cannot calculate cost",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -22195,6 +25000,11 @@
      "subsystem": "virtual-agent",
      "action": "processing",
      "details": "{\"discussionId\":101,\"triggerType\":\"message\",\"virtualAgents\":[\"prudence\"]}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "events": [
@@ -22205,6 +25015,10 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "notes": [],
@@ -22250,7 +25064,13 @@
      "slug": "context/people/ezekiel-crane"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"No pricing data for anthropic/not-a-model — cannot calculate cost\",\"statusCode\":500}"
+    }
+   ]
   },
   {
    "name": "learning on",
@@ -23686,7 +26506,7 @@
    ],
    "outcomes": [
     {
-     "error": "systemPrompt is not defined"
+     "ok": null
     }
    ],
    "handled": [],
@@ -23819,6 +26639,58 @@
       "error",
       "response.trim is not a function"
      ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "discussion",
+      "101",
+      "anthropic",
+      "claude-haiku-4-5",
+      null,
+      null,
+      "response.trim is not a function",
+      "error",
+      null,
+      "response.trim is not a function",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "prudence",
+      "null",
+      "101",
+      "[Malfunction] prudence encountered an error and is leaving the discussion: response.trim is not a function",
+      "false"
+     ]
+    },
+    {
+     "kind": "discussion-leave",
+     "params": [
+      "101",
+      "prudence"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "prudence"
+     ]
     }
    ],
    "logs": [
@@ -23841,6 +26713,11 @@
      "subsystem": "virtual-agent",
      "action": "usage-recorded",
      "details": "{\"agent\":\"prudence\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"discussion\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "events": [
@@ -23851,6 +26728,10 @@
     {
      "event": "agent_activity",
      "data": "{\"agent\":\"prudence\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"prudence\",\"status\":\"error\"}"
     }
    ],
    "notes": [],
@@ -23896,7 +26777,13 @@
      "slug": "context/people/ezekiel-crane"
     }
    ],
-   "errors": []
+   "errors": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "discussion-agent-error",
+     "details": "{\"agent\":\"prudence\",\"context\":\"discussion\",\"contextId\":\"101\",\"message\":\"response.trim is not a function\",\"statusCode\":500}"
+    }
+   ]
   }
  ],
  "sql": {

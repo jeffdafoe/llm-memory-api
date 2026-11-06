@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -562,7 +563,7 @@ func (s *Service) answerDiscussion(ctx context.Context, agent *Agent, d *discuss
 
 		done, err := s.generateDiscussionReply(ctx, agent, d, participants, p, history, trigger, triggerType, voteQuestion)
 		if err != nil {
-			return s.discussionFailed(ctx, agent, err)
+			return s.discussionFailed(ctx, agent, d, p, err)
 		}
 		if done || !coalesceable {
 			return nil
@@ -580,7 +581,7 @@ func (s *Service) answerDiscussion(ctx context.Context, agent *Agent, d *discuss
 		}
 		fresh, err := s.loadChatHistory(ctx, p.discussionID)
 		if err != nil {
-			return s.discussionFailed(ctx, agent, err)
+			return s.discussionFailed(ctx, agent, d, p, err)
 		}
 		hasNew := false
 		for _, m := range fresh {
@@ -816,13 +817,33 @@ func replyText(response any) (text string, posted bool, err error) {
 	return s, jsutil.Trim(s) != "", nil
 }
 
-// discussionFailed is Node's catch block for a failed generation. Its
-// logCall call named systemPrompt and userMessage, which were declared
-// inside the try block, so it threw "systemPrompt is not defined" right
-// after the error usage row: no call row, no error_log row, no
-// [Malfunction] message, no leave, and the agents after this one in the
-// wave are not served. The system handler logs that error.
-func (s *Service) discussionFailed(ctx context.Context, agent *Agent, cause error) error {
-	s.recordUsage(ctx, agent.Name, str(agent.Provider), str(agent.Model), providers.Usage{}, "discussion", "error", cause.Error())
-	return errors.New("systemPrompt is not defined")
+// discussionFailed is Node's catch block for a failed generation: an error
+// usage row (its own failure leaves the call row's usage id NULL), an error
+// call row with NULL prompts and duration (Node's were block-scoped to its
+// try), error_log, a [Malfunction] post, the agent leaves the discussion
+// (a failure there is only logged) and goes to error status, where the error
+// ping picks it up. A failed post or status change is returned, which ends
+// the wave, as Node's rejection did.
+func (s *Service) discussionFailed(ctx context.Context, agent *Agent, d *discussionRow, p *vaPayload, cause error) error {
+	provider, model := str(agent.Provider), str(agent.Model)
+	var usageID *int
+	if id, err := s.recordUsage(ctx, agent.Name, provider, model, providers.Usage{}, "discussion", "error", cause.Error()); err == nil {
+		usageID = &id
+	}
+	s.goLogCall(CallLog{
+		ActorID: agent.ActorID, AgentName: agent.Name, Context: "discussion", ContextID: p.discussionID.String(),
+		Provider: provider, Model: model, Err: cause, UsageID: usageID,
+	})
+	s.Log.LogError("virtual-agent", "discussion-agent-error", logger.ErrorOpts{
+		Agent: agent.Name, Context: "discussion", ContextID: p.discussionID.String(),
+		Message: cause.Error(), Detail: fmt.Sprintf("%+v", cause), StatusCode: 500,
+	})
+	if err := s.discussionSend(ctx, agent.Name, d,
+		"[Malfunction] "+agent.Name+" encountered an error and is leaving the discussion: "+cause.Error(), false); err != nil {
+		return err
+	}
+	if _, err := s.Discussions.Leave(ctx, p.discussionID, agent.Name); err != nil {
+		s.logVA("discussion-leave-failed", logger.Fields{{Key: "agent", Value: agent.Name}, {Key: "discussionId", Value: p.discussionID}, {Key: "error", Value: err.Error()}})
+	}
+	return s.setAgentStatus(ctx, agent.Name, "error")
 }

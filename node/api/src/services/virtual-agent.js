@@ -2194,13 +2194,21 @@ async function handleVirtualAgent(payload) {
         } catch (err) {
             // Provider failed — remove the agent from the discussion so it
             // doesn't block other participants. Error ping will recover it later.
+            //
+            // systemPrompt, userMessage and discussionCallStart are declared
+            // inside the try block, so they are out of scope here. The typeof
+            // guards (as in the mail and chat handlers) keep this block from
+            // throwing a ReferenceError, which skipped everything below and
+            // ended the wave for the agents after this one (LLM-942).
             const discussionErrDuration = typeof discussionCallStart !== 'undefined' ? Date.now() - discussionCallStart : null;
             const discussionFailUsageId = await recordUsage(agent.agent, agent.provider, agent.model,
                 {}, 'discussion', 'error', err.message).catch(() => null);
             logCall({
                 actorId: agent.actor_id, agentName: agent.agent, context: 'discussion',
                 contextId: String(discussionId), provider: agent.provider, model: agent.model,
-                systemPrompt, userMessage, error: err, durationMs: discussionErrDuration,
+                systemPrompt: typeof systemPrompt !== 'undefined' ? systemPrompt : null,
+                userMessage: typeof userMessage !== 'undefined' ? userMessage : null,
+                error: err, durationMs: discussionErrDuration,
                 usageId: discussionFailUsageId,
             }).catch(() => {});
             logError('virtual-agent', 'discussion-agent-error', {

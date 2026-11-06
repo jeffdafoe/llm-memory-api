@@ -73,6 +73,10 @@ var fixtureConfig = map[string]string{
 	// within a settle.
 	"virtual_agent_retry_backoff":              "1",
 	"virtual_agent_retry_backoff_client_error": "1",
+	// Seconds: a discussion's virtual participants answer after 1 s, the
+	// next one 1 s later, so a wave ends within a settle.
+	"virtual_agent_response_delay_seconds":   "1",
+	"virtual_agent_response_stagger_seconds": "1",
 }
 
 // applyFixture writes the harness data on top of seed.sql: config, an admin
@@ -209,6 +213,9 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 		return err
 	}
 	if err := applyDiscussionFixture(ctx, tx, adminID, agents); err != nil {
+		return err
+	}
+	if err := applyVADiscussionFixture(ctx, tx, adminID); err != nil {
 		return err
 	}
 	if err := applyOAuthFixture(ctx, tx, agents); err != nil {
