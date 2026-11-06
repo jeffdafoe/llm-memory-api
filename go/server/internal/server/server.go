@@ -13,6 +13,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/discussion"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
@@ -49,6 +50,7 @@ type Services struct {
 	Mail        *mail.Service
 	System      *system.Handler
 	Chat        *chat.Service
+	Discussions *discussion.Service
 	Providers   *providers.Providers
 	Agents      *virtualagent.Service
 	Visibility  *visibility.Visibility
@@ -81,11 +83,12 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sysHandler := &system.Handler{Log: log}
 	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
+	notifier := &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler}
 	// Chat calls the virtual agents the same way: a chat message to one is
 	// answered through HandleDirectChat, which sends its reply as chat.
 	chatService := &chat.Service{
 		DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: vaService, System: sysHandler,
-		Notifier: &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler},
+		Notifier: notifier,
 	}
 	vaService.Chat = chatService
 	return &Services{
@@ -102,18 +105,19 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 			APIKeys:  keys,
 			Errorf:   log.Errorf,
 		},
-		MCPAuth:    auth.NewMCPAuth(conn, store, actorCache, keys, bc),
-		Namespaces: &permissions.Namespaces{DB: conn},
-		Admin:      admin,
-		Errors:     recorder,
-		Memory:     mem,
-		Notes:      notesService,
-		Mail:       mailService,
-		System:     sysHandler,
-		Chat:       chatService,
-		Providers:  llm,
-		Agents:     vaService,
-		Visibility: &visibility.Visibility{DB: conn, Admin: admin},
+		MCPAuth:     auth.NewMCPAuth(conn, store, actorCache, keys, bc),
+		Namespaces:  &permissions.Namespaces{DB: conn},
+		Admin:       admin,
+		Errors:      recorder,
+		Memory:      mem,
+		Notes:       notesService,
+		Mail:        mailService,
+		System:      sysHandler,
+		Chat:        chatService,
+		Discussions: &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier},
+		Providers:   llm,
+		Agents:      vaService,
+		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
 	}
 }
 
@@ -145,6 +149,7 @@ func Handler(s *Services) http.Handler {
 	(&notes.Routes{Service: s.Notes, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	(&mail.Routes{Service: s.Mail, Router: s.Router}).Register(v1)
 	(&chat.Routes{Service: s.Chat, Router: s.Router}).Register(v1)
+	(&discussion.Routes{Service: s.Discussions, Router: s.Router}).Register(v1)
 	(&agent.Routes{
 		DB: s.DB, Config: s.Config, Log: s.Log, Router: s.Router, Events: s.Events,
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
