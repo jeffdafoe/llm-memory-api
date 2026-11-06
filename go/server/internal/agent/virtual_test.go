@@ -7,7 +7,9 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
@@ -24,8 +26,12 @@ type fakeAgents struct {
 	invoked   []string
 	opts      []virtualagent.InvokeOptions
 	ctxErr    error
+	deadline  time.Duration
 	result    *virtualagent.InvokeResult
 	invokeErr error
+	// started and release, when set, hold Invoke in flight until release
+	// is closed; ctxErr is then read after the release.
+	started, release chan struct{}
 }
 
 func (f *fakeAgents) EffectiveRateLimit(_ context.Context, agent string) (virtualagent.RateLimit, error) {
@@ -42,6 +48,13 @@ func (f *fakeAgents) EffectiveRateLimit(_ context.Context, agent string) (virtua
 func (f *fakeAgents) Invoke(ctx context.Context, agent string, opts virtualagent.InvokeOptions) (*virtualagent.InvokeResult, error) {
 	f.invoked = append(f.invoked, agent)
 	f.opts = append(f.opts, opts)
+	if d, ok := ctx.Deadline(); ok {
+		f.deadline = time.Until(d)
+	}
+	if f.release != nil {
+		close(f.started)
+		<-f.release
+	}
 	f.ctxErr = ctx.Err()
 	if f.invokeErr != nil {
 		return nil, f.invokeErr
@@ -281,18 +294,66 @@ func TestTickErrors(t *testing.T) {
 	}
 }
 
-// A client that hangs up does not cancel the call, as Node's ran on.
+// A client that hangs up while the call is in flight does not stop it: the
+// call is released after the request's context is cancelled, completes, and
+// the route answers.
 func TestTickSurvivesHangUp(t *testing.T) {
 	rt, fa := newVirtualRoutes(t)
-	fa.result = &virtualagent.InvokeResult{}
+	fa.result = &virtualagent.InvokeResult{Text: "done"}
+	fa.started, fa.release = make(chan struct{}), make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	defer cancel()
 	r := httptest.NewRequest("POST", "/v1/agent/tick", nil).WithContext(ctx)
 	r = httpapi.WithStateValue(r, &httpapi.State{AuthenticatedAgent: "npc", ActorID: 7, Body: json.RawMessage(`{"perception":"p"}`)})
-	if err := rt.tick(httptest.NewRecorder(), r); err != nil {
+	rec := httptest.NewRecorder()
+	done := make(chan error, 1)
+	go func() { done <- rt.tick(rec, r) }()
+	<-fa.started
+	cancel()
+	close(fa.release)
+	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if len(fa.invoked) != 1 || fa.ctxErr != nil {
-		t.Errorf("Invoke %v saw %v", fa.invoked, fa.ctxErr)
+	if fa.ctxErr != nil {
+		t.Errorf("Invoke's context ended: %v", fa.ctxErr)
+	}
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"text":"done"`) {
+		t.Errorf("%d %s", rec.Code, rec.Body)
+	}
+}
+
+// The detached call is bounded at the provider timeout plus the margin.
+func TestTickTimeout(t *testing.T) {
+	cases := []struct {
+		value string
+		want  time.Duration
+	}{
+		{"", 120*time.Second + tickMargin},
+		{"30", 30*time.Second + tickMargin},
+		{"45s", 45*time.Second + tickMargin},
+		{"0", 120*time.Second + tickMargin},
+		{"abc", 120*time.Second + tickMargin},
+		{"9999999", time.Millisecond + tickMargin},
+	}
+	for _, c := range cases {
+		values := map[string]string{"virtual_agent_request_timeout": c.value}
+		if c.value == "" {
+			values = nil
+		}
+		rt, mock, _ := newRoutes(t, values)
+		fa := &fakeAgents{result: &virtualagent.InvokeResult{}}
+		rt.Agents = fa
+		if got := rt.tickTimeout(); got != c.want {
+			t.Errorf("%q: %v", c.value, got)
+		}
+		if err := rt.tick(httptest.NewRecorder(), request(`{"perception":"p"}`, "npc", 7)); err != nil {
+			t.Fatal(err)
+		}
+		if fa.deadline <= 0 || fa.deadline > c.want || fa.deadline < c.want-5*time.Second {
+			t.Errorf("%q: Invoke deadline in %v", c.value, fa.deadline)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
+		}
 	}
 }

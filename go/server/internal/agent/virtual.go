@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
@@ -152,9 +153,13 @@ func (rt *Routes) tick(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// Node's call ran on after the client hung up, so the usage, call log
-	// and rate-limit count are written either way. The provider call has
-	// its own bound (virtual_agent_request_timeout).
-	result, err := rt.Agents.Invoke(context.WithoutCancel(r.Context()), agent, opts)
+	// and rate-limit count are written either way. Detached, the reads
+	// before the provider call would have no bound, so the whole call gets
+	// one past the provider's own; Invoke's writes after the call drop it
+	// and keep their own.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), rt.tickTimeout())
+	defer cancel()
+	result, err := rt.Agents.Invoke(ctx, agent, opts)
 	if err != nil {
 		// Node matched the message text, not the error type, so any error
 		// whose text has these words is answered the same way. The
@@ -189,6 +194,28 @@ func (rt *Routes) tick(w http.ResponseWriter, r *http.Request) error {
 		resp.Set(key, member(parsed, key))
 	}
 	return writeObject(w, resp)
+}
+
+// tickMargin is the time a tick may take beyond the provider call's own
+// timeout, for the reads before it.
+const tickMargin = 60 * time.Second
+
+// tickTimeout is the provider timeout as the providers read it
+// (virtual_agent_request_timeout: parseInt, else 120; setTimeout's range,
+// else 1 ms) plus tickMargin. A missing key is left to Invoke, which fails
+// on it.
+func (rt *Routes) tickTimeout() time.Duration {
+	seconds := 120.0
+	if value, err := rt.Config.Get("virtual_agent_request_timeout"); err == nil {
+		if n, ok := jsutil.ParseInt(value); ok && n != 0 {
+			seconds = n
+		}
+	}
+	ms := seconds * 1000
+	if !(ms >= 1 && ms <= 2147483647) {
+		ms = 1
+	}
+	return time.Duration(ms)*time.Millisecond + tickMargin
 }
 
 func nonEmptyArray(v any) bool {
