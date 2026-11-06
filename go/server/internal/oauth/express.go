@@ -97,25 +97,31 @@ func redirect(w http.ResponseWriter, r *http.Request, status int, address string
 	h := w.Header()
 	h.Set("Location", address)
 	h.Add("Vary", "Accept")
-	// Each branch writes its own body under its own Content-Type.
+	// Each branch sets its Content-Type and writes its body itself. The text
+	// body is text/plain, and the address in it is percent-encoded
+	// (serializeSearch), so it holds no markup.
+	head := r.Method == http.MethodHead
 	switch negotiateTextHTML(r) {
 	case "text":
+		body := []byte(http.StatusText(status) + ". Redirecting to " + address)
 		h.Set("Content-Type", "text/plain; charset=utf-8")
-		writeBody(w, r, status, http.StatusText(status)+". Redirecting to "+address)
+		h.Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(status)
+		if !head {
+			w.Write(body)
+		}
 	case "html":
+		body := []byte("<!DOCTYPE html><head><title>" + http.StatusText(status) + "</title></head>" +
+			"<body><p>" + http.StatusText(status) + ". Redirecting to " + escapeHTML(address) + "</p></body>")
 		h.Set("Content-Type", "text/html; charset=utf-8")
-		writeBody(w, r, status, "<!DOCTYPE html><head><title>"+http.StatusText(status)+"</title></head>"+
-			"<body><p>"+http.StatusText(status)+". Redirecting to "+escapeHTML(address)+"</p></body>")
+		h.Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(status)
+		if !head {
+			w.Write(body)
+		}
 	default:
-		writeBody(w, r, status, "")
-	}
-}
-
-func writeBody(w http.ResponseWriter, r *http.Request, status int, body string) {
-	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	w.WriteHeader(status)
-	if r.Method != http.MethodHead {
-		w.Write([]byte(body))
+		h.Set("Content-Length", "0")
+		w.WriteHeader(status)
 	}
 }
 
