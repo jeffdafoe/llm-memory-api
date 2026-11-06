@@ -323,7 +323,13 @@ func postgresDate(text string) (float64, bool) {
 		t1 := time.Date(year+1900, time.Month(month), day, hour, minute, second, ms*int(time.Millisecond), time.UTC)
 		t = time.Date(year, t1.Month(), t1.Day(), t1.Hour(), t1.Minute(), t1.Second(), t1.Nanosecond(), time.UTC)
 	}
-	return float64(t.UnixMilli()) - offset, true
+	// The Date.UTC value is a Date before the offset is applied, so one past
+	// the range is already Invalid Date, whatever the offset brings it to.
+	utc := float64(t.UnixMilli())
+	if math.Abs(utc) > maxDateMS {
+		return math.NaN(), true
+	}
+	return utc - offset, true
 }
 
 // localDate is new Date(year, month - 1, day, ...) in the process zone, with
