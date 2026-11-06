@@ -124,7 +124,7 @@ func (r *recorder) Search(ctx context.Context, in memory.SearchInput) (memory.Se
 // writes is compared.
 func (r *recorder) Send(ctx context.Context, toAgent, fromAgent, subject, body, inReplyTo string) (*mail.Sent, error) {
 	params := []*string{&toAgent, &fromAgent, &subject, &body, &inReplyTo}
-	if _, err := r.record("mail-send", params); err != nil {
+	if _, err := r.record("mail-send", params, false); err != nil {
 		return nil, err
 	}
 	return &mail.Sent{ID: "sent"}, nil
@@ -201,6 +201,25 @@ func cutAfter[T any](is func(T) bool) func([]T) int {
 	}
 }
 
+func isMailSend(q queryRec) bool { return q.Kind == "mail-send" }
+
+// queryLane places a query: the call logs and the mail call's spinner
+// off-switch (Timer: it goes off from a timer, which in Go can land anywhere,
+// even inside the learning job) float; before the cut is the handler's own
+// sequence; after it, the transcript's read, else the learning job (whose own
+// off-switch is not a timer's).
+func queryLane(i, cut int, q queryRec) string {
+	switch {
+	case q.Kind == "call-insert", q.Timer:
+		return floating
+	case i < cut:
+		return ""
+	case q.Kind == "dream-mode":
+		return "transcript"
+	}
+	return "learning"
+}
+
 // lane is newLane for a lane function with no state.
 func lane[T any](f func(i, cut int, it T) string) func() func(i, cut int, it T) string {
 	return func() func(i, cut int, it T) string { return f }
@@ -259,30 +278,7 @@ func compareMail(t *testing.T, want *scenario, r *recorder, got outcome) {
 		t.Errorf("outcome:\n got %s\nwant %s", jsonOf(got), jsonOf(want.Outcome))
 	}
 
-	compareLanes(t, "queries", r.queries, want.Queries, cutAfter(func(q queryRec) bool { return q.Kind == "mail-send" }),
-		func() func(i, cut int, q queryRec) string {
-			// The mail call's spinner goes off from a timer, which in Go
-			// can land after the reply too; an off after the cut is the
-			// learning call's only while that call is on.
-			learningOn := 0
-			return func(i, cut int, q queryRec) string {
-				switch {
-				case q.Kind == "call-insert":
-					return floating
-				case q.Kind == "active-off" && (i < cut || learningOn == 0):
-					return floating
-				case i < cut:
-					return ""
-				case q.Kind == "dream-mode":
-					return "transcript"
-				case q.Kind == "active-on":
-					learningOn++
-				case q.Kind == "active-off":
-					learningOn--
-				}
-				return "learning"
-			}
-		})
+	compareLanes(t, "queries", r.queries, want.Queries, cutAfter(isMailSend), lane(queryLane))
 	compareLanes(t, "logs", r.logs, want.Logs, cutAfter(func(l logRec) bool { return l.Action == "direct-mail-responded" }),
 		lane(func(i, cut int, l logRec) string {
 			switch {
@@ -427,5 +423,37 @@ func TestMailHelpersMatchNode(t *testing.T) {
 		if got := missingConfigParts(agentFrom(t, c.Row)); jsonOf(orEmpty(got)) != jsonOf(orEmpty(c.Out)) {
 			t.Errorf("missing %s: got %v want %v", c.Row, got, c.Out)
 		}
+	}
+}
+
+// The query lanes tell the mail call's spinner off-switch from the learning
+// job's own by its timer mark, not by where it lands.
+func TestMailQueryLanes(t *testing.T) {
+	seven := "7"
+	q := func(kind string, timer bool) queryRec { return queryRec{kind, []*string{&seven}, timer} }
+	lanesOf := func(items []queryRec) string {
+		return jsonOf(lanes(items, cutAfter(isMailSend)(items), queryLane))
+	}
+	node := []queryRec{
+		q("active-on", false), q("active-off", true), q("mail-send", false),
+		q("active-on", false), q("active-off", false), q("usage-insert", false),
+	}
+	// The mail off-switch lands inside the learning job, whose own writes
+	// keep their order: the same lanes.
+	late := []queryRec{
+		q("active-on", false), q("mail-send", false),
+		q("active-on", false), q("active-off", true), q("active-off", false), q("usage-insert", false),
+	}
+	if lanesOf(late) != lanesOf(node) {
+		t.Errorf("a late mail off-switch changed the lanes:\n got %s\nwant %s", lanesOf(late), lanesOf(node))
+	}
+	// The learning job's off-switch and usage write reversed, with the mail
+	// off-switch between them: must differ.
+	reversed := []queryRec{
+		q("active-on", false), q("mail-send", false),
+		q("active-on", false), q("active-off", true), q("usage-insert", false), q("active-off", false),
+	}
+	if lanesOf(reversed) == lanesOf(node) {
+		t.Errorf("a reversed learning job compares equal: %s", lanesOf(reversed))
 	}
 }
