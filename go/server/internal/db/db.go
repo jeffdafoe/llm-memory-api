@@ -117,8 +117,8 @@ func (r *runner) start(prev <-chan struct{}, fn func(ctx context.Context), bound
 
 // BackgroundUnbounded is Background without the time bound, for work that
 // waits on outside calls longer than backgroundTimeout: a virtual agent's
-// reply to mail, with its provider call and retry backoff. Its context ends
-// only when DrainBackground cancels the running jobs.
+// reply to mail or chat, with its provider calls and retry backoff. Its
+// context ends only when DrainBackground cancels the running jobs.
 func BackgroundUnbounded(fn func(ctx context.Context)) (started bool) {
 	return jobs.start(nil, fn, false)
 }
