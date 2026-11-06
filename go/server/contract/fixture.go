@@ -69,6 +69,10 @@ var fixtureConfig = map[string]string{
 	// ping every millisecond, which starved its event loop and made a
 	// server miss its 60 s /health start check.
 	"virtual_agent_error_ping_interval": "35000",
+	// Seconds: one retry, 1 s later, so the virtual-agent retry cases end
+	// within a settle.
+	"virtual_agent_retry_backoff":              "1",
+	"virtual_agent_retry_backoff_client_error": "1",
 }
 
 // applyFixture writes the harness data on top of seed.sql: config, an admin
@@ -193,6 +197,9 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 		return err
 	}
 	if err := applyMailFixture(ctx, tx, adminID, agents); err != nil {
+		return err
+	}
+	if err := applyVirtualAgentFixture(ctx, tx, adminID, agents); err != nil {
 		return err
 	}
 	if err := applyChatFixture(ctx, tx, adminID, agents); err != nil {

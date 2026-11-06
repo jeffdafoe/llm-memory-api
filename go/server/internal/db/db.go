@@ -85,6 +85,24 @@ func Background(fn func(ctx context.Context)) {
 	}()
 }
 
+// BackgroundUnbounded is Background without the time bound, for work that
+// waits on outside calls longer than backgroundTimeout: a virtual agent's
+// reply to mail, with its provider call and retry backoff. Its context ends
+// only when DrainBackground cancels the running jobs.
+func BackgroundUnbounded(fn func(ctx context.Context)) {
+	backgroundMu.Lock()
+	if backgroundClosed {
+		backgroundMu.Unlock()
+		return
+	}
+	background.Add(1)
+	backgroundMu.Unlock()
+	go func() {
+		defer background.Done()
+		fn(backgroundCtx)
+	}()
+}
+
 // DrainBackground stops new background jobs, waits up to timeout for the
 // running ones, then cancels them and waits up to timeout again. It reports
 // whether every job returned. Call it at shutdown, before the pool closes.

@@ -181,6 +181,7 @@ func runScenario(t *testing.T, sc Scenario) {
 			Fingerprint: s.db.Fingerprint,
 			Busy:        s.db.Busy,
 			Snapshot:    s.db.Snapshot,
+			Holds:       s.db.Holds,
 		}
 	}
 	r := &Runner{Fake: fake}
