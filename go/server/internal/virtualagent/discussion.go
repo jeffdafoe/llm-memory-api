@@ -487,13 +487,7 @@ func (s *Service) HandleVirtualAgent(ctx context.Context, payload json.RawMessag
 			return err
 		}
 
-		err = s.answerDiscussion(ctx, agent, d, participants, p, fresh, voteQuestion, key, coalesceable, virtualNames)
-		if coalesceable {
-			s.inFlightMu.Lock()
-			delete(s.inFlight, key)
-			s.inFlightMu.Unlock()
-		}
-		if err != nil {
+		if err := s.answerDiscussion(ctx, agent, d, participants, p, fresh, voteQuestion, key, coalesceable, virtualNames); err != nil {
 			return err
 		}
 	}
@@ -546,9 +540,18 @@ func (s *Service) configIntOr0(key string) (float64, error) {
 }
 
 // answerDiscussion is Node's per-agent try block: one generation, then once
-// more for each coalesced burst that brought a new human message.
+// more for each coalesced burst that brought a new human message. It owns
+// the agent's in-flight slot and frees it on every way out (Node's finally).
 func (s *Service) answerDiscussion(ctx context.Context, agent *Agent, d *discussionRow, participants []participant, p *vaPayload,
 	history []historyMessage, voteQuestion *string, key string, coalesceable bool, virtualNames map[string]bool) error {
+	released := !coalesceable
+	defer func() {
+		if !released {
+			s.inFlightMu.Lock()
+			delete(s.inFlight, key)
+			s.inFlightMu.Unlock()
+		}
+	}()
 	trigger := p.trigger
 	var triggerType any = p.triggerType
 	for {
@@ -569,11 +572,20 @@ func (s *Service) answerDiscussion(ctx context.Context, agent *Agent, d *discuss
 			return nil
 		}
 
+		if s.beforeRerunCheck != nil {
+			s.beforeRerunCheck(key)
+		}
+		// The rerun check and the slot's release are one step: in Node
+		// nothing ran between them, and here a trigger landing between the
+		// two would mark a rerun on a slot about to go, and be lost.
 		s.inFlightMu.Lock()
 		entry := s.inFlight[key]
 		rerun := entry != nil && entry.rerunPending
 		if rerun {
 			entry.rerunPending = false
+		} else {
+			delete(s.inFlight, key)
+			released = true
 		}
 		s.inFlightMu.Unlock()
 		if !rerun {

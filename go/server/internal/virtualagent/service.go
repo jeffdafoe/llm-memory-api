@@ -93,6 +93,9 @@ type Service struct {
 	// "<discussion>:<agent>" (Node's inFlightVA).
 	inFlightMu sync.Mutex
 	inFlight   map[string]*inFlight
+	// beforeRerunCheck runs after a discussion generation, before its rerun
+	// check; tests set it.
+	beforeRerunCheck func(key string)
 }
 
 func (s *Service) now() time.Time {
