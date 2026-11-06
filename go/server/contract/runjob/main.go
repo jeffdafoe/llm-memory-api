@@ -6,6 +6,7 @@
 // tag only, so it is never part of the server binary.
 //
 //	runjob cleanup
+//	runjob dream
 //
 // The pass logs as the server would (stdout, and LOG_DIR/activity.log), and
 // the background error_log writes are drained before it exits.
@@ -22,7 +23,9 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/cleanup"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/dream"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/server"
 )
 
 func main() {
@@ -62,6 +65,23 @@ func run() error {
 		}
 		task.Drain(time.Second)
 		schedule, _ := store.Get("cleanup_cron_schedule")
+		job.Pass(ctx, schedule)
+	case "dream":
+		// The server's services, as main wires the job.
+		services := server.NewServices(pool, store, os.Getenv("LOG_DIR"))
+		job := &dream.Job{
+			DB: pool, Conns: dream.Pool{Pool: pool}, Config: store, Log: services.Log,
+			Notes: services.Notes, Agents: services.Agents, Trust: services.Admin,
+		}
+		task, err := job.Start()
+		if err != nil {
+			return err
+		}
+		if task == nil {
+			return errors.New("the dream scheduler did not start")
+		}
+		task.Drain(time.Second)
+		schedule, _ := store.Get("dream_cron_schedule")
 		job.Pass(ctx, schedule)
 	default:
 		return fmt.Errorf("unknown job %q", os.Args[1])
