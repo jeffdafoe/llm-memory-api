@@ -1,19 +1,17 @@
--- Chat storage (LLM-948):
---  - chat_message_texts.tools_offered is dropped. It held the full tool
---    schemas on every row (most of the table's bytes) and nothing read it
---    back. DROP COLUMN does not free that space; a one-time
---    VACUUM FULL chat_message_texts after the deploy does.
+-- Chat storage (LLM-948), the additive half:
 --  - virtual_agent_calls.tool_names keeps the names of the tools offered on
---    a tool-use call, so a debugger can still see what a turn was offered.
+--    a tool-use call, so a debugger can still see what a turn was offered
+--    once chat_message_texts.tools_offered is gone.
 --  - sim_chat_retention_days turns on the cleanup job's sim chat purge.
--- The ALTERs take ACCESS EXCLUSIVE locks; if they cannot get them within
--- the lock_timeout the migration fails whole, and the next deploy applies it
+-- The code no longer writes or reads chat_message_texts.tools_offered. The
+-- column is dropped by a later migration (LLM-948b), deployed after this one,
+-- so no running API ever writes to a column that is gone.
+-- The ALTER takes an ACCESS EXCLUSIVE lock; if it cannot get it within the
+-- lock_timeout the migration fails whole, and the next deploy applies it
 -- again.
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';
-
-ALTER TABLE chat_message_texts DROP COLUMN IF EXISTS tools_offered;
 
 ALTER TABLE virtual_agent_calls ADD COLUMN IF NOT EXISTS tool_names text[];
 
