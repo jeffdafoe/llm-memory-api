@@ -103,6 +103,12 @@ func (m *MCPAuth) permissions(ctx context.Context, actorID int) ([]string, error
 	return names, rows.Err()
 }
 
+// activityEvent is the agent_activity payload, in Node's key order.
+type activityEvent struct {
+	Agent  string `json:"agent"`
+	Active bool   `json:"active"`
+}
+
 // heartbeat stamps last_seen, keeps a running activity spinner alive by
 // moving active_since forward when it is set, and stamps the account's first
 // MCP connection. When the spinner was running it re-broadcasts it.
@@ -118,7 +124,7 @@ func (m *MCPAuth) heartbeat(actorID int, agent string, since *string) {
          RETURNING (active_since IS NOT NULL) AS was_active`,
 			actorID, since).Scan(&wasActive)
 		if err == nil && wasActive {
-			m.Events.Broadcast("agent_activity", map[string]any{"agent": agent, "active": true})
+			m.Events.Broadcast("agent_activity", activityEvent{Agent: agent, Active: true})
 		}
 	})
 }

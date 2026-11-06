@@ -87,9 +87,16 @@ func (j JSON) MarshalJSON() ([]byte, error) {
 	return []byte(s), nil
 }
 
+// noteEvent is the note_updated payload, in Node's key order.
+type noteEvent struct {
+	Namespace string `json:"namespace"`
+	Slug      string `json:"slug"`
+	Operation string `json:"operation"`
+}
+
 func (s *Service) broadcast(namespace, slug, operation string) {
 	if s.Events != nil {
-		s.Events.Broadcast("note_updated", map[string]string{"namespace": namespace, "slug": slug, "operation": operation})
+		s.Events.Broadcast("note_updated", noteEvent{Namespace: namespace, Slug: slug, Operation: operation})
 	}
 }
 

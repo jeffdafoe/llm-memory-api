@@ -66,6 +66,8 @@ func Credentials() map[string]string {
 	for _, va := range fixtureVirtualAgents {
 		creds[va.name+"-key"] = vaKey(va.name)
 	}
+	// The salem engine's key, for the /v1/sim routes (fixture_va_chat.go).
+	creds[engineName+"-key"] = vaKey(engineName)
 	return creds
 }
 

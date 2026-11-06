@@ -89,10 +89,7 @@ func (rt *Routes) ingestStatus(w http.ResponseWriter, r *http.Request) error {
 		return httpapi.WriteJSON(w, http.StatusOK, res)
 	}
 
-	// Node passes the actor TYPE where the name goes here, so the implicit
-	// own namespace is "agent" or "user", and a wildcard reader (null list)
-	// makes the filter throw. Kept as Node does it until LLM-918 fixes both.
-	readable, all, err := rt.Namespaces.ReadableNamespaces(r.Context(), a.ID, a.Kind)
+	readable, all, err := rt.Namespaces.ReadableNamespaces(r.Context(), a.ID, a.Name)
 	if err != nil {
 		return err
 	}
@@ -100,10 +97,11 @@ func (rt *Routes) ingestStatus(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	// The throw happened inside the filter callback, which never runs for
-	// an empty list.
-	if all && len(res.Files) > 0 {
-		return errors.New("Cannot read properties of null (reading 'includes')")
+	if all {
+		if res.Files == nil {
+			res.Files = []StatusFile{}
+		}
+		return httpapi.WriteJSON(w, http.StatusOK, res)
 	}
 	allowed := map[string]bool{}
 	for _, ns := range readable {
