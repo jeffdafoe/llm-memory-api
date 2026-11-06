@@ -687,3 +687,63 @@ func TestDirectChatMatchesNode(t *testing.T) {
 		})
 	}
 }
+
+// While the provider call is open the spinner is on and nothing has turned
+// it off; after the call it goes off. The recorder's onCall runs inside the
+// call, so it holds the call open and sees the state at that moment.
+func TestDirectChatSpinnerSpansTheCall(t *testing.T) {
+	var sc *chatScenario
+	for _, c := range loadChatGoldens(t).Chat {
+		if c.Name == "companion long message no rag" {
+			sc = &c
+			break
+		}
+	}
+	if sc == nil {
+		t.Fatal("scenario missing")
+	}
+	s, r := newChatService(t, sc)
+	inCall := 0
+	r.onCall = func() {
+		inCall++
+		// An off-switch started too early runs on a goroutine; give it time
+		// to land. The right one cannot start before the call returns.
+		time.Sleep(50 * time.Millisecond)
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		on, off := false, false
+		for _, q := range r.queries {
+			on = on || q.Kind == "active-on"
+			off = off || q.Kind == "active-off"
+		}
+		for _, e := range r.events {
+			on = on || strings.Contains(e.Data, `"active":true`)
+			off = off || strings.Contains(e.Data, `"active":false`)
+		}
+		if !on || off {
+			t.Errorf("during the provider call: spinner on %v, turned off %v", on, off)
+		}
+	}
+	if _, err := s.HandleDirectChat(context.Background(), directChatFrom(t, sc.Inputs[0])); err != nil {
+		t.Fatal(err)
+	}
+	if inCall != 1 {
+		t.Fatalf("provider called %d times", inCall)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		r.mu.Lock()
+		off := false
+		for _, e := range r.events {
+			off = off || strings.Contains(e.Data, `"active":false`)
+		}
+		r.mu.Unlock()
+		if off {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the spinner never went off after the call")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
