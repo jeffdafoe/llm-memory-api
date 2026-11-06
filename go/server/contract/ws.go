@@ -13,8 +13,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // WSStep is a WebSocket step (Step.WS). Exactly one of Open, Read, Ping and
@@ -33,20 +35,31 @@ type WSStep struct {
 	Method string // default GET
 	Target string // default "/admin/ws"
 	Header [][2]string
+	// Expect is the outcome the case is written for, checked on each side
+	// on its own: an HTTP status ("101", "401", "400", ...) or "closed" for
+	// no response. Required on Open: a case whose premise breaks (an
+	// invalid fixture token, say) must fail, not compare two identical
+	// refusals.
+	Expect string
 
-	// Read waits for that many text messages on Conn and compares them as a
-	// JSON array. A ping from the server is answered and not counted; a
-	// close frame or a timeout before the count is a harness failure.
+	// Read waits for that many text messages on Conn. The body is a JSON
+	// array of the payloads as strings, so the bytes are compared, not only
+	// the JSON they encode. Each must be valid JSON. A ping from the server
+	// is answered and not counted; a close frame, a timeout or a protocol
+	// violation before the count is a harness failure.
 	Read int
 
 	// Ping sends a ping with a fixed payload and waits for the pong; the
 	// body is "pong <payload>".
 	Ping bool
 
-	// Close sends a close frame with code 1000 and waits for the server's;
-	// the body is "close <code>" (or "close" for an empty payload), then
+	// Close sends a close frame with CloseCode (default 1000; -1 sends an
+	// empty payload) and CloseReason, and waits for the server's. The body
+	// is "close" and the server's payload (its code and quoted reason), then
 	// "<closed>" when the server closed the TCP connection.
-	Close bool
+	Close       bool
+	CloseCode   int
+	CloseReason string
 }
 
 // wsTimeout bounds one WebSocket step.
@@ -95,12 +108,21 @@ func (r *Runner) wsStep(ctx context.Context, t *Target, st Step, vars map[string
 		name = "ws"
 	}
 	if ws.Open {
+		if ws.Expect == "" {
+			return res, errors.New("an Open step needs Expect")
+		}
 		if _, ok := conns[name]; ok {
 			return res, fmt.Errorf("connection %q is already open", name)
 		}
-		body, c, err := wsOpen(ctx, t, ws, vars)
+		body, outcome, c, err := wsOpen(ctx, t, ws, vars)
 		if err != nil {
 			return res, err
+		}
+		if outcome != ws.Expect {
+			if c != nil {
+				c.conn.Close()
+			}
+			return res, fmt.Errorf("expected %s, got %s: %q", ws.Expect, outcome, body)
 		}
 		if c != nil {
 			conns[name] = c
@@ -120,13 +142,17 @@ func (r *Runner) wsStep(ctx context.Context, t *Target, st Step, vars map[string
 		if err != nil {
 			return res, err
 		}
-		res.header.Set("Content-Type", "application/json")
-		res.body = []byte("[" + strings.Join(msgs, ",") + "]")
-	case ws.Ping:
-		if err := c.writeFrame(0x9, []byte("contract-ping")); err != nil {
+		body, err := json.Marshal(msgs)
+		if err != nil {
 			return res, err
 		}
-		payload, err := c.readUntil(0xA)
+		res.header.Set("Content-Type", "application/json")
+		res.body = body
+	case ws.Ping:
+		if err := c.writeFrame(opPing, []byte("contract-ping")); err != nil {
+			return res, err
+		}
+		payload, err := c.readUntil(opPong)
 		if err != nil {
 			return res, err
 		}
@@ -134,16 +160,27 @@ func (r *Runner) wsStep(ctx context.Context, t *Target, st Step, vars map[string
 	case ws.Close:
 		delete(conns, name)
 		defer c.conn.Close()
-		if err := c.writeFrame(0x8, []byte{0x03, 0xE8}); err != nil {
+		var payload []byte
+		switch {
+		case ws.CloseCode == -1:
+		case ws.CloseCode == 0:
+			payload = closePayload(1000, ws.CloseReason)
+		default:
+			payload = closePayload(ws.CloseCode, ws.CloseReason)
+		}
+		if err := c.writeFrame(opClose, payload); err != nil {
 			return res, err
 		}
-		payload, err := c.readUntil(0x8)
+		reply, err := c.readUntil(opClose)
 		if err != nil {
 			return res, err
 		}
 		out := "close"
-		if len(payload) >= 2 {
-			out = fmt.Sprintf("close %d", binary.BigEndian.Uint16(payload))
+		switch {
+		case len(reply) >= 2:
+			out += fmt.Sprintf(" %d %q", binary.BigEndian.Uint16(reply), reply[2:])
+		case len(reply) == 1:
+			out += fmt.Sprintf(" malformed %x", reply)
 		}
 		if c.closedByServer() {
 			out += "\n<closed>"
@@ -155,10 +192,18 @@ func (r *Runner) wsStep(ctx context.Context, t *Target, st Step, vars map[string
 	return res, nil
 }
 
-func wsOpen(ctx context.Context, t *Target, ws *WSStep, vars map[string]string) ([]byte, *wsConn, error) {
+func closePayload(code int, reason string) []byte {
+	p := make([]byte, 2, 2+len(reason))
+	binary.BigEndian.PutUint16(p, uint16(code))
+	return append(p, reason...)
+}
+
+// wsOpen sends the upgrade request. outcome is the status code of the
+// response, or "closed" when there was none.
+func wsOpen(ctx context.Context, t *Target, ws *WSStep, vars map[string]string) (body []byte, outcome string, c *wsConn, err error) {
 	base, err := url.Parse(t.BaseURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	method := ws.Method
 	if method == "" {
@@ -170,14 +215,14 @@ func wsOpen(ctx context.Context, t *Target, ws *WSStep, vars map[string]string) 
 	}
 	target, err = expand(target, vars)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	var req bytes.Buffer
 	fmt.Fprintf(&req, "%s %s HTTP/1.1\r\nHost: %s\r\n", method, target, base.Host)
 	for _, h := range ws.Header {
 		v, err := expand(h[1], vars)
 		if err != nil {
-			return nil, nil, err
+			return nil, "", nil, err
 		}
 		fmt.Fprintf(&req, "%s: %s\r\n", h[0], v)
 	}
@@ -186,12 +231,12 @@ func wsOpen(ctx context.Context, t *Target, ws *WSStep, vars map[string]string) 
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", base.Host)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	conn.SetDeadline(time.Now().Add(wsTimeout))
 	if _, err := conn.Write(req.Bytes()); err != nil {
 		conn.Close()
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	br := bufio.NewReader(conn)
 	var head bytes.Buffer
@@ -200,28 +245,53 @@ func wsOpen(ctx context.Context, t *Target, ws *WSStep, vars map[string]string) 
 		if err != nil {
 			conn.Close()
 			if isTimeout(err) {
-				return nil, nil, fmt.Errorf("no response head within %s (read %q)", wsTimeout, head.String())
+				return nil, "", nil, fmt.Errorf("no response head within %s (read %q)", wsTimeout, head.String())
 			}
 			// Closed (EOF or reset) before a full head.
-			return append(head.Bytes(), []byte("<closed>")...), nil, nil
+			if head.Len() == 0 {
+				return []byte("<closed>"), "closed", nil, nil
+			}
+			return append(head.Bytes(), []byte("<closed>")...), "partial", nil, nil
 		}
 		head.WriteByte(b)
 	}
-	if strings.HasPrefix(head.String(), "HTTP/1.1 101 ") {
+	outcome = statusOf(head.String())
+	if outcome == "101" {
 		conn.SetDeadline(time.Time{})
-		return head.Bytes(), &wsConn{conn: conn, r: br}, nil
+		return head.Bytes(), outcome, &wsConn{conn: conn, r: br}, nil
 	}
 	defer conn.Close()
 	rest, err := io.ReadAll(br)
 	if err != nil && isTimeout(err) {
-		return nil, nil, fmt.Errorf("server kept the connection open after %q", head.String())
+		return nil, "", nil, fmt.Errorf("server kept the connection open after %q", head.String())
 	}
-	return append(append(head.Bytes(), rest...), []byte("<closed>")...), nil, nil
+	return append(append(head.Bytes(), rest...), []byte("<closed>")...), outcome, nil, nil
+}
+
+// statusOf is the status code of "HTTP/1.1 <code> <text>".
+func statusOf(head string) string {
+	fields := strings.SplitN(head, " ", 3)
+	if len(fields) < 2 || !strings.HasPrefix(fields[0], "HTTP/") {
+		return "malformed"
+	}
+	if _, err := strconv.Atoi(fields[1]); err != nil {
+		return "malformed"
+	}
+	return fields[1]
 }
 
 func isTimeout(err error) bool {
 	return errors.Is(err, os.ErrDeadlineExceeded)
 }
+
+const (
+	opContinuation = 0x0
+	opText         = 0x1
+	opBinary       = 0x2
+	opClose        = 0x8
+	opPing         = 0x9
+	opPong         = 0xA
+)
 
 // writeFrame sends one final frame, masked as a client must.
 func (c *wsConn) writeFrame(opcode byte, payload []byte) error {
@@ -244,15 +314,31 @@ func (c *wsConn) writeFrame(opcode byte, payload []byte) error {
 	return err
 }
 
-// readFrame reads one frame from the server.
+// readFrame reads one frame from the server and refuses what RFC 6455 does
+// not allow a server to send without an extension: a masked frame, a set
+// RSV bit, an unknown opcode, a fragmented or oversized control frame, a
+// length in a longer form than needed.
 func (c *wsConn) readFrame() (fin bool, opcode byte, payload []byte, err error) {
 	var hdr [2]byte
 	if _, err = io.ReadFull(c.r, hdr[:]); err != nil {
 		return
 	}
 	fin = hdr[0]&0x80 != 0
+	if rsv := hdr[0] & 0x70; rsv != 0 {
+		err = fmt.Errorf("protocol: RSV bits %#x set", rsv)
+		return
+	}
 	opcode = hdr[0] & 0x0F
-	masked := hdr[1]&0x80 != 0
+	switch opcode {
+	case opContinuation, opText, opBinary, opClose, opPing, opPong:
+	default:
+		err = fmt.Errorf("protocol: unknown opcode %#x", opcode)
+		return
+	}
+	if hdr[1]&0x80 != 0 {
+		err = errors.New("protocol: the server sent a masked frame")
+		return
+	}
 	n := uint64(hdr[1] & 0x7F)
 	switch n {
 	case 126:
@@ -261,65 +347,75 @@ func (c *wsConn) readFrame() (fin bool, opcode byte, payload []byte, err error) 
 			return
 		}
 		n = uint64(binary.BigEndian.Uint16(ext[:]))
+		if n < 126 {
+			err = fmt.Errorf("protocol: length %d in the 16-bit form", n)
+			return
+		}
 	case 127:
 		var ext [8]byte
 		if _, err = io.ReadFull(c.r, ext[:]); err != nil {
 			return
 		}
 		n = binary.BigEndian.Uint64(ext[:])
-	}
-	var mask [4]byte
-	if masked {
-		if _, err = io.ReadFull(c.r, mask[:]); err != nil {
+		if n <= 0xFFFF || n>>63 != 0 {
+			err = fmt.Errorf("protocol: length %d in the 64-bit form", n)
 			return
 		}
+	}
+	if opcode >= opClose && (!fin || n > 125) {
+		err = fmt.Errorf("protocol: control frame %#x fragmented or %d bytes", opcode, n)
+		return
 	}
 	if n > 16<<20 {
 		err = fmt.Errorf("frame of %d bytes", n)
 		return
 	}
 	payload = make([]byte, n)
-	if _, err = io.ReadFull(c.r, payload); err != nil {
-		return
-	}
-	if masked {
-		for i := range payload {
-			payload[i] ^= mask[i%4]
-		}
-	}
+	_, err = io.ReadFull(c.r, payload)
 	return
 }
 
 // readMessages collects n text messages, answering pings on the way. Each
-// must be JSON, as every message the servers send is.
+// must be valid UTF-8 and JSON, as every message the servers send is.
 func (c *wsConn) readMessages(n int) ([]string, error) {
 	var msgs []string
 	var partial []byte
+	inMessage := false
 	for len(msgs) < n {
 		fin, opcode, payload, err := c.readFrame()
 		if err != nil {
 			return msgs, fmt.Errorf("after %d of %d messages: %w", len(msgs), n, err)
 		}
 		switch opcode {
-		case 0x9:
-			if err := c.writeFrame(0xA, payload); err != nil {
+		case opPing:
+			if err := c.writeFrame(opPong, payload); err != nil {
 				return msgs, err
 			}
 			continue
-		case 0xA:
+		case opPong:
 			continue
-		case 0x8:
+		case opClose:
 			return msgs, fmt.Errorf("server closed after %d of %d messages (%x)", len(msgs), n, payload)
-		case 0x1, 0x0:
+		case opText:
+			if inMessage {
+				return msgs, errors.New("protocol: a text frame inside a fragmented message")
+			}
+			inMessage = true
+			partial = append(partial[:0], payload...)
+		case opContinuation:
+			if !inMessage {
+				return msgs, errors.New("protocol: a continuation frame with no message in progress")
+			}
 			partial = append(partial, payload...)
 		default:
-			return msgs, fmt.Errorf("unexpected opcode %d", opcode)
+			return msgs, fmt.Errorf("unexpected opcode %#x", opcode)
 		}
 		if !fin {
 			continue
 		}
-		if !json.Valid(partial) {
-			return msgs, fmt.Errorf("message is not JSON: %q", partial)
+		inMessage = false
+		if !utf8.Valid(partial) || !json.Valid(partial) {
+			return msgs, fmt.Errorf("message is not UTF-8 JSON: %q", partial)
 		}
 		msgs = append(msgs, string(partial))
 		partial = nil
@@ -338,13 +434,13 @@ func (c *wsConn) readUntil(opcode byte) ([]byte, error) {
 		if op == opcode {
 			return payload, nil
 		}
-		if op == 0x9 {
-			if err := c.writeFrame(0xA, payload); err != nil {
+		if op == opPing {
+			if err := c.writeFrame(opPong, payload); err != nil {
 				return nil, err
 			}
 		}
-		if op == 0x8 {
-			return nil, fmt.Errorf("server closed while waiting for opcode %d", opcode)
+		if op == opClose {
+			return nil, fmt.Errorf("server closed while waiting for opcode %#x", opcode)
 		}
 	}
 }

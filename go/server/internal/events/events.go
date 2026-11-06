@@ -239,9 +239,20 @@ func (h *Hub) serve(c *client) {
 		h.pong(c)
 		return nil
 	})
+	// ws answers a close frame with the same code and reason (an empty
+	// payload for 1005, no status); gorilla's default handler drops the
+	// reason.
+	c.conn.SetCloseHandler(func(code int, text string) error {
+		var payload []byte
+		if code != websocket.CloseNoStatusReceived {
+			payload = websocket.FormatCloseMessage(code, text)
+		}
+		c.conn.WriteControl(websocket.CloseMessage, payload, time.Now().Add(pingWait))
+		return nil
+	})
 	// Node registers no message handler: data frames are read and dropped.
-	// Reading also answers pings and close frames (gorilla's default
-	// handlers, as ws's autoPong and close reply).
+	// Reading also answers pings (gorilla's default handler, as ws's
+	// autoPong) and close frames (the handler above).
 	for {
 		_, r, err := c.conn.NextReader()
 		if err != nil {
