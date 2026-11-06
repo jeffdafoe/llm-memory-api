@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/admin"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/agent"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
@@ -137,10 +138,21 @@ func LogDir() string {
 // request is still logged, as Express logged a request its error handler
 // answered. The outer one covers the layers above the log.
 func Handler(s *Services) http.Handler {
+	// The admin router, mounted last on /v1 in Node: a /v1 path no earlier
+	// router answered reaches it, behind requireUser.
+	adminMux := admin.NewMux()
+	adminCommon := &admin.Common{
+		DB: s.DB, Log: s.Log, Router: s.Router, Admin: s.Admin, Actors: s.Actors, Visibility: s.Visibility,
+	}
+	(&admin.Routes{
+		Common: adminCommon, Config: s.Config, Sessions: s.Sessions, SessionAuth: s.SessionAuth,
+		Providers: s.Providers,
+	}).Register(adminMux)
+
 	// /v1: every route behind the session middleware and the last_seen
 	// heartbeat, matched on the raw path below /v1. A path no route has goes
-	// to the /v1 fallback.
-	v1 := httpapi.NewRawMux("/v1", http.HandlerFunc(v1Unmatched))
+	// to the admin router.
+	v1 := httpapi.NewRawMux("/v1", admin.Handler(adminMux))
 	(&memory.Routes{Service: s.Memory, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	(&notes.Routes{Service: s.Notes, Router: s.Router, Namespaces: s.Namespaces}).Register(v1)
 	(&mail.Routes{Service: s.Mail, Router: s.Router}).Register(v1)
@@ -152,6 +164,10 @@ func Handler(s *Services) http.Handler {
 		Namespaces: s.Namespaces, Visibility: s.Visibility,
 	}).Register(v1)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
+	// routes/auth.js is mounted on /v1 before the session middleware, so
+	// /v1/auth/verify needs no Authorization header; its other methods go
+	// on to the middleware.
+	authMux := (&admin.Verify{Sessions: s.Sessions, Admin: s.Admin, Log: s.Log}).Mux(v1Chain)
 
 	// Top-level routes outside /v1, with no auth: OAuth (mounted before /mcp
 	// and /v1 in Node) and registration (after them; no path overlaps).
@@ -175,6 +191,8 @@ func Handler(s *Services) http.Handler {
 			// Express's router answers OPTIONS itself for a path with routes,
 			// listing their methods.
 			httpapi.WriteOptions(w, "GET, HEAD")
+		case p == admin.VerifyPath:
+			authMux.ServeHTTP(w, r)
 		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
 			v1Chain.ServeHTTP(w, r)
 		case top.Handles(p):
@@ -186,17 +204,4 @@ func Handler(s *Services) http.Handler {
 
 	requestLog := &httpapi.RequestLog{DB: s.DB}
 	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))
-}
-
-// v1Unmatched answers a /v1 path no route matched. In Node the admin router
-// is mounted last on /v1 with router.use(requireUser) (routes/admin.js), so
-// every unmatched /v1 path reaches it: a caller without an admin web session
-// gets 401 there, except on /admin/login, and an admin user falls through to
-// the 404 page.
-func v1Unmatched(w http.ResponseWriter, r *http.Request) {
-	if strings.TrimPrefix(httpapi.RawPath(r), "/v1") != "/admin/login" && httpapi.StateOf(r).AuthenticatedUser == nil {
-		httpapi.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Admin authentication required")
-		return
-	}
-	httpapi.NotFound(w, r)
 }
