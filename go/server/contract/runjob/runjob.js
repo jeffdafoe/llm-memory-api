@@ -2,23 +2,37 @@
 // the contract harness's job steps; main.go beside it does the same with
 // the Go server's code. Run with node/api as the working directory:
 //
-//     node <repo>/go/server/contract/runjob/runjob.js cleanup
+//     node <repo>/go/server/contract/runjob/runjob.js cleanup|dream
 //
-// The job is the server's own code. For cleanup, node-cron's schedule() is
-// replaced so it hands back the callback instead of arming a timer, and the
-// callback (the same function the cron would call) runs once.
+// The job is the server's own code. node-cron's schedule() is replaced so it
+// hands back the callback instead of arming a timer, and the callback (the
+// same function the cron would call) runs once.
 
 const path = require('path');
 
 const api = path.resolve(__dirname, '../../../../node/api/src');
 
+// Requests in flight: a saved note is indexed in the background, and its
+// embeddings call leaves the pool idle while it waits on the fake.
+let fetches = 0;
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+    fetches++;
+    try {
+        return await realFetch(...args);
+    } finally {
+        fetches--;
+    }
+};
+
 async function settle(pool) {
-    // updateUsage and logError's insert are fire-and-forget: wait until the
-    // pool has had nothing checked out or queued for a while.
+    // updateUsage, logError's insert, the call log and note indexing are
+    // fire-and-forget: wait until the pool has had nothing checked out or
+    // queued, and no request has been in flight, for a while.
     let quietSince = Date.now();
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
-        const busy = pool.waitingCount > 0 || pool.totalCount !== pool.idleCount;
+        const busy = fetches > 0 || pool.waitingCount > 0 || pool.totalCount !== pool.idleCount;
         if (busy) quietSince = Date.now();
         else if (Date.now() - quietSince >= 200) return;
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -50,6 +64,11 @@ async function main() {
         case 'cleanup':
             require(path.join(api, 'services/cleanup.js')).startCleanupScheduler();
             if (!callback) throw new Error('the cleanup scheduler did not start');
+            await callback();
+            break;
+        case 'dream':
+            require(path.join(api, 'services/dream.js')).startDreamScheduler();
+            if (!callback) throw new Error('the dream scheduler did not start');
             await callback();
             break;
         default:
