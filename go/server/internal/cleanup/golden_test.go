@@ -364,7 +364,8 @@ func deref(params []*string) []string {
 }
 
 // The statements match Node's; the transactions are the port's own. Each
-// decay note is one transaction, and so is each retention stage.
+// decay note is one transaction, and so is each retention stage. The sim
+// chat purge runs outside any transaction: each batch is one statement.
 func TestPassTransactions(t *testing.T) {
 	g := loadGoldens(t)
 	for _, sc := range g.Pass {
@@ -375,7 +376,7 @@ func TestPassTransactions(t *testing.T) {
 		j := &Job{DB: db, Config: storeOf(sc.Config), Log: &recorder{}}
 		j.Pass(context.Background(), "0 5 * * *")
 		want := "SELECT BEGIN UPDATE INSERT DELETE COMMIT BEGIN UPDATE DELETE COMMIT DELETE " +
-			"BEGIN UPDATE DELETE DELETE DELETE INSERT INSERT COMMIT BEGIN UPDATE DELETE COMMIT"
+			"BEGIN UPDATE DELETE DELETE DELETE INSERT INSERT COMMIT BEGIN UPDATE DELETE COMMIT SELECT WITH"
 		if got := strings.Join(db.marks, " "); got != want {
 			t.Errorf("marks\n got %s\nwant %s", got, want)
 		}

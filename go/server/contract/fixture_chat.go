@@ -46,7 +46,7 @@ func applyChatFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[st
 		from                       int
 		discussionID               *int
 		sentAt                     string
-		toolCalls, toolsOffered    *string
+		toolCalls                  *string
 		toolCallID, sceneID, scene *string
 		conversationID             *string
 	}{
@@ -54,16 +54,16 @@ func applyChatFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[st
 		{id: 2, message: "Read direct message.", from: b, sentAt: "2026-10-02 10:00:00.654321+00"},
 		{id: 3, message: "In the discussion.", from: b, discussionID: intPtr(fixtureDiscussionID), sentAt: "2026-10-03 10:00:00+00"},
 		{id: 4, message: "A tool turn.", from: vaID, sentAt: "2026-10-04 10:00:00+00",
-			toolCalls:    ptr(`[{"id": "c1", "type": "function", "function": {"name": "speak", "arguments": "{}"}}]`),
-			toolsOffered: ptr(`[{"name": "speak"}]`), sceneID: ptr(fixtureSceneID), scene: ptr("Tavern"), conversationID: ptr("sc-1")},
+			toolCalls: ptr(`[{"id": "c1", "type": "function", "function": {"name": "speak", "arguments": "{}"}}]`),
+			sceneID:   ptr(fixtureSceneID), scene: ptr("Tavern"), conversationID: ptr("sc-1")},
 		{id: 5, message: "To agent-b.", from: a, sentAt: "2026-10-05 10:00:00+00"},
 		{id: 6, message: "Taken back.", from: a, sentAt: "2026-10-06 10:00:00+00"},
 	}
 	for _, t := range texts {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO chat_message_texts (id, message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, conversation_id)
-             VALUES ($1, $2, $3, $4, $5::timestamptz, $6::jsonb, $7, $8::jsonb, $9::uuid, $10, $11)`,
-			t.id, t.message, t.from, t.discussionID, t.sentAt, t.toolCalls, t.toolCallID, t.toolsOffered, t.sceneID, t.scene, t.conversationID); err != nil {
+			`INSERT INTO chat_message_texts (id, message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, scene_id, scene_structure, conversation_id)
+             VALUES ($1, $2, $3, $4, $5::timestamptz, $6::jsonb, $7, $8::uuid, $9, $10)`,
+			t.id, t.message, t.from, t.discussionID, t.sentAt, t.toolCalls, t.toolCallID, t.sceneID, t.scene, t.conversationID); err != nil {
 			return fmt.Errorf("chat text %d: %w", t.id, err)
 		}
 	}

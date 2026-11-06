@@ -32,8 +32,9 @@ type DirectChat struct {
 	FromAgent    string
 	// Message is nil for a tool-results message, which has no text.
 	Message *string
-	// MessageID is the recipient's delivery row.
-	MessageID int
+	// MessageIDs are the recipient's delivery rows of the send, all acked
+	// after the reply: a tool-results send has one row per result.
+	MessageIDs []int
 	// ToolsOffered is the raw JSON array, nil when none was sent.
 	ToolsOffered     json.RawMessage
 	IsToolResultCall bool
@@ -410,12 +411,10 @@ func (s *Service) Send(ctx context.Context, in SendInput) (sent *Sent, pending P
 	if err != nil {
 		return nil, nil, err
 	}
-	toolsOffered, err := jsonbParam(in.ToolsOffered)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	texts, deliveries, allDeliveryIDs, firstDelivery, err := s.insert(ctx, in, fromActor.ID, recipients, recipientActors, specs, toolCalls, toolsOffered)
+	// tools_offered is not stored: the full tool schemas were most of the
+	// table's bytes and nothing read them back. The virtual agent logs the
+	// offered tool names on its call row instead.
+	texts, deliveries, recipientIDs, allDeliveryIDs, firstDelivery, err := s.insert(ctx, in, fromActor.ID, recipients, recipientActors, specs, toolCalls)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -474,7 +473,7 @@ func (s *Service) Send(ctx context.Context, in SendInput) (sent *Sent, pending P
 		// message is committed, so the check and the notice go on if the
 		// client hangs up, as Node's did.
 		postCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postCommitTimeout)
-		pending, _ = s.dispatchVirtualAgents(postCtx, in, fromActor, recipients, recipientActors, deliveries)
+		pending, _ = s.dispatchVirtualAgents(postCtx, in, fromActor, recipients, recipientActors, recipientIDs)
 		cancel()
 	}
 
@@ -501,46 +500,48 @@ func jsonbParam(raw json.RawMessage) (*string, error) {
 
 // insert writes the text rows, then one delivery row per text row and
 // recipient, in one transaction. A delivery's id in the answer is the
-// recipient's last row; firstDelivery maps each text row to its first
+// recipient's last row; recipientIDs holds every row per recipient, which
+// its virtual agent acks; firstDelivery maps each text row to its first
 // recipient's row, which its live event names.
 func (s *Service) insert(ctx context.Context, in SendInput, fromActorID int, recipients []string, recipientActors map[string]actors.Actor,
-	specs []rowSpec, toolCalls, toolsOffered *string) (texts []insertedText, deliveries []Delivery, allIDs []int, firstDelivery map[int]int, err error) {
+	specs []rowSpec, toolCalls *string) (texts []insertedText, deliveries []Delivery, recipientIDs map[string][]int, allIDs []int, firstDelivery map[int]int, err error) {
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	defer tx.Rollback(ctx)
 
 	for i, spec := range specs {
-		var calls, offered *string
+		var calls *string
 		if i == 0 {
-			calls, offered = toolCalls, toolsOffered
+			calls = toolCalls
 		}
 		var t insertedText
 		if err := tx.QueryRow(ctx, `INSERT INTO chat_message_texts
-                (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, tools_offered, scene_id, scene_structure, is_error, conversation_id)
+                (message, from_actor_id, discussion_id, sent_at, tool_calls, tool_call_id, scene_id, scene_structure, is_error, conversation_id)
              VALUES (
-                $1, $2, $3, NOW(), $4, $5, $6, $7,
-                COALESCE($8, CASE
-                    WHEN $7::uuid IS NULL THEN NULL
+                $1, $2, $3, NOW(), $4, $5, $6,
+                COALESCE($7, CASE
+                    WHEN $6::uuid IS NULL THEN NULL
                     ELSE (
                         SELECT scene_structure FROM chat_message_texts
-                         WHERE scene_id = $7::uuid AND scene_structure IS NOT NULL
+                         WHERE scene_id = $6::uuid AND scene_structure IS NOT NULL
                          ORDER BY id ASC LIMIT 1
                     )
                 END),
-                $9, $10
+                $8, $9
              )
              RETURNING id, sent_at`,
-			spec.message, fromActorID, discussionParam(in.DiscussionID), calls, spec.toolCallID, offered,
+			spec.message, fromActorID, discussionParam(in.DiscussionID), calls, spec.toolCallID,
 			in.SceneID, in.SceneStructure, in.IsError, in.ConversationID).Scan(&t.id, &t.sentAt); err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		t.message = spec.message
 		texts = append(texts, t)
 	}
 
 	firstDelivery = map[int]int{}
+	recipientIDs = map[string][]int{}
 	allIDs = []int{}
 	sentAt := jsTime(&texts[len(texts)-1].sentAt)
 	for _, name := range recipients {
@@ -550,9 +551,10 @@ func (s *Service) insert(ctx context.Context, in SendInput, fromActorID int, rec
 			if err := tx.QueryRow(ctx, `INSERT INTO chat_messages (message_text_id, to_actor_id, acked_at)
                  VALUES ($1, $2, CASE WHEN $3::boolean THEN NOW() ELSE NULL END)
                  RETURNING id`, t.id, toActor.ID, in.AckOnInsert).Scan(&last); err != nil {
-				return nil, nil, nil, nil, err
+				return nil, nil, nil, nil, nil, err
 			}
 			allIDs = append(allIDs, last)
+			recipientIDs[name] = append(recipientIDs[name], last)
 			if _, ok := firstDelivery[t.id]; !ok {
 				firstDelivery[t.id] = last
 			}
@@ -561,9 +563,9 @@ func (s *Service) insert(ctx context.Context, in SendInput, fromActorID int, rec
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
-	return texts, deliveries, allIDs, firstDelivery, nil
+	return texts, deliveries, recipientIDs, allIDs, firstDelivery, nil
 }
 
 // dispatchVirtualAgents hands a direct message to each virtual recipient the
@@ -573,7 +575,7 @@ func (s *Service) insert(ctx context.Context, in SendInput, fromActorID int, rec
 // caller gets the failure as its answer. One dispatch is returned as pending
 // for a Wait send; any other dispatch runs in the background.
 func (s *Service) dispatchVirtualAgents(ctx context.Context, in SendInput, fromActor actors.Actor, recipients []string,
-	recipientActors map[string]actors.Actor, deliveries []Delivery) (PendingReply, error) {
+	recipientActors map[string]actors.Actor, recipientIDs map[string][]int) (PendingReply, error) {
 	senderVirtual, err := s.isVirtual(ctx, fromActor.ID)
 	if err != nil || senderVirtual {
 		return nil, err
@@ -605,15 +607,8 @@ func (s *Service) dispatchVirtualAgents(ctx context.Context, in SendInput, fromA
 			}
 			continue
 		}
-		msgID := 0
-		for _, d := range deliveries {
-			if d.Agent == name {
-				msgID = d.ID
-				break
-			}
-		}
 		dispatches = append(dispatches, DirectChat{
-			VirtualAgent: name, FromAgent: in.FromAgent, Message: in.Message, MessageID: msgID,
+			VirtualAgent: name, FromAgent: in.FromAgent, Message: in.Message, MessageIDs: recipientIDs[name],
 			ToolsOffered: in.ToolsOffered, IsToolResultCall: in.ToolCallID != nil && *in.ToolCallID != "" || len(in.ToolCallResults) > 0,
 			SceneID: in.SceneID, SceneStructure: in.SceneStructure, ConversationID: in.ConversationID,
 			SimActorID: in.SimActorID, SimActorName: in.SimActorName, HistoryScope: in.HistoryScope,
@@ -684,14 +679,13 @@ func (s *Service) queryNames(ctx context.Context, sql string, args ...any) ([]st
 
 // Message is one received message.
 type Message struct {
-	ID           int     `json:"id"`
-	FromAgent    string  `json:"from_agent"`
-	ToAgent      string  `json:"to_agent"`
-	Message      string  `json:"message"`
-	SentAt       Time    `json:"sent_at"`
-	ToolCalls    JSON    `json:"tool_calls"`
-	ToolCallID   *string `json:"tool_call_id"`
-	ToolsOffered JSON    `json:"tools_offered"`
+	ID         int     `json:"id"`
+	FromAgent  string  `json:"from_agent"`
+	ToAgent    string  `json:"to_agent"`
+	Message    string  `json:"message"`
+	SentAt     Time    `json:"sent_at"`
+	ToolCalls  JSON    `json:"tool_calls"`
+	ToolCallID *string `json:"tool_call_id"`
 }
 
 // Received is the answer to a receive.
@@ -712,7 +706,7 @@ func (s *Service) Receive(ctx context.Context, agent string, discussionID int64,
 		return nil, err
 	}
 	sql := `SELECT cm.id, fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
-                        cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
+                        cmt.tool_calls, cmt.tool_call_id
                  FROM chat_messages cm
                  JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
                  JOIN actors fa ON fa.id = cmt.from_actor_id
@@ -749,11 +743,11 @@ func (s *Service) Receive(ctx context.Context, agent string, discussionID int64,
 	for rows.Next() {
 		var m Message
 		var sentAt time.Time
-		var calls, offered []byte
-		if err := rows.Scan(&m.ID, &m.FromAgent, &m.ToAgent, &m.Message, &sentAt, &calls, &m.ToolCallID, &offered); err != nil {
+		var calls []byte
+		if err := rows.Scan(&m.ID, &m.FromAgent, &m.ToAgent, &m.Message, &sentAt, &calls, &m.ToolCallID); err != nil {
 			return nil, err
 		}
-		m.SentAt, m.ToolCalls, m.ToolsOffered = jsTime(&sentAt), calls, offered
+		m.SentAt, m.ToolCalls = jsTime(&sentAt), calls
 		out = append(out, m)
 		ids = append(ids, m.ID)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -91,10 +92,10 @@ func expectActors(mock pgxmock.PgxPoolIface, names []string, ids []int) {
 	mock.ExpectQuery("SELECT id, name FROM actors WHERE name = ANY").WithArgs(names).WillReturnRows(rows)
 }
 
-// expectText takes the ten insert parameters; a nil in a *string position
+// expectText takes the nine insert parameters; a nil in a *string position
 // stands for a typed nil.
 func expectText(mock pgxmock.PgxPoolIface, id int, args ...any) {
-	for _, i := range []int{0, 3, 4, 5, 6, 7, 9} {
+	for _, i := range []int{0, 3, 4, 5, 6, 8} {
 		if args[i] == nil {
 			args[i] = (*string)(nil)
 		}
@@ -249,7 +250,7 @@ func TestSendDirect(t *testing.T) {
 	expectActor(mock, "agent-a", 11)
 	expectActors(mock, []string{"agent-b"}, []int{12})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("Hello"), 11, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("Hello"), 11, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock, 100, 12, false, 500)
 	mock.ExpectCommit()
 	expectVirtualSender(mock, 11, false)
@@ -281,8 +282,8 @@ func TestSendDirect(t *testing.T) {
 	}
 }
 
-// Tool results: one text row per result, tool_calls and tools_offered on
-// the first only; one delivery row per text row and recipient. The answer
+// Tool results: one text row per result, tool_calls on the first only
+// (tools_offered is not stored); one delivery row per text row and recipient. The answer
 // names each recipient's last row; each event names the first recipient's
 // row for its text.
 func TestSendToolCallResults(t *testing.T) {
@@ -291,8 +292,8 @@ func TestSendToolCallResults(t *testing.T) {
 	expectActors(mock, []string{"npc-1", "npc-2"}, []int{21, 22})
 	mock.ExpectBegin()
 	calls := `[{"id":"c1","b":2,"a":1}]`
-	expectText(mock, 100, str("r1"), 1, nil, str(`[{"id":"c1","b":2,"a":1}]`), str("c1"), str(`["speak"]`), str("6d2a0c1e-0000-4000-8000-000000000001"), (*string)(nil), false, str("sc-1"))
-	expectText(mock, 101, str("r2"), 1, nil, nil, str("c2"), nil, str("6d2a0c1e-0000-4000-8000-000000000001"), (*string)(nil), false, str("sc-1"))
+	expectText(mock, 100, str("r1"), 1, nil, str(`[{"id":"c1","b":2,"a":1}]`), str("c1"), str("6d2a0c1e-0000-4000-8000-000000000001"), (*string)(nil), false, str("sc-1"))
+	expectText(mock, 101, str("r2"), 1, nil, nil, str("c2"), str("6d2a0c1e-0000-4000-8000-000000000001"), (*string)(nil), false, str("sc-1"))
 	expectDelivery(mock, 100, 21, false, 500)
 	expectDelivery(mock, 101, 21, false, 501)
 	expectDelivery(mock, 100, 22, false, 502)
@@ -332,7 +333,7 @@ func TestSendEveryone(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"agent"}).AddRow("system").AddRow("agent-b"))
 	expectActors(mock, []string{"system", "agent-b"}, []int{1, 12})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("all"), 11, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("all"), 11, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock, 100, 1, false, 500)
 	expectDelivery(mock, 100, 12, false, 501)
 	mock.ExpectCommit()
@@ -360,7 +361,7 @@ func expectDiscussionPost(mock pgxmock.PgxPoolIface) {
 		WillReturnRows(pgxmock.NewRows([]string{"agent"}).AddRow("agent-b"))
 	expectActors(mock, []string{"agent-b"}, []int{12})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("in the room"), 11, jsutil.Num(7), nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("in the room"), 11, jsutil.Num(7), nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock, 100, 12, false, 500)
 	mock.ExpectCommit()
 	expectActor(mock, "system", 1)
@@ -513,7 +514,7 @@ func TestSendVirtualAgentWithoutAccess(t *testing.T) {
 	expectActor(mock, "agent-a", 11)
 	expectActors(mock, []string{"helper-va"}, []int{30})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("help?"), 11, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("help?"), 11, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock, 100, 30, false, 500)
 	mock.ExpectCommit()
 	expectVirtualSender(mock, 11, false)
@@ -522,7 +523,7 @@ func TestSendVirtualAgentWithoutAccess(t *testing.T) {
 	// The notice, sent as the virtual agent (both actors are cached now); its
 	// own check stops at the virtual sender.
 	mock.ExpectBegin()
-	expectText(mock, 101, str("[Error] no access to helper-va"), 30, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), true, (*string)(nil))
+	expectText(mock, 101, str("[Error] no access to helper-va"), 30, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), true, (*string)(nil))
 	expectDelivery(mock, 101, 11, false, 501)
 	mock.ExpectCommit()
 	expectVirtualSender(mock, 30, true)
@@ -547,7 +548,7 @@ func TestSendWaitPending(t *testing.T) {
 	expectActor(mock, "salem-engine", 1)
 	expectActors(mock, []string{"npc"}, []int{21})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("tick"), 1, nil, nil, str("c9"), str(`[]`), (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("tick"), 1, nil, nil, str("c9"), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock, 100, 21, false, 500)
 	mock.ExpectCommit()
 	expectVirtualSender(mock, 1, false)
@@ -572,9 +573,52 @@ func TestSendWaitPending(t *testing.T) {
 		t.Fatalf("calls %+v", agents.calls)
 	}
 	c := agents.calls[0]
-	if c.VirtualAgent != "npc" || c.MessageID != 500 || !c.IsToolResultCall || !c.AckReplyOnInsert || c.NotifyUnanswerable ||
+	if c.VirtualAgent != "npc" || len(c.MessageIDs) != 1 || c.MessageIDs[0] != 500 || !c.IsToolResultCall || !c.AckReplyOnInsert || c.NotifyUnanswerable ||
 		c.HistoryScope == nil || *c.HistoryScope != "scene" || string(c.ToolsOffered) != `[]` {
 		t.Errorf("call %+v", c)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// A tool-results send hands the virtual agent every delivery row of the
+// send, so it acks them all, not only the last (LLM-948).
+func TestSendToolCallResultsDispatchesEveryDelivery(t *testing.T) {
+	s, mock, agents, _ := newService(t)
+	agents.reply = json.RawMessage(`{"text":""}`)
+	expectActor(mock, "salem-engine", 1)
+	expectActors(mock, []string{"npc"}, []int{21})
+	mock.ExpectBegin()
+	expectText(mock, 100, str("r1"), 1, nil, nil, str("c1"), (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 101, str("r2"), 1, nil, nil, str("c2"), (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 102, str("r3"), 1, nil, nil, str("c3"), (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectDelivery(mock, 100, 21, false, 500)
+	expectDelivery(mock, 101, 21, false, 501)
+	expectDelivery(mock, 102, 21, false, 502)
+	mock.ExpectCommit()
+	expectVirtualSender(mock, 1, false)
+	expectVirtualRecipients(mock, []int{21}, "npc")
+	expectAccess(mock, 1, 21, true)
+
+	_, pending, err := s.Send(context.Background(), SendInput{
+		FromAgent: "salem-engine", ToAgents: To("npc"), Wait: true,
+		ToolCallResults: []ToolCallResult{{"c1", "r1"}, {"c2", "r2"}, {"c3", "r3"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending == nil {
+		t.Fatal("no pending reply")
+	}
+	if _, err := pending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(agents.calls) != 1 {
+		t.Fatalf("calls %+v", agents.calls)
+	}
+	if got := fmt.Sprint(agents.calls[0].MessageIDs); got != "[500 501 502]" {
+		t.Errorf("message ids %s, want [500 501 502]", got)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
@@ -589,7 +633,7 @@ func TestSendDispatchInBackground(t *testing.T) {
 	expectActor(mock, "agent-a", 11)
 	expectActors(mock, []string{"helper-va"}, []int{30})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("hi"), 11, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("hi"), 11, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock, 100, 30, false, 500)
 	mock.ExpectCommit()
 	expectVirtualSender(mock, 11, false)
@@ -613,7 +657,7 @@ func TestSendDispatchInBackground(t *testing.T) {
 	expectActor(mock2, "agent-a", 11)
 	expectActors(mock2, []string{"agent-b"}, []int{12})
 	mock2.ExpectBegin()
-	expectText(mock2, 100, str("hi"), 11, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock2, 100, str("hi"), 11, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock2, 100, 12, false, 500)
 	mock2.ExpectCommit()
 	mock2.ExpectQuery("SELECT agc.virtual").WithArgs(11).WillReturnError(errors.New("boom"))
@@ -662,7 +706,7 @@ func TestSendDispatchSurvivesHangUp(t *testing.T) {
 	expectActor(mock, "agent-a", 11)
 	expectActors(mock, []string{"helper-va"}, []int{30})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("hi"), 11, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("hi"), 11, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	expectDelivery(mock, 100, 30, false, 500)
 	mock.ExpectCommit()
 	expectVirtualSender(mock, 11, false)
@@ -689,7 +733,7 @@ func TestSendRollsBack(t *testing.T) {
 	expectActor(mock, "agent-a", 11)
 	expectActors(mock, []string{"agent-b"}, []int{12})
 	mock.ExpectBegin()
-	expectText(mock, 100, str("x"), 11, nil, nil, (*string)(nil), nil, (*string)(nil), (*string)(nil), false, (*string)(nil))
+	expectText(mock, 100, str("x"), 11, nil, nil, (*string)(nil), (*string)(nil), (*string)(nil), false, (*string)(nil))
 	mock.ExpectQuery("INSERT INTO chat_messages").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnError(errors.New("insert failed"))
 	mock.ExpectRollback()
 	if _, _, err := s.Send(context.Background(), SendInput{FromAgent: "agent-a", ToAgents: To("agent-b"), Message: str("x")}); err == nil || err.Error() != "insert failed" {
@@ -723,20 +767,20 @@ func TestReceive(t *testing.T) {
 	after := 40.0
 	mock.ExpectQuery(`WHERE cm.to_actor_id = \$1 AND cm.acked_at IS NULL AND cm.deleted_at IS NULL AND cmt.discussion_id = \$2 AND cmt.from_actor_id = \$3 AND cm.id > \$4 ORDER BY cm.id ASC`).
 		WithArgs(11, jsutil.Num(7), 12, jsutil.Num(40)).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "from_agent", "to_agent", "message", "sent_at", "tool_calls", "tool_call_id", "tools_offered"}).
-			AddRow(41, "agent-b", "agent-a", "hi", sentAt, []byte(`[{"b": 1, "a": 2}]`), str("c1"), []byte(nil)))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "from_agent", "to_agent", "message", "sent_at", "tool_calls", "tool_call_id"}).
+			AddRow(41, "agent-b", "agent-a", "hi", sentAt, []byte(`[{"b": 1, "a": 2}]`), str("c1")))
 	got, err := s.Receive(context.Background(), "agent-a", 7, &after, "agent-b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"messages":[{"id":41,"from_agent":"agent-b","to_agent":"agent-a","message":"hi","sent_at":"` + sentAtJS + `","tool_calls":[{"b":1,"a":2}],"tool_call_id":"c1","tools_offered":null}],"pending_count":1}`
+	want := `{"messages":[{"id":41,"from_agent":"agent-b","to_agent":"agent-a","message":"hi","sent_at":"` + sentAtJS + `","tool_calls":[{"b":1,"a":2}],"tool_call_id":"c1"}],"pending_count":1}`
 	if g := marshal(t, got); g != want {
 		t.Errorf("got %s\nwant %s", g, want)
 	}
 
 	expectActor(mock, "agent-c", 13)
 	mock.ExpectQuery(`AND cmt.discussion_id IS NULL ORDER BY cm.id ASC`).WithArgs(13).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "from_agent", "to_agent", "message", "sent_at", "tool_calls", "tool_call_id", "tools_offered"}))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "from_agent", "to_agent", "message", "sent_at", "tool_calls", "tool_call_id"}))
 	got, err = s.Receive(context.Background(), "agent-c", 0, nil, "")
 	if err != nil || marshal(t, got) != `{"messages":[],"pending_count":0}` {
 		t.Errorf("%v %v", got, err)

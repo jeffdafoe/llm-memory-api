@@ -66,6 +66,29 @@ func deref(v *string) string {
 	return *v
 }
 
+// offeredToolNames is offeredToolNames: the names of the tools offered on a
+// tool-use call, for virtual_agent_calls.tool_names. An entry that is not an
+// object with a string name is skipped. nil (NULL) when no tools were offered.
+func offeredToolNames(toolsOffered any) []string {
+	tools, ok := toolsOffered.([]any)
+	if !ok || len(tools) == 0 {
+		return nil
+	}
+	names := []string{}
+	for _, t := range tools {
+		o, ok := t.(*jsutil.Object)
+		if !ok {
+			continue
+		}
+		if v, ok := o.Get("name"); ok {
+			if name, ok := v.(string); ok {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
+
 // directChat is one direct chat turn's inputs, read from chat.DirectChat as
 // Node read handleDirectChat's options.
 type directChat struct {
@@ -138,6 +161,7 @@ func (s *Service) HandleDirectChat(ctx context.Context, in chat.DirectChat) (jso
 		UserMessage: deref(in.Message), Err: err, UsageID: usageID,
 		SceneID: deref(in.SceneID), ConversationID: deref(in.ConversationID),
 		SimActorID: deref(in.SimActorID), SimActorName: deref(in.SimActorName),
+		ToolNames: offeredToolNames(d.toolsOffered),
 	})
 	s.Log.LogError("virtual-agent", "direct-chat-error", logger.ErrorOpts{
 		Agent: in.VirtualAgent, Context: "chat", Message: err.Error(), Detail: fmt.Sprintf("%+v", err), StatusCode: 500,
@@ -428,6 +452,7 @@ func (s *Service) directChatTurn(ctx context.Context, agent *Agent, d *directCha
 		Duration: duration, UsageID: &usageID,
 		SceneID: deref(d.SceneID), ConversationID: deref(d.ConversationID),
 		SimActorID: deref(d.SimActorID), SimActorName: deref(d.SimActorName),
+		ToolNames: offeredToolNames(d.toolsOffered),
 	})
 
 	// The reply row keeps the tool calls, so the next turn's history has
@@ -446,9 +471,17 @@ func (s *Service) directChatTurn(ctx context.Context, agent *Agent, d *directCha
 		return nil, err
 	}
 
-	if d.MessageID != 0 {
-		if _, err := s.DB.Exec(ctx, "UPDATE chat_messages SET acked_at = NOW() WHERE id = $1 AND to_actor_id = $2 AND acked_at IS NULL",
-			d.MessageID, agent.ActorID); err != nil {
+	// Every delivery row of the send is acked, not just the last: a
+	// tool-results send has one row per result.
+	var ackIDs []int
+	for _, id := range d.MessageIDs {
+		if id != 0 {
+			ackIDs = append(ackIDs, id)
+		}
+	}
+	if len(ackIDs) > 0 {
+		if _, err := s.DB.Exec(ctx, "UPDATE chat_messages SET acked_at = NOW() WHERE id = ANY($1) AND to_actor_id = $2 AND acked_at IS NULL",
+			ackIDs, agent.ActorID); err != nil {
 			return nil, err
 		}
 	}

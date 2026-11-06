@@ -29,11 +29,11 @@ func init() {
 }
 
 type chatInput struct {
-	Agent     string  `json:"agent"`
-	From      string  `json:"from"`
-	Message   *string `json:"message"`
-	MessageID int     `json:"messageId"`
-	Opts      string  `json:"opts"`
+	Agent      string  `json:"agent"`
+	From       string  `json:"from"`
+	Message    *string `json:"message"`
+	MessageIDs []int   `json:"messageIds"`
+	Opts       string  `json:"opts"`
 }
 
 type chatScenario struct {
@@ -179,15 +179,12 @@ func rowFrom(t *testing.T, raw json.RawMessage) chatRow {
 	t.Helper()
 	var r chatRow
 	o := parseJS(t, raw).(*jsutil.Object)
-	dest := []any{&r.FromAgent, &r.ToAgent, &r.Message, &r.SentAt, &r.ToolCalls, &r.ToolCallID, &r.ToolsOffered}
+	dest := []any{&r.FromAgent, &r.ToAgent, &r.Message, &r.SentAt, &r.ToolCalls, &r.ToolCallID}
 	if err := scanRow(o, dest); err != nil {
 		t.Fatal(err)
 	}
 	if o.Value("tool_calls") == nil {
 		r.ToolCalls = nil
-	}
-	if o.Value("tools_offered") == nil {
-		r.ToolsOffered = nil
 	}
 	return r
 }
@@ -494,7 +491,7 @@ func directChatFrom(t *testing.T, in chatInput) chat.DirectChat {
 		return nil
 	}
 	d := chat.DirectChat{
-		VirtualAgent: in.Agent, FromAgent: in.From, Message: in.Message, MessageID: in.MessageID,
+		VirtualAgent: in.Agent, FromAgent: in.From, Message: in.Message, MessageIDs: in.MessageIDs,
 		IsToolResultCall: o.Value("isToolResultCall") == true,
 		SceneID:          str("sceneId"), SceneStructure: str("sceneStructure"), ConversationID: str("conversationId"),
 		SimActorID: str("simActorId"), SimActorName: str("simActorName"), HistoryScope: str("historyScope"),

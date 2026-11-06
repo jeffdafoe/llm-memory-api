@@ -36,7 +36,7 @@ func (s *Service) loadDirectChatHistory(ctx context.Context, agent1, agent2 stri
 	}
 	rows, err := s.DB.Query(ctx,
 		`SELECT fa.name AS from_agent, ta.name AS to_agent, cmt.message, cmt.sent_at,
-                cmt.tool_calls, cmt.tool_call_id, cmt.tools_offered
+                cmt.tool_calls, cmt.tool_call_id
          FROM chat_messages cm
          JOIN chat_message_texts cmt ON cmt.id = cm.message_text_id
          JOIN actors fa ON fa.id = cmt.from_actor_id
@@ -55,7 +55,7 @@ func (s *Service) loadDirectChatHistory(ctx context.Context, agent1, agent2 stri
 	var out []chatRow
 	for rows.Next() {
 		var r chatRow
-		if err := rows.Scan(&r.FromAgent, &r.ToAgent, &r.Message, &r.SentAt, &r.ToolCalls, &r.ToolCallID, &r.ToolsOffered); err != nil {
+		if err := rows.Scan(&r.FromAgent, &r.ToAgent, &r.Message, &r.SentAt, &r.ToolCalls, &r.ToolCallID); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
