@@ -31,6 +31,8 @@ type Sweeper struct {
 	Errorf func(format string, args ...any)
 	// Every replaces Interval, for tests.
 	Every time.Duration
+	// ticks replaces the ticker, for tests.
+	ticks <-chan time.Time
 }
 
 type activityEvent struct {
@@ -79,8 +81,12 @@ func (s *Sweeper) Run(ctx context.Context, drain time.Duration) bool {
 	sweepCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancel()
 	var running sync.WaitGroup
-	tick := time.NewTicker(every)
-	defer tick.Stop()
+	ticks := s.ticks
+	if ticks == nil {
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		ticks = tick.C
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -101,7 +107,12 @@ func (s *Sweeper) Run(ctx context.Context, drain time.Duration) bool {
 			case <-time.After(drain):
 				return false
 			}
-		case <-tick.C:
+		case <-ticks:
+		}
+		// select picks at random when the tick and the cancel are both
+		// ready; a tick after the cancel starts nothing.
+		if ctx.Err() != nil {
+			continue
 		}
 		running.Add(1)
 		go func() {

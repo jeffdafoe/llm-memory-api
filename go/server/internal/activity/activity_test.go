@@ -104,6 +104,7 @@ func TestBlockedSweepsOverlapAndDrain(t *testing.T) {
 		errMu.Unlock()
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	result := make(chan bool)
 	go func() { result <- s.Run(ctx, 50*time.Millisecond) }()
 	for range 3 {
@@ -113,8 +114,8 @@ func TestBlockedSweepsOverlapAndDrain(t *testing.T) {
 			t.Fatal("sweeps did not start")
 		}
 	}
-	cancel()
 	start := time.Now()
+	cancel()
 	if !<-result {
 		t.Fatal("cancelled sweeps did not return")
 	}
@@ -131,5 +132,24 @@ func TestBlockedSweepsOverlapAndDrain(t *testing.T) {
 	defer errMu.Unlock()
 	if len(errs) < 3 || errs[0] != "Stale activity cleanup error: context canceled" {
 		t.Fatalf("errors %v", errs)
+	}
+}
+
+// A tick that is ready together with the cancel must not start a sweep.
+// select chooses at random between ready cases, so this runs many times.
+func TestNoSweepAfterCancel(t *testing.T) {
+	bdb := &blockingDB{started: make(chan struct{}, 100)}
+	for range 200 {
+		ticks := make(chan time.Time, 1)
+		ticks <- time.Now()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		s := &Sweeper{DB: bdb, Events: &recordedEvents{}, Errorf: t.Logf, ticks: ticks}
+		if !s.Run(ctx, time.Second) {
+			t.Fatal("Run reported sweeps left running")
+		}
+	}
+	if n := len(bdb.started); n != 0 {
+		t.Fatalf("%d sweeps started after the cancel", n)
 	}
 }
