@@ -47,12 +47,18 @@ const (
 var ErrNoSigningSecret = errors.New("mcp_oauth_bearer_secret is not configured")
 
 func allowedRedirect(uri string) bool {
+	_, ok := allowedRedirectTarget(uri)
+	return ok
+}
+
+// allowedRedirectTarget returns the allowlist entry equal to uri.
+func allowedRedirectTarget(uri string) (string, bool) {
 	for _, a := range AllowedRedirectURIs {
 		if uri == a {
-			return true
+			return a, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // IsCIMDClientID reports whether clientID is a URL on an Anthropic origin

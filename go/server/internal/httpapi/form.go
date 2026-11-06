@@ -358,12 +358,9 @@ func hexVal(c byte) byte {
 // RawQuery is the query of the request target as Node's HTTP parser gave it
 // to Express: each byte as the code point of the same value (latin1), so a
 // raw non-ASCII byte is one character.
+// net/http keeps RawQuery exactly as the request target had it.
 func RawQuery(r *http.Request) string {
-	q := r.URL.RawQuery
-	if strings.HasPrefix(r.RequestURI, "/") {
-		_, q, _ = strings.Cut(r.RequestURI, "?")
-	}
-	return latin1([]byte(q))
+	return latin1([]byte(r.URL.RawQuery))
 }
 
 // Query is req.query under Express 5's default "simple" parser,

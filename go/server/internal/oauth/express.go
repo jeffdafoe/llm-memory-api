@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"html"
 	"math"
 	"net/http"
 	"strconv"
@@ -96,17 +97,22 @@ func redirect(w http.ResponseWriter, r *http.Request, status int, address string
 	h := w.Header()
 	h.Set("Location", address)
 	h.Add("Vary", "Accept")
-	var body string
+	// Each branch writes its own body under its own Content-Type.
 	switch negotiateTextHTML(r) {
 	case "text":
 		h.Set("Content-Type", "text/plain; charset=utf-8")
-		body = http.StatusText(status) + ". Redirecting to " + address
+		writeBody(w, r, status, http.StatusText(status)+". Redirecting to "+address)
 	case "html":
 		h.Set("Content-Type", "text/html; charset=utf-8")
-		body = "<!DOCTYPE html><head><title>" + http.StatusText(status) + "</title></head>" +
-			"<body><p>" + http.StatusText(status) + ". Redirecting to " + escapeHTML(address) + "</p></body>"
+		writeBody(w, r, status, "<!DOCTYPE html><head><title>"+http.StatusText(status)+"</title></head>"+
+			"<body><p>"+http.StatusText(status)+". Redirecting to "+escapeHTML(address)+"</p></body>")
+	default:
+		writeBody(w, r, status, "")
 	}
-	h.Set("Content-Length", strconv.Itoa(len(body)))
+}
+
+func writeBody(w http.ResponseWriter, r *http.Request, status int, body string) {
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
 	if r.Method != http.MethodHead {
 		w.Write([]byte(body))
@@ -323,6 +329,8 @@ func parseFloatJS(s string) float64 {
 }
 
 // escapeHTML is escape-html and the pages' escapeHtml: & < > " '.
+// html.EscapeString escapes the same five characters and writes " as
+// &#34;; Node wrote &quot;.
 func escapeHTML(s string) string {
-	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;").Replace(s)
+	return strings.ReplaceAll(html.EscapeString(s), "&#34;", "&quot;")
 }

@@ -378,12 +378,20 @@ func writeHTML(w http.ResponseWriter, status int, page string) {
 // mintAndRedirect stores a code and sends the browser back to redirectURI
 // with it (and the state, when it is a non-empty string).
 func (rt *Routes) mintAndRedirect(w http.ResponseWriter, r *http.Request, status int, c authCode, state any) {
+	// The Location is built from the allowlist's own string, never the
+	// request's, so it cannot point anywhere else even if a caller skipped
+	// checkAuthorize.
+	target, ok := allowedRedirectTarget(c.redirectURI)
+	if !ok {
+		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "redirect_uri is not allowed")
+		return
+	}
 	code := rt.codes.mint(c)
 	pairs := setSearch(nil, "code", code)
 	if s, ok := state.(string); ok && s != "" {
 		pairs = setSearch(pairs, "state", s)
 	}
-	redirect(w, r, status, c.redirectURI+"?"+serializeSearch(pairs))
+	redirect(w, r, status, target+"?"+serializeSearch(pairs))
 }
 
 // authorizeGet starts the authorization_code flow. A public client gets the
