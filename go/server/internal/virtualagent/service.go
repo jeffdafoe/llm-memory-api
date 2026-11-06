@@ -71,6 +71,8 @@ type Service struct {
 	Notes     NoteStore
 	Memory    Searcher
 	Mail      Mailer
+	// Chat sends the replies and notices of direct chat.
+	Chat ChatSender
 
 	// Now is the clock; tests replace it.
 	Now func() time.Time
@@ -83,6 +85,7 @@ type Service struct {
 	overrideMu    sync.Mutex
 	overrideCache map[string]overrideEntry
 	pingOnce      sync.Once
+	sceneCache    sceneCache
 }
 
 func (s *Service) now() time.Time {

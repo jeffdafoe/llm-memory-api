@@ -7,23 +7,17 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
 )
 
-// Seam is the virtual-agent surface chat and the system handler call.
-// UnanswerableNotice is Node's text; the handlers do nothing.
+// Seam is the virtual-agent surface the system handler calls: the
+// discussion trigger, which does nothing yet. UnanswerableNotice is Node's
+// text.
 type Seam struct{}
 
 // UnanswerableNotice is unanswerableNotice.
 func (Seam) UnanswerableNotice(agentName, reason string, missing []string) string {
 	return unanswerableNotice(agentName, reason, missing)
-}
-
-// HandleDirectChat is the virtual agent's reply to a direct chat message.
-// The reply is what a wait=true sender gets as "reply"; nil is null.
-func (Seam) HandleDirectChat(ctx context.Context, in chat.DirectChat) (json.RawMessage, error) {
-	return nil, nil
 }
 
 // HandleVirtualAgent is the system handler for "virtual-agent" payloads:

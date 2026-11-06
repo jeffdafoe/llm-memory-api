@@ -5,8 +5,8 @@ import "strings"
 // chatCases cover the /v1/chat routes against the fixture chat
 // (fixture_chat.go): fixture deliveries 1 to 4 are to agent-a (2 acked, 3 in
 // the discussion, 4 a tool turn from helper-va), 5 and 6 to agent-b (6
-// unsent). No case reaches a virtual agent the sender may use: Node would
-// call the provider, which Go does not port yet.
+// unsent). The chats with a virtual agent the sender may use are in
+// cases_va_chat.go.
 var chatCases = concat(chatSendCases, chatValidationCases, chatToolCases, chatVirtualAgentCases, chatReadCases, chatRoutingCases)
 
 const (
@@ -104,8 +104,8 @@ var chatValidationCases = []Scenario{
 	chatSend("chat send stable_context from an agent", "agent-a-session", `{"to_agents":["agent-b"],"message":"m","stable_context":"x"}`),
 	chatSend("chat send ephemeral_context from an agent", "agent-a-session", `{"to_agents":["agent-b"],"message":"m","ephemeral_context":"x"}`),
 	chatSend("chat send ephemeral_context null", "agent-a-session", `{"to_agents":["agent-b"],"message":"m","ephemeral_context":null}`),
-	// The gate passes for an admin naming the engine; the engine has no
-	// actor in the fixture, so the send stops at the sender lookup.
+	// The gate passes for an admin naming the engine, and the message goes
+	// to agent-b, who is not virtual.
 	chatSend("chat send ephemeral_context as the engine", "admin-web", `{"from_agent":"salem-engine","to_agents":["agent-b"],"message":"m","ephemeral_context":"x","stable_context":"y"}`),
 	chatSend("chat send stable_context not a string", "admin-web", `{"from_agent":"salem-engine","to_agents":["agent-b"],"message":"m","stable_context":5}`),
 	chatSend("chat send stable_context too long", "admin-web", `{"from_agent":"salem-engine","to_agents":["agent-b"],"message":"m","stable_context":"`+strings.Repeat("x", 65537)+`"}`),

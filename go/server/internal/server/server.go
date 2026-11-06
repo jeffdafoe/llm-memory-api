@@ -84,6 +84,13 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
 	notifier := &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler}
+	// Chat calls the virtual agents the same way: a chat message to one is
+	// answered through HandleDirectChat, which sends its reply as chat.
+	chatService := &chat.Service{
+		DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: vaService, System: sysHandler,
+		Notifier: notifier,
+	}
+	vaService.Chat = chatService
 	return &Services{
 		DB:       conn,
 		Config:   store,
@@ -98,18 +105,15 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 			APIKeys:  keys,
 			Errorf:   log.Errorf,
 		},
-		MCPAuth:    auth.NewMCPAuth(conn, store, actorCache, keys, bc),
-		Namespaces: &permissions.Namespaces{DB: conn},
-		Admin:      admin,
-		Errors:     recorder,
-		Memory:     mem,
-		Notes:      notesService,
-		Mail:       mailService,
-		System:     sysHandler,
-		Chat: &chat.Service{
-			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
-			Notifier: notifier,
-		},
+		MCPAuth:     auth.NewMCPAuth(conn, store, actorCache, keys, bc),
+		Namespaces:  &permissions.Namespaces{DB: conn},
+		Admin:       admin,
+		Errors:      recorder,
+		Memory:      mem,
+		Notes:       notesService,
+		Mail:        mailService,
+		System:      sysHandler,
+		Chat:        chatService,
 		Discussions: &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier},
 		Providers:   llm,
 		Agents:      vaService,
@@ -149,7 +153,7 @@ func Handler(s *Services) http.Handler {
 	(&agent.Routes{
 		DB: s.DB, Config: s.Config, Log: s.Log, Router: s.Router, Events: s.Events,
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
-		Namespaces: s.Namespaces, Visibility: s.Visibility,
+		Namespaces: s.Namespaces, Visibility: s.Visibility, Agents: s.Agents,
 	}).Register(v1)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
 
