@@ -28,6 +28,10 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
+// ErrNullSalt is the TypeError Node's crypto.pbkdf2 threw for a NULL salt
+// column, which a few call sites hand it.
+var ErrNullSalt = errors.New(`The "salt" argument must be of type string or an instance of ArrayBuffer, Buffer, TypedArray, or DataView. Received null`)
+
 // dummySalt is hashed against when the name is unknown, so a miss takes as
 // long as a wrong password and the response time does not tell which agent
 // names exist.
@@ -63,22 +67,22 @@ func VerifyPasswordLogin(ctx context.Context, conn db.DB, username, password str
 	}
 	// Node handed a NULL salt to crypto.pbkdf2, which threw.
 	if salt == nil {
-		return nil, errors.New(`The "salt" argument must be of type string or an instance of ArrayBuffer, Buffer, TypedArray, or DataView. Received null`)
+		return nil, ErrNullSalt
 	}
 	hashText := ""
 	if storedHash != nil {
 		hashText = *storedHash
 	}
-	if !verifyLoose(password, *salt, hashText) {
+	if !VerifyLoose(password, *salt, hashText) {
 		return nil, nil
 	}
 	return &PasswordAccount{ID: id, Name: name}, nil
 }
 
-// verifyLoose is Node's verify: the stored hash is read with
+// VerifyLoose is Node's verify: the stored hash is read with
 // Buffer.from(hex), which stops at the first byte that is not a hex pair
 // instead of failing, so only the decoded prefix is compared.
-func verifyLoose(plaintext, salt, expectedHex string) bool {
+func VerifyLoose(plaintext, salt, expectedHex string) bool {
 	computed, err := Hash(plaintext, salt)
 	if err != nil {
 		return false

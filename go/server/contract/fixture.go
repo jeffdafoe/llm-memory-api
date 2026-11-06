@@ -76,8 +76,10 @@ var fixtureConfig = map[string]string{
 // an API session, an API key and namespace grants. agent-a has every MCP
 // permission and wildcard namespace access; agent-b can read "shared" and
 // read and write "agent-a". Then the notes and chunks searches run against
-// (fixture_memory.go), the mail and virtual agent (fixture_mail.go), and the
-// discussion and chat messages (fixture_chat.go).
+// (fixture_memory.go), the mail and virtual agent (fixture_mail.go), the
+// discussion and chat messages (fixture_chat.go), the OAuth and
+// registration rows (fixture_oauth.go), and what the /v1/agent routes read
+// (fixture_agent.go).
 func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 	creds := Credentials()
 	tx, err := conn.Begin(ctx)
@@ -197,6 +199,9 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 		return err
 	}
 	if err := applyOAuthFixture(ctx, tx, agents); err != nil {
+		return err
+	}
+	if err := applyAgentFixture(ctx, tx, adminID, agents); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

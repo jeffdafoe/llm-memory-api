@@ -20,6 +20,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/diceware"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
@@ -341,7 +342,7 @@ func (rt *Routes) register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Phase 2: the hashing, with no connection or invite row lock held.
-	phrase := passphrase()
+	phrase := diceware.Passphrase()
 	salt := auth.GenerateSalt()
 	phraseHash, err := auth.Hash(phrase, salt)
 	if err != nil {

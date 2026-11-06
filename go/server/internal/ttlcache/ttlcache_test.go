@@ -57,3 +57,21 @@ func TestExpiryAndSweep(t *testing.T) {
 		t.Fatal("live entry swept")
 	}
 }
+
+func TestDeleteFuncInvalidatesLoads(t *testing.T) {
+	var c Cache[string, int]
+	far := time.Now().Add(time.Hour)
+	c.SetIfCurrent(c.Generation(), "a", 1, far)
+	c.SetIfCurrent(c.Generation(), "b", 2, far)
+	gen := c.Generation()
+	c.DeleteFunc(func(_ string, v int) bool { return v == 1 })
+	if _, ok := c.Get("a"); ok {
+		t.Error("matched entry kept")
+	}
+	if v, ok := c.Get("b"); !ok || v != 2 {
+		t.Error("other entry dropped")
+	}
+	if c.SetIfCurrent(gen, "a", 1, far) {
+		t.Error("a load from before DeleteFunc was stored")
+	}
+}

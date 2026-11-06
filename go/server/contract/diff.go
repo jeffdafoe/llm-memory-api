@@ -91,8 +91,10 @@ type Difference struct {
 }
 
 // KnownDifference allows a difference on purpose. Where is the exact
-// location from a diff, or a prefix ending in "*". Reason says why, and
-// should match "Known differences" in the go-server codebase note.
+// location from a diff, or a pattern in which each "*" matches any run of
+// characters ("table request_log row *.response_length"; a trailing "*" is
+// a prefix). Reason says why, and should match "Known differences" in the
+// go-server codebase note.
 type KnownDifference struct {
 	Where  string
 	Reason string
@@ -104,10 +106,23 @@ type KnownDifference struct {
 }
 
 func (k KnownDifference) matches(where string) bool {
-	if strings.HasSuffix(k.Where, "*") {
-		return strings.HasPrefix(where, strings.TrimSuffix(k.Where, "*"))
+	parts := strings.Split(k.Where, "*")
+	if len(parts) == 1 {
+		return k.Where == where
 	}
-	return k.Where == where
+	if !strings.HasPrefix(where, parts[0]) {
+		return false
+	}
+	rest := where[len(parts[0]):]
+	last := len(parts) - 1
+	for _, part := range parts[1:last] {
+		i := strings.Index(rest, part)
+		if i < 0 {
+			return false
+		}
+		rest = rest[i+len(part):]
+	}
+	return strings.HasSuffix(rest, parts[last])
 }
 
 // Allowed is a difference a KnownDifference allowed.
