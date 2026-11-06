@@ -87,7 +87,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Memory API listening on %s:%s\n", host, port)
+	// The bound port, not the setting: with PORT=0 the OS picks it, and the
+	// contract harness reads it from this line.
+	fmt.Printf("Memory API listening on %s:%d\n", host, listener.Addr().(*net.TCPAddr).Port)
 	watchdog.Start(services.Log)
 
 	serveErr := make(chan error, 1)
