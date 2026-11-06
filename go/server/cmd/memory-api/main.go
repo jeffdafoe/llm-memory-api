@@ -4,6 +4,9 @@
 // DATABASE_URL, PORT (default 3100), MEMORY_API_HOST (default 127.0.0.1),
 // BASE_URL and LOG_DIR. It refuses to start when the config table cannot be
 // read.
+//
+// `memory-api staleness-check <recipient>` instead runs the weekly staleness
+// check once (staleness.go).
 package main
 
 import (
@@ -34,6 +37,11 @@ const (
 )
 
 func main() {
+	// The weekly staleness check is a root cron job, not part of the
+	// server: it runs once and exits.
+	if len(os.Args) > 1 && os.Args[1] == "staleness-check" {
+		os.Exit(stalenessCheck(os.Args[2:]))
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "memory-api:", err)
 		os.Exit(1)
