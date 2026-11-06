@@ -407,6 +407,66 @@
    "error": "1-99999 is a invalid expression for day of month"
   },
   {
+   "in": "0 0 * * 0-8",
+   "valid": false,
+   "error": "0-8 is a invalid expression for week day"
+  },
+  {
+   "in": "0 0 * * 6-8",
+   "valid": false,
+   "error": "6-8 is a invalid expression for week day"
+  },
+  {
+   "in": "0 0 * * 7-8",
+   "valid": false,
+   "error": "7-8 is a invalid expression for week day"
+  },
+  {
+   "in": "0 0 * * 1-9/3",
+   "valid": true,
+   "error": ""
+  },
+  {
+   "in": "0 0 * * 0-14/7",
+   "valid": false,
+   "error": "0-14/7 is a invalid expression for week day"
+  },
+  {
+   "in": "0 0 * * 5-7/2",
+   "valid": true,
+   "error": ""
+  },
+  {
+   "in": "0 0 * * 6-7/1",
+   "valid": true,
+   "error": ""
+  },
+  {
+   "in": "0 0 * * 7-7",
+   "valid": true,
+   "error": ""
+  },
+  {
+   "in": "0 0 * * 8-1",
+   "valid": true,
+   "error": ""
+  },
+  {
+   "in": "0 0 * * 0-99999999999",
+   "valid": false,
+   "error": "threw: Invalid array length"
+  },
+  {
+   "in": "0 0 * 1-13 *",
+   "valid": false,
+   "error": "1-13 is a invalid expression for month"
+  },
+  {
+   "in": "0 0 * 12-13 *",
+   "valid": false,
+   "error": "12-13 is a invalid expression for month"
+  },
+  {
    "in": "0 0 L * *",
    "valid": true,
    "error": ""

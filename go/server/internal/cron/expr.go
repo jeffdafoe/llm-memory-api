@@ -110,9 +110,11 @@ var rangeRe = regexp.MustCompile(`^(\d+)-(\d+)(?:/(\d+))?$`)
 // below 1 leaves the text as it was, which the validator then refuses.
 //
 // node-cron builds the whole list, so a range like "0-99999999999" made it
-// loop for minutes. Every value above the field's maximum makes the field
-// invalid whatever else it holds, so the loop stops at the first one and
-// keeps it, which gives the same verdict and the same in-range values.
+// loop for minutes. A value the validator will refuse makes the field invalid
+// whatever else it holds, so the loop stops at the first one and keeps it,
+// which gives the same verdict and the same accepted values. That is a value
+// above the field's maximum, except in the weekday field, where 7 is Sunday
+// and only a value above 7 is refused.
 func expandRange(initTxt, endTxt, stepTxt string, field int) []string {
 	step, _ := jsutil.ParseInt(stepTxt)
 	if !(step >= 1) {
@@ -121,11 +123,15 @@ func expandRange(initTxt, endTxt, stepTxt string, field int) []string {
 	first, _ := jsutil.ParseInt(initTxt)
 	last, _ := jsutil.ParseInt(endTxt)
 	bounds := fieldBounds[field]
+	refusedAbove := bounds.max
+	if field == 5 {
+		refusedAbove = 7
+	}
 	var out []string
 	if first <= last {
 		for i := first; i <= last; i += step {
 			out = append(out, jsutil.NumberString(i))
-			if i > bounds.max {
+			if i > refusedAbove {
 				break
 			}
 		}

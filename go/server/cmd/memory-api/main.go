@@ -106,9 +106,12 @@ func run() error {
 	watchdog.Start(services.Log)
 
 	sweeper := &activity.Sweeper{DB: pool, Events: services.Events, Errorf: services.Log.Errorf}
+	// Run drains its own sweeps once ctx ends; sweptClean says whether
+	// they all returned.
 	sweeperDone := make(chan struct{})
+	sweptClean := true
 	go func() {
-		sweeper.Run(ctx)
+		sweptClean = sweeper.Run(ctx, backgroundDrain)
 		close(sweeperDone)
 	}()
 
@@ -128,8 +131,9 @@ func run() error {
 	case <-ctx.Done():
 	}
 
-	// No new cleanup runs from here, and the stale-activity sweeper, which
-	// watches ctx, returns after a sweep in progress. Stop taking requests
+	// No new cleanup runs or sweeps from here; the stale-activity sweeper
+	// drains its sweeps in progress on its own (2*backgroundDrain at most,
+	// from now). Stop taking requests
 	// and let the running ones finish. Past the grace period the remaining
 	// connections are closed, which cancels their requests' contexts and so
 	// their queries. Then a running cleanup pass gets backgroundDrain to
@@ -139,7 +143,7 @@ func run() error {
 	// every borrowed connection, so it gets a deadline too; past it the
 	// process exits anyway, and Postgres drops the connections when the
 	// process is gone. Total time is bounded by shutdownGrace +
-	// 5*backgroundDrain + poolCloseWait.
+	// 4*backgroundDrain + poolCloseWait.
 	if cleanupTask != nil {
 		cleanupTask.Stop()
 	}
@@ -152,9 +156,8 @@ func run() error {
 	if !stopJobs(cleanupTask) {
 		fmt.Fprintln(os.Stderr, "memory-api: cleanup pass still running at shutdown")
 	}
-	select {
-	case <-sweeperDone:
-	case <-time.After(backgroundDrain):
+	<-sweeperDone
+	if !sweptClean {
 		fmt.Fprintln(os.Stderr, "memory-api: stale-activity sweep still running at shutdown")
 	}
 	if !db.DrainBackground(backgroundDrain) {

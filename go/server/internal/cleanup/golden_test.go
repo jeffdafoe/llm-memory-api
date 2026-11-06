@@ -265,9 +265,10 @@ func assign(dest, v any) error {
 
 // recorder captures the job's log lines and error_log calls.
 type recorder struct {
-	mu     sync.Mutex
-	logs   [][3]string
-	errors [][3]string
+	mu      sync.Mutex
+	logs    [][3]string
+	errors  [][3]string
+	details []string
 }
 
 func (r *recorder) Log(subsystem, action string, details logger.Fields) {
@@ -283,6 +284,7 @@ func (r *recorder) Log(subsystem, action string, details logger.Fields) {
 func (r *recorder) LogError(subsystem, action string, opts logger.ErrorOpts) {
 	r.mu.Lock()
 	r.errors = append(r.errors, [3]string{subsystem, action, opts.Message})
+	r.details = append(r.details, opts.Detail)
 	r.mu.Unlock()
 }
 
@@ -338,6 +340,14 @@ func TestPassMatchesNode(t *testing.T) {
 		}
 		compareLines(t, sc.Name, "log lines", rec.logs, sc.Logs)
 		compareLines(t, sc.Name, "error_log calls", rec.errors, sc.Errors)
+		// Node stored err.stack as the detail; Go stores its own text of
+		// the error (never compared, as with every error_log row). It must
+		// be there.
+		for i, d := range rec.details {
+			if d == "" {
+				t.Errorf("%s: error_log call %d has no detail", sc.Name, i)
+			}
+		}
 	}
 }
 

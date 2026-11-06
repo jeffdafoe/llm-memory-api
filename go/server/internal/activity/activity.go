@@ -7,6 +7,7 @@ package activity
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,8 +19,6 @@ import (
 // Interval is how often Run sweeps, as Node's setInterval did.
 const Interval = time.Minute
 
-const sweepTimeout = 30 * time.Second
-
 const sweepSQL = `UPDATE actors SET active_since = NULL
                  WHERE active_since IS NOT NULL
                    AND last_seen < NOW() - INTERVAL '5 minutes'
@@ -30,6 +29,8 @@ type Sweeper struct {
 	DB     db.DB
 	Events events.Broadcaster
 	Errorf func(format string, args ...any)
+	// Every replaces Interval, for tests.
+	Every time.Duration
 }
 
 type activityEvent struct {
@@ -64,23 +65,51 @@ func (s *Sweeper) Sweep(ctx context.Context) error {
 	return nil
 }
 
-// Run sweeps every Interval, the first one Interval after the start, until
-// ctx is done. A sweep in progress finishes first: its statement runs on a
-// context of its own, so shutdown does not turn it into a logged error.
-func (s *Sweeper) Run(ctx context.Context) {
-	tick := time.NewTicker(Interval)
+// Run starts a sweep every Interval, the first one Interval after the
+// start, until ctx is done. As with Node's setInterval, a sweep does not
+// wait for an earlier one still running and has no deadline of its own.
+// When ctx ends no sweep starts; Run waits up to drain for the ones in
+// progress, cancels them, waits up to drain again, and reports whether they
+// all returned.
+func (s *Sweeper) Run(ctx context.Context, drain time.Duration) bool {
+	every := s.Every
+	if every <= 0 {
+		every = Interval
+	}
+	sweepCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancel()
+	var running sync.WaitGroup
+	tick := time.NewTicker(every)
 	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			done := make(chan struct{})
+			go func() {
+				running.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+				return true
+			case <-time.After(drain):
+			}
+			cancel()
+			select {
+			case <-done:
+				return true
+			case <-time.After(drain):
+				return false
+			}
 		case <-tick.C:
 		}
-		sweepCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sweepTimeout)
-		if err := s.Sweep(sweepCtx); err != nil {
-			s.Errorf("Stale activity cleanup error: %s", message(err))
-		}
-		cancel()
+		running.Add(1)
+		go func() {
+			defer running.Done()
+			if err := s.Sweep(sweepCtx); err != nil {
+				s.Errorf("Stale activity cleanup error: %s", message(err))
+			}
+		}()
 	}
 }
 
