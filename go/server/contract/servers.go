@@ -107,13 +107,24 @@ func serverEnv(spec ServerSpec, port int, fake *FakeUpstream) []string {
 	return append(env, fake.Env(spec.Side)...)
 }
 
+// aliveGrace is how long a server must stay up after its first 200 from
+// /health. A server that lost its port can see a 200 from the parallel
+// case's server that won it, before its own exit is noticed.
+const aliveGrace = 150 * time.Millisecond
+
 // StartServer starts a server and waits until GET /health answers 200.
 func StartServer(ctx context.Context, spec ServerSpec, fake *FakeUpstream) (*ServerProcess, error) {
-	port, err := freePort()
-	if err != nil {
+	if err := os.MkdirAll(spec.LogDir, 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(spec.LogDir, 0o755); err != nil {
+	return retryExited(startAttempts, func() (*ServerProcess, error) {
+		return startOnce(ctx, spec, fake)
+	})
+}
+
+func startOnce(ctx context.Context, spec ServerSpec, fake *FakeUpstream) (*ServerProcess, error) {
+	port, err := freePort()
+	if err != nil {
 		return nil, err
 	}
 	cmd := exec.Command(spec.Command[0], spec.Command[1:]...)
@@ -137,7 +148,15 @@ func StartServer(ctx context.Context, spec ServerSpec, fake *FakeUpstream) (*Ser
 		close(p.done)
 	}()
 
-	if err := p.waitHealthy(ctx, 60*time.Second); err != nil {
+	err = p.waitHealthy(ctx, 60*time.Second)
+	if err == nil {
+		select {
+		case <-p.done:
+			err = fmt.Errorf("%w: %v", errExited, p.exitErr)
+		case <-time.After(aliveGrace):
+		}
+	}
+	if err != nil {
 		p.Stop()
 		return nil, fmt.Errorf("%s did not start: %w\n--- %s output ---\n%s", spec.Name, err, spec.Name, tail(out.String(), 4000))
 	}
@@ -159,7 +178,7 @@ func (p *ServerProcess) waitHealthy(ctx context.Context, limit time.Duration) er
 		}
 		select {
 		case <-p.done:
-			return fmt.Errorf("exited: %v", p.exitErr)
+			return fmt.Errorf("%w: %v", errExited, p.exitErr)
 		case <-ctx.Done():
 			return errors.New("no 200 from /health in time")
 		case <-time.After(100 * time.Millisecond):
