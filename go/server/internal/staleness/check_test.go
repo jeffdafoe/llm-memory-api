@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -246,5 +248,47 @@ func TestFailedSendFailsTheRun(t *testing.T) {
 func TestEncodeURIComponent(t *testing.T) {
 	if got := encodeURIComponent("a b/é-_.!~*'()"); got != "a%20b%2F%C3%A9-_.!~*'()" {
 		t.Fatalf("%q", got)
+	}
+}
+
+// Node read body.eol: a null body threw; {} and {"eol": null} are clean.
+func TestNullEOLAnswerIsAFailedCheck(t *testing.T) {
+	f := newFakeSystem(t)
+	f.eol["/debian/13.json"] = "null"
+	f.eol["/postgresql/17.json"] = `{"eol": null}`
+	if err := f.checker().Check(context.Background(), "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.sent) != 1 || !strings.Contains(f.sent[0], "- endoflife.date lookup for Debian 13 failed: Cannot read properties of null (reading 'eol')\n") ||
+		strings.Contains(f.sent[0], "PostgreSQL") {
+		t.Fatalf("sent %q", f.sent)
+	}
+
+	f = newFakeSystem(t)
+	f.eol["/debian/13.json"] = "{}"
+	f.eol["/postgresql/17.json"] = "[]"
+	if err := f.checker().Check(context.Background(), "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.sent) != 0 {
+		t.Fatalf("sent %q", f.sent)
+	}
+}
+
+// A command that could not start is "spawnSync <name> <CODE>", whatever
+// errno the start failed with.
+func TestSpawnFailureTexts(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{fmt.Errorf("exec: %q: %w", "apt-get", exec.ErrNotFound), "spawnSync apt-get ENOENT"},
+		{&fs.PathError{Op: "fork/exec", Path: "/usr/bin/apt-get", Err: syscall.ENOENT}, "spawnSync apt-get ENOENT"},
+		{&fs.PathError{Op: "fork/exec", Path: "/usr/bin/apt-get", Err: syscall.EACCES}, "spawnSync apt-get EACCES"},
+	}
+	for _, c := range cases {
+		if got := commandFailure(c.err, nil, true, "apt-get update -qq"); got != c.want {
+			t.Errorf("%v: %q, want %q", c.err, got, c.want)
+		}
 	}
 }

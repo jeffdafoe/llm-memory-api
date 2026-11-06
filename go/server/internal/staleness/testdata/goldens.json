@@ -1635,6 +1635,30 @@
     ],
     "flavour": "x"
    }
+  },
+  {
+   "in": "6.12.113+deb13-amd64\n",
+   "out": null
+  },
+  {
+   "in": "6.12.113+deb13-amd64\r",
+   "out": null
+  },
+  {
+   "in": "6.12.113+deb13-amd64\r\n",
+   "out": null
+  },
+  {
+   "in": "6.12.113+deb13-amd64 ",
+   "out": null
+  },
+  {
+   "in": "6.12.113+deb13-amd64 ",
+   "out": null
+  },
+  {
+   "in": "6.1.0-25-amd64\n",
+   "out": null
   }
  ],
  "compare": [
@@ -2895,6 +2919,39 @@
      "Could not read the TLS certificate `example.org`: ENOENT: no such file or directory, open '<root>/live/example.org/cert.pem'"
     ],
     "checked": 0
+   }
+  },
+  {
+   "name": "a file named .conf alone",
+   "renewal": [
+    ""
+   ],
+   "live": null,
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [
+     "<root> holds no certificates, so none were checked."
+    ],
+    "checked": 0
+   }
+  },
+  {
+   "name": "a file named .conf beside a certificate",
+   "renewal": [
+    "",
+    "example.org"
+   ],
+   "live": {
+    "example.org": "cert"
+   },
+   "at": "healthy",
+   "now": "2026-10-23T23:17:39.000Z",
+   "out": {
+    "findings": [],
+    "failures": [],
+    "checked": 1
    }
   },
   {

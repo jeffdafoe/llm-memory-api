@@ -103,12 +103,17 @@ type runtimeInfo struct {
 // that failed: for one run with its stderr piped and no encoding, String()
 // of the stderr Buffer, which is truthy even when empty; for one run with
 // an encoding, the stderr text, else "Command failed: <command>"; for one
-// that could not start, "spawnSync <name> ENOENT".
+// that could not start, "spawnSync <name> <CODE>" (ENOENT when it is not on
+// PATH or its interpreter is missing, EACCES when it is not executable).
 func commandFailure(err error, stderr []byte, bufferStderr bool, command string) string {
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
+		name := strings.Fields(command)[0]
 		if errors.Is(err, exec.ErrNotFound) {
-			return "spawnSync " + strings.Fields(command)[0] + " ENOENT"
+			return "spawnSync " + name + " ENOENT"
+		}
+		if code, _, ok := errnoText(err); ok {
+			return "spawnSync " + name + " " + code
 		}
 		return err.Error()
 	}
@@ -285,6 +290,11 @@ func (c *Checker) lookupEOL(ctx context.Context, rt runtimeInfo, today time.Time
 	var body any
 	if err := json.Unmarshal(data, &body); err != nil {
 		return nil, err
+	}
+	// Node read body.eol: a null body threw, any other value without an
+	// eol key read as undefined.
+	if body == nil {
+		return nil, errors.New("Cannot read properties of null (reading 'eol')")
 	}
 	var eol []byte
 	if obj, ok := body.(map[string]any); ok {

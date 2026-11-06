@@ -103,6 +103,8 @@ const releases = [
     '6.12.113+deb13-amd64', '6.12.113+deb13-rt-amd64', '6.16.3+bpo-cloud-amd64', '6.1.0-25-amd64', 'foo',
     '6.12.113+deb13-amd64.old', '', '6+deb-amd64', '6.12+-amd64', '6.12.1+deb13~1.2-arm64', '6.12.1+DEB-amd64',
     '6.1.0-25-', '6.1.0-25-amd64-', '06.012.0113+deb13-amd64', '6.1-2-x',
+    // JavaScript's $ (no m flag) matches only at the very end.
+    '6.12.113+deb13-amd64\n', '6.12.113+deb13-amd64\r', '6.12.113+deb13-amd64\r\n', '6.12.113+deb13-amd64\u2028', '6.12.113+deb13-amd64\u2029', '6.1.0-25-amd64\n',
 ];
 const kernels = releases.map((r) => ({ in: r, out: s.parseKernelRelease(r) }));
 const versionPairs = [
@@ -190,6 +192,8 @@ const layouts = [
     { name: 'directories with no certificates', renewal: [], live: {}, at: 'healthy' },
     // Reading live/x/cert.pem through a file is ENOENT on Windows, ENOTDIR on Linux.
     { name: 'live is a file', renewal: ['example.org'], live: 'file', at: 'healthy', platformDependent: true },
+    { name: 'a file named .conf alone', renewal: [''], live: null, at: 'healthy' },
+    { name: 'a file named .conf beside a certificate', renewal: ['', 'example.org'], live: { 'example.org': 'cert' }, at: 'healthy' },
     { name: 'sorted names', renewal: ['b.org', 'a.org', 'c.org'], live: { 'c.org': 'cert', 'a.org': 'cert', 'b.org': 'cert' }, at: 'expiring' },
 ];
 function build(root, layout) {

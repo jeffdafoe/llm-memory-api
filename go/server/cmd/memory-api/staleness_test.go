@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
 
 func TestURLFromEnvFile(t *testing.T) {
 	cases := []struct {
@@ -22,5 +27,24 @@ func TestURLFromEnvFile(t *testing.T) {
 		if got != c.want || msg != c.err {
 			t.Errorf("urlFromEnvFile(%q) = %q %q, want %q %q", c.in, got, msg, c.want, c.err)
 		}
+	}
+}
+
+func TestEnvFileErrorsHaveNodeText(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "env")
+	_, err := databaseURLFrom(missing)
+	if want := "ENOENT: no such file or directory, open '" + missing + "'"; err == nil || err.Error() != want {
+		t.Fatalf("missing: %v, want %s", err, want)
+	}
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("permission bits do not apply")
+	}
+	locked := filepath.Join(t.TempDir(), "env")
+	if err := os.WriteFile(locked, []byte("DATABASE_URL=x\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	_, err = databaseURLFrom(locked)
+	if want := "EACCES: permission denied, open '" + locked + "'"; err == nil || err.Error() != want {
+		t.Fatalf("unreadable: %v, want %s", err, want)
 	}
 }

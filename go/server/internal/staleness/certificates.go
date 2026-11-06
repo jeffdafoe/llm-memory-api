@@ -71,7 +71,8 @@ func CollectCertificates(dir string, now time.Time) Certificates {
 		}
 		names := map[string]bool{}
 		for _, e := range entries {
-			if name, ok := src.pick(e); ok {
+			// Node dropped an empty name (a file called ".conf").
+			if name, ok := src.pick(e); ok && name != "" {
 				names[name] = true
 			}
 		}
@@ -147,6 +148,11 @@ func readCertificate(path, name string, now time.Time) (*CertFinding, error) {
 		return nil, err
 	}
 	return AssessCertificate(name, cert.NotBefore, cert.NotAfter, now)
+}
+
+// FSMessage is fsMessage for callers outside the package.
+func FSMessage(err error, syscall, path string) string {
+	return fsMessage(err, syscall, path)
 }
 
 // fsMessage is the text Node's fs errors carried: "<CODE>: <description>,

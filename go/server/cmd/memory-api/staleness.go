@@ -92,13 +92,15 @@ func databaseURL() (string, error) {
 	if url := os.Getenv("DATABASE_URL"); url != "" {
 		return url, nil
 	}
-	data, err := os.ReadFile(envFile)
+	return databaseURLFrom(envFile)
+}
+
+// databaseURLFrom reads the DATABASE_URL line of the env file at path; a
+// read error has Node's fs text.
+func databaseURLFrom(path string) (string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		var pathErr *os.PathError
-		if errors.As(err, &pathErr) {
-			return "", fmt.Errorf("could not read %s: %w", envFile, pathErr.Err)
-		}
-		return "", err
+		return "", errors.New(staleness.FSMessage(err, "open", path))
 	}
 	return urlFromEnvFile(string(data))
 }
