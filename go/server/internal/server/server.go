@@ -156,7 +156,7 @@ func Handler(s *Services) http.Handler {
 	(&agent.Routes{
 		DB: s.DB, Config: s.Config, Log: s.Log, Router: s.Router, Events: s.Events,
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
-		Namespaces: s.Namespaces, Visibility: s.Visibility,
+		Namespaces: s.Namespaces, Visibility: s.Visibility, Agents: s.Agents,
 	}).Register(v1)
 	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
 
