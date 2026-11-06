@@ -1,0 +1,6268 @@
+{
+ "provider_conf": [
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "ok": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": null,
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "not json",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":2}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Stale configuration for agent \"va\" — stored config version 2, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":\"1\"}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Stale configuration for agent \"va\" — stored config version 1, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":1.0}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "ok": "{\"_configVersion\":1,\"cache_prompts\":false}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":0}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":{\"a\":1}}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Stale configuration for agent \"va\" — stored config version [object Object], current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "null",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Cannot read properties of null (reading '_configVersion')"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "nobody",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "5",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "ok": "5"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "nobody",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "null",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Cannot read properties of null (reading 'cache_prompts')"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":1}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": true,
+    "learning_enabled": true,
+    "max_tokens": 900,
+    "temperature": "0.70"
+   },
+   "out": {
+    "ok": "{\"_configVersion\":1,\"cache_prompts\":true,\"max_tokens\":900,\"temperature\":0.7}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc",
+    "configuration": "{\"_configVersion\":1,\"cache_prompts\":false,\"max_tokens\":5,\"temperature\":0.1}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": true,
+    "learning_enabled": true,
+    "max_tokens": 900,
+    "temperature": "0.7"
+   },
+   "out": {
+    "ok": "{\"_configVersion\":1,\"cache_prompts\":false,\"max_tokens\":5,\"temperature\":0.1}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "openrouter",
+    "model": "deepseek/deepseek-v4-flash",
+    "api_key": "enc",
+    "configuration": "{}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "ok": "{\"cache_prompts\":false}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "unknown-provider",
+    "model": "x",
+    "api_key": "enc",
+    "configuration": "{}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "ok": "{\"cache_prompts\":false}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": null,
+    "model": null,
+    "api_key": "enc",
+    "configuration": "{\"a\":1}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "ok": "{\"a\":1,\"cache_prompts\":false}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "anthropic",
+    "model": "not-a-model",
+    "api_key": "enc",
+    "configuration": "{}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "ok": "{\"cache_prompts\":false}"
+   }
+  },
+  {
+   "row": {
+    "actor_id": 7,
+    "agent": "va",
+    "virtual": true,
+    "provider": "constructor",
+    "model": "x",
+    "api_key": "enc",
+    "configuration": "{}",
+    "startup_instructions": "You are va.",
+    "personality": null,
+    "expertise": [],
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null,
+    "cache_prompts": false,
+    "learning_enabled": true,
+    "max_tokens": null,
+    "temperature": null
+   },
+   "out": {
+    "error": "Cannot read properties of undefined (reading 'x')"
+   }
+  }
+ ],
+ "cadence": [
+  {
+   "value": "300,600,3600",
+   "fallback": "60,600,3600",
+   "out": [
+    300000,
+    600000,
+    3600000
+   ],
+   "total1": 300000,
+   "total5": 11700000
+  },
+  {
+   "value": "",
+   "fallback": "60,600,3600",
+   "out": [
+    60000,
+    600000,
+    3600000
+   ],
+   "total1": 60000,
+   "total5": 11460000
+  },
+  {
+   "value": "  5 , 15,60 ",
+   "fallback": "5,15,60",
+   "out": [
+    5000,
+    15000,
+    60000
+   ],
+   "total1": 5000,
+   "total5": 200000
+  },
+  {
+   "value": "x,y",
+   "fallback": "5,15,60",
+   "out": [
+    5000,
+    15000,
+    60000
+   ],
+   "total1": 5000,
+   "total5": 200000
+  },
+  {
+   "value": "-5,10",
+   "fallback": "5",
+   "out": [
+    10000
+   ],
+   "total1": 10000,
+   "total5": 50000
+  },
+  {
+   "value": "1.9,2e3",
+   "fallback": "5",
+   "out": [
+    1000,
+    2000
+   ],
+   "total1": 1000,
+   "total5": 9000
+  },
+  {
+   "value": "0x10",
+   "fallback": "5",
+   "out": [
+    0
+   ],
+   "total1": 0,
+   "total5": 0
+  },
+  {
+   "value": "7",
+   "fallback": "60,600,3600",
+   "out": [
+    7000
+   ],
+   "total1": 7000,
+   "total5": 35000
+  },
+  {
+   "value": ",,",
+   "fallback": "5,15",
+   "out": [
+    5000,
+    15000
+   ],
+   "total1": 5000,
+   "total5": 65000
+  },
+  {
+   "value": "10abc",
+   "fallback": "5",
+   "out": [
+    10000
+   ],
+   "total1": 10000,
+   "total5": 50000
+  }
+ ],
+ "prepare": [
+  {
+   "in": "[1,2]",
+   "out": "{\"1\",\"2\"}"
+  },
+  {
+   "in": "[[1,null],[\"a\\\"b\\\\c\"]]",
+   "out": "{{\"1\",NULL},{\"a\\\"b\\\\c\"}}"
+  },
+  {
+   "in": "[{\"k\":[1,\"x\"]},true,null,\"q\"]",
+   "out": "{\"{\\\"k\\\":[1,\\\"x\\\"]}\",\"true\",NULL,\"q\"}"
+  },
+  {
+   "in": "[1e400]",
+   "out": "{\"Infinity\"}"
+  },
+  {
+   "in": "1e400",
+   "out": "Infinity"
+  },
+  {
+   "in": "{\"a\":1e400}",
+   "out": "{\"a\":null}"
+  },
+  {
+   "in": "\"str\"",
+   "out": "str"
+  },
+  {
+   "in": "true",
+   "out": "true"
+  },
+  {
+   "in": "false",
+   "out": "false"
+  },
+  {
+   "in": "null",
+   "out": null
+  },
+  {
+   "in": "[[]]",
+   "out": "{{}}"
+  },
+  {
+   "in": "[]",
+   "out": "{}"
+  },
+  {
+   "in": "-0",
+   "out": "0"
+  },
+  {
+   "in": "[-0]",
+   "out": "{\"0\"}"
+  },
+  {
+   "in": "0.1",
+   "out": "0.1"
+  },
+  {
+   "in": "[1.5e-7]",
+   "out": "{\"1.5e-7\"}"
+  },
+  {
+   "in": "12345678901234567890",
+   "out": "12345678901234567000"
+  },
+  {
+   "in": "[[\"a\",[\"b\",null]],[]]",
+   "out": "{{\"a\",{\"b\",NULL}},{}}"
+  },
+  {
+   "in": "{\"toPostgres\":\"x\"}",
+   "out": "{\"toPostgres\":\"x\"}"
+  },
+  {
+   "in": "[{\"a\":\"b\\\"c\"}]",
+   "out": "{\"{\\\"a\\\":\\\"b\\\\\\\"c\\\"}\"}"
+  },
+  {
+   "in": "[\"é😀\"]",
+   "out": "{\"é😀\"}"
+  }
+ ],
+ "extraction": [
+  {
+   "type": "discussion",
+   "hint": "the plan",
+   "out": "What factual information, decisions, or preferences did you learn from this discussion about \"the plan\"?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \"."
+  },
+  {
+   "type": "chat",
+   "hint": "other",
+   "out": "What factual information or preferences did you learn about other from this conversation?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \"."
+  },
+  {
+   "type": "mail",
+   "hint": "",
+   "out": "What factual information or action items did you learn from this mail exchange?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \"."
+  },
+  {
+   "type": "other",
+   "hint": "x",
+   "out": "What factual information or action items did you learn from this mail exchange?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \"."
+  }
+ ],
+ "limits": [
+  {
+   "row": {
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null
+   },
+   "config": {},
+   "daily": "1",
+   "monthly": "10"
+  },
+  {
+   "row": {
+    "cost_budget_daily": "2.50",
+    "cost_budget_monthly": "20.00"
+   },
+   "config": {},
+   "daily": "2.5",
+   "monthly": "20"
+  },
+  {
+   "row": {
+    "cost_budget_daily": null,
+    "cost_budget_monthly": null
+   },
+   "config": {
+    "virtual_agent_default_daily_budget": "",
+    "virtual_agent_default_monthly_budget": "abc"
+   },
+   "daily": "NaN",
+   "monthly": "NaN"
+  },
+  {
+   "row": {
+    "cost_budget_daily": "0.00",
+    "cost_budget_monthly": null
+   },
+   "config": {
+    "virtual_agent_default_monthly_budget": "1e2"
+   },
+   "daily": "0",
+   "monthly": "100"
+  }
+ ],
+ "limiter": [
+  {
+   "name": "limit trips and cools down",
+   "config": {
+    "virtual_agent_rate_limit": "2",
+    "virtual_agent_cooldown_seconds": "30"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":2,\"windowSeconds\":60,\"cooldownSeconds\":30}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limited",
+     "details": "{\"agent\":\"va\",\"reason\":\"cooldown\",\"resumesIn\":\"20s\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":2,\"windowSeconds\":60,\"cooldownSeconds\":30}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "limited"
+    ],
+    [
+     "record"
+    ],
+    [
+     "limited"
+    ],
+    [
+     "record"
+    ],
+    [
+     "limited"
+    ],
+    [
+     "resume"
+    ],
+    [
+     "advance",
+     10000
+    ],
+    [
+     "limited"
+    ],
+    [
+     "resume"
+    ],
+    [
+     "advance",
+     25000
+    ],
+    [
+     "limited"
+    ],
+    [
+     "advance",
+     61000
+    ],
+    [
+     "limited"
+    ],
+    [
+     "resume"
+    ]
+   ],
+   "results": [
+    false,
+    "recorded",
+    false,
+    "recorded",
+    true,
+    30,
+    "advanced",
+    true,
+    20,
+    "advanced",
+    true,
+    "advanced",
+    false,
+    0
+   ]
+  },
+  {
+   "name": "scene continuation bypasses",
+   "config": {
+    "virtual_agent_rate_limit": "1"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":1,\"windowSeconds\":60,\"cooldownSeconds\":300}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limited",
+     "details": "{\"agent\":\"va\",\"reason\":\"cooldown\",\"resumesIn\":\"239s\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "limited",
+     "s1"
+    ],
+    [
+     "record",
+     "s1"
+    ],
+    [
+     "limited",
+     "s1"
+    ],
+    [
+     "record",
+     "s1"
+    ],
+    [
+     "limited",
+     "s2"
+    ],
+    [
+     "limited",
+     "s1"
+    ],
+    [
+     "advance",
+     61000
+    ],
+    [
+     "limited",
+     "s1"
+    ],
+    [
+     "record",
+     "s1"
+    ],
+    [
+     "limited",
+     "s1"
+    ]
+   ],
+   "results": [
+    false,
+    "recorded",
+    false,
+    "recorded",
+    true,
+    false,
+    "advanced",
+    true,
+    "recorded",
+    false
+   ]
+  },
+  {
+   "name": "window boundary",
+   "config": {
+    "virtual_agent_rate_limit": "1"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":1,\"windowSeconds\":60,\"cooldownSeconds\":300}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "record",
+     "s1"
+    ],
+    [
+     "advance",
+     59000
+    ],
+    [
+     "record",
+     "s2"
+    ],
+    [
+     "advance",
+     1000
+    ],
+    [
+     "limited",
+     "s1"
+    ],
+    [
+     "advance",
+     1
+    ],
+    [
+     "limited",
+     "s1"
+    ],
+    [
+     "limited",
+     "s2"
+    ]
+   ],
+   "results": [
+    "recorded",
+    "advanced",
+    "recorded",
+    "advanced",
+    false,
+    "advanced",
+    true,
+    false
+   ]
+  },
+  {
+   "name": "history boundary",
+   "config": {
+    "virtual_agent_rate_limit": "1"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":1,\"windowSeconds\":60,\"cooldownSeconds\":300}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "record"
+    ],
+    [
+     "advance",
+     60000
+    ],
+    [
+     "limited"
+    ],
+    [
+     "resume"
+    ]
+   ],
+   "results": [
+    "recorded",
+    "advanced",
+    true,
+    300
+   ]
+  },
+  {
+   "name": "per-agent overrides",
+   "config": {},
+   "rows": {
+    "rate-overrides": [
+     {
+      "configuration": "{\"rate_limit\":\"1\",\"rate_window_seconds\":5,\"cooldown_seconds\":\"2\"}"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":1,\"windowSeconds\":5,\"cooldownSeconds\":2}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":1,\"windowSeconds\":5,\"cooldownSeconds\":2}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "effective"
+    ],
+    [
+     "limited"
+    ],
+    [
+     "record"
+    ],
+    [
+     "limited"
+    ],
+    [
+     "resume"
+    ],
+    [
+     "advance",
+     2500
+    ],
+    [
+     "limited"
+    ],
+    [
+     "effective"
+    ]
+   ],
+   "results": [
+    "{\"limit\":1,\"windowMs\":5000,\"cooldownMs\":2000}",
+    false,
+    "recorded",
+    true,
+    2,
+    "advanced",
+    true,
+    "{\"limit\":1,\"windowMs\":5000,\"cooldownMs\":2000}"
+   ]
+  },
+  {
+   "name": "override cache expires",
+   "config": {},
+   "rows": {
+    "rate-overrides": [
+     [
+      {
+       "configuration": "{\"rate_limit\":3}"
+      }
+     ],
+     [
+      {
+       "configuration": "{\"cooldown_seconds\":1}"
+      }
+     ]
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "effective"
+    ],
+    [
+     "advance",
+     30000
+    ],
+    [
+     "effective"
+    ],
+    [
+     "advance",
+     31000
+    ],
+    [
+     "effective"
+    ]
+   ],
+   "results": [
+    "{\"limit\":3,\"windowMs\":60000,\"cooldownMs\":300000}",
+    "advanced",
+    "{\"limit\":3,\"windowMs\":60000,\"cooldownMs\":300000}",
+    "advanced",
+    "{\"limit\":10,\"windowMs\":60000,\"cooldownMs\":1000}"
+   ]
+  },
+  {
+   "name": "garbage settings",
+   "config": {
+    "virtual_agent_rate_limit": "x",
+    "virtual_agent_cooldown_seconds": "y"
+   },
+   "rows": {
+    "rate-overrides": [
+     {
+      "configuration": "{\"rate_window_seconds\":[1,2]}"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "effective"
+    ],
+    [
+     "limited"
+    ],
+    [
+     "record"
+    ],
+    [
+     "limited"
+    ]
+   ],
+   "results": [
+    "{\"limit\":null,\"windowMs\":1000,\"cooldownMs\":null}",
+    false,
+    "recorded",
+    false
+   ]
+  },
+  {
+   "name": "override read fails",
+   "config": {},
+   "rows": {},
+   "fail": {
+    "rate-overrides": "db down"
+   },
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-override-read-failed",
+     "details": "{\"agent\":\"va\",\"error\":\"db down\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "effective"
+    ],
+    [
+     "effective"
+    ]
+   ],
+   "results": [
+    "{\"limit\":10,\"windowMs\":60000,\"cooldownMs\":300000}",
+    "{\"limit\":10,\"windowMs\":60000,\"cooldownMs\":300000}"
+   ]
+  },
+  {
+   "name": "override config null",
+   "config": {},
+   "rows": {
+    "rate-overrides": [
+     {
+      "configuration": "null"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-override-read-failed",
+     "details": "{\"agent\":\"va\",\"error\":\"Cannot read properties of null (reading 'rate_limit')\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "effective"
+    ]
+   ],
+   "results": [
+    "{\"limit\":10,\"windowMs\":60000,\"cooldownMs\":300000}"
+   ]
+  },
+  {
+   "name": "override config not an object",
+   "config": {},
+   "rows": {
+    "rate-overrides": [
+     {
+      "configuration": "\"str\""
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "effective"
+    ]
+   ],
+   "results": [
+    "{\"limit\":10,\"windowMs\":60000,\"cooldownMs\":300000}"
+   ]
+  },
+  {
+   "name": "no window setting",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "ops": [
+    [
+     "record",
+     "s1"
+    ]
+   ],
+   "results": [
+    "error: Config key \"virtual_agent_rate_window_seconds\" not found. Was config.init() called?"
+   ]
+  }
+ ],
+ "invoke": [
+  {
+   "name": "success",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[],\"usage\":{\"input_tokens\":120,\"output_tokens\":30},\"cost\":0.00027,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      "tick",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "tick",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"context\":\"tick\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":\"tick\",\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi",
+    "context": "tick"
+   },
+   "twice": false
+  },
+  {
+   "name": "messages tools override skips",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": null,
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 42
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "",
+      "tool_calls": [
+       {
+        "id": "t1",
+        "name": "speak",
+        "input": {
+         "text": "x"
+        }
+       }
+      ],
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 5,
+       "cache_creation_input_tokens": 10,
+       "cache_read_input_tokens": 20
+      },
+      "finish_reason": "tool_use",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "{\"text\":\"\",\"tool_calls\":[{\"id\":\"t1\",\"name\":\"speak\",\"input\":{\"text\":\"x\"}}],\"usage\":{\"input_tokens\":0,\"output_tokens\":5,\"cache_creation_input_tokens\":10,\"cache_read_input_tokens\":20},\"cost\":0.000039500000000000005,\"finish_reason\":\"tool_use\",\"truncated\":false}"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "5",
+      "10",
+      "20",
+      "0.000039500000000000005",
+      null,
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "Override.",
+      null,
+      null,
+      "success",
+      null,
+      null,
+      "0",
+      "5",
+      "20",
+      "10",
+      "0.000039500000000000005",
+      null,
+      "42",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000040\",\"input\":0,\"output\":5,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":null,\"cost\":\"0.000040\",\"input\":0,\"output\":5,\"tool_calls\":1,\"finish_reason\":\"tool_use\",\"truncated\":false}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "Override."
+     },
+     "user": "",
+     "opts": "{\"tools\":[{\"name\":\"speak\",\"description\":\"d\",\"parameters\":{}}],\"messages\":[{\"role\":\"user\",\"content\":\"a\"}]}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "systemPrompt": "Override.",
+    "messages": [
+     {
+      "role": "user",
+      "content": "a"
+     }
+    ],
+    "tools": [
+     {
+      "name": "speak",
+      "description": "d",
+      "parameters": {}
+     }
+    ],
+    "skipRateLimit": true,
+    "skipCostLimit": true
+   },
+   "twice": false
+  },
+  {
+   "name": "empty tools and messages arrays",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 43
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[],\"usage\":{\"input_tokens\":120,\"output_tokens\":30},\"cost\":0.00027,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "43",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":null,\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi",
+    "messages": [],
+    "tools": []
+   },
+   "twice": false
+  },
+  {
+   "name": "provider error",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 44
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "error": "Anthropic API error 500: boom",
+     "status": 500
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Anthropic API error 500: boom"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "dream",
+      "error",
+      "Anthropic API error 500: boom"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "dream",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "Anthropic API error 500: boom",
+      "error",
+      "500",
+      "Anthropic API error 500: boom",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "44",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"context\":\"dream\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi",
+    "context": "dream"
+   },
+   "twice": false
+  },
+  {
+   "name": "provider error usage insert fails",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ]
+   },
+   "fail": {
+    "usage-insert": "insert failed"
+   },
+   "answers": [
+    {
+     "error": "network down"
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "network down"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "error",
+      "network down"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "network down",
+      "error",
+      null,
+      "network down",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "no message",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "invokeAgent: either userMessage or messages is required"
+   },
+   "queries": [],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "va",
+   "opts": {},
+   "twice": false
+  },
+  {
+   "name": "messages without user message",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 45
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[],\"usage\":{\"input_tokens\":120,\"output_tokens\":30},\"cost\":0.00027,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      null,
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "45",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":null,\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "",
+     "opts": "{\"messages\":[{\"role\":\"user\",\"content\":\"a\"}]}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "a"
+     }
+    ]
+   },
+   "twice": false
+  },
+  {
+   "name": "agent not found",
+   "config": {},
+   "rows": {
+    "load-agent": []
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent not found: va"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "missing api key",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent va missing provider/model/api_key"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "missing model",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": null,
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent va missing provider/model/api_key"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "over daily limit",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": "0.50",
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0.5012345",
+      "cost_monthly": "0.6"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent va over cost limit: Daily cost limit exceeded ($0.5012 / $0.50)"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "over-cost-limit",
+     "details": "{\"agent\":\"va\",\"costToday\":0.5012345,\"dailyLimit\":0.5,\"type\":\"daily\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "over monthly limit",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0.1",
+      "cost_monthly": "10.25"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent va over cost limit: Monthly cost limit exceeded ($10.2500 / $10.00)"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "over-cost-limit",
+     "details": "{\"agent\":\"va\",\"costMonthly\":10.25,\"monthlyLimit\":10,\"type\":\"monthly\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "stale config",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":0}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update."
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "rate limited second call",
+   "config": {
+    "virtual_agent_rate_limit": "1"
+   },
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 46
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent va is rate-limited"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "46",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":null,\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "rate-limit-triggered",
+     "details": "{\"agent\":\"va\",\"calls\":1,\"windowSeconds\":60,\"cooldownSeconds\":300}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": true
+  },
+  {
+   "name": "retry client error then success",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 47
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "error": "bad request",
+     "status": 400
+    },
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[],\"usage\":{\"input_tokens\":120,\"output_tokens\":30},\"cost\":0.00027,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "available",
+      "va"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "47",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":1,\"retries\":3,\"delayMs\":5000,\"error\":\"bad request\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"available\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":null,\"cost\":\"0.000270\",\"input\":120,\"output\":30,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    },
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [
+    5000
+   ],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi",
+    "skipRetry": false
+   },
+   "twice": false
+  },
+  {
+   "name": "retry exhausted",
+   "config": {
+    "virtual_agent_retry_backoff": "1,2"
+   },
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 48
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "error": "rate",
+     "status": 429
+    },
+    {
+     "error": "server",
+     "status": 503
+    },
+    {
+     "error": "last",
+     "status": 418
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "last"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "error",
+      "va"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "error",
+      "last"
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "last",
+      "error",
+      "418",
+      "last",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      "48",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":1,\"retries\":2,\"delayMs\":1000,\"error\":\"rate\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":2,\"retries\":2,\"delayMs\":2000,\"error\":\"server\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"error\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000000\",\"input\":0,\"output\":0,\"status\":\"error\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"error\"}"
+    }
+   ],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    },
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    },
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [
+    1000,
+    2000
+   ],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi",
+    "skipRetry": false
+   },
+   "twice": false
+  },
+  {
+   "name": "no tool_calls no finish reason",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 49
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "x",
+      "usage": {
+       "input_tokens": 1,
+       "output_tokens": 1
+      }
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "{\"text\":\"x\",\"tool_calls\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1},\"cost\":0.000006,\"finish_reason\":\"other\",\"truncated\":false}"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "1",
+      "1",
+      "0",
+      "0",
+      "0.000006",
+      null,
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are va.",
+      "Hi",
+      "x",
+      "success",
+      null,
+      null,
+      "1",
+      "1",
+      "0",
+      "0",
+      "0.000006",
+      null,
+      "49",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000006\",\"input\":1,\"output\":1,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":null,\"cost\":\"0.000006\",\"input\":1,\"output\":1,\"tool_calls\":0,\"finish_reason\":\"other\",\"truncated\":false}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "openrouter billed cost",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "api_key": "enc",
+      "configuration": "{}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 50
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "ok",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 1000,
+       "output_tokens": 200,
+       "cost": 0.00012345,
+       "served_by": "Baidu"
+      },
+      "finish_reason": "stop",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "{\"text\":\"ok\",\"tool_calls\":[],\"usage\":{\"input_tokens\":1000,\"output_tokens\":200,\"cost\":0.00012345,\"served_by\":\"Baidu\"},\"cost\":0.00012345,\"finish_reason\":\"stop\",\"truncated\":false}"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "openrouter",
+      "deepseek/deepseek-v4-flash",
+      "1000",
+      "200",
+      "0",
+      "0",
+      "0.00012345",
+      "tick",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "tick",
+      null,
+      "openrouter",
+      "deepseek/deepseek-v4-flash",
+      "You are va.",
+      "Hi",
+      "ok",
+      "success",
+      null,
+      null,
+      "1000",
+      "200",
+      "0",
+      "0",
+      "0.00012345",
+      null,
+      "50",
+      null,
+      null,
+      null,
+      null,
+      "Baidu"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"openrouter\",\"model\":\"deepseek/deepseek-v4-flash\",\"cost\":\"0.000123\",\"context\":\"tick\",\"input\":1000,\"output\":200,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":\"tick\",\"cost\":\"0.000123\",\"input\":1000,\"output\":200,\"tool_calls\":0,\"finish_reason\":\"stop\",\"truncated\":false}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "openrouter",
+     "model": "deepseek/deepseek-v4-flash",
+     "api_key": "dec:enc",
+     "conf": "{\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi",
+    "context": "tick"
+   },
+   "twice": false
+  },
+  {
+   "name": "no pricing",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "not-a-model",
+      "api_key": "enc",
+      "configuration": "{}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "No pricing data for anthropic/not-a-model — cannot calculate cost"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "not-a-model",
+     "api_key": "dec:enc",
+     "conf": "{\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are va."
+     },
+     "user": "Hi",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "agent": "va",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  },
+  {
+   "name": "actor missing",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "ghost",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent \"ghost\" is not registered"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "ghost"
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "ghost"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [],
+   "timers": [],
+   "agent": "ghost",
+   "opts": {
+    "userMessage": "Hi"
+   },
+   "twice": false
+  }
+ ],
+ "call_log": [
+  {
+   "name": "structured prompt",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "chat",
+      "abc",
+      "anthropic",
+      "m",
+      "S",
+      "u",
+      "r",
+      "success",
+      null,
+      null,
+      "3",
+      "4",
+      "5",
+      "6",
+      "0.5",
+      "1234",
+      "9",
+      "11111111-2222-3333-4444-555555555555",
+      "c1",
+      "a1",
+      "Elias",
+      "Host"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "call": {
+    "actorId": 7,
+    "agentName": "va",
+    "context": "chat",
+    "contextId": "abc",
+    "provider": "anthropic",
+    "model": "m",
+    "systemPrompt": {
+     "static": "S",
+     "dynamic": "D"
+    },
+    "userMessage": "u",
+    "response": "r",
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 4,
+     "cache_read_input_tokens": 5,
+     "cache_creation_input_tokens": 6,
+     "served_by": "Host"
+    },
+    "cost": 0.5,
+    "durationMs": 1234,
+    "usageId": 9,
+    "sceneId": "11111111-2222-3333-4444-555555555555",
+    "conversationId": "c1",
+    "simActorId": "a1",
+    "simActorName": "Elias"
+   }
+  },
+  {
+   "name": "structured no static",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "p",
+      "m",
+      "D",
+      null,
+      null,
+      "success",
+      null,
+      null,
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "call": {
+    "actorId": 7,
+    "agentName": "va",
+    "provider": "p",
+    "model": "m",
+    "systemPrompt": {
+     "static": "",
+     "dynamic": "D"
+    }
+   }
+  },
+  {
+   "name": "no prompt",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "p",
+      "m",
+      null,
+      null,
+      null,
+      "success",
+      null,
+      null,
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "call": {
+    "actorId": 7,
+    "agentName": "va",
+    "provider": "p",
+    "model": "m",
+    "response": ""
+   }
+  },
+  {
+   "name": "error with status",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "p",
+      "m",
+      "S",
+      null,
+      "boom",
+      "error",
+      "502",
+      "boom",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "call": {
+    "actorId": 7,
+    "agentName": "va",
+    "provider": "p",
+    "model": "m",
+    "systemPrompt": "S",
+    "error": {
+     "message": "boom",
+     "status": 502
+    },
+    "cost": 0
+   }
+  },
+  {
+   "name": "error with statusCode",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "p",
+      "m",
+      "S",
+      null,
+      "nf",
+      "error",
+      "404",
+      "nf",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "call": {
+    "actorId": 7,
+    "agentName": "va",
+    "provider": "p",
+    "model": "m",
+    "systemPrompt": "S",
+    "error": {
+     "message": "nf",
+     "statusCode": 404
+    }
+   }
+  },
+  {
+   "name": "insert fails",
+   "config": {},
+   "rows": {},
+   "fail": {
+    "call-insert": "disk full"
+   },
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      null,
+      null,
+      "p",
+      "m",
+      "S",
+      null,
+      null,
+      "success",
+      null,
+      null,
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "call-log-error",
+     "details": "{\"agent\":\"va\",\"error\":\"disk full\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "call": {
+    "actorId": 7,
+    "agentName": "va",
+    "provider": "p",
+    "model": "m",
+    "systemPrompt": "S"
+   }
+  }
+ ],
+ "transcript": [
+  {
+   "name": "plain",
+   "config": {},
+   "rows": {
+    "dream-mode": [
+     {
+      "dream_mode": "conversation"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** chat\n- **From:** other\n- **Model:** m1\n- **Tokens:** 10 in / ? out\n\n## System Prompt\n\nSystem.\n\n## User Message\n\nHello\n\n## Response\n\nReply.",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    "va",
+    "System.",
+    "Hello",
+    "Reply.",
+    {
+     "input_tokens": 10,
+     "output_tokens": 0
+    },
+    "chat",
+    {
+     "requestingAgent": "other",
+     "model": "m1"
+    }
+   ]
+  },
+  {
+   "name": "structured with discussion",
+   "config": {},
+   "rows": {
+    "dream-mode": []
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "discussion — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** discussion\n- **Discussion:** #12\n\n## System Prompt\n\nS\n\n## User Message\n\nU\n\n## Response\n\nR",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    "va",
+    {
+     "static": "S",
+     "dynamic": "RAG"
+    },
+    "U",
+    "R",
+    null,
+    "discussion",
+    {
+     "discussionId": 12
+    }
+   ]
+  },
+  {
+   "name": "structured no static",
+   "config": {},
+   "rows": {
+    "dream-mode": []
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "mail — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** mail\n\n## System Prompt\n\nRAG\n\n## User Message\n\nU\n\n## Response\n\nR",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    "va",
+    {
+     "static": "",
+     "dynamic": "RAG"
+    },
+    "U",
+    "R",
+    null,
+    "mail",
+    {}
+   ]
+  },
+  {
+   "name": "skipped sim",
+   "config": {},
+   "rows": {
+    "dream-mode": [
+     {
+      "dream_mode": "sim"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    "va",
+    "S",
+    "U",
+    "R",
+    null,
+    "chat",
+    {}
+   ]
+  },
+  {
+   "name": "skipped none",
+   "config": {},
+   "rows": {
+    "dream-mode": [
+     {
+      "dream_mode": "none"
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    "va",
+    "S",
+    "U",
+    "R",
+    null,
+    "chat",
+    {}
+   ]
+  },
+  {
+   "name": "truncate system",
+   "config": {},
+   "rows": {
+    "dream-mode": []
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": {
+      "length": 100107,
+      "head": "## Metadata\n- **Trigger:** chat\n\n## System Prompt\n\nSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS",
+      "tail": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu\n\n## Response\n\nR"
+     },
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": null
+  },
+  {
+   "name": "truncate both",
+   "config": {},
+   "rows": {
+    "dream-mode": []
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": {
+      "length": 100130,
+      "head": "## Metadata\n- **Trigger:** chat\n\n## System Prompt\n\n[truncated — too large]\n\n## User Message\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tail": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\n\n[... truncated ...]\n\n## Response\n\nR"
+     },
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": null
+  },
+  {
+   "name": "non-string response",
+   "config": {},
+   "rows": {
+    "dream-mode": []
+   },
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** chat\n- **Tokens:** a in / ? out\n\n## System Prompt\n\nS\n\n## User Message\n\nU\n\n## Response\n\n42",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    "va",
+    "S",
+    "U",
+    42,
+    {
+     "input_tokens": "a"
+    },
+    "chat",
+    {}
+   ]
+  }
+ ],
+ "learning": [
+  {
+   "name": "saved",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 60
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "- Fact one\n- Fact two",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 50,
+       "output_tokens": 10
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "50",
+      "10",
+      "0",
+      "0",
+      "0.0001",
+      "learning",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "learning",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.",
+      "System prompt:\nYou help.\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information or preferences did you learn about other from this conversation?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+      "- Fact one\n- Fact two",
+      "success",
+      null,
+      null,
+      "50",
+      "10",
+      "0",
+      "0",
+      "0.0001",
+      null,
+      "60",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000100\",\"context\":\"learning\",\"input\":50,\"output\":10,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":\"learning\",\"cost\":\"0.000100\",\"input\":50,\"output\":10,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "learning-saved",
+     "details": "{\"agent\":\"va\",\"slug\":\"learnings/20261106-183320\",\"interactionType\":\"chat\",\"length\":21}"
+    }
+   ],
+   "events": [],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "Learning 20261106-183320 (chat)",
+     "content": "- Fact one\n- Fact two",
+     "slug": "learnings/20261106-183320",
+     "created_by": "va"
+    }
+   ],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions."
+     },
+     "user": "System prompt:\nYou help.\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information or preferences did you learn about other from this conversation?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "args": [
+    {
+     "actor_id": 7,
+     "agent": "va",
+     "virtual": true,
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "enc",
+     "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+     "startup_instructions": "You are va.",
+     "personality": null,
+     "expertise": [],
+     "cost_budget_daily": null,
+     "cost_budget_monthly": null,
+     "cache_prompts": false,
+     "learning_enabled": true,
+     "max_tokens": null,
+     "temperature": null
+    },
+    "You help.",
+    "Tell me about the build pipeline in detail please.",
+    "It builds in CI and ships a binary.",
+    "chat",
+    "other"
+   ]
+  },
+  {
+   "name": "none",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 61
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "  none ",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 50,
+       "output_tokens": 1
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "50",
+      "1",
+      "0",
+      "0",
+      "0.000055",
+      "learning",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "learning",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.",
+      "System prompt:\nS\n\nD\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information, decisions, or preferences did you learn from this discussion about \"the plan\"?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+      "  none ",
+      "success",
+      null,
+      null,
+      "50",
+      "1",
+      "0",
+      "0",
+      "0.000055",
+      null,
+      "61",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000055\",\"context\":\"learning\",\"input\":50,\"output\":1,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":\"learning\",\"cost\":\"0.000055\",\"input\":50,\"output\":1,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "learning-none",
+     "details": "{\"agent\":\"va\",\"interactionType\":\"discussion\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions."
+     },
+     "user": "System prompt:\nS\n\nD\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information, decisions, or preferences did you learn from this discussion about \"the plan\"?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "args": [
+    {
+     "actor_id": 7,
+     "agent": "va",
+     "virtual": true,
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "enc",
+     "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+     "startup_instructions": "You are va.",
+     "personality": null,
+     "expertise": [],
+     "cost_budget_daily": null,
+     "cost_budget_monthly": null,
+     "cache_prompts": false,
+     "learning_enabled": true,
+     "max_tokens": null,
+     "temperature": null
+    },
+    {
+     "static": "S",
+     "dynamic": "D"
+    },
+    "Tell me about the build pipeline in detail please.",
+    "It builds in CI and ships a binary.",
+    "discussion",
+    "the plan"
+   ]
+  },
+  {
+   "name": "truncated",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 62
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "- Fact",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 50,
+       "output_tokens": 10
+      },
+      "finish_reason": "max_tokens",
+      "truncated": true
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "50",
+      "10",
+      "0",
+      "0",
+      "0.0001",
+      "learning",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "learning",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.",
+      "System prompt:\nYou help.\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information or action items did you learn from this mail exchange?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+      "- Fact",
+      "success",
+      null,
+      null,
+      "50",
+      "10",
+      "0",
+      "0",
+      "0.0001",
+      null,
+      "62",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000100\",\"context\":\"learning\",\"input\":50,\"output\":10,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":\"learning\",\"cost\":\"0.000100\",\"input\":50,\"output\":10,\"tool_calls\":0,\"finish_reason\":\"max_tokens\",\"truncated\":true}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "learning-truncated",
+     "details": "{\"agent\":\"va\",\"interactionType\":\"mail\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions."
+     },
+     "user": "System prompt:\nYou help.\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information or action items did you learn from this mail exchange?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "args": [
+    {
+     "actor_id": 7,
+     "agent": "va",
+     "virtual": true,
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "enc",
+     "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+     "startup_instructions": "You are va.",
+     "personality": null,
+     "expertise": [],
+     "cost_budget_daily": null,
+     "cost_budget_monthly": null,
+     "cache_prompts": false,
+     "learning_enabled": true,
+     "max_tokens": null,
+     "temperature": null
+    },
+    "You help.",
+    "Tell me about the build pipeline in detail please.",
+    "It builds in CI and ships a binary.",
+    "mail",
+    ""
+   ]
+  },
+  {
+   "name": "too short",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "learning-skip-short",
+     "details": "{\"agent\":\"va\",\"estimatedTokens\":1,\"minTokens\":20}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    {
+     "actor_id": 7,
+     "agent": "va",
+     "virtual": true,
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "enc",
+     "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+     "startup_instructions": "You are va.",
+     "personality": null,
+     "expertise": [],
+     "cost_budget_daily": null,
+     "cost_budget_monthly": null,
+     "cache_prompts": false,
+     "learning_enabled": true,
+     "max_tokens": null,
+     "temperature": null
+    },
+    "S",
+    "U",
+    "R",
+    "chat",
+    "other"
+   ]
+  },
+  {
+   "name": "disabled globally",
+   "config": {
+    "virtual_agent_learning_enabled": "false"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    {
+     "actor_id": 7,
+     "agent": "va",
+     "virtual": true,
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "enc",
+     "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+     "startup_instructions": "You are va.",
+     "personality": null,
+     "expertise": [],
+     "cost_budget_daily": null,
+     "cost_budget_monthly": null,
+     "cache_prompts": false,
+     "learning_enabled": true,
+     "max_tokens": null,
+     "temperature": null
+    },
+    "S",
+    "U",
+    "R",
+    "chat",
+    "other"
+   ]
+  },
+  {
+   "name": "disabled for agent",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "args": [
+    {
+     "actor_id": 7,
+     "agent": "va",
+     "virtual": true,
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "enc",
+     "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+     "startup_instructions": "You are va.",
+     "personality": null,
+     "expertise": [],
+     "cost_budget_daily": null,
+     "cost_budget_monthly": null,
+     "cache_prompts": false,
+     "learning_enabled": false,
+     "max_tokens": null,
+     "temperature": null
+    },
+    "S",
+    "U",
+    "R",
+    "chat",
+    "other"
+   ]
+  },
+  {
+   "name": "non-string answer",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 63
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": 7,
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 50,
+       "output_tokens": 10
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "(extractionResult || \"\").trim is not a function"
+   },
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "50",
+      "10",
+      "0",
+      "0",
+      "0.0001",
+      "learning",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "learning",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions.",
+      "System prompt:\nYou help.\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information or preferences did you learn about other from this conversation?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+      "7",
+      "success",
+      null,
+      null,
+      "50",
+      "10",
+      "0",
+      "0",
+      "0.0001",
+      null,
+      "63",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000100\",\"context\":\"learning\",\"input\":50,\"output\":10,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":\"learning\",\"cost\":\"0.000100\",\"input\":50,\"output\":10,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "You are a knowledge extraction assistant. Your job is to identify key facts worth remembering from interactions."
+     },
+     "user": "System prompt:\nYou help.\n\nUser message:\nTell me about the build pipeline in detail please.\n\nYour response:\nIt builds in CI and ships a binary.\n\n---\n\nWhat factual information or preferences did you learn about other from this conversation?\n\nReview the interaction above. Extract 1-3 factual observations worth remembering for future interactions. Focus only on factual information, preferences, or decisions — not tone or style. Include names, identifiers, and concrete details rather than vague generalizations. If nothing new was learned, return exactly NONE.\n\nFormat each observation as a bullet point starting with \"- \".",
+     "opts": "{}"
+    }
+   ],
+   "timers": [],
+   "args": [
+    {
+     "actor_id": 7,
+     "agent": "va",
+     "virtual": true,
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "enc",
+     "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+     "startup_instructions": "You are va.",
+     "personality": null,
+     "expertise": [],
+     "cost_budget_daily": null,
+     "cost_budget_monthly": null,
+     "cache_prompts": false,
+     "learning_enabled": true,
+     "max_tokens": null,
+     "temperature": null
+    },
+    "You help.",
+    "Tell me about the build pipeline in detail please.",
+    "It builds in CI and ships a binary.",
+    "chat",
+    "other"
+   ]
+  }
+ ],
+ "retry": [
+  {
+   "name": "first failure callback",
+   "config": {
+    "virtual_agent_retry_backoff": "10,20,30",
+    "virtual_agent_retry_backoff_client_error": "1"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "\"done\""
+   },
+   "queries": [
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "available",
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":1,\"retries\":3,\"delayMs\":1000,\"error\":\"attempt 1\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":2,\"retries\":3,\"delayMs\":20000,\"error\":\"attempt 2\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [
+    1000,
+    20000
+   ],
+   "results": [
+    "fail:400",
+    "fail:500",
+    "ok"
+   ],
+   "callback_throws": false,
+   "first_failure": [
+    {
+     "error": "attempt 1",
+     "info": "{\"retriesRemaining\":3,\"totalSeconds\":3}"
+    }
+   ]
+  },
+  {
+   "name": "callback throws",
+   "config": {
+    "virtual_agent_retry_backoff": "10"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "\"done\""
+   },
+   "queries": [
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "available",
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":1,\"retries\":1,\"delayMs\":10000,\"error\":\"attempt 1\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "first-failure-callback-error",
+     "details": "{\"agent\":\"va\",\"error\":\"callback broke\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [
+    10000
+   ],
+   "results": [
+    "fail",
+    "ok"
+   ],
+   "callback_throws": true,
+   "first_failure": [
+    {
+     "error": "attempt 1",
+     "info": "{\"retriesRemaining\":1,\"totalSeconds\":10}"
+    }
+   ]
+  },
+  {
+   "name": "status update fails",
+   "config": {
+    "virtual_agent_retry_backoff": "10"
+   },
+   "rows": {},
+   "fail": {
+    "status": "status down"
+   },
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "status down"
+   },
+   "queries": [
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "results": [
+    "fail",
+    "ok"
+   ],
+   "callback_throws": false,
+   "first_failure": []
+  },
+  {
+   "name": "garbage cadence",
+   "config": {
+    "virtual_agent_retry_backoff": "nope",
+    "virtual_agent_retry_backoff_client_error": ""
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "\"done\""
+   },
+   "queries": [
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "available",
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":1,\"retries\":3,\"delayMs\":5000,\"error\":\"attempt 1\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [
+    5000
+   ],
+   "results": [
+    "fail:404",
+    "ok"
+   ],
+   "callback_throws": false,
+   "first_failure": [
+    {
+     "error": "attempt 1",
+     "info": "{\"retriesRemaining\":3,\"totalSeconds\":80}"
+    }
+   ]
+  },
+  {
+   "name": "huge delay",
+   "config": {
+    "virtual_agent_retry_backoff": "3000000"
+   },
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "\"done\""
+   },
+   "queries": [
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "available",
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":1,\"retries\":1,\"delayMs\":3000000000,\"error\":\"attempt 1\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [
+    3000000000
+   ],
+   "results": [
+    "fail",
+    "ok"
+   ],
+   "callback_throws": false,
+   "first_failure": [
+    {
+     "error": "attempt 1",
+     "info": "{\"retriesRemaining\":1,\"totalSeconds\":3000000}"
+    }
+   ]
+  }
+ ],
+ "activity": [
+  {
+   "name": "fast call",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "\"v\""
+   },
+   "queries": [
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    }
+   ],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [
+    3000
+   ],
+   "agent": "va",
+   "advance": 0,
+   "throws": ""
+  },
+  {
+   "name": "slow call",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": "\"v\""
+   },
+   "queries": [
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    }
+   ],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [
+    0
+   ],
+   "agent": "va",
+   "advance": 5000,
+   "throws": ""
+  },
+  {
+   "name": "call throws",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "inner"
+   },
+   "queries": [
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    }
+   ],
+   "logs": [],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    }
+   ],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [
+    3000
+   ],
+   "agent": "va",
+   "advance": 0,
+   "throws": "inner"
+  },
+  {
+   "name": "actor missing",
+   "config": {},
+   "rows": {},
+   "fail": {},
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "error": "Agent \"ghost\" is not registered"
+   },
+   "queries": [],
+   "logs": [],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": [],
+   "agent": "ghost",
+   "advance": 0,
+   "throws": ""
+  }
+ ],
+ "ping": [
+  {
+   "name": "recovers one, other still down",
+   "config": {},
+   "rows": {
+    "errored-scan": [
+     {
+      "agent": "va"
+     },
+     {
+      "agent": "other"
+     }
+    ],
+    "load-agent": [
+     [
+      {
+       "actor_id": 7,
+       "agent": "va",
+       "virtual": true,
+       "provider": "anthropic",
+       "model": "claude-haiku-4-5",
+       "api_key": "enc",
+       "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+       "startup_instructions": "You are va.",
+       "personality": null,
+       "expertise": [],
+       "cost_budget_daily": null,
+       "cost_budget_monthly": null,
+       "cache_prompts": false,
+       "learning_enabled": true,
+       "max_tokens": null,
+       "temperature": null
+      }
+     ],
+     []
+    ],
+    "usage-insert": [
+     {
+      "id": 70
+     }
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "OK",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 3,
+       "output_tokens": 1
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "errored-scan",
+     "params": []
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "3",
+      "1",
+      "0",
+      "0",
+      "0.000008000000000000001",
+      "ping",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "ping",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "Respond with OK.",
+      "ping",
+      "OK",
+      "success",
+      null,
+      null,
+      "3",
+      "1",
+      "0",
+      "0",
+      "0.000008000000000000001",
+      null,
+      "70",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "available",
+      "va"
+     ]
+    },
+    {
+     "kind": "load-agent",
+     "params": [
+      "other"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000008\",\"context\":\"ping\",\"input\":3,\"output\":1,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "invoke",
+     "details": "{\"agent\":\"va\",\"context\":\"ping\",\"cost\":\"0.000008\",\"input\":3,\"output\":1,\"tool_calls\":0,\"finish_reason\":\"end_turn\",\"truncated\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"available\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "error-ping-recovered",
+     "details": "{\"agent\":\"va\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "error-ping-still-down",
+     "details": "{\"agent\":\"other\",\"error\":\"Agent not found: other\"}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "notes": [],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "text": "Respond with OK."
+     },
+     "user": "ping",
+     "opts": "{}"
+    }
+   ],
+   "timers": []
+  },
+  {
+   "name": "scan fails",
+   "config": {},
+   "rows": {},
+   "fail": {
+    "errored-scan": "no db"
+   },
+   "answers": [],
+   "clock": 1793990000000,
+   "outcome": {
+    "ok": null
+   },
+   "queries": [
+    {
+     "kind": "errored-scan",
+     "params": []
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "error-ping-scan-failed",
+     "details": "{\"error\":\"no db\"}"
+    }
+   ],
+   "events": [],
+   "notes": [],
+   "created": [],
+   "calls": [],
+   "timers": []
+  }
+ ]
+}

@@ -66,7 +66,11 @@ func run() error {
 	}
 
 	services := server.NewServices(pool, store, server.LogDir())
-	// server.js starts the stale-vote scanner after the config load.
+	// Started after the config load and before the listener, as in Node.
+	if err := services.Agents.StartErrorPing(ctx); err != nil {
+		return err
+	}
+	// server.js starts the stale-vote scanner next.
 	services.Discussions.StartStaleVoteScanner(ctx)
 
 	// Loopback by default: nginx and the salem engine reach the server on
@@ -85,7 +89,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Memory API listening on %s:%s\n", host, port)
+	// The bound port, not the setting: with PORT=0 the OS picks it, and the
+	// contract harness reads it from this line.
+	fmt.Printf("Memory API listening on %s:%d\n", host, listener.Addr().(*net.TCPAddr).Port)
 	watchdog.Start(services.Log)
 
 	serveErr := make(chan error, 1)

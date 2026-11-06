@@ -22,6 +22,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/oauth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/registration"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
@@ -50,6 +51,8 @@ type Services struct {
 	System      *system.Handler
 	Chat        *chat.Service
 	Discussions *discussion.Service
+	Providers   *providers.Providers
+	Agents      *virtualagent.Service
 	Visibility  *visibility.Visibility
 }
 
@@ -64,6 +67,11 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	keys := &auth.APIKeys{DB: conn, Warnf: func(format string, args ...any) { log.Errorf(format, args...) }}
 	mem := &memory.Service{DB: conn, Config: store, Embedder: &memory.OpenAI{}, Errors: recorder}
 	agents := virtualagent.Seam{}
+	llm := &providers.Providers{Config: store, Log: log}
+	notesService := &notes.Service{
+		DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
+		Enricher: &notes.GatedEnricher{Config: store},
+	}
 	sysHandler := &system.Handler{Log: log}
 	sysHandler.Register("virtual-agent", agents.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
@@ -87,18 +95,19 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Admin:      admin,
 		Errors:     recorder,
 		Memory:     mem,
-		Notes: &notes.Service{
-			DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
-			Enricher: &notes.GatedEnricher{Config: store},
-		},
-		Mail:   &mail.Service{DB: conn, Actors: actorCache, Log: log, Agents: agents},
-		System: sysHandler,
+		Notes:      notesService,
+		Mail:       &mail.Service{DB: conn, Actors: actorCache, Log: log, Agents: agents},
+		System:     sysHandler,
 		Chat: &chat.Service{
 			DB: conn, Actors: actorCache, Log: log, Events: bc, Agents: agents, System: sysHandler,
 			Notifier: notifier,
 		},
 		Discussions: &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier},
-		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
+		Providers:   llm,
+		Agents: &virtualagent.Service{
+			DB: conn, Config: store, Actors: actorCache, Log: log, Events: bc, Providers: llm, Notes: notesService,
+		},
+		Visibility: &visibility.Visibility{DB: conn, Admin: admin},
 	}
 }
 

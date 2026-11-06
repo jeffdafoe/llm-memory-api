@@ -5,14 +5,10 @@ package contract
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,18 +65,7 @@ type ServerSpec struct {
 	LogDir      string
 }
 
-// freePort asks the OS for an unused loopback port. Another process could
-// take it before the server binds; the health wait then fails clearly.
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}
-
-func serverEnv(spec ServerSpec, port int, fake *FakeUpstream) []string {
+func serverEnv(spec ServerSpec, fake *FakeUpstream) []string {
 	drop := map[string]bool{}
 	for _, n := range serverEnvNames {
 		drop[n] = true
@@ -97,7 +82,8 @@ func serverEnv(spec ServerSpec, port int, fake *FakeUpstream) []string {
 	}
 	env = append(env,
 		"DATABASE_URL="+spec.DatabaseURL,
-		"PORT="+strconv.Itoa(port),
+		// The OS picks the port at bind time; the server prints it (ready.go).
+		"PORT=0",
 		"MEMORY_API_HOST=127.0.0.1",
 		"BASE_URL="+BaseURL,
 		"LOG_DIR="+spec.LogDir,
@@ -107,18 +93,15 @@ func serverEnv(spec ServerSpec, port int, fake *FakeUpstream) []string {
 	return append(env, fake.Env(spec.Side)...)
 }
 
-// StartServer starts a server and waits until GET /health answers 200.
+// StartServer starts a server and waits until it has printed the port it
+// bound and GET /health on that port answers 200.
 func StartServer(ctx context.Context, spec ServerSpec, fake *FakeUpstream) (*ServerProcess, error) {
-	port, err := freePort()
-	if err != nil {
-		return nil, err
-	}
 	if err := os.MkdirAll(spec.LogDir, 0o755); err != nil {
 		return nil, err
 	}
 	cmd := exec.Command(spec.Command[0], spec.Command[1:]...)
 	cmd.Dir = spec.Dir
-	cmd.Env = serverEnv(spec, port, fake)
+	cmd.Env = serverEnv(spec, fake)
 	out := &lockedBuffer{}
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -126,45 +109,28 @@ func StartServer(ctx context.Context, spec ServerSpec, fake *FakeUpstream) (*Ser
 		return nil, fmt.Errorf("start %s: %w", spec.Name, err)
 	}
 	p := &ServerProcess{
-		Name:    spec.Name,
-		BaseURL: "http://127.0.0.1:" + strconv.Itoa(port),
-		cmd:     cmd,
-		out:     out,
-		done:    make(chan struct{}),
+		Name: spec.Name,
+		cmd:  cmd,
+		out:  out,
+		done: make(chan struct{}),
 	}
 	go func() {
 		p.exitErr = cmd.Wait()
 		close(p.done)
 	}()
 
-	if err := p.waitHealthy(ctx, 60*time.Second); err != nil {
+	baseURL, err := awaitReady(ctx, readiness{
+		output:  out.String,
+		done:    p.done,
+		exitErr: func() error { return p.exitErr },
+		healthy: healthOK,
+	}, 60*time.Second)
+	if err != nil {
 		p.Stop()
 		return nil, fmt.Errorf("%s did not start: %w\n--- %s output ---\n%s", spec.Name, err, spec.Name, tail(out.String(), 4000))
 	}
+	p.BaseURL = baseURL
 	return p, nil
-}
-
-func (p *ServerProcess) waitHealthy(ctx context.Context, limit time.Duration) error {
-	ctx, cancel := context.WithTimeout(ctx, limit)
-	defer cancel()
-	client := &http.Client{Timeout: 2 * time.Second}
-	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.BaseURL+"/health", nil)
-		resp, err := client.Do(req)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-		}
-		select {
-		case <-p.done:
-			return fmt.Errorf("exited: %v", p.exitErr)
-		case <-ctx.Done():
-			return errors.New("no 200 from /health in time")
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
 }
 
 // Output is what the server wrote to stdout and stderr, for a failed case.
