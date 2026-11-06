@@ -11,6 +11,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 )
 
 // applyVirtualAgentFixture adds vaUser and the virtual agents it may use
@@ -21,8 +23,9 @@ import (
 // such a chat through the virtual agents' direct-chat path, which Go's chat
 // does not call yet. Their dream mode stays 'none', so no
 // transcript is written (its slug is random by design), and the cases' mail is
-// short enough that learning extraction skips. Two more: one with no key, one
-// with a daily budget of 0.
+// short enough that learning extraction skips. Three more: one with no key,
+// one with a daily budget of 0, and one with its own rate limit. Each has an
+// API key, so /agent/tick can be called as the agent.
 func applyVirtualAgentFixture(ctx context.Context, tx pgx.Tx, adminID int) error {
 	var userID int
 	if err := tx.QueryRow(ctx, "INSERT INTO actors (name, created_by) VALUES ($1, $2) RETURNING id", vaUser, adminID).Scan(&userID); err != nil {
@@ -44,15 +47,32 @@ func applyVirtualAgentFixture(ctx context.Context, tx pgx.Tx, adminID int) error
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO agent_configuration (actor_id, virtual, provider, model, api_key, configuration, startup_instructions, cost_budget_daily)
              VALUES ($1, true, $2, $3, $4, $5, $6, $7)`,
-			id, va.provider, va.model, key, fmt.Sprintf(`{"_configVersion":%d}`, va.configVersion),
+			id, va.provider, va.model, key, fmt.Sprintf(`{"_configVersion":%d%s}`, va.configVersion, va.extraConf),
 			"You are "+va.name+", a contract fixture.", va.dailyBudget); err != nil {
 			return fmt.Errorf("virtual agent %s configuration: %w", va.name, err)
 		}
 		if _, err := tx.Exec(ctx, "INSERT INTO virtual_agent_access (virtual_agent_id, grantee_actor_id) VALUES ($1, $2)", id, userID); err != nil {
 			return fmt.Errorf("virtual agent %s access: %w", va.name, err)
 		}
+		plain := vaKey(va.name)
+		salt := fixedSalt(va.name + " api key")
+		h, err := auth.Hash(plain, salt)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx,
+			"INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, key_lookup_hash, label) VALUES ($1, $2, $3, $4, 'contract')",
+			id, h, salt, auth.TokenLookupHash(plain)); err != nil {
+			return fmt.Errorf("virtual agent %s api key: %w", va.name, err)
+		}
 	}
 	return nil
+}
+
+// vaKey is a fixture virtual agent's plain API key (Credentials
+// "<name>-key"), which /agent/tick authenticates as that agent.
+func vaKey(name string) string {
+	return fixedSecret(name + " api key")
 }
 
 // encryptFixtureKey is the agent's plain key "contract-key-<name>" as

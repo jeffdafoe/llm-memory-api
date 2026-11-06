@@ -3,10 +3,11 @@ package contract
 import "strings"
 
 // agentCases cover the /v1/agent routes against the agent fixture
-// (fixture_agent.go). /agent/tick and /agent/rate-limit are not ported yet
-// (they call the virtual-agent service).
+// (fixture_agent.go); /agent/tick and /agent/rate-limit run against the
+// virtual agents (cases_agent_tick.go).
 var agentCases = concat(agentLoginCases, agentRotateCases, agentProfileCases, agentStatusCases,
-	agentInstructionsCases, agentMiscCases, agentRoutingCases, agentMemorySyncCases, agentConversationSyncCases)
+	agentInstructionsCases, agentMiscCases, agentRoutingCases, agentMemorySyncCases, agentConversationSyncCases,
+	agentTickCases, agentRateLimitCases)
 
 const (
 	agentLoginPath        = "/v1/agent/login"
@@ -213,7 +214,7 @@ var agentRoutingCases = []Scenario{
 	one("agent status GET falls through", Step{Method: "GET", Path: agentStatusPath, Auth: "agent-a-session"}),
 	one("agent status encoded path", Step{Method: "POST", Path: "/v1/%61gent/status", Auth: "agent-a-session", Header: jsonType, Body: `{}`}),
 	one("agent status without credentials", Step{Method: "POST", Path: agentStatusPath, Header: jsonType, Body: `{}`}),
-	one("agent tick is not ported", Step{Method: "GET", Path: "/v1/agent/tick", Auth: "agent-a-session"}),
+	one("agent tick with GET", Step{Method: "GET", Path: "/v1/agent/tick", Auth: "agent-a-session"}),
 }
 
 // syncCase is one memory-sync request whose saves index in the background:
