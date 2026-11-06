@@ -78,6 +78,14 @@ func (a *SessionAuth) ForgetAgent(agent string) {
 	})
 }
 
+// ForgetActor drops every cached token of one actor: its API sessions, web
+// sessions and API keys. Actor deletion calls it after deleting the rows.
+func (a *SessionAuth) ForgetActor(actorID int) {
+	a.cache.DeleteFunc(func(_ string, s cachedSession) bool {
+		return s.actorID == actorID
+	})
+}
+
 // CachedUser is the admin user a token is cached for, without a database
 // lookup: the WebSocket upgrade reads the middleware's cache first, as
 // events.js read authMiddleware.sessionCache. An agent entry is not a user.

@@ -8,6 +8,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 )
 
@@ -36,6 +37,7 @@ type Routes struct {
 	Sessions    *auth.Sessions
 	SessionAuth TokenCache
 	Providers   *providers.Providers
+	Namespaces  *permissions.Namespaces
 	// Now is the clock for session expiry; nil is time.Now.
 	Now func() time.Time
 
@@ -43,10 +45,11 @@ type Routes struct {
 	linkTarget *attempts.Limiter
 }
 
-// TokenCache is the /v1 auth middleware's token cache (auth.SessionAuth),
-// which logout clears.
+// TokenCache is the /v1 auth middleware's token cache (auth.SessionAuth):
+// logout drops one token, actor deletion every token of the deleted actors.
 type TokenCache interface {
 	Forget(token string)
+	ForgetActor(actorID int)
 }
 
 func (rt *Routes) now() time.Time {
@@ -76,6 +79,21 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	rt.Handle(mux, "/admin/config/list", "config", "read", "config-list", rt.configList)
 	rt.Handle(mux, "/admin/config/update", "config", "write", "config-update", rt.configUpdate)
 	rt.Handle(mux, "/admin/profile/visibility", "", "", "profile-visibility", rt.profileVisibility)
+
+	rt.Handle(mux, "/admin/actors/list", "agents", "read", "actors-list", rt.actorsList)
+	rt.Handle(mux, "/admin/actors/permissions/read", "agents", "read", "actors-permissions-read", rt.actorsPermissionsRead)
+	rt.Handle(mux, "/admin/actors/permissions/save", "agents", "write", "actors-permissions-save", rt.actorsPermissionsSave)
+	rt.Handle(mux, "/admin/actors/visibility/read", "agents", "read", "actors-visibility-read", rt.actorsVisibilityRead)
+	rt.Handle(mux, "/admin/actors/visibility/save", "agents", "write", "actors-visibility-save", rt.actorsVisibilitySave)
+	rt.Handle(mux, "/admin/actors/password", "agents", "write", "actors-password", rt.actorsPassword)
+	rt.Handle(mux, "/admin/actors/namespaces", "agents", "read", "actors-namespaces", rt.actorsNamespaces)
+	rt.Handle(mux, "/admin/actors/admin-permissions/read", "agents", "read", "actors-admin-permissions-read", rt.actorsAdminPermissionsRead)
+	rt.Handle(mux, "/admin/actors/admin-permissions/save", "agents", "write", "actors-admin-permissions-save", rt.actorsAdminPermissionsSave)
+	rt.Handle(mux, "/admin/actors/delete", "agents", "write", "actors-delete", rt.actorsDelete)
+	rt.Handle(mux, "/admin/actors/searchable", "notes", "read", "actors-searchable", rt.actorsSearchable)
+	rt.Handle(mux, "/admin/virtual-agent-access/list", "agents", "read", "va-access-list", rt.vaAccessList)
+	rt.Handle(mux, "/admin/virtual-agent-access/grant", "agents", "write", "va-access-grant", rt.vaAccessGrant)
+	rt.Handle(mux, "/admin/virtual-agent-access/revoke", "agents", "write", "va-access-revoke", rt.vaAccessRevoke)
 }
 
 // fail is the catch block of the routes outside adminRoute: the error on

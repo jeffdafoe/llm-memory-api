@@ -24,3 +24,21 @@ func TestForgetAgent(t *testing.T) {
 		}
 	}
 }
+
+func TestForgetActor(t *testing.T) {
+	a := &SessionAuth{}
+	far := time.Now().Add(time.Hour)
+	put := func(token string, s cachedSession) {
+		a.cache.SetIfCurrent(a.cache.Generation(), token, s, far)
+	}
+	put("session-a", cachedSession{agent: "agent-a", actorID: 3, method: "session"})
+	put("key-a", cachedSession{agent: "agent-a", actorID: 3, method: "api-key"})
+	put("web-a", cachedSession{isUser: true, actorID: 3})
+	put("web-b", cachedSession{isUser: true, actorID: 4})
+	a.ForgetActor(3)
+	for token, want := range map[string]bool{"session-a": false, "key-a": false, "web-a": false, "web-b": true} {
+		if _, ok := a.cache.Get(token); ok != want {
+			t.Errorf("%s: cached %v", token, ok)
+		}
+	}
+}
