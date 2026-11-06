@@ -1,13 +1,16 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pashagolub/pgxmock/v6"
 
@@ -216,4 +219,102 @@ func expectErrorLog(mock pgxmock.PgxPoolIface) {
 		args[i] = pgxmock.AnyArg()
 	}
 	mock.ExpectExec("INSERT INTO error_log").WithArgs(args...).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+}
+
+// failingWriter is a client that has gone: every write fails.
+type failingWriter struct{ header http.Header }
+
+func (f *failingWriter) Header() http.Header       { return f.header }
+func (f *failingWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+func (f *failingWriter) WriteHeader(int)           {}
+
+func expectReindexRun(mock pgxmock.PgxPoolIface) {
+	mock.ExpectExec("DELETE FROM memory_chunks").WillReturnResult(pgxmock.NewResult("DELETE", 3))
+	mock.ExpectQuery("SELECT namespace, slug, content, title, metadata FROM documents").
+		WillReturnRows(pgxmock.NewRows([]string{"namespace", "slug", "content", "title", "metadata"}))
+}
+
+// A reindex whose answer cannot be written still runs, and once it has
+// finished another can start.
+func TestReindexRunsWhenTheAnswerFails(t *testing.T) {
+	h, mock := newContent(t)
+	grants(mock, 1, "notes", "write", "notes", "read")
+	expectReindexRun(mock)
+	h.ServeHTTP(&failingWriter{header: http.Header{}}, asUser(1, "/v1/admin/notes/reindex", `{}`))
+	testutil.WaitMet(t, mock)
+	waitStatus := func() string {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			rec := serve(h, asUser(1, "/v1/admin/notes/reindex-status", `{}`))
+			if !strings.Contains(rec.Body.String(), `"running":true`) || time.Now().After(deadline) {
+				return rec.Body.String()
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	if got := waitStatus(); got != `{"running":false,"current":0,"total":0,"chunks_created":0,"errors_count":0,"result":{"chunks_deleted":3,"docs_indexed":0,"chunks_created":0,"errors":[]}}` {
+		t.Fatalf("status %s", got)
+	}
+	expectReindexRun(mock)
+	rec := serve(h, asUser(1, "/v1/admin/notes/reindex", `{}`))
+	check(t, "second start", rec, 200, `{"started":true}`)
+	testutil.WaitMet(t, mock)
+}
+
+func TestEnrichMetadata(t *testing.T) {
+	cases := []struct {
+		raw, want string
+		fails     bool
+	}{
+		{`{"b":1,"a":2}`, `{"b":1,"a":2}`, false},
+		{``, ``, false},
+		{`null`, ``, false},
+		{`false`, ``, false},
+		{`""`, ``, false},
+		{`0`, ``, false},
+		{`"{\"x\":1}"`, `{"x":1}`, false},
+		{`"not json"`, ``, true},
+		{`7`, `7`, false},
+	}
+	for _, c := range cases {
+		var raw []byte
+		if c.raw != "" {
+			raw = []byte(c.raw)
+		}
+		got, err := enrichMetadata(raw)
+		if (err != nil) != c.fails || string(got) != c.want {
+			t.Errorf("%s: %s %v", c.raw, got, err)
+		}
+	}
+}
+
+// Participants of the wrong shape are one 400, logged as Node's thrown
+// errors were.
+func TestDiscussionCreateParticipantsShape(t *testing.T) {
+	for _, participants := range []string{`"agent-a"`, `{"a":1}`, `["agent-a",7]`} {
+		h, mock := newContent(t)
+		grants(mock, 1, "comms", "write")
+		expectErrorLog(mock)
+		rec := serve(h, asUser(1, "/v1/admin/discussions/create", `{"topic":"T","participants":`+participants+`}`))
+		check(t, participants, rec, 400, errorBody("BAD_REQUEST", "participants must be an array of strings"))
+		testutil.WaitMet(t, mock)
+	}
+}
+
+// A route keeps going after the client hangs up, as Node's did: the write
+// runs on the detached context.
+func TestWriteFinishesAfterDisconnect(t *testing.T) {
+	h, mock := newContent(t)
+	grants(mock, 1, "notes", "write")
+	mock.ExpectExec("DELETE FROM note_synchronization").WithArgs(jsutil.Number("5")).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	mock.ExpectExec("DELETE FROM note_synchronization").WithArgs(jsutil.Number("6")).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	// The first request loads the admin grants; the second, cancelled before
+	// it is served, finds them cached.
+	serve(h, asUser(1, "/v1/admin/notes/sync/delete", `{"id":5}`))
+	r := asUser(1, "/v1/admin/notes/sync/delete", `{"id":6}`)
+	ctx, cancel := context.WithCancel(r.Context())
+	cancel()
+	rec := serve(h, r.WithContext(ctx))
+	check(t, "cancelled", rec, 200, `{"ok":true}`)
+	testutil.WaitMet(t, mock)
 }

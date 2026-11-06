@@ -79,8 +79,7 @@ func (rt *ContentRoutes) sharesCreate(w http.ResponseWriter, r *http.Request) er
 		return apierr.New(http.StatusBadRequest, "Share-with-all cannot grant delete permission")
 	}
 
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	var existing []pgjson.Row
 	if shareWithAll {
 		existing, err = pgjson.Query(ctx, rt.DB, `SELECT id FROM note_permissions
@@ -146,8 +145,7 @@ func (rt *ContentRoutes) sharesRevoke(w http.ResponseWriter, r *http.Request) er
 	if err := rt.requireAccess(r, owner, permissions.Write); err != nil {
 		return err
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	share, found, err := pgjson.QueryOne(ctx, rt.DB,
 		"UPDATE note_permissions SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING *", id)
 	if err != nil {

@@ -478,8 +478,7 @@ func (rt *ContentRoutes) syncSave(w http.ResponseWriter, r *http.Request) error 
 		httpapi.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Actor not found")
 		return nil
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	row, _, err := pgjson.QueryOne(ctx, rt.DB, `
         INSERT INTO note_synchronization (actor_id, namespace, slug, local_path)
         VALUES ($1, $2, $3, $4)
@@ -501,8 +500,7 @@ func (rt *ContentRoutes) syncDelete(w http.ResponseWriter, r *http.Request) erro
 	if !f.Truthy("id") {
 		return httpapi.BadRequest(w, "Required field: id")
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if _, err := rt.DB.Exec(ctx, "DELETE FROM note_synchronization WHERE id = $1", pgbind.Value(f.Raw("id"))); err != nil {
 		return err
 	}

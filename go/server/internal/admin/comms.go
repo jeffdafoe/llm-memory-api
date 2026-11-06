@@ -204,7 +204,7 @@ func (rt *ContentRoutes) discussionsCreate(w http.ResponseWriter, r *http.Reques
 	if f.Truthy("participants") {
 		elems, isArray := f.Array("participants")
 		if !isArray {
-			return httpapi.NotString("participants")
+			return apierr.New(http.StatusBadRequest, "participants must be an array of strings")
 		}
 		seen := map[string]bool{}
 		for _, e := range elems {
@@ -426,8 +426,7 @@ func (rt *ContentRoutes) mailDelete(w http.ResponseWriter, r *http.Request) erro
 		sql += " AND (from_actor_id = ANY($2) OR to_actor_id = ANY($2))"
 	}
 	sql += " RETURNING id"
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	rows, err := pgjson.Query(ctx, rt.DB, sql, params...)
 	if err != nil {
 		return err
@@ -463,8 +462,7 @@ func (rt *ContentRoutes) chatDelete(w http.ResponseWriter, r *http.Request) erro
         ))`
 	}
 	sql += " RETURNING id"
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	rows, err := pgjson.Query(ctx, rt.DB, sql, params...)
 	if err != nil {
 		return err
@@ -524,8 +522,7 @@ func (rt *ContentRoutes) mailSend(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	row, _, err := pgjson.QueryOne(ctx, rt.DB,
 		"INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at",
 		toActor.ID, fromActor.ID, subject, body)

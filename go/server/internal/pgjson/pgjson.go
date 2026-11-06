@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -178,12 +180,8 @@ func Parse(oid uint32, text string) (json.RawMessage, error) {
 			return nil, err
 		}
 		return json.RawMessage(s), nil
-	case oidDate:
-		return dateJSON(text)
-	case oidTimestamp:
-		return timestampJSON(text, time.Local)
-	case oidTimestamptz:
-		return timestampJSON(text, nil)
+	case oidDate, oidTimestamp, oidTimestamptz:
+		return dateJSON(text), nil
 	}
 	if elem, ok := arrayElem(oid); ok {
 		return arrayJSON(text, elem)
@@ -252,54 +250,125 @@ func floatJSON(text string) (json.RawMessage, error) {
 	return json.RawMessage(jsutil.NumberString(f)), nil
 }
 
-// dateJSON is pg-types' date parser: the local midnight of that day.
-func dateJSON(text string) (json.RawMessage, error) {
-	if text == "infinity" || text == "-infinity" {
-		return json.RawMessage("null"), nil
+// postgres-date 1.0.7's patterns. DATE_TIME is not anchored at the start,
+// and `.*?` before the BC suffix skips the zone.
+var (
+	pgDateTime = regexp.MustCompile(`(\d{1,})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(\.\d{1,})?.*?( BC)?$`)
+	pgDate     = regexp.MustCompile(`^(\d{1,})-(\d{2})-(\d{2})( BC)?$`)
+	pgZone     = regexp.MustCompile(`([Z+-])(\d{2})?:?(\d{2})?:?(\d{2})?`)
+	pgInfinity = regexp.MustCompile(`^-?infinity$`)
+)
+
+// maxDateMS is the ECMAScript time value range (TimeClip).
+const maxDateMS = 8.64e15
+
+// dateJSON is postgres-date (pg-types' parser for date, timestamp and
+// timestamptz) written by JSON.stringify: a timestamp with a zone is read
+// as UTC with that offset, one without as local time, a date alone as the
+// local midnight. A BC year y is year 1 - y; a year from 0 to 99 is set
+// after the Date is built, as the multi-argument Date forms read it as
+// 19xx. Infinity, a value outside the Date range and text that is no date
+// are null (Number Infinity, Invalid Date, null).
+func dateJSON(text string) json.RawMessage {
+	ms, ok := postgresDate(text)
+	if !ok || math.IsNaN(ms) || math.IsInf(ms, 0) || math.Abs(ms) > maxDateMS {
+		return json.RawMessage("null")
 	}
-	t, err := time.Parse("2006-01-02", text)
-	if err != nil {
-		return jsonutil.Marshal(text)
-	}
-	return jsonutil.Marshal(jsutil.DateISO(jsutil.LocalDate(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local)))
+	out, _ := jsonutil.Marshal(jsutil.DateISO(time.UnixMilli(int64(ms))))
+	return out
 }
 
-// timestampJSON is postgres-date: a timestamptz with its offset, or a
-// timestamp read in loc. Infinity is a Date of Infinity, which
-// JSON.stringify writes as null.
-func timestampJSON(text string, loc *time.Location) (json.RawMessage, error) {
-	if text == "infinity" || text == "-infinity" {
-		return json.RawMessage("null"), nil
-	}
-	var t time.Time
-	var err error
-	if loc != nil {
-		// The wall-clock fields, then the local Date V8 makes of them.
-		t, err = time.Parse("2006-01-02 15:04:05.999999999", text)
-		if err == nil {
-			ms := int(math.Trunc(1000 * (float64(t.Nanosecond()/1000) / 1e6)))
-			t = jsutil.LocalDate(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), ms, loc)
+// postgresDate returns the Date's time value; ok false is a parse that gave
+// no Date at all.
+func postgresDate(text string) (float64, bool) {
+	if pgInfinity.MatchString(text) {
+		if text[0] == '-' {
+			return math.Inf(-1), true
 		}
-	} else {
-		t, err = parseTimestamptz(text)
+		return math.Inf(1), true
 	}
-	if err != nil {
-		return nil, err
+	m := pgDateTime.FindStringSubmatch(text)
+	if m == nil {
+		d := pgDate.FindStringSubmatch(text)
+		if d == nil {
+			return 0, false
+		}
+		year := atoi(d[1])
+		if d[4] != "" {
+			year = 1 - year
+		}
+		t := localDate(year, atoi(d[2]), atoi(d[3]), 0, 0, 0, 0)
+		return float64(t.UnixMilli()), true
 	}
-	return jsonutil.Marshal(jsutil.DateISO(t))
+	year := atoi(m[1])
+	if m[8] != "" {
+		year = 1 - year
+	}
+	month, day := atoi(m[2]), atoi(m[3])
+	hour, minute, second := atoi(m[4]), atoi(m[5]), atoi(m[6])
+	ms := 0
+	if m[7] != "" {
+		// 1000 * parseFloat(".086123"), which the Date truncates.
+		f, _ := jsutil.ParseFloat(m[7])
+		ms = int(math.Trunc(1000 * f))
+	}
+	offset, hasZone := zoneOffset(text)
+	if !hasZone {
+		return float64(localDate(year, month, day, hour, minute, second, ms).UnixMilli()), true
+	}
+	t := time.Date(year, time.Month(month), day, hour, minute, second, ms*int(time.Millisecond), time.UTC)
+	if year >= 0 && year < 100 {
+		// Date.UTC read the year as 19xx; setUTCFullYear(year) keeps the
+		// month, day and time it rolled over to.
+		t1 := time.Date(year+1900, time.Month(month), day, hour, minute, second, ms*int(time.Millisecond), time.UTC)
+		t = time.Date(year, t1.Month(), t1.Day(), t1.Hour(), t1.Minute(), t1.Second(), t1.Nanosecond(), time.UTC)
+	}
+	return float64(t.UnixMilli()) - offset, true
 }
 
-func parseTimestamptz(text string) (time.Time, error) {
-	for _, layout := range []string{
-		"2006-01-02 15:04:05.999999999Z07",
-		"2006-01-02 15:04:05.999999999Z07:00",
-		"2006-01-02 15:04:05.999999999Z07:00:00",
-	} {
-		if t, err := time.Parse(layout, text); err == nil {
-			return t, nil
-		}
+// localDate is new Date(year, month - 1, day, ...) in the process zone, with
+// the 0-99 fix-up postgres-date applies (setFullYear).
+func localDate(year, month, day, hour, minute, second, ms int) time.Time {
+	if year >= 0 && year < 100 {
+		t1 := jsutil.LocalDate(year+1900, time.Month(month), day, hour, minute, second, ms, time.Local).In(time.Local)
+		return jsutil.LocalDate(year, t1.Month(), t1.Day(), t1.Hour(), t1.Minute(), t1.Second(), t1.Nanosecond()/int(time.Millisecond), time.Local)
 	}
-	return time.Time{}, fmt.Errorf("timestamptz %q", text)
+	return jsutil.LocalDate(year, time.Month(month), day, hour, minute, second, ms, time.Local)
+}
+
+// zoneOffset is timeZoneOffset: the offset in milliseconds, or hasZone
+// false for a timestamp without one. A sign with no hours is NaN, as
+// parseInt(undefined) was.
+func zoneOffset(text string) (offset float64, hasZone bool) {
+	if strings.HasSuffix(text, "+00") {
+		return 0, true
+	}
+	parts := strings.Split(text, " ")
+	if len(parts) < 2 {
+		return 0, false
+	}
+	z := pgZone.FindStringSubmatch(parts[1])
+	if z == nil {
+		return 0, false
+	}
+	if z[1] == "Z" {
+		return 0, true
+	}
+	if z[2] == "" {
+		return math.NaN(), true
+	}
+	sign := 1.0
+	if z[1] == "-" {
+		sign = -1
+	}
+	seconds := float64(atoi(z[2])*3600 + atoi(z[3])*60 + atoi(z[4]))
+	return seconds * sign * 1000, true
+}
+
+// atoi is parseInt(s, 10) of a digit run; "" is 0 (parseInt(x || 0)).
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
 }
 
 // arrayJSON is postgres-array's parser with each element parsed as elem
