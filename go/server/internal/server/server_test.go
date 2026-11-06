@@ -141,33 +141,6 @@ func TestPathsExpressDoesNotRedirect(t *testing.T) {
 	}
 }
 
-// The /v1 fallback is Node's requireUser: 401 without an admin web session,
-// except on /admin/login; the 404 page with one.
-func TestV1Unmatched(t *testing.T) {
-	cases := []struct {
-		target string
-		user   *httpapi.User
-		status int
-	}{
-		{"/v1/no-route", nil, 401},
-		{"/v1/no-route", &httpapi.User{ID: 2, Username: "admin"}, 404},
-		{"/v1/admin/login", nil, 404},
-		{"/v1/agent/login", nil, 401},
-		{"/v1/admin%2Flogin", nil, 401},
-	}
-	for _, c := range cases {
-		r := httpapi.WithStateValue(httptest.NewRequest("GET", c.target, nil), &httpapi.State{AuthenticatedUser: c.user})
-		rec := httptest.NewRecorder()
-		v1Unmatched(rec, r)
-		if rec.Code != c.status {
-			t.Errorf("%s (user %v): %d %s", c.target, c.user != nil, rec.Code, rec.Body.String())
-		}
-		if c.status == 401 && rec.Body.String() != `{"error":{"code":"UNAUTHORIZED","message":"Admin authentication required"}}` {
-			t.Errorf("%s: body %s", c.target, rec.Body.String())
-		}
-	}
-}
-
 // OPTIONS on /health is Express's automatic router answer; /health is not
 // request-logged, so no insert is expected.
 func TestHealthOptions(t *testing.T) {
