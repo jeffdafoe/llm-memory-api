@@ -11,7 +11,7 @@ import (
 
 // The fixture's virtual agent: created by the admin, with no
 // virtual_agent_access rows, so agent-a and agent-b may not use it and mail
-// to it gets the unanswerable notice back. The ones agent-a may use are in
+// to it gets the unanswerable notice back. The ones va-user may use are in
 // fixture_va.go.
 const VirtualAgentName = "helper-va"
 
