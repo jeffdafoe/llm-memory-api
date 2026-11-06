@@ -3,7 +3,9 @@ package admin
 import (
 	"net/http"
 
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/discussion"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
@@ -11,14 +13,16 @@ import (
 )
 
 // ContentRoutes are the content, log and live-view admin routes: notes,
-// shares, sync mappings, the reindex, and (in later files) the comms views,
-// the logs, the dashboard and the funnel.
+// shares, sync mappings, the reindex, the comms views (discussions, mail,
+// chat), the logs, the dashboard and the funnel.
 type ContentRoutes struct {
 	*Common
-	Config     *config.Store
-	Notes      *notes.Service
-	Memory     *memory.Service
-	Namespaces *permissions.Namespaces
+	Config      *config.Store
+	Notes       *notes.Service
+	Memory      *memory.Service
+	Namespaces  *permissions.Namespaces
+	Discussions *discussion.Service
+	Chat        *chat.Service
 
 	reindex reindexState
 }
@@ -47,6 +51,22 @@ func (rt *ContentRoutes) Register(mux *httpapi.RawMux) {
 	rt.Handle(mux, "/admin/shares/shared-with-me", "notes", "read", "shares-shared-with-me", rt.sharesSharedWithMe)
 	rt.Handle(mux, "/admin/shares/documents", "notes", "read", "shares-documents", rt.sharesDocuments)
 	rt.Handle(mux, "/admin/shares/for-slug", "notes", "read", "shares-for-slug", rt.sharesForSlug)
+
+	rt.Handle(mux, "/admin/discussions", "comms", "read", "discussions-list", rt.discussionsList)
+	rt.Handle(mux, "/admin/discussions/detail", "comms", "read", "discussions-detail", rt.discussionsDetail)
+	rt.Handle(mux, "/admin/discussions/create", "comms", "write", "discussions-create", rt.discussionsCreate)
+	rt.Handle(mux, "/admin/discussions/send", "comms", "write", "discussions-send", rt.discussionsSend)
+	rt.Handle(mux, "/admin/discussions/conclude", "comms", "write", "discussions-conclude", rt.discussionsConclude)
+	rt.Handle(mux, "/admin/chat", "comms", "read", "chat-list", rt.chatList)
+	rt.Handle(mux, "/admin/mail", "comms", "read", "mail-list", rt.mailList)
+	rt.Handle(mux, "/admin/mail/delete", "comms", "delete", "mail-delete", rt.mailDelete)
+	rt.Handle(mux, "/admin/chat/delete", "comms", "delete", "chat-delete", rt.chatDelete)
+	rt.Handle(mux, "/admin/mail/send", "comms", "write", "mail-send", rt.mailSend)
+
+	rt.Handle(mux, "/admin/dashboard", "dashboard", "read", "dashboard", rt.dashboardSummary)
+	rt.Handle(mux, "/admin/api-log", "logs", "read", "api-log", rt.apiLog)
+	rt.Handle(mux, "/admin/error-log", "logs", "read", "error-log", rt.errorLog)
+	rt.Handle(mux, "/admin/funnel", "access", "read", "funnel", rt.funnel)
 }
 
 // caller is the admin user as Node's routes name it for namespace checks:
