@@ -61,11 +61,16 @@ func Credentials() map[string]string {
 		// template was built, and the key is revoked.
 		"agent-b-expired-session": fixedSecret("agent-b expired session"),
 		"agent-b-revoked-key":     fixedSecret("agent-b revoked key"),
+		// MCP bearer tokens as /oauth/token issues them (agent:HMAC).
+		"agent-a-mcp": auth.HMACToken(fixtureConfig["mcp_oauth_bearer_secret"], AgentAName),
+		"agent-b-mcp": auth.HMACToken(fixtureConfig["mcp_oauth_bearer_secret"], AgentBName),
 	}
 	// Each fixture virtual agent's API key, for /agent/tick as itself.
 	for _, va := range fixtureVirtualAgents {
 		creds[va.name+"-key"] = vaKey(va.name)
 	}
+	// The salem engine's key, for the /v1/sim routes (fixture_va_chat.go).
+	creds[engineName+"-key"] = vaKey(engineName)
 	return creds
 }
 

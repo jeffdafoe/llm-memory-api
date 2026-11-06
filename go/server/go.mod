@@ -5,6 +5,7 @@ go 1.26.0
 toolchain go1.27.3
 
 require (
+	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/pashagolub/pgxmock/v6 v6.0.0-beta2
 	github.com/pgvector/pgvector-go/pgx v0.4.1

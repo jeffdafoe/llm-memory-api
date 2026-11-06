@@ -88,6 +88,15 @@ type Step struct {
 	// server's database copy. The job's log lines are compared as the
 	// step's body, and its writes with the tables.
 	Job string
+	// MCPClient runs a real MCP SDK client against the server's /mcp
+	// (Target.RunMCPClient): the script is contract/mcpclient's JSON, after
+	// {{name}} expansion. What the client returned, one JSON line per
+	// operation, is compared as the step's body.
+	MCPClient string
+
+	// WS is a WebSocket step (ws.go): a raw upgrade request, or a read,
+	// ping or close on a connection an earlier step opened.
+	WS *WSStep
 }
 
 // Target is one server under test.
@@ -114,6 +123,9 @@ type Target struct {
 	// log lines. nil refuses those steps.
 	Exec   func(ctx context.Context, sql string) error
 	RunJob func(ctx context.Context, job string) (string, error)
+	// RunMCPClient runs an MCP client step against BaseURL + "/mcp" and
+	// returns its output lines; nil refuses those steps.
+	RunMCPClient func(ctx context.Context, script string) (string, error)
 	// Holds runs a query returning one boolean on the server's database,
 	// for an Until condition; nil when there is no database.
 	Holds func(ctx context.Context, sql string, args ...any) (bool, error)
@@ -206,6 +218,12 @@ func (r *Runner) runSide(ctx context.Context, sc Scenario, t *Target) (rawSide, 
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	defer client.CloseIdleConnections()
+	conns := map[string]*wsConn{}
+	defer func() {
+		for _, c := range conns {
+			c.conn.Close()
+		}
+	}()
 
 	for i, st := range sc.Steps {
 		if st.Settle {
@@ -232,6 +250,33 @@ func (r *Runner) runSide(ctx context.Context, sc Scenario, t *Target) (rawSide, 
 				return side, fmt.Errorf("%s: step %d job %s: %w", t.Name, i+1, st.Job, err)
 			}
 			side.steps = append(side.steps, rawStep{label: "job " + st.Job, header: http.Header{}, body: []byte(out)})
+			continue
+		}
+		if st.MCPClient != "" {
+			if t.RunMCPClient == nil {
+				return side, fmt.Errorf("%s: step %d: target cannot run MCP clients", t.Name, i+1)
+			}
+			script, err := expand(st.MCPClient, vars)
+			if err != nil {
+				return side, fmt.Errorf("%s: step %d MCP client: %w", t.Name, i+1, err)
+			}
+			out, err := t.RunMCPClient(ctx, script)
+			if err != nil {
+				return side, fmt.Errorf("%s: step %d MCP client: %w", t.Name, i+1, err)
+			}
+			label := st.Label
+			if label == "" {
+				label = "mcp client"
+			}
+			side.steps = append(side.steps, rawStep{label: label, header: http.Header{}, body: []byte(out)})
+			continue
+		}
+		if st.WS != nil {
+			step, err := r.wsStep(ctx, t, st, vars, conns)
+			if err != nil {
+				return side, fmt.Errorf("%s: step %d %s: %w", t.Name, i+1, wsLabel(st.WS), err)
+			}
+			side.steps = append(side.steps, step)
 			continue
 		}
 		step, err := r.request(ctx, client, t, st, vars)

@@ -38,7 +38,7 @@ const KINDS = [
     ['dream-mode', /SELECT agc\.dream_mode/],
     ['errored-scan', /WHERE agc\.virtual = TRUE AND ac\.status/],
     ['chat-history', /JOIN actors fa ON fa\.id = cmt\.from_actor_id\s+JOIN actors ta/],
-    ['chat-ack', /UPDATE chat_messages SET acked_at = NOW\(\) WHERE id = \$1 AND to_actor_id/],
+    ['chat-ack', /UPDATE chat_messages SET acked_at = NOW\(\) WHERE id = ANY\(\$1\) AND to_actor_id/],
 ];
 
 function kindOf(sql) {
@@ -241,7 +241,7 @@ function agentRow(over) {
 
 // A loadDirectChatHistory row, in its column order.
 function row(from, to, message, msAgo, over) {
-    return Object.assign({ from_agent: from, to_agent: to, message, sent_at: iso(msAgo), tool_calls: null, tool_call_id: null, tools_offered: null }, over || {});
+    return Object.assign({ from_agent: from, to_agent: to, message, sent_at: iso(msAgo), tool_calls: null, tool_call_id: null }, over || {});
 }
 
 const ANSWER = { result: { text: 'Hello there.', tool_calls: [], usage: { input_tokens: 120, output_tokens: 30 }, finish_reason: 'end_turn', truncated: false } };
@@ -457,8 +457,8 @@ async function main() {
 
     // handleDirectChat end to end. Each scenario runs its inputs in order on
     // a fresh module (the limiter and the scene cache start empty).
-    const companion = (message, over) => Object.assign({ agent: 'va', from: 'human', message, messageId: 501, opts: {} }, over || {});
-    const sim = (message, opts, over) => Object.assign({ agent: 'va', from: 'salem-engine', message, messageId: 601, opts: Object.assign({ toolsOffered: TOOLS, sceneId: SCENE, sceneStructure: 'Inn', conversationId: 'conv-1', simActorId: 'actor-9', simActorName: 'Elias' }, opts) }, over || {});
+    const companion = (message, over) => Object.assign({ agent: 'va', from: 'human', message, messageIds: [501], opts: {} }, over || {});
+    const sim = (message, opts, over) => Object.assign({ agent: 'va', from: 'salem-engine', message, messageIds: [601], opts: Object.assign({ toolsOffered: TOOLS, sceneId: SCENE, sceneStructure: 'Inn', conversationId: 'conv-1', simActorId: 'actor-9', simActorName: 'Elias' }, opts) }, over || {});
     const companionHistory = [row('human', 'va', 'Earlier question about wool prices.', 30 * HOUR), row('va', 'human', 'They rose.', 29 * HOUR), row('human', 'va', 'ok', 1000)];
     const simHistory = [
         row('salem-engine', 'va', 'You stand in the Inn.', 3 * HOUR),
@@ -479,7 +479,7 @@ async function main() {
         { name: 'companion wait retries', config: { virtual_agent_retry_backoff: '5' }, rows: sendRows({ 'chat-history': [[]] }), answers: [{ error: 'API error 503: busy', status: 503 }, ANSWER], inputs: [companion('hello', { opts: { ackReplyOnInsert: true } })] },
         { name: 'sim tool turn with learning on', unordered: true, config: { virtual_agent_learning_enabled: 'true' }, rows: sendRows({ 'chat-history': [[]] }), answers: [{ result: { text: 'I think the inn is quiet tonight and the fire is low, so I will tend it now.', tool_calls: [{ id: 'k1', name: 'done', input: {} }], usage: { input_tokens: 400, output_tokens: 20 }, finish_reason: 'tool_use', truncated: false } }], inputs: [sim('A long and quiet evening at the inn.', {})] },
         { name: 'companion rag fails', rows: sendRows({ 'chat-history': [[]] }), answers: [ANSWER], searchError: 'search down', inputs: [companion('hi there')] },
-        { name: 'companion personality and empty reply', rows: sendRows({ 'load-agent': [agentRow({ personality: 'Terse.' })], 'chat-history': [[]] }), answers: [{ result: { text: null, usage: { input_tokens: 5, output_tokens: 0 } } }], inputs: [companion('hello', { messageId: 0 })] },
+        { name: 'companion personality and empty reply', rows: sendRows({ 'load-agent': [agentRow({ personality: 'Terse.' })], 'chat-history': [[]] }), answers: [{ result: { text: null, usage: { input_tokens: 5, output_tokens: 0 } } }], inputs: [companion('hello', { messageIds: [] })] },
         { name: 'companion learning', unordered: true, config: { virtual_agent_learning_enabled: 'true' }, rows: sendRows({ 'chat-history': [[]], 'usage-insert': [[{ id: 41 }], [{ id: 42 }]] }),
           answers: [{ result: { text: 'The market is busy with wool and grain traders this week.', tool_calls: [], usage: { input_tokens: 120, output_tokens: 30 }, finish_reason: 'end_turn', truncated: false } }, { result: { text: '- Market busy', tool_calls: [], usage: { input_tokens: 50, output_tokens: 5 }, finish_reason: 'end_turn', truncated: false } }],
           inputs: [companion('Tell me about the market this week, in some detail please.')] },
@@ -488,9 +488,9 @@ async function main() {
         { name: 'sim co-located cache across follow-up', rows: sendRows({ 'chat-history': [simHistory.slice().reverse(), simHistory.slice().reverse().concat([]), []] }), answers: [TOOL_ANSWER], notesIn: people,
           inputs: [
               sim('A perception.', { ephemeralContext: 'huddle: with Anne Hale' }),
-              sim(undefined, { isToolResultCall: true }),
+              sim(undefined, { isToolResultCall: true }, { messageIds: [601, 602, 603] }),
               sim('Alone now.', {}),
-              sim(undefined, { isToolResultCall: true }),
+              sim(undefined, { isToolResultCall: true }, { messageIds: [601, 602, 603] }),
           ] },
         { name: 'sim scene scoped history', rows: sendRows({ 'chat-history': [[]] }), answers: [TOOL_ANSWER],
           inputs: [sim('Fresh scene.', { historyScope: 'scene' }), sim('No scene.', { historyScope: 'scene', sceneId: null })] },
@@ -509,7 +509,7 @@ async function main() {
         { name: 'retry exhausted', config: { virtual_agent_retry_backoff: '1,2' }, rows: sendRows({ 'chat-history': [[]] }), answers: [{ error: 'down', status: 503 }], inputs: [companion('hello')] },
         { name: 'rate limited', config: { virtual_agent_rate_limit: '1' }, rows: sendRows({ 'chat-history': [[]] }), answers: [ANSWER], inputs: [companion('one'), companion('two')] },
         { name: 'scene continuation passes the limit', config: { virtual_agent_rate_limit: '1' }, rows: sendRows({ 'chat-history': [[]] }), answers: [TOOL_ANSWER],
-          inputs: [sim('one', {}), sim(undefined, { isToolResultCall: true }), sim('other scene', { sceneId: SCENE2 }), companion('human', { opts: { sceneId: SCENE } })] },
+          inputs: [sim('one', {}), sim(undefined, { isToolResultCall: true }, { messageIds: [601, 602, 603] }), sim('other scene', { sceneId: SCENE2 }), companion('human', { opts: { sceneId: SCENE } })] },
         { name: 'over budget', rows: sendRows({ 'cost-sums': [{ cost_today: '1.5', cost_monthly: '2' }], 'chat-history': [[]] }), inputs: [sim('Tick.', { ackReplyOnInsert: true })] },
         { name: 'rate limit chat fails', config: { virtual_agent_rate_limit: '0' }, rows: sendRows({ 'chat-history': [[]] }), failNth: { 'chat-send': ['chat send failed', 'chat send failed'] }, inputs: [companion('x')] },
         { name: 'missing config notify', rows: { 'load-agent': [agentRow({ api_key: '', model: null })] }, failNth: { 'chat-send': ['chat send failed'] }, inputs: [companion('x', { opts: { notifyUnanswerable: true } })] },
@@ -538,7 +538,7 @@ async function main() {
             const outcomes = [];
             for (const input of sc.inputs) {
                 try {
-                    const reply = await m.handleDirectChat(input.agent, input.from, input.message, input.messageId, input.opts);
+                    const reply = await m.handleDirectChat(input.agent, input.from, input.message, input.messageIds, input.opts);
                     outcomes.push({ ok: reply === null || reply === undefined ? null : JSON.stringify(reply) });
                 } catch (err) {
                     outcomes.push({ error: errInfo(err) });

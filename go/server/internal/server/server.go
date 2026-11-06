@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -19,12 +20,14 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mail"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mcp"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/oauth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/registration"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/simapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
@@ -38,6 +41,7 @@ type Services struct {
 	Actors      *actors.Cache
 	Log         *logger.Logger
 	Events      events.Broadcaster
+	Hub         *events.Hub
 	Router      *httpapi.Router
 	Sessions    *auth.Sessions
 	APIKeys     *auth.APIKeys
@@ -55,6 +59,7 @@ type Services struct {
 	Providers   *providers.Providers
 	Agents      *virtualagent.Service
 	Visibility  *visibility.Visibility
+	MCP         *mcp.Server
 }
 
 // NewServices wires the shared services over one database and config store.
@@ -63,7 +68,10 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	actorCache := actors.NewCache(conn)
 	log := logger.New(conn, actorCache, logDir)
 	recorder := &syserrors.Recorder{DB: conn, Actors: actorCache, Errorf: log.Errorf}
-	bc := events.Broadcaster(events.Nop{})
+	// The token check needs the session cache built below; it is set once
+	// the services exist.
+	hub := events.NewHub(nil, log.Errorf)
+	bc := events.Broadcaster(hub)
 	sessions := &auth.Sessions{DB: conn}
 	keys := &auth.APIKeys{DB: conn, Warnf: func(format string, args ...any) { log.Errorf(format, args...) }}
 	mem := &memory.Service{DB: conn, Config: store, Embedder: &memory.OpenAI{}, Errors: recorder}
@@ -95,12 +103,14 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	vaService.Chat = chatService
 	discussions := &discussion.Service{DB: conn, Config: store, Actors: actorCache, Log: log, Notifier: notifier}
 	vaService.Discussions = discussions
-	return &Services{
+	namespaces := &permissions.Namespaces{DB: conn}
+	s := &Services{
 		DB:       conn,
 		Config:   store,
 		Actors:   actorCache,
 		Log:      log,
 		Events:   bc,
+		Hub:      hub,
 		Router:   &httpapi.Router{Log: log},
 		Sessions: sessions,
 		APIKeys:  keys,
@@ -110,7 +120,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 			Errorf:   log.Errorf,
 		},
 		MCPAuth:     auth.NewMCPAuth(conn, store, actorCache, keys, bc),
-		Namespaces:  &permissions.Namespaces{DB: conn},
+		Namespaces:  namespaces,
 		Admin:       admin,
 		Errors:      recorder,
 		Memory:      mem,
@@ -122,6 +132,33 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Providers:   llm,
 		Agents:      vaService,
 		Visibility:  &visibility.Visibility{DB: conn, Admin: admin},
+		MCP: &mcp.Server{
+			DB: conn, Config: store, Log: log, Events: bc, Namespaces: namespaces,
+			Shares: &permissions.NoteShares{DB: conn}, Notes: notesService, Memory: mem,
+		},
+	}
+	hub.Validate = adminTokenValidator(s.SessionAuth, sessions, log.Errorf)
+	return s
+}
+
+// adminTokenValidator is events.js's validateAdminToken: the middleware's
+// cached admin user for the token, else a web session looked up (and slid)
+// as validateSessionToken does. A lookup error is written to stderr and
+// refuses the token.
+func adminTokenValidator(cache *auth.SessionAuth, sessions *auth.Sessions, errorf func(string, ...any)) events.TokenValidator {
+	return func(ctx context.Context, token string) (string, bool) {
+		if user, ok := cache.CachedUser(token); ok {
+			return user.Username, true
+		}
+		row, err := sessions.Validate(ctx, token, auth.SessionKindWeb)
+		if err != nil {
+			errorf("WebSocket auth error: %s", err)
+			return "", false
+		}
+		if row == nil {
+			return "", false
+		}
+		return row.Name, true
 	}
 }
 
@@ -155,6 +192,10 @@ func Handler(s *Services) http.Handler {
 		Common: adminCommon, Config: s.Config, Sessions: s.Sessions, SessionAuth: s.SessionAuth,
 		Providers: s.Providers, Namespaces: s.Namespaces,
 	}).Register(adminMux)
+	(&admin.ContentRoutes{
+		Common: adminCommon, Config: s.Config, Notes: s.Notes, Memory: s.Memory, Namespaces: s.Namespaces,
+		Discussions: s.Discussions, Chat: s.Chat,
+	}).Register(adminMux)
 
 	// /v1: every route behind the session middleware and the last_seen
 	// heartbeat, matched on the raw path below /v1. A path no route has goes
@@ -170,11 +211,23 @@ func Handler(s *Services) http.Handler {
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
 		Namespaces: s.Namespaces, Visibility: s.Visibility, Agents: s.Agents,
 	}).Register(v1)
-	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, v1))
+	// routes/sim.js is mounted after the routes above in Node; its /sim gate
+	// sits in front of the mux because it applies to every method and
+	// path under /sim (simapi.Routes.Mount).
+	simRoutes := &simapi.Routes{
+		Service: &simapi.Service{DB: s.DB, Log: s.Log, Notes: s.Notes, Agents: s.Agents, Trust: s.Admin},
+		Router:  s.Router,
+		Admin:   s.Admin,
+	}
+	v1Chain := s.SessionAuth.Middleware("/v1", auth.Heartbeat(s.DB, simRoutes.Mount(v1)))
 	// routes/auth.js is mounted on /v1 before the session middleware, so
 	// /v1/auth/verify needs no Authorization header; its other methods go
 	// on to the middleware.
 	authMux := (&admin.Verify{Sessions: s.Sessions, Admin: s.Admin, Log: s.Log}).Mux(v1Chain)
+
+	// /mcp: HEAD is protocol discovery with no auth; every other method goes
+	// through the MCP bearer check to the MCP handler.
+	mcpChain := s.MCPAuth.Middleware(s.MCP)
 
 	// Top-level routes outside /v1, with no auth: OAuth (mounted before /mcp
 	// and /v1 in Node) and registration (after them; no path overlaps).
@@ -200,6 +253,10 @@ func Handler(s *Services) http.Handler {
 			httpapi.WriteOptions(w, "GET, HEAD")
 		case p == admin.VerifyPath:
 			authMux.ServeHTTP(w, r)
+		case p == "/mcp" && r.Method == http.MethodHead:
+			mcp.ServeHEAD(w)
+		case p == "/mcp":
+			mcpChain.ServeHTTP(w, r)
 		case p == "/v1" || strings.HasPrefix(p, "/v1/"):
 			v1Chain.ServeHTTP(w, r)
 		case top.Handles(p):
@@ -210,5 +267,14 @@ func Handler(s *Services) http.Handler {
 	})
 
 	requestLog := &httpapi.RequestLog{DB: s.DB}
-	return httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))
+	chain := httpapi.Recover(httpapi.WithState(httpapi.ParseJSONBody(requestLog.Middleware(httpapi.Recover(root)))))
+	// server.js has an 'upgrade' listener, so Node hands every upgrade
+	// request to it before Express: none is parsed, logged or routed.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if events.IsUpgrade(r) {
+			s.Hub.ServeUpgrade(w, r)
+			return
+		}
+		chain.ServeHTTP(w, r)
+	})
 }

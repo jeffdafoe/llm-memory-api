@@ -19,7 +19,11 @@ var (
 	// renders timestamp / timestamptz through to_jsonb or ::text. A date with
 	// no time part is left alone: it is usually data, not a clock reading.
 	timestampRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?`)
-	uuidRe      = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+	// A Date as String(date) writes it (Date.prototype.toString), which the
+	// MCP tools print in their texts: "Fri Nov 06 2026 18:21:15 GMT+0000
+	// (Coordinated Universal Time)".
+	dateStringRe = regexp.MustCompile(`(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{2} -?\d{4} \d{2}:\d{2}:\d{2} GMT[+-]\d{4} \([^()]*\)`)
+	uuidRe       = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 	// A run of token characters. Leftmost-greedy matching of a character
 	// class finds maximal runs, so a match never starts or ends inside a
 	// longer run.
@@ -121,6 +125,7 @@ func (n *Normalizer) String(s string) string {
 	for _, o := range n.origins {
 		s = strings.ReplaceAll(s, o, OriginMark)
 	}
+	s = dateStringRe.ReplaceAllString(s, TimestampMark)
 	s = timestampRe.ReplaceAllString(s, TimestampMark)
 	s = uuidRe.ReplaceAllStringFunc(s, n.random)
 	s = tokenRunRe.ReplaceAllStringFunc(s, func(run string) string {

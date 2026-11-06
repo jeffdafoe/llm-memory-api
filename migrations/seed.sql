@@ -421,6 +421,7 @@ INSERT INTO config (key, value, description) VALUES
     ('search_min_similarity', '0', 'Minimum composite similarity for search results; hits scoring below are dropped instead of padding the top-k. 0 = off. Measured: noise <= ~0.25, legit fuzzy recalls >= ~0.37; 0.3 recommended.'),
     ('search_pool_multiplier', '3', 'Candidate pool multiplier for search. Fetches N times more results from pgvector, applies all boosts, then trims to requested limit. Higher = better recall, slightly slower.'),
     ('signup_funnel_since', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), 'When per-account first-connection / first-tool-call tracking began (MEM-150). Accounts created earlier never get first_* stamps, since their true first use is unknown. Do not edit.'),
+    ('sim_chat_retention_days', '14', 'Days to retain salem chat (texts sent by or delivered to salem-engine) before the cleanup job hard-deletes it. 0 = off.'),
     ('sync_exclude_slugs', 'work-log,active-work', 'Comma-separated list of slug segments to exclude from note directory sync. Matches against the last segment (filename part) of each slug.'),
     ('va_call_log_retention_days', '5', 'Days to retain virtual_agent_calls rows before hard-deleting'),
     ('virtual_agent_chat_history_hours', '72', 'Hours of direct chat history to include as context for virtual agent responses'),

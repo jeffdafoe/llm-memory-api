@@ -7,16 +7,15 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 )
 
-// chatRow is one row of loadDirectChatHistory, oldest first. ToolCalls and
-// ToolsOffered are the jsonb text (nil for NULL).
+// chatRow is one row of loadDirectChatHistory, oldest first. ToolCalls is
+// the jsonb text (nil for NULL).
 type chatRow struct {
-	FromAgent    string
-	ToAgent      string
-	Message      *string
-	SentAt       *time.Time
-	ToolCalls    []byte
-	ToolCallID   *string
-	ToolsOffered []byte
+	FromAgent  string
+	ToAgent    string
+	Message    *string
+	SentAt     *time.Time
+	ToolCalls  []byte
+	ToolCallID *string
 }
 
 // message is row.message || ”.

@@ -86,6 +86,17 @@ func (a *SessionAuth) ForgetActor(actorID int) {
 	})
 }
 
+// CachedUser is the admin user a token is cached for, without a database
+// lookup: the WebSocket upgrade reads the middleware's cache first, as
+// events.js read authMiddleware.sessionCache. An agent entry is not a user.
+func (a *SessionAuth) CachedUser(token string) (httpapi.User, bool) {
+	entry, ok := a.cache.Get(token)
+	if !ok || !entry.isUser {
+		return httpapi.User{}, false
+	}
+	return entry.user, true
+}
+
 func earlier(a, b time.Time) time.Time {
 	if a.Before(b) {
 		return a

@@ -19,6 +19,11 @@ var ComparedHeaders = []string{
 	"location",
 	"allow",
 	"set-cookie",
+	// MCP: HEAD's protocol version, the session id a stateless server never
+	// sends, and the SSE stream headers clients read.
+	"mcp-protocol-version",
+	"mcp-session-id",
+	"x-accel-buffering",
 }
 
 // Header is one compared response header with every value it had, already

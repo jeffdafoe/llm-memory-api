@@ -281,7 +281,7 @@ var kinds = []struct {
 	{"mail-ack", regexp.MustCompile(`UPDATE mail SET acked_at = NOW\(\)`)},
 	// Direct chat (chat_golden_test.go).
 	{"chat-history", regexp.MustCompile(`JOIN actors fa ON fa\.id = cmt\.from_actor_id\s+JOIN actors ta`)},
-	{"chat-ack", regexp.MustCompile(`UPDATE chat_messages SET acked_at = NOW\(\) WHERE id = \$1 AND to_actor_id`)},
+	{"chat-ack", regexp.MustCompile(`UPDATE chat_messages SET acked_at = NOW\(\) WHERE id = ANY\(\$1\) AND to_actor_id`)},
 	// Discussions (discussion_golden_test.go).
 	{"discussion-load", regexp.MustCompile(`FROM discussions WHERE id = \$1`)},
 	{"participants-load", regexp.MustCompile(`FROM discussion_participants dp`)},
@@ -289,6 +289,17 @@ var kinds = []struct {
 	{"vote-question", regexp.MustCompile(`SELECT question FROM discussion_votes`)},
 	{"ballot-check", regexp.MustCompile(`SELECT 1 FROM discussion_ballots`)},
 	{"ballot-insert", regexp.MustCompile(`INSERT INTO discussion_ballots`)},
+}
+
+// pgArray is an array as node-postgres's prepareValue writes it: every
+// element double-quoted, with backslash and double quote escaped.
+func pgArray(elems []string) string {
+	quoted := make([]string, len(elems))
+	for i, e := range elems {
+		e = strings.ReplaceAll(e, `\`, `\\`)
+		quoted[i] = `"` + strings.ReplaceAll(e, `"`, `\"`) + `"`
+	}
+	return "{" + strings.Join(quoted, ",") + "}"
 }
 
 // paramText is a Go query argument as the text Postgres receives, to
@@ -308,6 +319,17 @@ func paramText(t *testing.T, v any) *string {
 		return s(strconv.FormatInt(x, 10))
 	case bool:
 		return s(strconv.FormatBool(x))
+	case []int:
+		elems := make([]string, len(x))
+		for i, n := range x {
+			elems[i] = strconv.Itoa(n)
+		}
+		return s(pgArray(elems))
+	case []string:
+		if x == nil {
+			return nil
+		}
+		return s(pgArray(x))
 	}
 	t.Errorf("unexpected query argument %T %v", v, v)
 	return s(fmt.Sprint(v))

@@ -89,6 +89,9 @@ const BASE = {
     search_decay_halflife_reflective: '180',
     va_call_log_retention_days: '5',
     conversation_retention_days: '30',
+    // Off unless a scenario turns it on, so the older scenarios script no
+    // sim chat statements.
+    sim_chat_retention_days: '0',
 };
 const ZERO_HALF_LIVES = {
     search_decay_halflife_task: '0', search_decay_halflife_learning: '0', search_decay_halflife_note: '0',
@@ -106,11 +109,15 @@ const chunks = (n = 1) => ({ match: 'DELETE FROM memory_chunks', rowCount: n });
 const purge = (n) => ({ match: 'DELETE FROM virtual_agent_calls', columns: ['id'], rows: Array.from({ length: n }, (_, i) => [i + 1]) });
 const stage1 = (rows) => ({ match: "SET deleted_at = NOW()\n         WHERE kind = 'conversation'", columns: ['namespace', 'slug', 'content_length'], rows });
 const stage2 = (rows) => ({ match: "SET content = ''", columns: ['namespace', 'slug'], rows });
+const engine = (rows) => ({ match: 'SELECT id FROM actors WHERE name = $1', columns: ['id'], rows });
+const simPurge = (n) => ({ match: 'DELETE FROM chat_message_texts WHERE id IN', rowCount: n });
+// Only the sim chat task on.
+const SIM_ONLY = { cleanup_enabled: 'false', va_call_log_retention_days: '0', conversation_retention_days: '', sim_chat_retention_days: '14' };
 
 const scenarios = [
     {
         name: 'full pass',
-        config: {},
+        config: { sim_chat_retention_days: '14' },
         script: [
             select([
                 [11, 'agent-a', 'notes/old', 'note', null, '2025-01-01T00:00:00.123456Z', '2025-01-02T03:04:05.000Z', null],
@@ -122,6 +129,7 @@ const scenarios = [
             stage1([['agent-a', 'conversations/s1', 500], ['agent-b', 'conversations/s2', null], ['agent-a', 'conversations/s3', 70]]),
             chunks(), chunks(), chunks(), usage, usage,
             stage2([['agent-a', 'conversations/old']]), chunks(0),
+            engine([[46]]), simPurge(2),
         ],
     },
     { name: 'everything off', config: { cleanup_enabled: 'false', va_call_log_retention_days: '0', conversation_retention_days: '' }, script: [] },
@@ -149,6 +157,13 @@ const scenarios = [
     },
     { name: 'purge fails', config: { cleanup_enabled: 'false', conversation_retention_days: '' }, script: [{ match: 'DELETE FROM virtual_agent_calls', error: 'interval out of range' }] },
     { name: 'retention stage 1 fails', config: { cleanup_enabled: 'false', va_call_log_retention_days: '0' }, script: [{ match: "SET deleted_at = NOW()\n         WHERE kind", error: 'relation "documents" does not exist' }] },
+    { name: 'sim chat one batch', config: SIM_ONLY, script: [engine([[46]]), simPurge(7)] },
+    { name: 'sim chat several batches', config: SIM_ONLY, script: [engine([[46]]), simPurge(5000), simPurge(5000), simPurge(0)] },
+    { name: 'sim chat nothing old', config: SIM_ONLY, script: [engine([[46]]), simPurge(0)] },
+    { name: 'sim chat no engine actor', config: SIM_ONLY, script: [engine([])] },
+    { name: 'sim chat engine lookup fails', config: SIM_ONLY, script: [{ match: 'SELECT id FROM actors WHERE name = $1', error: 'connection terminated' }] },
+    { name: 'sim chat purge fails', config: SIM_ONLY, script: [engine([[46]]), simPurge(5000), { match: 'DELETE FROM chat_message_texts WHERE id IN', error: 'interval out of range' }] },
+    { name: 'sim chat missing key', config: { ...SIM_ONLY, sim_chat_retention_days: undefined }, script: [] },
     { name: 'retention only tombstones', config: { cleanup_enabled: 'false', va_call_log_retention_days: '0', conversation_retention_days: '0' }, script: [stage1([]), stage2([['a', 'conversations/x'], ['b', 'conversations/y']]), chunks(), chunks()] },
 ];
 
@@ -197,6 +212,16 @@ for (const [purgeDays, retentionDays] of numbers) {
         name: `numbers purge ${JSON.stringify(purgeDays)} retention ${JSON.stringify(retentionDays)}`,
         config: { cleanup_enabled: 'false', va_call_log_retention_days: purgeDays, conversation_retention_days: retentionDays },
         script: s,
+    });
+}
+
+// sim_chat_retention_days is parseInt(x) || 0, on above 0.
+for (const days of ['abc', '-3', ' 7days', '1e3', '0x10', '3.9', '', '99999999999999999999999']) {
+    const on = Number.isFinite(parseInt(days)) && parseInt(days) > 0;
+    scenarios.push({
+        name: `sim chat days ${JSON.stringify(days)}`,
+        config: { ...SIM_ONLY, sim_chat_retention_days: days },
+        script: on ? [engine([[46]]), simPurge(1)] : [],
     });
 }
 

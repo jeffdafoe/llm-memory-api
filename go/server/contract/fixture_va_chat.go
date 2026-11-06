@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 )
 
 // fixtureImpressions is va-openrouter's note on Anne Hale, whom the sim
@@ -29,6 +31,18 @@ func applyVAChatFixture(ctx context.Context, tx pgx.Tx, adminID int, agents map[
 	}
 	if _, err := tx.Exec(ctx, "INSERT INTO virtual_agent_access (virtual_agent_id, grantee_actor_id) VALUES ($1, $2)", vaID, engineID); err != nil {
 		return fmt.Errorf("engine access: %w", err)
+	}
+	// Its API key, as the engine authenticates for the /v1/sim routes.
+	plain := vaKey(engineName)
+	salt := fixedSalt(engineName + " api key")
+	keyHash, err := auth.Hash(plain, salt)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		"INSERT INTO agent_api_keys (actor_id, key_hash, key_salt, key_lookup_hash, label) VALUES ($1, $2, $3, $4, 'contract')",
+		engineID, keyHash, salt, auth.TokenLookupHash(plain)); err != nil {
+		return fmt.Errorf("engine api key: %w", err)
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO documents (namespace, slug, title, content, kind, created_by_actor_id, created_at, updated_at)
