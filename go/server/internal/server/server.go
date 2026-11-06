@@ -185,6 +185,10 @@ func Handler(s *Services) http.Handler {
 		Common: adminCommon, Config: s.Config, Sessions: s.Sessions, SessionAuth: s.SessionAuth,
 		Providers: s.Providers,
 	}).Register(adminMux)
+	(&admin.ContentRoutes{
+		Common: adminCommon, Config: s.Config, Notes: s.Notes, Memory: s.Memory, Namespaces: s.Namespaces,
+		Discussions: s.Discussions, Chat: s.Chat,
+	}).Register(adminMux)
 
 	// /v1: every route behind the session middleware and the last_seen
 	// heartbeat, matched on the raw path below /v1. A path no route has goes
