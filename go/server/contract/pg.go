@@ -47,6 +47,13 @@ var tableOrder = map[string]string{
 	// The fixture's sessions share one created_at; an actor's two API
 	// sessions differ in expiry.
 	"sessions": "created_at, actor_id, kind, expires_at",
+	// Chat texts by content, then id: when a route starts two message
+	// chains without awaiting either (a discussion conclude), which one
+	// Node inserts first is a race between commits, so those cases name the
+	// ids volatile and the rows still pair by text. The deliveries are
+	// ordered by recipient and linked text after the snapshot
+	// (linkChatDeliveries).
+	"chat_message_texts": "message, id",
 }
 
 // Cluster is the Postgres server the harness runs on, reached as a superuser

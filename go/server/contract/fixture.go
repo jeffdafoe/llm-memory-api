@@ -205,6 +205,9 @@ func applyFixture(ctx context.Context, conn *pgx.Conn) error {
 	if err := applyChatFixture(ctx, tx, adminID, agents); err != nil {
 		return err
 	}
+	if err := applyDiscussionFixture(ctx, tx, adminID, agents); err != nil {
+		return err
+	}
 	if err := applyOAuthFixture(ctx, tx, agents); err != nil {
 		return err
 	}

@@ -145,21 +145,12 @@ func (n *Notifier) NotifySystem(ctx context.Context, payload any) (*Notified, er
 	if err != nil {
 		return nil, err
 	}
-	var textID int
-	var sentAt time.Time
-	if err := n.DB.QueryRow(ctx,
-		"INSERT INTO chat_message_texts (message, from_actor_id, discussion_id, sent_at) VALUES ($1, $2, $3, NOW()) RETURNING id, sent_at",
-		message, systemActor.ID, nil).Scan(&textID, &sentAt); err != nil {
-		return nil, err
-	}
-	var id int
-	if err := n.DB.QueryRow(ctx,
-		"INSERT INTO chat_messages (message_text_id, to_actor_id) VALUES ($1, $2) RETURNING id",
-		textID, systemActor.ID).Scan(&id); err != nil {
+	sent, err := n.insert(ctx, message, systemActor.ID, nil, systemActor.ID)
+	if err != nil {
 		return nil, err
 	}
 	db.Background(func(ctx context.Context) {
-		n.Handler.HandleMessage(ctx, id, "system", &message, nil)
+		n.Handler.HandleMessage(ctx, sent.ID, "system", &message, nil)
 	})
-	return &Notified{ID: id, SentAt: sentAt}, nil
+	return sent, nil
 }
