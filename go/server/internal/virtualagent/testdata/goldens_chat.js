@@ -48,18 +48,31 @@ function kindOf(sql) {
     throw new Error('unclassified query: ' + sql);
 }
 
-stub('db.js', {
-    async query(sql, params) {
-        const kind = kindOf(sql);
-        rec.queries.push({ kind, params: (params || []).map(p => { const v = prepareValue(p); return v === undefined ? null : v; }) });
-        const fail = (scenario.fail || {})[kind];
-        if (fail) throw new Error(fail);
+// record logs one query (or one chat send, kind "chat-send"), fails it as
+// the scenario says (failNth: the nth call of a kind; null passes), and
+// answers from the scenario's rows.
+function record(kind, params) {
+    rec.queries.push({ kind, params: (params || []).map(p => { const v = prepareValue(p); return v === undefined ? null : v; }) });
+    const n = (rec.nth[kind] = (rec.nth[kind] || 0) + 1);
+    const nth = (scenario.failNth || {})[kind] || [];
+    if (n <= nth.length && nth[n - 1] !== null) throw new Error(nth[n - 1]);
+    const fail = (scenario.fail || {})[kind];
+    if (fail) throw new Error(fail);
+    return answerRows(kind);
+}
+
+function answerRows(kind) {
         const rows = (scenario.rows || {})[kind];
         if (Array.isArray(rows) && rows.length > 0 && Array.isArray(rows[0])) {
             const n = (rec.counts[kind] = (rec.counts[kind] || 0) + 1);
             return { rows: JSON.parse(JSON.stringify(rows[Math.min(n, rows.length) - 1])) };
         }
         return { rows: JSON.parse(JSON.stringify(rows || [])) };
+}
+
+stub('db.js', {
+    async query(sql, params) {
+        return record(kindOf(sql), params);
     },
 });
 
@@ -76,7 +89,8 @@ stub('services/logger.js', {
     log(subsystem, action, details) { rec.logs.push({ subsystem, action, details: JSON.stringify(details) }); },
     // The stack trace (detail) is not compared.
     logError(subsystem, action, opts) {
-        rec.errors.push({ subsystem, action, agent: opts.agent || '', context: opts.context || '', message: opts.message, status_code: opts.statusCode || 0 });
+        const { agent, context, contextId, message, statusCode } = opts;
+        rec.errors.push({ subsystem, action, details: JSON.stringify({ agent, context, contextId, message, statusCode }) });
     },
 });
 stub('services/events.js', { broadcast(event, data) { rec.events.push({ event, data: JSON.stringify(data) }); } });
@@ -94,36 +108,37 @@ stub('services/documents.js', {
         rec.notes.push({ namespace, title, content, slug: slug.replace(/-[0-9a-z]{0,4}$/, '-XXXX'), created_by: createdBy });
         return { id: 1 };
     },
+    // A scenario's notes are {slug: content}; any other slug is not found.
     async readNote(namespace, slug) {
         rec.reads.push({ namespace, slug });
-        const v = (scenario.read_notes || {})[namespace + '/' + slug];
-        if (v === undefined) return null;
-        if (v && v.throw) throw new Error(v.throw);
-        return { content: v };
+        const notes = scenario.notesIn || {};
+        if (!(slug in notes)) {
+            throw Object.assign(new Error(`Note not found: ${slug}`), { statusCode: 404 });
+        }
+        return { content: notes[slug] };
     },
 });
 stub('services/memory.js', {
-    async searchMemory(query, agentName, limit) {
-        rec.searches.push({ query, agent: agentName, limit });
-        if (scenario.rag_fail) throw new Error(scenario.rag_fail);
-        return JSON.parse(JSON.stringify(scenario.rag || { results: [] }));
+    async searchMemory(query, namespace, limit) {
+        rec.searches.push({ query, namespace, limit });
+        if (scenario.searchError) throw new Error(scenario.searchError);
+        return JSON.parse(JSON.stringify(scenario.search || { results: [] }));
     },
 });
-// chatSend is recorded in one shape for every call: what chat.js read from
-// its arguments (absent options are null or false).
+// chatSend is recorded as a "chat-send" query, so its place among the
+// writes is compared: what chat.js read from its arguments, absent options
+// as null or false.
 stub('services/chat.js', {
     async chatSend(from, toAgents, discussionId, message, opts) {
         const o = opts || {};
-        rec.chats.push({
-            // A message that is not a string is recorded as node-postgres binds it.
-            from, to: JSON.stringify(toAgents), message: typeof message === 'string' ? message : prepareValue(message),
-            scene_id: o.sceneId === undefined ? null : o.sceneId,
-            scene_structure: o.sceneStructure === undefined ? null : o.sceneStructure,
-            conversation_id: o.conversationId === undefined ? null : o.conversationId,
-            tool_calls: o.toolCalls ? JSON.stringify(o.toolCalls) : null,
-            is_error: o.isError === true, ack_on_insert: o.ackOnInsert === true,
-        });
-        if ((scenario.chat_fail || []).includes(rec.chats.length)) throw new Error('chat send failed');
+        record('chat-send', [
+            from, JSON.stringify(toAgents), message,
+            o.sceneId === undefined ? null : o.sceneId,
+            o.sceneStructure === undefined ? null : o.sceneStructure,
+            o.conversationId === undefined ? null : o.conversationId,
+            o.toolCalls ? JSON.stringify(o.toolCalls) : null,
+            o.isError === true, o.ackOnInsert === true,
+        ]);
         return {};
     },
 });
@@ -234,7 +249,7 @@ async function run(sc, fn) {
     scenario = sc;
     configValues = Object.assign({}, BASE_CONFIG, sc.config || {});
     clock = sc.clock || CLOCK;
-    rec = { queries: [], logs: [], events: [], notes: [], created: [], calls: [], timers: [], chats: [], searches: [], reads: [], errors: [], counts: {}, callIndex: 0 };
+    rec = { queries: [], logs: [], events: [], notes: [], created: [], calls: [], timers: [], searches: [], reads: [], errors: [], counts: {}, nth: {}, callIndex: 0 };
     const outcomes = await fn();
     for (let i = 0; i < 40; i++) await new Promise(r => process.nextTick(r));
     for (const n of rec.notes) {
@@ -243,10 +258,10 @@ async function run(sc, fn) {
     const r = rec;
     return {
         name: sc.name, config: sc.config || {}, rows: sc.rows || {}, fail: sc.fail || {}, answers: sc.answers || [],
-        rag: sc.rag || null, rag_fail: sc.rag_fail || '', read_notes: sc.read_notes || {}, chat_fail: sc.chat_fail || [],
+        failNth: sc.failNth || {}, notesIn: sc.notesIn || {}, search: sc.search || null, searchError: sc.searchError || '',
         clock: sc.clock || CLOCK, unordered: !!sc.unordered, outcomes,
         queries: r.queries, logs: r.logs, events: r.events, notes: r.notes, created: r.created, calls: r.calls, timers: r.timers,
-        chats: r.chats, searches: r.searches, reads: r.reads, errors: r.errors,
+        searches: r.searches, reads: r.reads, errors: r.errors,
     };
 }
 
@@ -436,24 +451,24 @@ async function main() {
         row('salem-engine', 'va', 'Anne arrives.', 15 * MIN),
         row('salem-engine', 'va', 'Anne arrives. She nods.\nhuddle: with Anne Hale', 14 * MIN),
     ];
-    const people = { 'va/context/soul': 'I keep the inn.', 'va/context/people/anne-hale': 'Anne pays late.', 'va/context/people/human': 'Asks about wool.' };
+    const people = { 'context/soul': 'I keep the inn.', 'context/people/anne-hale': 'Anne pays late.', 'context/people/human': 'Asks about wool.' };
     const rag = { results: [{ source_file: 'notes/wool', chunk_text: 'Wool sells at 3 shillings.', similarity: 0.8 }, { source_file: 'notes/x', chunk_text: 'noise', similarity: 0.2 }] };
     const chatScenarios = [
-        { name: 'companion with rag and history', rows: sendRows({ 'chat-history': [companionHistory.slice().reverse()] }), answers: [ANSWER], rag, read_notes: people, inputs: [companion('ok')] },
+        { name: 'companion with rag and history', rows: sendRows({ 'chat-history': [companionHistory.slice().reverse()] }), answers: [ANSWER], search: rag, notesIn: people, inputs: [companion('ok')] },
         { name: 'companion long message no rag', rows: sendRows({ 'chat-history': [[row('human', 'va', 'What does the market look like today?', 0)]] }), answers: [ANSWER], inputs: [companion('What does the market look like today?')] },
         { name: 'history hours not a number', config: { virtual_agent_chat_history_hours: 'abc' }, rows: sendRows({ 'chat-history': [[]] }), answers: [ANSWER], inputs: [companion('hi')] },
         { name: 'history hours zero', config: { virtual_agent_chat_history_hours: '0' }, rows: sendRows({ 'chat-history': [[]] }), answers: [ANSWER], inputs: [companion('hi')] },
-        { name: 'companion long message with history', rows: sendRows({ 'chat-history': [companionHistory.slice().reverse()] }), answers: [ANSWER], rag, inputs: [companion('What about the price of wool now?')] },
+        { name: 'companion long message with history', rows: sendRows({ 'chat-history': [companionHistory.slice().reverse()] }), answers: [ANSWER], search: rag, inputs: [companion('What about the price of wool now?')] },
         { name: 'companion wait retries', config: { virtual_agent_retry_backoff: '5' }, rows: sendRows({ 'chat-history': [[]] }), answers: [{ error: 'API error 503: busy', status: 503 }, ANSWER], inputs: [companion('hello', { opts: { ackReplyOnInsert: true } })] },
         { name: 'sim tool turn with learning on', unordered: true, config: { virtual_agent_learning_enabled: 'true' }, rows: sendRows({ 'chat-history': [[]] }), answers: [{ result: { text: 'I think the inn is quiet tonight and the fire is low, so I will tend it now.', tool_calls: [{ id: 'k1', name: 'done', input: {} }], usage: { input_tokens: 400, output_tokens: 20 }, finish_reason: 'tool_use', truncated: false } }], inputs: [sim('A long and quiet evening at the inn.', {})] },
-        { name: 'companion rag fails', rows: sendRows({ 'chat-history': [[]] }), answers: [ANSWER], rag_fail: 'search down', read_notes: { 'va/context/soul': { throw: 'gone' } }, inputs: [companion('hi there')] },
+        { name: 'companion rag fails', rows: sendRows({ 'chat-history': [[]] }), answers: [ANSWER], searchError: 'search down', inputs: [companion('hi there')] },
         { name: 'companion personality and empty reply', rows: sendRows({ 'load-agent': [agentRow({ personality: 'Terse.' })], 'chat-history': [[]] }), answers: [{ result: { text: null, usage: { input_tokens: 5, output_tokens: 0 } } }], inputs: [companion('hello', { messageId: 0 })] },
         { name: 'companion learning', unordered: true, config: { virtual_agent_learning_enabled: 'true' }, rows: sendRows({ 'chat-history': [[]], 'usage-insert': [[{ id: 41 }], [{ id: 42 }]] }),
           answers: [{ result: { text: 'The market is busy with wool and grain traders this week.', tool_calls: [], usage: { input_tokens: 120, output_tokens: 30 }, finish_reason: 'end_turn', truncated: false } }, { result: { text: '- Market busy', tool_calls: [], usage: { input_tokens: 50, output_tokens: 5 }, finish_reason: 'end_turn', truncated: false } }],
           inputs: [companion('Tell me about the market this week, in some detail please.')] },
-        { name: 'sim turn with tool history', rows: sendRows({ 'chat-history': [simHistory.slice().reverse()] }), answers: [TOOL_ANSWER], read_notes: people,
+        { name: 'sim turn with tool history', rows: sendRows({ 'chat-history': [simHistory.slice().reverse()] }), answers: [TOOL_ANSWER], notesIn: people,
           inputs: [sim('Anne arrives. She nods.\nhuddle: with Anne Hale', { ephemeralContext: '## Around you\nhuddle: with Anne Hale\n\nWhat now?', stableContext: 'You are Elias, innkeeper.', ackReplyOnInsert: true })] },
-        { name: 'sim co-located cache across follow-up', rows: sendRows({ 'chat-history': [simHistory.slice().reverse(), simHistory.slice().reverse().concat([]), []] }), answers: [TOOL_ANSWER], read_notes: people,
+        { name: 'sim co-located cache across follow-up', rows: sendRows({ 'chat-history': [simHistory.slice().reverse(), simHistory.slice().reverse().concat([]), []] }), answers: [TOOL_ANSWER], notesIn: people,
           inputs: [
               sim('A perception.', { ephemeralContext: 'huddle: with Anne Hale' }),
               sim(undefined, { isToolResultCall: true }),
@@ -463,24 +478,24 @@ async function main() {
         { name: 'sim scene scoped history', rows: sendRows({ 'chat-history': [[]] }), answers: [TOOL_ANSWER],
           inputs: [sim('Fresh scene.', { historyScope: 'scene' }), sim('No scene.', { historyScope: 'scene', sceneId: null })] },
         { name: 'sim reflection', rows: sendRows({ 'load-agent': [agentRow({ startup_instructions: 'Sell wool. Use only the tools offered. When you have nothing more to add, say done.' })], 'chat-history': [[row('salem-engine', 'va', 'Reflect on today.', 0)]] }),
-          answers: [ANSWER], read_notes: people, inputs: [sim('Reflect on today.\nhuddle: with Anne Hale', { toolsOffered: undefined, sceneId: undefined })] },
-        { name: 'court session', rows: sendRows({ 'load-agent': [agentRow({ agent: 'salem-magistrate', actor_id: 11 })], 'chat-history': [[row('salem-engine', 'salem-magistrate', 'Matter opens.', 1000)]] }), answers: [TOOL_ANSWER], read_notes: people,
+          answers: [ANSWER], notesIn: people, inputs: [sim('Reflect on today.\nhuddle: with Anne Hale', { toolsOffered: undefined, sceneId: undefined })] },
+        { name: 'court session', rows: sendRows({ 'load-agent': [agentRow({ agent: 'salem-magistrate', actor_id: 11 })], 'chat-history': [[row('salem-engine', 'salem-magistrate', 'Matter opens.', 1000)]] }), answers: [TOOL_ANSWER], notesIn: people,
           inputs: [sim('Matter opens.\nhuddle: with Anne Hale', { stableContext: 'Matter: a stolen ewe.', historyScope: 'scene' }, { agent: 'salem-magistrate' })] },
         { name: 'court at the cap', rows: sendRows({ 'load-agent': [agentRow({ agent: 'salem-magistrate', actor_id: 11 })], 'chat-history': [windowRows(500, 200 * MIN, 1000).map(r => Object.assign({}, r, { to_agent: 'salem-magistrate' })).reverse()] }), answers: [TOOL_ANSWER],
           inputs: [sim('Next.', { stableContext: 'Matter.', historyScope: 'scene' }, { agent: 'salem-magistrate' })] },
         { name: 'sim busy window at cap', rows: sendRows({ 'chat-history': [windowRows(50, 100 * MIN, MIN).reverse()] }), answers: [TOOL_ANSWER], inputs: [sim('Latest.', {})] },
         { name: 'sim stable context blank', rows: sendRows({ 'chat-history': [[]] }), answers: [TOOL_ANSWER], inputs: [sim('', { stableContext: '   ' })] },
-        { name: 'companion with tools', rows: sendRows({ 'chat-history': [[row('human', 'va', 'use a tool', 0)]] }), answers: [TOOL_ANSWER], read_notes: people, inputs: [companion('use a tool', { opts: { toolsOffered: TOOLS, ephemeralContext: 'ctx' } })] },
+        { name: 'companion with tools', rows: sendRows({ 'chat-history': [[row('human', 'va', 'use a tool', 0)]] }), answers: [TOOL_ANSWER], notesIn: people, inputs: [companion('use a tool', { opts: { toolsOffered: TOOLS, ephemeralContext: 'ctx' } })] },
         { name: 'wait sim tick provider error', rows: sendRows({ 'chat-history': [[]] }), answers: [{ error: 'Anthropic API error 500: boom', status: 500 }], inputs: [sim('Tick.', { ackReplyOnInsert: true })] },
         { name: 'non-wait retry then reply', config: { virtual_agent_retry_backoff: '300,600,3600' }, rows: sendRows({ 'chat-history': [[]] }), answers: [{ error: 'API error 503: busy', status: 503 }, ANSWER], inputs: [companion('hello')] },
-        { name: 'retry first-failure chat fails', config: { virtual_agent_retry_backoff: '5' }, rows: sendRows({ 'chat-history': [[]] }), chat_fail: [1], answers: [{ error: 'API error 400: bad', status: 400 }, TOOL_ANSWER], inputs: [sim('Tick.', {})] },
+        { name: 'retry first-failure chat fails', config: { virtual_agent_retry_backoff: '5' }, rows: sendRows({ 'chat-history': [[]] }), failNth: { 'chat-send': ['chat send failed'] }, answers: [{ error: 'API error 400: bad', status: 400 }, TOOL_ANSWER], inputs: [sim('Tick.', {})] },
         { name: 'retry exhausted', config: { virtual_agent_retry_backoff: '1,2' }, rows: sendRows({ 'chat-history': [[]] }), answers: [{ error: 'down', status: 503 }], inputs: [companion('hello')] },
         { name: 'rate limited', config: { virtual_agent_rate_limit: '1' }, rows: sendRows({ 'chat-history': [[]] }), answers: [ANSWER], inputs: [companion('one'), companion('two')] },
         { name: 'scene continuation passes the limit', config: { virtual_agent_rate_limit: '1' }, rows: sendRows({ 'chat-history': [[]] }), answers: [TOOL_ANSWER],
           inputs: [sim('one', {}), sim(undefined, { isToolResultCall: true }), sim('other scene', { sceneId: SCENE2 }), companion('human', { opts: { sceneId: SCENE } })] },
         { name: 'over budget', rows: sendRows({ 'cost-sums': [{ cost_today: '1.5', cost_monthly: '2' }], 'chat-history': [[]] }), inputs: [sim('Tick.', { ackReplyOnInsert: true })] },
-        { name: 'rate limit chat fails', config: { virtual_agent_rate_limit: '0' }, rows: sendRows({ 'chat-history': [[]] }), chat_fail: [1, 2], inputs: [companion('x')] },
-        { name: 'missing config notify', rows: { 'load-agent': [agentRow({ api_key: '', model: null })] }, chat_fail: [1], inputs: [companion('x', { opts: { notifyUnanswerable: true } })] },
+        { name: 'rate limit chat fails', config: { virtual_agent_rate_limit: '0' }, rows: sendRows({ 'chat-history': [[]] }), failNth: { 'chat-send': ['chat send failed', 'chat send failed'] }, inputs: [companion('x')] },
+        { name: 'missing config notify', rows: { 'load-agent': [agentRow({ api_key: '', model: null })] }, failNth: { 'chat-send': ['chat send failed'] }, inputs: [companion('x', { opts: { notifyUnanswerable: true } })] },
         { name: 'missing config quiet', rows: { 'load-agent': [agentRow({ provider: '' })] }, inputs: [companion('x')] },
         { name: 'not virtual', rows: { 'load-agent': [agentRow({ virtual: false })] }, inputs: [companion('x')] },
         { name: 'not found', rows: { 'load-agent': [] }, inputs: [companion('x')] },
@@ -489,7 +504,7 @@ async function main() {
         { name: 'stale config', rows: sendRows({ 'load-agent': [agentRow({ configuration: '{}' })] }), inputs: [companion('x')] },
         { name: 'unknown sender', rows: sendRows(), inputs: [companion('x', { from: 'ghost' })] },
         { name: 'unsupported provider', rows: sendRows({ 'load-agent': [agentRow({ provider: 'unknown-provider', configuration: '{}' })], 'chat-history': [[]] }), inputs: [companion('x')] },
-        { name: 'reply send fails', rows: sendRows({ 'chat-history': [[]] }), chat_fail: [1], answers: [TOOL_ANSWER], inputs: [sim('Tick.', { ackReplyOnInsert: true })] },
+        { name: 'reply send fails', rows: sendRows({ 'chat-history': [[]] }), failNth: { 'chat-send': ['chat send failed'] }, answers: [TOOL_ANSWER], inputs: [sim('Tick.', { ackReplyOnInsert: true })] },
         { name: 'ack fails', rows: sendRows({ 'chat-history': [[]] }), fail: { 'chat-ack': 'ack failed' }, answers: [ANSWER], inputs: [companion('x')] },
         { name: 'usage insert fails', rows: sendRows({ 'chat-history': [[]] }), fail: { 'usage-insert': 'insert failed' }, answers: [ANSWER], inputs: [companion('x')] },
         { name: 'no pricing', rows: sendRows({ 'load-agent': [agentRow({ model: 'not-a-model', configuration: '{}' })], 'chat-history': [[]] }), answers: [ANSWER], inputs: [companion('x')] },

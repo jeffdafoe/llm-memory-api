@@ -99,6 +99,9 @@ type Target struct {
 	// Snapshot reads every compared table after the steps; nil means no
 	// rows are compared.
 	Snapshot func(ctx context.Context) ([]Table, error)
+	// Holds runs a query returning one boolean on the server's database,
+	// for an Until condition; nil when there is no database.
+	Holds func(ctx context.Context, sql string, args ...any) (bool, error)
 }
 
 // Runner runs scenarios against pairs of servers.

@@ -6,8 +6,7 @@ import (
 	"errors"
 	"math"
 	"os"
-	"regexp"
-	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 )
 
@@ -30,38 +28,6 @@ func init() {
 	}
 }
 
-type chatRec struct {
-	From           string  `json:"from"`
-	To             string  `json:"to"`
-	Message        string  `json:"message"`
-	SceneID        *string `json:"scene_id"`
-	SceneStructure *string `json:"scene_structure"`
-	ConversationID *string `json:"conversation_id"`
-	ToolCalls      *string `json:"tool_calls"`
-	IsError        bool    `json:"is_error"`
-	AckOnInsert    bool    `json:"ack_on_insert"`
-}
-
-type searchRec struct {
-	Query string `json:"query"`
-	Agent string `json:"agent"`
-	Limit int    `json:"limit"`
-}
-
-type readRec struct {
-	Namespace string `json:"namespace"`
-	Slug      string `json:"slug"`
-}
-
-type errorRec struct {
-	Subsystem  string `json:"subsystem"`
-	Action     string `json:"action"`
-	Agent      string `json:"agent"`
-	Context    string `json:"context"`
-	Message    string `json:"message"`
-	StatusCode int    `json:"status_code"`
-}
-
 type chatInput struct {
 	Agent     string  `json:"agent"`
 	From      string  `json:"from"`
@@ -72,17 +38,11 @@ type chatInput struct {
 
 type chatScenario struct {
 	scenario
-	Rag       json.RawMessage            `json:"rag"`
-	RagFail   string                     `json:"rag_fail"`
-	ReadNotes map[string]json.RawMessage `json:"read_notes"`
-	ChatFail  []int                      `json:"chat_fail"`
-	Unordered bool                       `json:"unordered"`
-	Outcomes  []json.RawMessage          `json:"outcomes"`
-	Inputs    []chatInput                `json:"inputs"`
-	Chats     []chatRec                  `json:"chats"`
-	Searches  []searchRec                `json:"searches"`
-	Reads     []readRec                  `json:"reads"`
-	Errors    []errorRec                 `json:"errors"`
+	// Unordered compares every recording as a multiset: the learning
+	// extraction runs in parallel with the transcript.
+	Unordered bool              `json:"unordered"`
+	Outcomes  []json.RawMessage `json:"outcomes"`
+	Inputs    []chatInput       `json:"inputs"`
 }
 
 type chatGoldens struct {
@@ -489,40 +449,24 @@ func TestSceneCacheMatchesNode(t *testing.T) {
 	}
 }
 
-// chatHarness is the stubs a direct-chat scenario adds to the recorder:
-// chatSend, the shared context loaders, and logError.
+// chatHarness adds to the recorder what only direct chat calls: chatSend,
+// recorded as a "chat-send" query, and a provider the Node stub refuses.
 type chatHarness struct {
-	t   *testing.T
-	s   *Service
-	r   *recorder
-	sc  *chatScenario
-	n   int
-	out struct {
-		chats    []chatRec
-		searches []searchRec
-		reads    []readRec
-		errors   []errorRec
-	}
+	r *recorder
 }
 
 func (h *chatHarness) Send(ctx context.Context, in chat.SendInput) (*chat.Sent, chat.PendingReply, error) {
-	rec := chatRec{From: in.FromAgent, To: jsonOf(in.ToAgents.Names), SceneID: in.SceneID, SceneStructure: in.SceneStructure,
-		ConversationID: in.ConversationID, IsError: in.IsError, AckOnInsert: in.AckOnInsert}
-	if in.Message != nil {
-		rec.Message = *in.Message
-	}
+	text := func(v *string) *string { return v }
+	b := func(v bool) *string { s := strconv.FormatBool(v); return &s }
+	to := jsonOf(in.ToAgents.Names)
+	var calls *string
 	if in.ToolCalls != nil {
-		s := string(in.ToolCalls)
-		rec.ToolCalls = &s
+		c := string(in.ToolCalls)
+		calls = &c
 	}
-	h.r.mu.Lock()
-	h.out.chats = append(h.out.chats, rec)
-	n := len(h.out.chats)
-	h.r.mu.Unlock()
-	for _, f := range h.sc.ChatFail {
-		if f == n {
-			return nil, nil, errors.New("chat send failed")
-		}
+	params := []*string{&in.FromAgent, &to, text(in.Message), text(in.SceneID), text(in.SceneStructure), text(in.ConversationID), calls, b(in.IsError), b(in.AckOnInsert)}
+	if _, err := h.r.record("chat-send", params); err != nil {
+		return nil, nil, err
 	}
 	return &chat.Sent{}, nil, nil
 }
@@ -537,72 +481,6 @@ func (h *chatHarness) CreateProvider(provider, model, apiKey string, conf any) (
 }
 
 func (h *chatHarness) DecryptAPIKey(k string) (string, error) { return h.r.DecryptAPIKey(k) }
-
-// readNote is the stubbed documents.readNote: the note's content, "" for
-// none, ok false when it throws.
-func (h *chatHarness) readNote(namespace, slug string) (string, bool) {
-	h.r.mu.Lock()
-	h.out.reads = append(h.out.reads, readRec{namespace, slug})
-	h.r.mu.Unlock()
-	raw, ok := h.sc.ReadNotes[namespace+"/"+slug]
-	if !ok {
-		return "", true
-	}
-	v := parseJS(h.t, raw)
-	if o, isObject := v.(*jsutil.Object); isObject && o.Has("throw") {
-		return "", false
-	}
-	s, _ := v.(string)
-	return s, true
-}
-
-// The loaders below follow Node's loadRAGContext, loadSoul and
-// loadPeopleContext over the stubs, until PR 2's ports replace them.
-func (h *chatHarness) loadRAGContext(ctx context.Context, agentName, query string) string {
-	h.r.mu.Lock()
-	h.out.searches = append(h.out.searches, searchRec{query, agentName, 5})
-	h.r.mu.Unlock()
-	if h.sc.RagFail != "" {
-		h.s.logVA("rag-error", logger.Fields{{Key: "agent", Value: agentName}, {Key: "error", Value: h.sc.RagFail}})
-		return ""
-	}
-	if len(h.sc.Rag) == 0 || string(h.sc.Rag) == "null" {
-		return ""
-	}
-	var res struct {
-		Results []struct {
-			SourceFile string  `json:"source_file"`
-			ChunkText  string  `json:"chunk_text"`
-			Similarity float64 `json:"similarity"`
-		} `json:"results"`
-	}
-	json.Unmarshal(h.sc.Rag, &res)
-	var parts []string
-	for _, r := range res.Results {
-		if r.Similarity > 0.3 {
-			parts = append(parts, "["+r.SourceFile+"] "+r.ChunkText)
-		}
-	}
-	return strings.Join(parts, "\n\n")
-}
-
-func (h *chatHarness) loadSoul(ctx context.Context, agentName string) string {
-	content, _ := h.readNote(agentName, "context/soul")
-	return content
-}
-
-var slugJunk = regexp.MustCompile(`[^a-z0-9-]`)
-
-func (h *chatHarness) loadPeopleContext(ctx context.Context, agentName string, counterparts []string) string {
-	var sections []string
-	for _, person := range counterparts {
-		slug := slugJunk.ReplaceAllString(strings.ReplaceAll(strings.ToLower(jsutil.Trim(person)), " ", "-"), "")
-		if content, ok := h.readNote(agentName, "context/people/"+slug); ok && content != "" {
-			sections = append(sections, "## Your impressions of "+person+"\n\n"+content)
-		}
-	}
-	return strings.Join(sections, "\n\n")
-}
 
 // directChatFrom is a golden input as chat.Service would pass it.
 func directChatFrom(t *testing.T, in chatInput) chat.DirectChat {
@@ -655,40 +533,12 @@ func chatOutcome(reply json.RawMessage, err error) string {
 	return `{"error":` + jsutil.Marshal(o) + `}`
 }
 
-// sortedJSON orders recordings whose order Go does not fix.
-func sortedJSON[T any](items []T) string {
-	keys := make([]string, len(items))
-	for i, it := range items {
-		keys[i] = jsonOf(it)
-	}
-	sort.Strings(keys)
-	return "[" + strings.Join(keys, ",") + "]"
-}
-
-// split returns the items in order without the background ones, and the
-// background ones sorted.
-func split[T any](items []T, isBackground func(T) bool) (string, string) {
-	var front, back []T
-	for _, it := range items {
-		if isBackground(it) {
-			back = append(back, it)
-		} else {
-			front = append(front, it)
-		}
-	}
-	f := jsonOf(front)
-	if f == "null" {
-		f = "[]"
-	}
-	return f, sortedJSON(back)
-}
-
 // Work Go does in the background: the call log, the activity spinner's
 // off-switch, the transcript and the learning extraction.
 var backgroundQueries = map[string]bool{"call-insert": true, "active-off": true, "dream-mode": true}
 var backgroundLogs = map[string]bool{"call-log-error": true, "transcript-log-failed": true, "learning-extraction-failed": true}
 
-func compareChat(t *testing.T, want *chatScenario, r *recorder, h *chatHarness, got []string) {
+func compareChat(t *testing.T, want *chatScenario, r *recorder, got []string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
@@ -718,36 +568,32 @@ func compareChat(t *testing.T, want *chatScenario, r *recorder, h *chatHarness, 
 		t.Errorf("outcomes:\n got %s\nwant %s", jsonOf(got), jsonOf(wantOutcomes))
 	}
 
-	all := func(bool) bool { return want.Unordered }
-	isBackgroundQuery := func(q queryRec) bool { return want.Unordered || backgroundQueries[q.Kind] }
-	isBackgroundLog := func(l logRec) bool {
-		return want.Unordered || backgroundLogs[l.Action]
+	cutAll := func(n int) int {
+		if want.Unordered {
+			return 0
+		}
+		return n
 	}
-	type pair struct{ got, want [2]string }
-	gf, gb := split(r.queries, isBackgroundQuery)
-	wf, wb := split(want.Queries, isBackgroundQuery)
-	if gf != wf || gb != wb {
-		t.Errorf("queries:\n got %s\n     %s\nwant %s\n     %s", gf, gb, wf, wb)
-	}
-	gf, gb = split(r.logs, isBackgroundLog)
-	wf, wb = split(want.Logs, isBackgroundLog)
-	if gf != wf || gb != wb {
-		t.Errorf("logs:\n got %s\n     %s\nwant %s\n     %s", gf, gb, wf, wb)
-	}
-	_ = all
+	gq, gqr := split(r.queries, cutAll(len(r.queries)), func(q queryRec) bool { return backgroundQueries[q.Kind] })
+	wq, wqr := split(want.Queries, cutAll(len(want.Queries)), func(q queryRec) bool { return backgroundQueries[q.Kind] })
+	gl, glr := split(r.logs, cutAll(len(r.logs)), func(l logRec) bool { return backgroundLogs[l.Action] })
+	wl, wlr := split(want.Logs, cutAll(len(want.Logs)), func(l logRec) bool { return backgroundLogs[l.Action] })
 	for _, c := range []struct {
 		name      string
 		got, want string
 	}{
+		{"queries in order", strings.Join(gq, "\n"), strings.Join(wq, "\n")},
+		{"queries in the background", strings.Join(gqr, "\n"), strings.Join(wqr, "\n")},
+		{"logs in order", strings.Join(gl, "\n"), strings.Join(wl, "\n")},
+		{"logs in the background", strings.Join(glr, "\n"), strings.Join(wlr, "\n")},
 		{"events", sortedJSON(r.events), sortedJSON(want.Events)},
 		{"timers", sortedJSON(r.timers), sortedJSON(want.Timers)},
 		{"notes", sortedJSON(r.notes), sortedJSON(want.Notes)},
-		{"created", jsonOrEmpty(r.created), jsonOrEmpty(want.Created)},
-		{"calls", jsonOrEmpty(r.calls), jsonOrEmpty(want.Calls)},
-		{"chats", jsonOrEmpty(h.out.chats), jsonOrEmpty(want.Chats)},
-		{"searches", jsonOrEmpty(h.out.searches), jsonOrEmpty(want.Searches)},
-		{"reads", jsonOrEmpty(h.out.reads), jsonOrEmpty(want.Reads)},
-		{"errors", jsonOrEmpty(h.out.errors), jsonOrEmpty(want.Errors)},
+		{"created", jsonOf(orEmpty(r.created)), jsonOf(orEmpty(want.Created))},
+		{"calls", jsonOf(orEmpty(r.calls)), jsonOf(orEmpty(want.Calls))},
+		{"reads", jsonOf(orEmpty(r.reads)), jsonOf(orEmpty(want.Reads))},
+		{"searches", jsonOf(orEmpty(r.searches)), jsonOf(orEmpty(want.Searches))},
+		{"errors", jsonOf(orEmpty(r.errors)), jsonOf(orEmpty(want.Errors))},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, c.got, c.want)
@@ -755,15 +601,7 @@ func compareChat(t *testing.T, want *chatScenario, r *recorder, h *chatHarness, 
 	}
 }
 
-func jsonOrEmpty(v any) string {
-	s := jsonOf(v)
-	if s == "null" {
-		return "[]"
-	}
-	return s
-}
-
-func newChatService(t *testing.T, sc *chatScenario) (*Service, *recorder, *chatHarness) {
+func newChatService(t *testing.T, sc *chatScenario) (*Service, *recorder) {
 	s, r := newService(t, &sc.scenario)
 	cfg := s.Config.(mapConfig)
 	for k, v := range chatBaseConfig {
@@ -771,16 +609,10 @@ func newChatService(t *testing.T, sc *chatScenario) (*Service, *recorder, *chatH
 			cfg[k] = v
 		}
 	}
-	h := &chatHarness{t: t, s: s, r: r, sc: sc}
+	h := &chatHarness{r: r}
 	s.Chat = h
 	s.Providers = h
-	s.contextLoader = h
-	r.logError = func(subsystem, action string, opts logger.ErrorOpts) {
-		r.mu.Lock()
-		h.out.errors = append(h.out.errors, errorRec{subsystem, action, opts.Agent, opts.Context, opts.Message, opts.StatusCode})
-		r.mu.Unlock()
-	}
-	return s, r, h
+	return s, r
 }
 
 func TestDirectChatMatchesNode(t *testing.T) {
@@ -789,14 +621,14 @@ func TestDirectChatMatchesNode(t *testing.T) {
 	defer func() { localZone = old }()
 	for _, c := range loadChatGoldens(t).Chat {
 		t.Run(c.Name, func(t *testing.T) {
-			s, r, h := newChatService(t, &c)
+			s, r := newChatService(t, &c)
 			var got []string
 			for _, in := range c.Inputs {
 				reply, err := s.HandleDirectChat(context.Background(), directChatFrom(t, in))
 				got = append(got, chatOutcome(reply, err))
 				time.Sleep(20 * time.Millisecond)
 			}
-			compareChat(t, &c, r, h, got)
+			compareChat(t, &c, r, got)
 		})
 	}
 }

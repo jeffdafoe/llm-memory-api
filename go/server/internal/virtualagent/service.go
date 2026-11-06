@@ -13,6 +13,8 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mail"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 )
@@ -22,7 +24,7 @@ type Config interface {
 	Get(key string) (string, error)
 }
 
-// Logger writes activity lines (logger.Logger).
+// Logger writes activity lines and error_log rows (logger.Logger).
 type Logger interface {
 	Log(subsystem, action string, details logger.Fields)
 	LogError(subsystem, action string, opts logger.ErrorOpts)
@@ -33,9 +35,21 @@ type Actors interface {
 	RequireByName(ctx context.Context, name string) (actors.Actor, error)
 }
 
-// NoteSaver saves a note (notes.Service).
-type NoteSaver interface {
+// NoteStore saves and reads notes (notes.Service).
+type NoteStore interface {
 	Save(ctx context.Context, in notes.SaveInput) (notes.SavedNote, error)
+	Read(ctx context.Context, namespace, slug string) (notes.Note, error)
+}
+
+// Searcher searches notes (memory.Service), for the recalled notes in a
+// prompt.
+type Searcher interface {
+	Search(ctx context.Context, in memory.SearchInput) (memory.SearchResults, error)
+}
+
+// Mailer sends mail (mail.Service): a virtual agent's replies and notices.
+type Mailer interface {
+	Send(ctx context.Context, toAgent, fromAgent, subject, body, inReplyTo string) (*mail.Sent, error)
 }
 
 // Providers builds provider calls (providers.Providers).
@@ -54,7 +68,9 @@ type Service struct {
 	Log       Logger
 	Events    events.Broadcaster
 	Providers Providers
-	Notes     NoteSaver
+	Notes     NoteStore
+	Memory    Searcher
+	Mail      Mailer
 	// Chat sends the replies and notices of direct chat.
 	Chat ChatSender
 
@@ -70,7 +86,6 @@ type Service struct {
 	overrideCache map[string]overrideEntry
 	pingOnce      sync.Once
 	sceneCache    sceneCache
-	contextLoader contextLoader
 }
 
 func (s *Service) now() time.Time {

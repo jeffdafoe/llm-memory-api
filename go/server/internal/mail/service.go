@@ -107,7 +107,9 @@ func (s *Service) Send(ctx context.Context, toAgent, fromAgent, subject, body, i
 	s.logMail("send", logger.Fields{{Key: "from_agent", Value: fromAgent}, {Key: "to_agent", Value: toAgent}, {Key: "mail_id", Value: id}, {Key: "subject", Value: subject}})
 
 	if fromAgent != "system" {
-		db.Background(func(ctx context.Context) {
+		// Unbounded: a virtual agent's reply waits on its provider and, on
+		// failure, on a retry backoff of minutes to hours.
+		db.BackgroundUnbounded(func(ctx context.Context) {
 			if err := s.triggerVirtualAgent(ctx, toActor, fromActor, toAgent, fromAgent, subject, id); err != nil {
 				s.logMail("virtual-agent-trigger-error", logger.Fields{{Key: "to_agent", Value: toAgent}, {Key: "from_agent", Value: fromAgent}, {Key: "error", Value: err.Error()}})
 			}

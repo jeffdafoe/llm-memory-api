@@ -19,12 +19,6 @@ type ChatSender interface {
 	Send(ctx context.Context, in chat.SendInput) (*chat.Sent, chat.PendingReply, error)
 }
 
-// UnanswerableNotice is the notice a virtual agent sends back when it will
-// not reply (chat.VirtualAgents).
-func (s *Service) UnanswerableNotice(agentName, reason string, missing []string) string {
-	return unanswerableNotice(agentName, reason, missing)
-}
-
 // statusError carries the status Node's error had (err.statusCode), which
 // the call log stores, around the error the caller sees.
 type statusError struct {
@@ -199,7 +193,6 @@ func (s *Service) directChatTurn(ctx context.Context, agent *Agent, d *directCha
 	// perception names around it, not from the sender.
 	isSimChat := d.FromAgent == "salem-engine"
 	isSimNpc := isSimChat
-	loaders := s.contexts()
 	var ragContext, peopleContext string
 	if isSimNpc {
 		// The people around the NPC are in the message or, since the engine
@@ -222,7 +215,7 @@ func (s *Service) directChatTurn(ctx context.Context, agent *Agent, d *directCha
 			s.forgetSceneCoLocated(sceneID)
 		}
 		if len(coLocated) > 0 {
-			peopleContext = loaders.loadPeopleContext(ctx, agent.Name, coLocated)
+			peopleContext = s.loadPeopleContext(ctx, agent.Name, coLocated)
 		}
 	} else {
 		if d.Message == nil {
@@ -232,10 +225,10 @@ func (s *Service) directChatTurn(ctx context.Context, agent *Agent, d *directCha
 		if len(jsutil.SplitSpace(jsutil.Trim(*d.Message))) < 5 && len(history) >= 2 {
 			ragQuery = history[len(history)-2].messageText() + " " + *d.Message
 		}
-		ragContext = loaders.loadRAGContext(ctx, agent.Name, ragQuery)
-		peopleContext = loaders.loadPeopleContext(ctx, agent.Name, []string{d.FromAgent})
+		ragContext = s.loadRAGContext(ctx, agent.Name, ragQuery)
+		peopleContext = s.loadPeopleContext(ctx, agent.Name, []string{d.FromAgent})
 	}
-	soul := loaders.loadSoul(ctx, agent.Name)
+	soul := s.loadSoul(ctx, agent.Name)
 
 	var systemPrompt providers.SystemPrompt
 	switch {

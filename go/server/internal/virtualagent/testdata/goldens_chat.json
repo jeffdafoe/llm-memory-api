@@ -4188,7 +4188,13 @@
      }
     }
    ],
-   "rag": {
+   "failNth": {},
+   "notesIn": {
+    "context/soul": "I keep the inn.",
+    "context/people/anne-hale": "Anne pays late.",
+    "context/people/human": "Asks about wool."
+   },
+   "search": {
     "results": [
      {
       "source_file": "notes/wool",
@@ -4202,13 +4208,7 @@
      }
     ]
    },
-   "rag_fail": "",
-   "read_notes": {
-    "va/context/soul": "I keep the inn.",
-    "va/context/people/anne-hale": "Anne pays late.",
-    "va/context/people/human": "Asks about wool."
-   },
-   "chat_fail": [],
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -4302,6 +4302,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -4372,23 +4386,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "They rose. ok",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -4478,10 +4479,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -4575,6 +4576,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -4645,23 +4660,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "What does the market look like today?",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -4743,10 +4745,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -4840,6 +4842,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -4910,23 +4926,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "hi",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -5008,10 +5011,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -5105,6 +5108,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -5175,23 +5192,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "hi",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -5299,7 +5303,9 @@
      }
     }
    ],
-   "rag": {
+   "failNth": {},
+   "notesIn": {},
+   "search": {
     "results": [
      {
       "source_file": "notes/wool",
@@ -5313,9 +5319,7 @@
      }
     ]
    },
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -5409,6 +5413,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -5479,23 +5497,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "What about the price of wool now?",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -5581,10 +5586,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -5638,6 +5643,20 @@
      "params": [
       "degraded",
       "va"
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Retrying] Initial attempt failed: API error 503: busy. Retrying 1 more time(s) over the next ~5 seconds.",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -5701,6 +5720,20 @@
       null,
       null,
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "true"
      ]
     },
     {
@@ -5815,34 +5848,10 @@
     5000,
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Retrying] Initial attempt failed: API error 503: busy. Retrying 1 more time(s) over the next ~5 seconds.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": true
-    }
-   ],
    "searches": [
     {
      "query": "hello",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -5930,10 +5939,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": true,
    "outcomes": [
@@ -6027,6 +6036,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "I think the inn is quiet tonight and the fire is low, so I will tend it now.",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"k1\",\"name\":\"done\",\"input\":{}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -6096,19 +6119,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "I think the inn is quiet tonight and the fire is low, so I will tend it now.",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"k1\",\"name\":\"done\",\"input\":{}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -6183,14 +6193,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "search down",
-   "read_notes": {
-    "va/context/soul": {
-     "throw": "gone"
-    }
-   },
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "search down",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -6284,6 +6290,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -6359,23 +6379,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "hi there",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -6452,10 +6459,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -6549,6 +6556,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "dream-mode",
      "params": [
       "va"
@@ -6612,23 +6633,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "hello",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -6729,10 +6737,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": true,
    "outcomes": [
@@ -6823,6 +6831,20 @@
       null,
       null,
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "The market is busy with wool and grain traders this week.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
      ]
     },
     {
@@ -6993,23 +7015,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "The market is busy with wool and grain traders this week.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "Tell me about the market this week, in some detail please.",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -7165,14 +7174,14 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {
-    "va/context/soul": "I keep the inn.",
-    "va/context/people/anne-hale": "Anne pays late.",
-    "va/context/people/human": "Asks about wool."
+   "failNth": {},
+   "notesIn": {
+    "context/soul": "I keep the inn.",
+    "context/people/anne-hale": "Anne pays late.",
+    "context/people/human": "Asks about wool."
    },
-   "chat_fail": [],
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -7266,6 +7275,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "true"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -7339,19 +7362,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": true
-    }
    ],
    "searches": [],
    "reads": [
@@ -7576,14 +7586,14 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {
-    "va/context/soul": "I keep the inn.",
-    "va/context/people/anne-hale": "Anne pays late.",
-    "va/context/people/human": "Asks about wool."
+   "failNth": {},
+   "notesIn": {
+    "context/soul": "I keep the inn.",
+    "context/people/anne-hale": "Anne pays late.",
+    "context/people/human": "Asks about wool."
    },
-   "chat_fail": [],
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -7686,6 +7696,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -7774,6 +7798,20 @@
       "actor-9",
       "Elias",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
      ]
     },
     {
@@ -7868,6 +7906,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -7956,6 +8008,20 @@
       "actor-9",
       "Elias",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
      ]
     },
     {
@@ -8172,52 +8238,6 @@
     3000,
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [
     {
@@ -8340,10 +8360,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -8440,6 +8460,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -8518,6 +8552,20 @@
       "actor-9",
       "Elias",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      null,
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
      ]
     },
     {
@@ -8636,30 +8684,6 @@
     3000,
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": null,
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [
     {
@@ -8754,14 +8778,14 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {
-    "va/context/soul": "I keep the inn.",
-    "va/context/people/anne-hale": "Anne pays late.",
-    "va/context/people/human": "Asks about wool."
+   "failNth": {},
+   "notesIn": {
+    "context/soul": "I keep the inn.",
+    "context/people/anne-hale": "Anne pays late.",
+    "context/people/human": "Asks about wool."
    },
-   "chat_fail": [],
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -8855,6 +8879,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "Hello there.",
+      null,
+      "Inn",
+      "conv-1",
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -8924,19 +8962,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -9033,14 +9058,14 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {
-    "va/context/soul": "I keep the inn.",
-    "va/context/people/anne-hale": "Anne pays late.",
-    "va/context/people/human": "Asks about wool."
+   "failNth": {},
+   "notesIn": {
+    "context/soul": "I keep the inn.",
+    "context/people/anne-hale": "Anne pays late.",
+    "context/people/human": "Asks about wool."
    },
-   "chat_fail": [],
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -9114,7 +9139,7 @@
       "anthropic",
       "claude-haiku-4-5",
       "<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<CourtContext purpose=\"court-context\">\nYou sit as the magistrate of the court in Salem Town. The village simulation brings you one matter at a time; the matter, the village roster and your bench book are set out in the Matter block. The user messages come from the court's clerk, not from a person — do not address them. Work only through the tools provided: read what you need from the record, then give your ruling with the rule tool, which ends the hearing. Do not reply with ordinary prose.\n</CourtContext>\n\n<Matter purpose=\"the-matter-before-the-court\">\nThe matter before the court this session, who lives in the village, and your bench book. Authoritative for this session.\n\nMatter: a stolen ewe.\n</Matter>",
-      "[\n  {\n    \"role\": \"user\",\n    \"content\": \"Matter opens.\"\n  }\n]",
+      "[\n  {\n    \"role\": \"user\",\n    \"content\": \"Matter opens.\\n\\n<Impressions purpose=\\\"private-relationship-notes\\\">\\nYour private notes about the other participants in this conversation. Let them shape your tone, what you engage with, and what you remember. NEVER read them aloud, quote them, or attribute them back to the person.\\n\\n## Your impressions of Anne Hale\\n\\nAnne pays late.\\n</Impressions>\"\n  }\n]",
       "tool_calls:\n[\n  {\n    \"id\": \"c9\",\n    \"name\": \"speak\",\n    \"input\": {\n      \"text\": \"Good day.\"\n    }\n  }\n]",
       "success",
       null,
@@ -9131,6 +9156,20 @@
       "actor-9",
       "Elias",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "salem-magistrate",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
      ]
     },
     {
@@ -9178,7 +9217,7 @@
     {
      "namespace": "salem-magistrate",
      "title": "chat — 20261107 000320",
-     "content": "## Metadata\n- **Trigger:** chat\n- **From:** salem-engine\n- **Model:** claude-haiku-4-5\n- **Tokens:** 400 in / 20 out\n\n## System Prompt\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<CourtContext purpose=\"court-context\">\nYou sit as the magistrate of the court in Salem Town. The village simulation brings you one matter at a time; the matter, the village roster and your bench book are set out in the Matter block. The user messages come from the court's clerk, not from a person — do not address them. Work only through the tools provided: read what you need from the record, then give your ruling with the rule tool, which ends the hearing. Do not reply with ordinary prose.\n</CourtContext>\n\n<Matter purpose=\"the-matter-before-the-court\">\nThe matter before the court this session, who lives in the village, and your bench book. Authoritative for this session.\n\nMatter: a stolen ewe.\n</Matter>\n\n## User Message\n\n[\n  {\n    \"role\": \"user\",\n    \"content\": \"Matter opens.\"\n  }\n]\n\n## Response\n\ntool_calls:\n[\n  {\n    \"id\": \"c9\",\n    \"name\": \"speak\",\n    \"input\": {\n      \"text\": \"Good day.\"\n    }\n  }\n]",
+     "content": "## Metadata\n- **Trigger:** chat\n- **From:** salem-engine\n- **Model:** claude-haiku-4-5\n- **Tokens:** 400 in / 20 out\n\n## System Prompt\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<CourtContext purpose=\"court-context\">\nYou sit as the magistrate of the court in Salem Town. The village simulation brings you one matter at a time; the matter, the village roster and your bench book are set out in the Matter block. The user messages come from the court's clerk, not from a person — do not address them. Work only through the tools provided: read what you need from the record, then give your ruling with the rule tool, which ends the hearing. Do not reply with ordinary prose.\n</CourtContext>\n\n<Matter purpose=\"the-matter-before-the-court\">\nThe matter before the court this session, who lives in the village, and your bench book. Authoritative for this session.\n\nMatter: a stolen ewe.\n</Matter>\n\n## User Message\n\n[\n  {\n    \"role\": \"user\",\n    \"content\": \"Matter opens.\\n\\n<Impressions purpose=\\\"private-relationship-notes\\\">\\nYour private notes about the other participants in this conversation. Let them shape your tone, what you engage with, and what you remember. NEVER read them aloud, quote them, or attribute them back to the person.\\n\\n## Your impressions of Anne Hale\\n\\nAnne pays late.\\n</Impressions>\"\n  }\n]\n\n## Response\n\ntool_calls:\n[\n  {\n    \"id\": \"c9\",\n    \"name\": \"speak\",\n    \"input\": {\n      \"text\": \"Good day.\"\n    }\n  }\n]",
      "slug": "conversations/20261107-000320-XXXX",
      "created_by": "salem-magistrate"
     }
@@ -9198,24 +9237,11 @@
       "dynamic": ""
      },
      "user": "",
-     "opts": "{\"cache\":true,\"tools\":[{\"name\":\"speak\",\"description\":\"Say something.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}},{\"name\":\"done\",\"description\":\"End the turn.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}],\"messages\":[{\"role\":\"user\",\"content\":\"Matter opens.\"}]}"
+     "opts": "{\"cache\":true,\"tools\":[{\"name\":\"speak\",\"description\":\"Say something.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}},{\"name\":\"done\",\"description\":\"End the turn.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}],\"messages\":[{\"role\":\"user\",\"content\":\"Matter opens.\"}],\"turnContext\":\"<Impressions purpose=\\\"private-relationship-notes\\\">\\nYour private notes about the other participants in this conversation. Let them shape your tone, what you engage with, and what you remember. NEVER read them aloud, quote them, or attribute them back to the person.\\n\\n## Your impressions of Anne Hale\\n\\nAnne pays late.\\n</Impressions>\"}"
     }
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "salem-magistrate",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -13803,10 +13829,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -13900,6 +13926,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "salem-magistrate",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -13969,19 +14009,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "salem-magistrate",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -14515,10 +14542,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -14612,6 +14639,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -14681,19 +14722,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -14776,10 +14804,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -14873,6 +14901,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -14942,19 +14984,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -15047,14 +15076,14 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {
-    "va/context/soul": "I keep the inn.",
-    "va/context/people/anne-hale": "Anne pays late.",
-    "va/context/people/human": "Asks about wool."
+   "failNth": {},
+   "notesIn": {
+    "context/soul": "I keep the inn.",
+    "context/people/anne-hale": "Anne pays late.",
+    "context/people/human": "Asks about wool."
    },
-   "chat_fail": [],
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -15148,6 +15177,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "",
+      null,
+      null,
+      null,
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -15218,23 +15261,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "use a tool",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -15306,10 +15336,10 @@
      "status": 500
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -15403,6 +15433,20 @@
       "Elias",
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "[Error] va is unavailable (Anthropic API error 500: boom).",
+      "11111111-2222-3333-4444-555555555555",
+      null,
+      "conv-1",
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -15449,19 +15493,6 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "[Error] va is unavailable (Anthropic API error 500: boom).",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": null,
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [
     {
@@ -15473,10 +15504,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Anthropic API error 500: boom",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Anthropic API error 500: boom\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -15550,10 +15578,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -15607,6 +15635,20 @@
      "params": [
       "degraded",
       "va"
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Retrying] Initial attempt failed: API error 503: busy. Retrying 3 more time(s) over the next ~1 hour(s) 15 minutes.",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -15670,6 +15712,20 @@
       null,
       null,
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
      ]
     },
     {
@@ -15784,34 +15840,10 @@
     300000,
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Retrying] Initial attempt failed: API error 503: busy. Retrying 3 more time(s) over the next ~1 hour(s) 15 minutes.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "hello",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -15905,12 +15937,14 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [
-    1
-   ],
+   "failNth": {
+    "chat-send": [
+     "chat send failed"
+    ]
+   },
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -15964,6 +15998,20 @@
      "params": [
       "degraded",
       "va"
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "[Retrying] Initial attempt failed: API error 400: bad. Retrying 1 more time(s) over the next ~5 seconds.",
+      "11111111-2222-3333-4444-555555555555",
+      null,
+      "conv-1",
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -16027,6 +16075,20 @@
       "actor-9",
       "Elias",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
      ]
     },
     {
@@ -16146,30 +16208,6 @@
     5000,
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "[Retrying] Initial attempt failed: API error 400: bad. Retrying 1 more time(s) over the next ~5 seconds.",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": null,
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [
     {
@@ -16237,10 +16275,10 @@
      "status": 503
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -16296,6 +16334,20 @@
      "params": [
       "degraded",
       "va"
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Retrying] Initial attempt failed: down. Retrying 2 more time(s) over the next ~3 seconds.",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -16378,6 +16430,20 @@
       null,
       null,
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (down).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     }
    ],
@@ -16498,34 +16564,10 @@
     2000,
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Retrying] Initial attempt failed: down. Retrying 2 more time(s) over the next ~3 seconds.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (down).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "hello",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -16543,10 +16585,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "down",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"down\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -16616,10 +16655,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -16721,6 +16760,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -16747,6 +16800,20 @@
       "72",
       "50",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] Rate limited — too many API calls. Please wait before trying again.",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -16791,6 +16858,20 @@
       null,
       null,
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (Rate limited — too many API calls).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     }
    ],
@@ -16871,50 +16952,15 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] Rate limited — too many API calls. Please wait before trying again.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (Rate limited — too many API calls).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "one",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     },
     {
      "query": "two",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -16940,10 +16986,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Rate limited — too many API calls",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Rate limited — too many API calls\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -17028,10 +17071,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -17144,6 +17187,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -17235,6 +17292,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -17261,6 +17332,20 @@
       "72",
       "50",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "[Error] Rate limited — too many API calls. Please wait before trying again.",
+      "66666666-7777-8888-9999-000000000000",
+      null,
+      "conv-1",
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -17308,6 +17393,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "[Error] va is unavailable (Rate limited — too many API calls).",
+      "66666666-7777-8888-9999-000000000000",
+      null,
+      "conv-1",
+      null,
+      "true",
+      "false"
+     ]
+    },
+    {
      "kind": "load-agent",
      "params": [
       "va"
@@ -17321,6 +17420,20 @@
       "72",
       "50",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] Rate limited — too many API calls. Please wait before trying again.",
+      "11111111-2222-3333-4444-555555555555",
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -17365,6 +17478,20 @@
       null,
       null,
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (Rate limited — too many API calls).",
+      "11111111-2222-3333-4444-555555555555",
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     }
    ],
@@ -17510,78 +17637,10 @@
     3000,
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "[Error] Rate limited — too many API calls. Please wait before trying again.",
-     "scene_id": "66666666-7777-8888-9999-000000000000",
-     "scene_structure": null,
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "[Error] va is unavailable (Rate limited — too many API calls).",
-     "scene_id": "66666666-7777-8888-9999-000000000000",
-     "scene_structure": null,
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] Rate limited — too many API calls. Please wait before trying again.",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (Rate limited — too many API calls).",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "human",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -17611,18 +17670,12 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Rate limited — too many API calls",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Rate limited — too many API calls\",\"statusCode\":500}"
     },
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Rate limited — too many API calls",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Rate limited — too many API calls\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -17698,10 +17751,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -17740,6 +17793,20 @@
      "kind": "cost-sums",
      "params": [
       "7"
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "[Error] Daily cost limit exceeded ($1.5000 / $1.00)",
+      "11111111-2222-3333-4444-555555555555",
+      null,
+      "conv-1",
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -17785,6 +17852,20 @@
       "Elias",
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "[Error] va is unavailable (Daily cost limit exceeded ($1.5000 / $1.00)).",
+      "11111111-2222-3333-4444-555555555555",
+      null,
+      "conv-1",
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -17814,30 +17895,6 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "[Error] Daily cost limit exceeded ($1.5000 / $1.00)",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": null,
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "[Error] va is unavailable (Daily cost limit exceeded ($1.5000 / $1.00)).",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": null,
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [
     {
@@ -17849,10 +17906,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Daily cost limit exceeded ($1.5000 / $1.00)",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Daily cost limit exceeded ($1.5000 / $1.00)\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -17909,13 +17963,15 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [
-    1,
-    2
-   ],
+   "failNth": {
+    "chat-send": [
+     "chat send failed",
+     "chat send failed"
+    ]
+   },
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -17946,6 +18002,20 @@
      "kind": "rate-overrides",
      "params": [
       "va"
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] Rate limited — too many API calls. Please wait before trying again.",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     },
     {
@@ -17991,6 +18061,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (chat send failed).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -18025,34 +18109,10 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] Rate limited — too many API calls. Please wait before trying again.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (chat send failed).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "x",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -18070,10 +18130,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "chat send failed",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"chat send failed\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -18113,12 +18170,14 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [
-    1
-   ],
+   "failNth": {
+    "chat-send": [
+     "chat send failed"
+    ]
+   },
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18133,6 +18192,20 @@
      "kind": "load-agent",
      "params": [
       "va"
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va cannot reply: it has no API key, model set. Its owner can add them in the dashboard (Agents → va).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     }
    ],
@@ -18153,19 +18226,6 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va cannot reply: it has no API key, model set. Its owner can add them in the dashboard (Agents → va).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [],
    "errors": [],
@@ -18206,10 +18266,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18239,7 +18299,6 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [],
    "searches": [],
    "reads": [],
    "errors": [],
@@ -18280,10 +18339,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18305,7 +18364,6 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [],
    "searches": [],
    "reads": [],
    "errors": [],
@@ -18327,10 +18385,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18352,7 +18410,6 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [],
    "searches": [],
    "reads": [],
    "errors": [],
@@ -18374,10 +18431,10 @@
     "load-agent": "db down"
    },
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18401,7 +18458,6 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [],
    "searches": [],
    "reads": [],
    "errors": [],
@@ -18456,10 +18512,10 @@
     "chat-history": "history down"
    },
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18529,6 +18585,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (history down).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -18548,29 +18618,13 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (history down).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [],
    "errors": [
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "history down",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"history down\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -18622,10 +18676,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18685,6 +18739,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -18704,29 +18772,13 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [],
    "errors": [
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Stale configuration for agent \"va\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Stale configuration for agent \\\"va\\\" — stored config version none, current version 1 for anthropic/claude-haiku-4-5. Re-save the agent's settings in the admin dashboard to update.\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -18778,10 +18830,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -18842,6 +18894,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"ghost\"]",
+      "[Error] va is unavailable (Agent \"ghost\" is not registered).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -18861,29 +18927,13 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"ghost\"]",
-     "message": "[Error] va is unavailable (Agent \"ghost\" is not registered).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [],
    "errors": [
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Agent \"ghost\" is not registered",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Agent \\\"ghost\\\" is not registered\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -18938,10 +18988,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -19007,6 +19057,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (Unsupported provider: unknown-provider).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -19021,23 +19085,10 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (Unsupported provider: unknown-provider).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "x",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -19055,10 +19106,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Unsupported provider: unknown-provider",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Unsupported provider: unknown-provider\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -19134,12 +19182,14 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [
-    1
-   ],
+   "failNth": {
+    "chat-send": [
+     "chat send failed"
+    ]
+   },
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -19235,6 +19285,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "true"
+     ]
+    },
+    {
      "kind": "usage-insert",
      "params": [
       "7",
@@ -19276,6 +19340,20 @@
       "actor-9",
       "Elias",
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "[Error] va is unavailable (chat send failed).",
+      "11111111-2222-3333-4444-555555555555",
+      null,
+      "conv-1",
+      null,
+      "true",
+      "false"
      ]
     }
    ],
@@ -19328,30 +19406,6 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": true
-    },
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "[Error] va is unavailable (chat send failed).",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": null,
-     "conversation_id": "conv-1",
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [
     {
@@ -19363,10 +19417,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "chat send failed",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"chat send failed\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -19436,10 +19487,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -19535,6 +19586,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "Hello there.",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -19583,6 +19648,20 @@
       null,
       null,
       null
+     ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (ack failed).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
      ]
     }
    ],
@@ -19635,34 +19714,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "Hello there.",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    },
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (ack failed).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "x",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -19680,10 +19735,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "ack failed",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"ack failed\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -19753,10 +19805,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -19866,6 +19918,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (insert failed).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -19907,23 +19973,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (insert failed).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "x",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -19941,10 +19994,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "insert failed",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"insert failed\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -20012,10 +20062,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -20093,6 +20143,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (No pricing data for anthropic/not-a-model — cannot calculate cost).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -20134,23 +20198,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (No pricing data for anthropic/not-a-model — cannot calculate cost).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "x",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],
@@ -20168,10 +20219,7 @@
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "No pricing data for anthropic/not-a-model — cannot calculate cost",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"No pricing data for anthropic/not-a-model — cannot calculate cost\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -20226,10 +20274,10 @@
    },
    "fail": {},
    "answers": [],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -20299,6 +20347,20 @@
       null,
       null
      ]
+    },
+    {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "[Error] va is unavailable (Cannot read properties of undefined (reading 'trim')).",
+      null,
+      null,
+      null,
+      null,
+      "true",
+      "false"
+     ]
     }
    ],
    "logs": [
@@ -20318,29 +20380,13 @@
    "created": [],
    "calls": [],
    "timers": [],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "[Error] va is unavailable (Cannot read properties of undefined (reading 'trim')).",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": true,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [],
    "reads": [],
    "errors": [
     {
      "subsystem": "virtual-agent",
      "action": "direct-chat-error",
-     "agent": "va",
-     "context": "chat",
-     "message": "Cannot read properties of undefined (reading 'trim')",
-     "status_code": 500
+     "details": "{\"agent\":\"va\",\"context\":\"chat\",\"message\":\"Cannot read properties of undefined (reading 'trim')\",\"statusCode\":500}"
     }
    ],
    "inputs": [
@@ -20420,10 +20466,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -20517,6 +20563,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -20578,19 +20638,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"c9\",\"name\":\"speak\",\"input\":{\"text\":\"Good day.\"}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -20674,10 +20721,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -20771,6 +20818,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"salem-engine\"]",
+      "{\"a\",\"b\"}",
+      "11111111-2222-3333-4444-555555555555",
+      "Inn",
+      "conv-1",
+      "[{\"id\":\"t\",\"name\":\"done\",\"input\":{}}]",
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "601",
@@ -20840,19 +20901,6 @@
    ],
    "timers": [
     3000
-   ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"salem-engine\"]",
-     "message": "{\"a\",\"b\"}",
-     "scene_id": "11111111-2222-3333-4444-555555555555",
-     "scene_structure": "Inn",
-     "conversation_id": "conv-1",
-     "tool_calls": "[{\"id\":\"t\",\"name\":\"done\",\"input\":{}}]",
-     "is_error": false,
-     "ack_on_insert": false
-    }
    ],
    "searches": [],
    "reads": [
@@ -20929,10 +20977,10 @@
      }
     }
    ],
-   "rag": null,
-   "rag_fail": "",
-   "read_notes": {},
-   "chat_fail": [],
+   "failNth": {},
+   "notesIn": {},
+   "search": null,
+   "searchError": "",
    "clock": 1793990000000,
    "unordered": false,
    "outcomes": [
@@ -21026,6 +21074,20 @@
      ]
     },
     {
+     "kind": "chat-send",
+     "params": [
+      "va",
+      "[\"human\"]",
+      "ok",
+      null,
+      null,
+      null,
+      null,
+      "false",
+      "false"
+     ]
+    },
+    {
      "kind": "chat-ack",
      "params": [
       "501",
@@ -21096,23 +21158,10 @@
    "timers": [
     3000
    ],
-   "chats": [
-    {
-     "from": "va",
-     "to": "[\"human\"]",
-     "message": "ok",
-     "scene_id": null,
-     "scene_structure": null,
-     "conversation_id": null,
-     "tool_calls": null,
-     "is_error": false,
-     "ack_on_insert": false
-    }
-   ],
    "searches": [
     {
      "query": "x",
-     "agent": "va",
+     "namespace": "va",
      "limit": 5
     }
    ],

@@ -18,7 +18,6 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/testutil"
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
 )
 
 const mailID = "0a1b2c3d-0000-4000-8000-000000000001"
@@ -28,7 +27,7 @@ var sentAt = time.Date(2026, 11, 5, 12, 0, 0, 123456000, time.UTC)
 func newService(t *testing.T) (*Service, pgxmock.PgxPoolIface) {
 	mock := testutil.NewMock(t)
 	cache := actors.NewCache(mock)
-	return &Service{DB: mock, Actors: cache, Log: logger.New(mock, cache, ""), Agents: virtualagent.Seam{}}, mock
+	return &Service{DB: mock, Actors: cache, Log: logger.New(mock, cache, ""), Agents: stubAgents{}}, mock
 }
 
 func expectActor(mock pgxmock.PgxPoolIface, name string, id int) {
@@ -120,9 +119,22 @@ func TestSendToVirtualAgentWithoutAccess(t *testing.T) {
 	testutil.WaitMet(t, mock)
 }
 
+// stubAgents stands in for the virtual agents, whose package imports this
+// one. The notice is the no-access text; virtualagent tests it against Node.
+type stubAgents struct{}
+
+func (stubAgents) UnanswerableNotice(agentName, reason string, missing []string) string {
+	return "[Error] You do not have access to " + agentName + ", so it will not reply. " +
+		"Its owner can grant access in the dashboard (Agents → " + agentName + " → Permissions)."
+}
+
+func (stubAgents) HandleDirectMail(ctx context.Context, va, from, id string) error {
+	return nil
+}
+
 // recordingAgents records the direct-mail dispatch.
 type recordingAgents struct {
-	virtualagent.Seam
+	stubAgents
 	got chan string
 }
 
@@ -396,15 +408,5 @@ func TestNoBodyErrorsAreV8s(t *testing.T) {
 	}
 	if err := rt.unsend(httptest.NewRecorder(), request("", "agent-a")); err == nil || err.Error() != "Cannot destructure property 'id' of 'req.body' as it is undefined." {
 		t.Errorf("unsend: %v", err)
-	}
-}
-
-func TestUnanswerableNotice(t *testing.T) {
-	seam := virtualagent.Seam{}
-	if got := seam.UnanswerableNotice("helper", "missing", []string{"model"}); got != "[Error] helper cannot reply: it has no model set. Its owner can add it in the dashboard (Agents → helper)." {
-		t.Errorf("one: %q", got)
-	}
-	if got := seam.UnanswerableNotice("helper", "missing", []string{"model", "api key"}); got != "[Error] helper cannot reply: it has no model, api key set. Its owner can add them in the dashboard (Agents → helper)." {
-		t.Errorf("two: %q", got)
 	}
 }

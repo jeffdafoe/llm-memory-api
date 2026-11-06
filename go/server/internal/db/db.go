@@ -86,9 +86,9 @@ func Background(fn func(ctx context.Context)) {
 }
 
 // BackgroundUnbounded is Background without the time bound, for work that
-// bounds its own steps: a virtual agent's direct-chat reply, whose provider
-// calls each have virtual_agent_request_timeout and whose retries wait
-// minutes between tries. DrainBackground still waits for it and cancels it.
+// waits on outside calls longer than backgroundTimeout: a virtual agent's
+// reply to mail or chat, with its provider calls and retry backoff. Its
+// context ends only when DrainBackground cancels the running jobs.
 func BackgroundUnbounded(fn func(ctx context.Context)) {
 	backgroundMu.Lock()
 	if backgroundClosed {
