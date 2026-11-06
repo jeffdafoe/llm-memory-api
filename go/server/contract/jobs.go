@@ -49,7 +49,7 @@ func (j *JobRunner) Run(ctx context.Context, job string) (string, error) {
 	args := append(append([]string{}, j.Command[1:]...), job)
 	cmd := exec.CommandContext(ctx, j.Command[0], args...)
 	cmd.Dir = j.Dir
-	cmd.Env = serverEnv(j.Spec, 0, j.Fake)
+	cmd.Env = serverEnv(j.Spec, j.Fake)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
