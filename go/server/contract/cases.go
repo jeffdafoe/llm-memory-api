@@ -18,11 +18,7 @@ import (
 //     also go to /v1 with no credentials (parsing comes before auth);
 //   - a valid /v1 credential goes to noRoutePath: auth and the heartbeat
 //     run, then both 404.
-//
-// /v1/admin/login is not used with POST: Go lets it through auth but has not
-// ported it, so an accepted request there gets Node's login route and Go's
-// 404.
-var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases, memoryCases, notesCases, grepCases, mailCases, vaMailCases, chatCases, vaChatCases, discussionCases, vaDiscussionCases, agentCases, oauthCases, registrationCases, cleanupCases, eventsCases)
+var Scenarios = concat(healthCases, notFoundCases, authCases, bodyCases, memoryCases, notesCases, grepCases, mailCases, vaMailCases, chatCases, vaChatCases, discussionCases, vaDiscussionCases, agentCases, oauthCases, registrationCases, cleanupCases, adminCases, eventsCases)
 
 const (
 	bodyPath    = "/contract/body"
