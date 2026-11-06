@@ -917,3 +917,14 @@ func (j *Job) Start() (*cron.Task, error) {
 	j.log("scheduler", logger.Fields{{Key: "message", Value: "Dream scheduler started"}, {Key: "schedule", Value: schedule}})
 	return task, nil
 }
+
+// FindDreamAgent is findDreamAgent for the other callers of the dream
+// agents (/sim/soul): the agent with the expertise tag, or "" (logged).
+// It needs DB, Log and Trust.
+func (j *Job) FindDreamAgent(ctx context.Context, tag string) (string, error) {
+	return j.findDreamAgent(ctx, tag)
+}
+
+// DetectReasoningPreamble is detectReasoningPreamble, shared with
+// /sim/soul.
+func DetectReasoningPreamble(text string) string { return detectReasoningPreamble(text) }

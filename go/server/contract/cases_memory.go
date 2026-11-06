@@ -139,13 +139,21 @@ var memoryCleanupCases = []Scenario{
 var memoryStatusCases = []Scenario{
 	postCase("memory status one namespace", statusPath, "agent-b-session", `{"namespace":"shared"}`),
 	postCase("memory status without read access", statusPath, "agent-b-session", `{"namespace":"private-ns"}`),
-	// Without a namespace Node filters by the readable namespaces, but with
-	// the actor type in place of its name (LLM-918): agent-b sees shared and
-	// agent-a, and a wildcard reader gets a 500.
+	// Without a namespace the list is filtered to the namespaces the caller
+	// reads (its grants and its own namespace); a wildcard reader gets all.
 	postCase("memory status all namespaces as agent-b", statusPath, "agent-b-session", `{}`),
 	postCase("memory status all namespaces as a wildcard reader", statusPath, "agent-a-session", `{}`),
-	// The throw is inside the filter callback, so with no files at all a
-	// wildcard reader gets an empty list.
+	// agent-b has no grant on its own namespace, but reads it; a namespace
+	// named after its actor type ("agent") is not readable to it.
+	{
+		Name: "memory status all namespaces includes the own namespace",
+		Steps: []Step{
+			{Method: "POST", Path: ingestPath, Auth: "agent-a-session", Header: jsonType, Body: `{"namespace":"agent","source_file":"type-named.md","content":"# Type named\n\nNot agent-b's."}`},
+			{Method: "POST", Path: ingestPath, Auth: "agent-b-session", Header: jsonType, Body: `{"namespace":"agent-b","source_file":"own.md","content":"# Own\n\nagent-b's own file."}`},
+			{Settle: true},
+			{Method: "POST", Path: statusPath, Auth: "agent-b-session", Header: jsonType, Body: `{}`},
+		},
+	},
 	{
 		Name: "memory status all namespaces as a wildcard reader with no files",
 		Steps: []Step{

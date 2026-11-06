@@ -44,11 +44,13 @@ router.post('/memory/ingest/status', apiRoute('memory', 'ingest-status', async (
         const result = await ingestStatus(namespace);
         res.json(result);
     } else {
-        // No namespace — filter to readable namespaces only
-        const readable = await getReadableNamespaces(actor.actorId, actor.actorType);
+        // No namespace — filter to readable namespaces only. null means the
+        // actor reads every namespace (a '/' grant), so nothing is filtered.
+        const readable = await getReadableNamespaces(actor.actorId, actor.actorName, actor.actorType);
         const allStatus = await ingestStatus(null);
+        const files = allStatus.files || [];
         const filtered = {
-            files: (allStatus.files || []).filter(f => readable.includes(f.namespace))
+            files: readable === null ? files : files.filter(f => readable.includes(f.namespace))
         };
         res.json(filtered);
     }

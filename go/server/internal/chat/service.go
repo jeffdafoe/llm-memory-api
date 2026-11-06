@@ -457,9 +457,16 @@ func (s *Service) Send(ctx context.Context, in SendInput) (sent *Sent, pending P
 
 	if in.DiscussionID != 0 && in.FromAgent != "system" && s.Notifier != nil {
 		payload := notifyPayload{Type: "virtual-agent", DiscussionID: in.DiscussionID, TriggerType: "message"}
-		db.Background(func(ctx context.Context) {
-			s.Notifier.NotifySystem(ctx, payload)
-		})
+		// Node did not await notifySystem. Its inserts still ran before a
+		// virtual agent's next post in practice, because that post comes
+		// after a provider call, so Node's rows have that order. Go writes
+		// the two rows here, which makes the order certain, and the send
+		// waits for them (go-server note, Known differences). NotifySystem
+		// still runs the handler in the background. A failure is ignored,
+		// as Node's .catch did, and a client hanging up does not stop it.
+		notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postCommitTimeout)
+		s.Notifier.NotifySystem(notifyCtx, payload)
+		cancel()
 	}
 
 	if !in.PersistOnly && in.DiscussionID == 0 && in.FromAgent != "system" {
