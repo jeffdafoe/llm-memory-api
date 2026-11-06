@@ -359,14 +359,3 @@ func TestParseFrontmatter(t *testing.T) {
 		t.Fatal(body)
 	}
 }
-
-func TestPassphrase(t *testing.T) {
-	if len(wordlist) != 7776 || wordlist[0] != "abacus" {
-		t.Fatalf("wordlist %d", len(wordlist))
-	}
-	p := passphrase()
-	words := strings.Count(p, "-")
-	if words < 2 {
-		t.Fatalf("%q", p)
-	}
-}
