@@ -80,7 +80,10 @@ async function main() {
     }
 }
 
-main().catch((err) => {
+// Exit once the job has settled: a provider call arms a timeout it never
+// clears (services/providers/index.js, virtual_agent_request_timeout), which
+// would keep the process alive past the harness's job limit.
+main().then(() => process.exit(0), (err) => {
     console.error('runjob:', err.stack || err.message);
     process.exit(1);
 });
