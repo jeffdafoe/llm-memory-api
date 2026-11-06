@@ -294,10 +294,10 @@ func TestSendToolCallResults(t *testing.T) {
 	calls := `[{"id":"c1","b":2,"a":1}]`
 	expectText(mock, 100, str("r1"), 1, nil, str(`[{"id":"c1","b":2,"a":1}]`), str("c1"), str("6d2a0c1e-0000-4000-8000-000000000001"), (*string)(nil), false, str("sc-1"))
 	expectText(mock, 101, str("r2"), 1, nil, nil, str("c2"), str("6d2a0c1e-0000-4000-8000-000000000001"), (*string)(nil), false, str("sc-1"))
-	expectDelivery(mock, 100, 21, false, 500)
-	expectDelivery(mock, 101, 21, false, 501)
-	expectDelivery(mock, 100, 22, false, 502)
-	expectDelivery(mock, 101, 22, false, 503)
+	expectDelivery(mock, 100, 21, true, 500)
+	expectDelivery(mock, 101, 21, true, 501)
+	expectDelivery(mock, 100, 22, true, 502)
+	expectDelivery(mock, 101, 22, true, 503)
 	mock.ExpectCommit()
 
 	sent, _, err := s.Send(context.Background(), SendInput{

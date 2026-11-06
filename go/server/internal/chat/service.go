@@ -243,6 +243,8 @@ type SendInput struct {
 	// result.
 	ToolCallResults []ToolCallResult
 	// PersistOnly stores the rows and dispatches no virtual-agent call.
+	// Its delivery rows are acked as they are written, since no turn
+	// would ever ack them.
 	PersistOnly bool
 
 	SceneID          *string
@@ -550,7 +552,7 @@ func (s *Service) insert(ctx context.Context, in SendInput, fromActorID int, rec
 		for _, t := range texts {
 			if err := tx.QueryRow(ctx, `INSERT INTO chat_messages (message_text_id, to_actor_id, acked_at)
                  VALUES ($1, $2, CASE WHEN $3::boolean THEN NOW() ELSE NULL END)
-                 RETURNING id`, t.id, toActor.ID, in.AckOnInsert).Scan(&last); err != nil {
+                 RETURNING id`, t.id, toActor.ID, in.AckOnInsert || in.PersistOnly).Scan(&last); err != nil {
 				return nil, nil, nil, nil, nil, err
 			}
 			allIDs = append(allIDs, last)

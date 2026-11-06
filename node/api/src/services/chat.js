@@ -124,8 +124,10 @@ async function chatSend(fromAgent, toAgents, discussionId, message, opts) {
     // ackOnInsert: stamp acked_at = NOW() on the chat_messages delivery
     // row(s) at insert time. Set by handleDirectChat for the reply chat
     // it writes when the original /chat/send was wait=true — see comment
-    // on `wait` above.
-    const ackOnInsert = opts && opts.ackOnInsert === true;
+    // on `wait` above. Also set for persistOnly: those tool results start
+    // no VA turn, so nothing would ever ack them, and they would sit
+    // unread for the recipient until the sim chat purge (LLM-948).
+    const ackOnInsert = (opts && opts.ackOnInsert === true) || persistOnly;
 
     // Resolve sender
     const fromActor = await requireByName(fromAgent);
