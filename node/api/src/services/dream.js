@@ -1752,7 +1752,9 @@ class RunLockLostError extends Error {}
 // arbitrary integers, but each lock needs its own and a key must never be
 // reused — two jobs sharing a key would exclude each other for no reason.
 // Convention for new locks: <ticket number>001. Registry for this database:
-//   532001 — the dream run (LLM-532). The only advisory lock in the app.
+//   532001 — the dream run (LLM-532).
+//   734001 — first key of the signup event lock (LLM-734, signup-funnel.js).
+//   919001 — first key of the per-file ingest lock (LLM-919, memory.js).
 const DREAM_RUN_LOCK_KEY = 532001;
 
 // Take the dream-run lock. Returns a handle with release(), or null when
