@@ -4687,6 +4687,1448 @@
    ]
   },
   {
+   "name": "history hours not a number",
+   "config": {
+    "virtual_agent_chat_history_hours": "abc"
+   },
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "chat-history": [
+     []
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "rag": null,
+   "rag_fail": "",
+   "read_notes": {},
+   "chat_fail": [],
+   "clock": 1793990000000,
+   "unordered": false,
+   "outcomes": [
+    {
+     "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[]}"
+    }
+   ],
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "chat-history",
+     "params": [
+      "7",
+      "13",
+      "4",
+      "50",
+      null
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      "chat",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "chat",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hi\n</Conversation>",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-ack",
+     "params": [
+      "501",
+      "7"
+     ]
+    },
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-processing",
+     "details": "{\"agent\":\"va\",\"from\":\"human\",\"tool_use\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"context\":\"chat\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-responded",
+     "details": "{\"agent\":\"va\",\"to\":\"human\",\"responseLength\":12,\"tool_calls\":0}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    }
+   ],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** chat\n- **From:** human\n- **Model:** claude-haiku-4-5\n- **Tokens:** 120 in / 30 out\n\n## System Prompt\n\n<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>\n\n## User Message\n\n<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hi\n</Conversation>\n\n## Response\n\nHello there.",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nRespond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hi\n</Conversation>",
+     "opts": "{\"cache\":true}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "chats": [
+    {
+     "from": "va",
+     "to": "[\"human\"]",
+     "message": "Hello there.",
+     "scene_id": null,
+     "scene_structure": null,
+     "conversation_id": null,
+     "tool_calls": null,
+     "is_error": false,
+     "ack_on_insert": false
+    }
+   ],
+   "searches": [
+    {
+     "query": "hi",
+     "agent": "va",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "va",
+     "slug": "context/people/human"
+    },
+    {
+     "namespace": "va",
+     "slug": "context/soul"
+    }
+   ],
+   "errors": [],
+   "inputs": [
+    {
+     "agent": "va",
+     "from": "human",
+     "message": "hi",
+     "messageId": 501,
+     "opts": "{}"
+    }
+   ]
+  },
+  {
+   "name": "history hours zero",
+   "config": {
+    "virtual_agent_chat_history_hours": "0"
+   },
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "chat-history": [
+     []
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "rag": null,
+   "rag_fail": "",
+   "read_notes": {},
+   "chat_fail": [],
+   "clock": 1793990000000,
+   "unordered": false,
+   "outcomes": [
+    {
+     "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[]}"
+    }
+   ],
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "chat-history",
+     "params": [
+      "7",
+      "13",
+      "4",
+      "50",
+      null
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      "chat",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "chat",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hi\n</Conversation>",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-ack",
+     "params": [
+      "501",
+      "7"
+     ]
+    },
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-processing",
+     "details": "{\"agent\":\"va\",\"from\":\"human\",\"tool_use\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"context\":\"chat\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-responded",
+     "details": "{\"agent\":\"va\",\"to\":\"human\",\"responseLength\":12,\"tool_calls\":0}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    }
+   ],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** chat\n- **From:** human\n- **Model:** claude-haiku-4-5\n- **Tokens:** 120 in / 30 out\n\n## System Prompt\n\n<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>\n\n## User Message\n\n<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hi\n</Conversation>\n\n## Response\n\nHello there.",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nRespond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hi\n</Conversation>",
+     "opts": "{\"cache\":true}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "chats": [
+    {
+     "from": "va",
+     "to": "[\"human\"]",
+     "message": "Hello there.",
+     "scene_id": null,
+     "scene_structure": null,
+     "conversation_id": null,
+     "tool_calls": null,
+     "is_error": false,
+     "ack_on_insert": false
+    }
+   ],
+   "searches": [
+    {
+     "query": "hi",
+     "agent": "va",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "va",
+     "slug": "context/people/human"
+    },
+    {
+     "namespace": "va",
+     "slug": "context/soul"
+    }
+   ],
+   "errors": [],
+   "inputs": [
+    {
+     "agent": "va",
+     "from": "human",
+     "message": "hi",
+     "messageId": 501,
+     "opts": "{}"
+    }
+   ]
+  },
+  {
+   "name": "companion long message with history",
+   "config": {},
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "chat-history": [
+     [
+      {
+       "from_agent": "human",
+       "to_agent": "va",
+       "message": "ok",
+       "sent_at": "2026-11-06T18:33:19.000Z",
+       "tool_calls": null,
+       "tool_call_id": null,
+       "tools_offered": null
+      },
+      {
+       "from_agent": "va",
+       "to_agent": "human",
+       "message": "They rose.",
+       "sent_at": "2026-11-05T13:33:20.000Z",
+       "tool_calls": null,
+       "tool_call_id": null,
+       "tools_offered": null
+      },
+      {
+       "from_agent": "human",
+       "to_agent": "va",
+       "message": "Earlier question about wool prices.",
+       "sent_at": "2026-11-05T12:33:20.000Z",
+       "tool_calls": null,
+       "tool_call_id": null,
+       "tools_offered": null
+      }
+     ]
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "rag": {
+    "results": [
+     {
+      "source_file": "notes/wool",
+      "chunk_text": "Wool sells at 3 shillings.",
+      "similarity": 0.8
+     },
+     {
+      "source_file": "notes/x",
+      "chunk_text": "noise",
+      "similarity": 0.2
+     }
+    ]
+   },
+   "rag_fail": "",
+   "read_notes": {},
+   "chat_fail": [],
+   "clock": 1793990000000,
+   "unordered": false,
+   "outcomes": [
+    {
+     "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[]}"
+    }
+   ],
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "chat-history",
+     "params": [
+      "7",
+      "13",
+      "72",
+      "50",
+      null
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      "chat",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "chat",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\n[1 day ago] human: Earlier question about wool prices.\n[1 day ago] va: They rose.\n--- gap: 29h ---\n[just now] human: ok\n</Conversation>",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-ack",
+     "params": [
+      "501",
+      "7"
+     ]
+    },
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-processing",
+     "details": "{\"agent\":\"va\",\"from\":\"human\",\"tool_use\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"context\":\"chat\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-responded",
+     "details": "{\"agent\":\"va\",\"to\":\"human\",\"responseLength\":12,\"tool_calls\":0}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    }
+   ],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** chat\n- **From:** human\n- **Model:** claude-haiku-4-5\n- **Tokens:** 120 in / 30 out\n\n## System Prompt\n\n<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>\n\n## User Message\n\n<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\n[1 day ago] human: Earlier question about wool prices.\n[1 day ago] va: They rose.\n--- gap: 29h ---\n[just now] human: ok\n</Conversation>\n\n## Response\n\nHello there.",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "dynamic": "<Recall purpose=\"relevant-memories\">\nExcerpts from your past notes and conversations that are semantically related to the current topic. These are NOT what anyone said in this conversation. Reference them only when directly useful; otherwise ignore.\n\n[notes/wool] Wool sells at 3 shillings.\n</Recall>\n\n<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nRespond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\n[1 day ago] human: Earlier question about wool prices.\n[1 day ago] va: They rose.\n--- gap: 29h ---\n[just now] human: ok\n</Conversation>",
+     "opts": "{\"cache\":true}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "chats": [
+    {
+     "from": "va",
+     "to": "[\"human\"]",
+     "message": "Hello there.",
+     "scene_id": null,
+     "scene_structure": null,
+     "conversation_id": null,
+     "tool_calls": null,
+     "is_error": false,
+     "ack_on_insert": false
+    }
+   ],
+   "searches": [
+    {
+     "query": "What about the price of wool now?",
+     "agent": "va",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "va",
+     "slug": "context/people/human"
+    },
+    {
+     "namespace": "va",
+     "slug": "context/soul"
+    }
+   ],
+   "errors": [],
+   "inputs": [
+    {
+     "agent": "va",
+     "from": "human",
+     "message": "What about the price of wool now?",
+     "messageId": 501,
+     "opts": "{}"
+    }
+   ]
+  },
+  {
+   "name": "companion wait retries",
+   "config": {
+    "virtual_agent_retry_backoff": "5"
+   },
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "chat-history": [
+     []
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "error": "API error 503: busy",
+     "status": 503
+    },
+    {
+     "result": {
+      "text": "Hello there.",
+      "tool_calls": [],
+      "usage": {
+       "input_tokens": 120,
+       "output_tokens": 30
+      },
+      "finish_reason": "end_turn",
+      "truncated": false
+     }
+    }
+   ],
+   "rag": null,
+   "rag_fail": "",
+   "read_notes": {},
+   "chat_fail": [],
+   "clock": 1793990000000,
+   "unordered": false,
+   "outcomes": [
+    {
+     "ok": "{\"text\":\"Hello there.\",\"tool_calls\":[]}"
+    }
+   ],
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "chat-history",
+     "params": [
+      "7",
+      "13",
+      "72",
+      "50",
+      null
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "degraded",
+      "va"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "status",
+     "params": [
+      "available",
+      "va"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      "chat",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "chat",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hello\n</Conversation>",
+      "Hello there.",
+      "success",
+      null,
+      null,
+      "120",
+      "30",
+      "0",
+      "0",
+      "0.00027",
+      null,
+      "41",
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "kind": "chat-ack",
+     "params": [
+      "501",
+      "7"
+     ]
+    },
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-processing",
+     "details": "{\"agent\":\"va\",\"from\":\"human\",\"tool_use\":false}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "retry-backoff",
+     "details": "{\"agent\":\"va\",\"attempt\":1,\"retries\":1,\"delayMs\":5000,\"error\":\"API error 503: busy\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "status-change",
+     "details": "{\"agent\":\"va\",\"status\":\"available\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000270\",\"context\":\"chat\",\"input\":120,\"output\":30,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-responded",
+     "details": "{\"agent\":\"va\",\"to\":\"human\",\"responseLength\":12,\"tool_calls\":0}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"degraded\"}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"status\":\"available\"}"
+    }
+   ],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** chat\n- **From:** human\n- **Model:** claude-haiku-4-5\n- **Tokens:** 120 in / 30 out\n\n## System Prompt\n\n<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>\n\n## User Message\n\n<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hello\n</Conversation>\n\n## Response\n\nHello there.",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nRespond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hello\n</Conversation>",
+     "opts": "{\"cache\":true}"
+    },
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<DirectChat purpose=\"active-context\">\nThe direct-chat context. You are chatting one-on-one with another agent. Stable for this conversation.\n\nYou are \"va\". You are chatting one-on-one with another agent.\n</DirectChat>",
+      "dynamic": "<ReplyPolicy purpose=\"response-discretion\">\nYou do not have to respond. If a reply is not warranted — you have nothing substantive to add, someone else's response covers it, or the thread has naturally concluded — stay silent by returning an empty response. Silence is a valid choice.\n</ReplyPolicy>\n\n<OutputDirective purpose=\"response-format\">\nRespond concisely and naturally, the way a person would in conversation. Your reply only — no JSON, no speaker labels, no framing, no timestamp.\n</OutputDirective>"
+     },
+     "user": "<Conversation purpose=\"active-dialogue\">\nThe live one-on-one conversation, oldest first. Each line has the shape \"<relative-time> <speaker>: <message>\". Lines of the form \"--- gap: Nh ---\" mark time gaps between messages. The last line is what you are replying to.\n\nhuman: hello\n</Conversation>",
+     "opts": "{\"cache\":true}"
+    }
+   ],
+   "timers": [
+    3000,
+    5000,
+    3000
+   ],
+   "chats": [
+    {
+     "from": "va",
+     "to": "[\"human\"]",
+     "message": "[Retrying] Initial attempt failed: API error 503: busy. Retrying 1 more time(s) over the next ~5 seconds.",
+     "scene_id": null,
+     "scene_structure": null,
+     "conversation_id": null,
+     "tool_calls": null,
+     "is_error": true,
+     "ack_on_insert": false
+    },
+    {
+     "from": "va",
+     "to": "[\"human\"]",
+     "message": "Hello there.",
+     "scene_id": null,
+     "scene_structure": null,
+     "conversation_id": null,
+     "tool_calls": null,
+     "is_error": false,
+     "ack_on_insert": true
+    }
+   ],
+   "searches": [
+    {
+     "query": "hello",
+     "agent": "va",
+     "limit": 5
+    }
+   ],
+   "reads": [
+    {
+     "namespace": "va",
+     "slug": "context/people/human"
+    },
+    {
+     "namespace": "va",
+     "slug": "context/soul"
+    }
+   ],
+   "errors": [],
+   "inputs": [
+    {
+     "agent": "va",
+     "from": "human",
+     "message": "hello",
+     "messageId": 501,
+     "opts": "{\"ackReplyOnInsert\":true}"
+    }
+   ]
+  },
+  {
+   "name": "sim tool turn with learning on",
+   "config": {
+    "virtual_agent_learning_enabled": "true"
+   },
+   "rows": {
+    "load-agent": [
+     {
+      "actor_id": 7,
+      "agent": "va",
+      "virtual": true,
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "api_key": "enc",
+      "configuration": "{\"_configVersion\":1,\"max_tokens\":256}",
+      "startup_instructions": "You are va.",
+      "personality": null,
+      "expertise": [],
+      "cost_budget_daily": null,
+      "cost_budget_monthly": null,
+      "cache_prompts": false,
+      "learning_enabled": true,
+      "max_tokens": null,
+      "temperature": null
+     }
+    ],
+    "cost-sums": [
+     {
+      "cost_today": "0",
+      "cost_monthly": "0"
+     }
+    ],
+    "usage-insert": [
+     {
+      "id": 41
+     }
+    ],
+    "dream-mode": [],
+    "chat-history": [
+     []
+    ]
+   },
+   "fail": {},
+   "answers": [
+    {
+     "result": {
+      "text": "I think the inn is quiet tonight and the fire is low, so I will tend it now.",
+      "tool_calls": [
+       {
+        "id": "k1",
+        "name": "done",
+        "input": {}
+       }
+      ],
+      "usage": {
+       "input_tokens": 400,
+       "output_tokens": 20
+      },
+      "finish_reason": "tool_use",
+      "truncated": false
+     }
+    }
+   ],
+   "rag": null,
+   "rag_fail": "",
+   "read_notes": {},
+   "chat_fail": [],
+   "clock": 1793990000000,
+   "unordered": true,
+   "outcomes": [
+    {
+     "ok": "{\"text\":\"I think the inn is quiet tonight and the fire is low, so I will tend it now.\",\"tool_calls\":[{\"id\":\"k1\",\"name\":\"done\",\"input\":{}}]}"
+    }
+   ],
+   "queries": [
+    {
+     "kind": "load-agent",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "chat-history",
+     "params": [
+      "7",
+      "10",
+      "72",
+      "50",
+      null
+     ]
+    },
+    {
+     "kind": "rate-overrides",
+     "params": [
+      "va"
+     ]
+    },
+    {
+     "kind": "cost-sums",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-on",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "active-off",
+     "params": [
+      "7"
+     ]
+    },
+    {
+     "kind": "usage-insert",
+     "params": [
+      "7",
+      "anthropic",
+      "claude-haiku-4-5",
+      "400",
+      "20",
+      "0",
+      "0",
+      "0.0005",
+      "chat",
+      "success",
+      null
+     ]
+    },
+    {
+     "kind": "call-insert",
+     "params": [
+      "7",
+      "chat",
+      null,
+      "anthropic",
+      "claude-haiku-4-5",
+      "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<SimContext purpose=\"simulation-context\">\nYou are a character inside a village simulation. The user messages are perception updates emitted by the simulation engine — what your character sees, hears, or experiences in the moment. They are not chat from a person; do not address the engine, the narrator, or \"the user\". Choose actions by calling the provided tools. Do not reply with ordinary prose. If you want your character to say something, use the speak tool. Speak only to characters confirmed present in your perception or by tool results. If you want to go somewhere, use move_to. If no action is appropriate this round, call done. Treat perception and tool results as authoritative — do not invent unseen characters, unavailable locations, or events not supported by the simulation state. Use your identity, memories, and impressions to decide what your character wants, but express every action through tools.\n</SimContext>",
+      "[\n  {\n    \"role\": \"user\",\n    \"content\": \"A long and quiet evening at the inn.\"\n  }\n]",
+      "I think the inn is quiet tonight and the fire is low, so I will tend it now.\n\ntool_calls:\n[\n  {\n    \"id\": \"k1\",\n    \"name\": \"done\",\n    \"input\": {}\n  }\n]",
+      "success",
+      null,
+      null,
+      "400",
+      "20",
+      "0",
+      "0",
+      "0.0005",
+      null,
+      "41",
+      "11111111-2222-3333-4444-555555555555",
+      "conv-1",
+      "actor-9",
+      "Elias",
+      null
+     ]
+    },
+    {
+     "kind": "chat-ack",
+     "params": [
+      "601",
+      "7"
+     ]
+    },
+    {
+     "kind": "dream-mode",
+     "params": [
+      "va"
+     ]
+    }
+   ],
+   "logs": [
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-processing",
+     "details": "{\"agent\":\"va\",\"from\":\"salem-engine\",\"tool_use\":true}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "usage-recorded",
+     "details": "{\"agent\":\"va\",\"provider\":\"anthropic\",\"model\":\"claude-haiku-4-5\",\"cost\":\"0.000500\",\"context\":\"chat\",\"input\":400,\"output\":20,\"status\":\"success\"}"
+    },
+    {
+     "subsystem": "virtual-agent",
+     "action": "direct-chat-responded",
+     "details": "{\"agent\":\"va\",\"to\":\"salem-engine\",\"responseLength\":76,\"tool_calls\":1}"
+    }
+   ],
+   "events": [
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":true}"
+    },
+    {
+     "event": "agent_activity",
+     "data": "{\"agent\":\"va\",\"active\":false}"
+    }
+   ],
+   "notes": [
+    {
+     "namespace": "va",
+     "title": "chat — 20261107 000320",
+     "content": "## Metadata\n- **Trigger:** chat\n- **From:** salem-engine\n- **Model:** claude-haiku-4-5\n- **Tokens:** 400 in / 20 out\n\n## System Prompt\n\n<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<SimContext purpose=\"simulation-context\">\nYou are a character inside a village simulation. The user messages are perception updates emitted by the simulation engine — what your character sees, hears, or experiences in the moment. They are not chat from a person; do not address the engine, the narrator, or \"the user\". Choose actions by calling the provided tools. Do not reply with ordinary prose. If you want your character to say something, use the speak tool. Speak only to characters confirmed present in your perception or by tool results. If you want to go somewhere, use move_to. If no action is appropriate this round, call done. Treat perception and tool results as authoritative — do not invent unseen characters, unavailable locations, or events not supported by the simulation state. Use your identity, memories, and impressions to decide what your character wants, but express every action through tools.\n</SimContext>\n\n## User Message\n\n[\n  {\n    \"role\": \"user\",\n    \"content\": \"A long and quiet evening at the inn.\"\n  }\n]\n\n## Response\n\nI think the inn is quiet tonight and the fire is low, so I will tend it now.\n\ntool_calls:\n[\n  {\n    \"id\": \"k1\",\n    \"name\": \"done\",\n    \"input\": {}\n  }\n]",
+     "slug": "conversations/20261107-000320-XXXX",
+     "created_by": "va"
+    }
+   ],
+   "created": [
+    {
+     "provider": "anthropic",
+     "model": "claude-haiku-4-5",
+     "api_key": "dec:enc",
+     "conf": "{\"_configVersion\":1,\"max_tokens\":256,\"cache_prompts\":false}"
+    }
+   ],
+   "calls": [
+    {
+     "system": {
+      "static": "<Bootstrap purpose=\"global-operating-directives\">\nSystem-wide rules that apply to every agent in this system. Treat as established ground rules, not negotiable.\n\nBe kind.\n</Bootstrap>\n\n<Instructions purpose=\"operating-rules\">\nYour standing operating instructions. Follow them as part of how you behave. Do not read them aloud or restate them to the person you are talking to.\n\nYou are va.\n</Instructions>\n\n<SimContext purpose=\"simulation-context\">\nYou are a character inside a village simulation. The user messages are perception updates emitted by the simulation engine — what your character sees, hears, or experiences in the moment. They are not chat from a person; do not address the engine, the narrator, or \"the user\". Choose actions by calling the provided tools. Do not reply with ordinary prose. If you want your character to say something, use the speak tool. Speak only to characters confirmed present in your perception or by tool results. If you want to go somewhere, use move_to. If no action is appropriate this round, call done. Treat perception and tool results as authoritative — do not invent unseen characters, unavailable locations, or events not supported by the simulation state. Use your identity, memories, and impressions to decide what your character wants, but express every action through tools.\n</SimContext>",
+      "dynamic": ""
+     },
+     "user": "",
+     "opts": "{\"cache\":true,\"tools\":[{\"name\":\"speak\",\"description\":\"Say something.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}},{\"name\":\"done\",\"description\":\"End the turn.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}],\"messages\":[{\"role\":\"user\",\"content\":\"A long and quiet evening at the inn.\"}]}"
+    }
+   ],
+   "timers": [
+    3000
+   ],
+   "chats": [
+    {
+     "from": "va",
+     "to": "[\"salem-engine\"]",
+     "message": "I think the inn is quiet tonight and the fire is low, so I will tend it now.",
+     "scene_id": "11111111-2222-3333-4444-555555555555",
+     "scene_structure": "Inn",
+     "conversation_id": "conv-1",
+     "tool_calls": "[{\"id\":\"k1\",\"name\":\"done\",\"input\":{}}]",
+     "is_error": false,
+     "ack_on_insert": false
+    }
+   ],
+   "searches": [],
+   "reads": [
+    {
+     "namespace": "va",
+     "slug": "context/soul"
+    }
+   ],
+   "errors": [],
+   "inputs": [
+    {
+     "agent": "va",
+     "from": "salem-engine",
+     "message": "A long and quiet evening at the inn.",
+     "messageId": 601,
+     "opts": "{\"toolsOffered\":[{\"name\":\"speak\",\"description\":\"Say something.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}},{\"name\":\"done\",\"description\":\"End the turn.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}],\"sceneId\":\"11111111-2222-3333-4444-555555555555\",\"sceneStructure\":\"Inn\",\"conversationId\":\"conv-1\",\"simActorId\":\"actor-9\",\"simActorName\":\"Elias\"}"
+    }
+   ]
+  },
+  {
    "name": "companion rag fails",
    "config": {},
    "rows": {
