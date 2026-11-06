@@ -85,14 +85,12 @@ var agentRotateCases = []Scenario{
 		Name: "agent rotate",
 		Steps: []Step{
 			{Method: "POST", Path: agentRotatePath, Auth: "agent-a-session", Header: jsonType,
-				Body: `{"current_passphrase":"{{agent-a-passphrase}}"}`, Random: []string{"passphrase"}},
+				Body: `{"current_passphrase":"{{agent-a-passphrase}}"}`, Random: []string{"passphrase"}, VolatileLength: true},
 			// Every API session ended; the API key still works.
 			{Method: "POST", Path: agentHeartbeatPath, Auth: "agent-a-session", Header: jsonType, Body: `{}`},
 			{Method: "POST", Path: agentHeartbeatPath, Auth: "agent-a-key", Header: jsonType, Body: `{}`},
 			{Method: "POST", Path: agentLoginPath, Header: jsonType, Body: `{"agent":"agent-a","passphrase":"{{agent-a-passphrase}}"}`},
 		},
-		Known: []KnownDifference{{Where: "table request_log row *.response_length", Volatile: true,
-			Reason: "the rotate response carries a random passphrase, so its response_length differs between correct runs"}},
 	},
 	postCase("agent rotate wrong passphrase", agentRotatePath, "agent-b-session", `{"current_passphrase":"wrong"}`),
 	postCase("agent rotate missing passphrase", agentRotatePath, "agent-b-session", `{}`),

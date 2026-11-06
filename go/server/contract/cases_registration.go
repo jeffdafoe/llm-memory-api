@@ -46,14 +46,12 @@ var registerCases = []Scenario{
 		Steps: []Step{
 			{Method: "POST", Path: "/api/register", Header: jsonType,
 				Body:   `{"code":" ` + InviteGood + ` ","name":" Newcomer ","password":"long-enough-password","dream_mode":"companion"}`,
-				Random: []string{"passphrase"}},
+				Random: []string{"passphrase"}, VolatileLength: true},
 			{Settle: true},
 			// The name is now taken, and the code used.
 			registerPost(`{"code":"` + InviteGood + `","name":"other-name","password":"long-enough-password"}`),
 			checkName(`{"name":"newcomer"}`),
 		},
-		Known: []KnownDifference{{Where: "table request_log row *.response_length", Volatile: true,
-			Reason: "the register response carries a random passphrase, so its response_length differs between correct runs"}},
 	},
 	one("register no body", Step{Method: "POST", Path: "/api/register"}),
 	one("register missing name", registerPost(`{"code":"`+InviteGood+`","password":"long-enough-password"}`)),

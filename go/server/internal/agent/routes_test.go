@@ -672,4 +672,7 @@ func TestRotateForgetsOnFailure(t *testing.T) {
 	if c := rt.SessionAuth.(*fakeCache); len(c.agents) == 0 {
 		t.Error("agent tokens not forgotten after a failure")
 	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
 }

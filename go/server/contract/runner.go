@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +66,12 @@ type Step struct {
 	// passphrase of words, a clock reading in seconds). Each such value is
 	// renamed like a random value wherever it appears.
 	Random []string
+	// VolatileLength marks a response whose length differs between correct
+	// runs (it carries a random passphrase). The response_length of the
+	// request_log rows with this step's method, path and status is not
+	// compared; every other field of those rows, and every other row, still
+	// is.
+	VolatileLength bool
 
 	Settle bool
 	// Until, on a settle step, waits for an explicit condition (a reply row
@@ -120,6 +127,8 @@ type rawStep struct {
 	header http.Header
 	body   []byte
 	random []string // raw values at the step's Random paths
+	// volatileLength is "METHOD path" when the step set VolatileLength.
+	volatileLength string
 }
 
 type rawSide struct {
@@ -250,6 +259,9 @@ func stepLabel(st Step) string {
 // on both) would otherwise compare equal and pass without testing anything.
 func (r *Runner) request(ctx context.Context, client *http.Client, t *Target, st Step, vars map[string]string) (rawStep, error) {
 	res := rawStep{label: stepLabel(st)}
+	if st.VolatileLength {
+		res.volatileLength = st.Method + " " + st.Path
+	}
 	fail := func(err error) (rawStep, error) {
 		return res, err
 	}
@@ -477,8 +489,17 @@ func normalizeSide(side rawSide, t *Target, outboundMultiset bool) Result {
 		})
 	}
 
+	volatile := map[string]bool{}
+	for _, s := range side.steps {
+		if s.volatileLength != "" {
+			volatile[s.volatileLength+" "+strconv.Itoa(s.status)] = true
+		}
+	}
 	for _, tbl := range side.tables {
 		rows := tbl.Rows
+		if tbl.Name == "request_log" && len(volatile) > 0 {
+			rows = maskVolatileLengths(rows, volatile)
+		}
 		if tbl.Multiset {
 			rows = n.SortMultiset(rows)
 		}
@@ -489,6 +510,32 @@ func normalizeSide(side rawSide, t *Target, outboundMultiset bool) Result {
 		res.Tables = append(res.Tables, out)
 	}
 	return res
+}
+
+// maskVolatileLengths replaces response_length with a fixed text in the
+// request_log rows of the VolatileLength steps (matched on method, path and
+// status, so a later request to the same path with another outcome is still
+// compared).
+func maskVolatileLengths(rows []Value, volatile map[string]bool) []Value {
+	out := make([]Value, len(rows))
+	for i, row := range rows {
+		out[i] = row
+		method, _ := row.Get("method")
+		path, _ := row.Get("path")
+		status, _ := row.Get("status")
+		if row.Kind != Object || !volatile[method.Str+" "+path.Str+" "+status.Num] {
+			continue
+		}
+		members := make([]Member, len(row.Members))
+		copy(members, row.Members)
+		for j := range members {
+			if members[j].Key == "response_length" {
+				members[j].Value = Str("<volatile-length>")
+			}
+		}
+		out[i] = Value{Kind: Object, Members: members}
+	}
+	return out
 }
 
 func compareHeaders(n *Normalizer, h http.Header) []Header {
