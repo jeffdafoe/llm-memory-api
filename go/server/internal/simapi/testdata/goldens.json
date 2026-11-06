@@ -1260,6 +1260,51 @@
    }
   },
   {
+   "name": "day with a final LF",
+   "input": {
+    "agent": "x",
+    "day": "2026-11-05\n",
+    "events": []
+   },
+   "script": [],
+   "unused": 0,
+   "events": [],
+   "outcome": {
+    "error": "day required (YYYY-MM-DD)",
+    "status": 400
+   }
+  },
+  {
+   "name": "day with a final CR",
+   "input": {
+    "agent": "x",
+    "day": "2026-11-05\r",
+    "events": []
+   },
+   "script": [],
+   "unused": 0,
+   "events": [],
+   "outcome": {
+    "error": "day required (YYYY-MM-DD)",
+    "status": 400
+   }
+  },
+  {
+   "name": "day with a final U+2028",
+   "input": {
+    "agent": "x",
+    "day": "2026-11-05 ",
+    "events": []
+   },
+   "script": [],
+   "unused": 0,
+   "events": [],
+   "outcome": {
+    "error": "day required (YYYY-MM-DD)",
+    "status": 400
+   }
+  },
+  {
    "name": "events not an array",
    "input": {
     "agent": "x",
@@ -2937,6 +2982,36 @@
    }
   },
   {
+   "name": "day with a final LF",
+   "input": {
+    "characterDescription": "M",
+    "daySnapshot": "P",
+    "day": "2026-11-05\n"
+   },
+   "script": [],
+   "unused": 0,
+   "events": [],
+   "outcome": {
+    "error": "day must be YYYY-MM-DD",
+    "status": 400
+   }
+  },
+  {
+   "name": "day with a final U+2029",
+   "input": {
+    "characterDescription": "M",
+    "daySnapshot": "P",
+    "day": "2026-11-05 "
+   },
+   "script": [],
+   "unused": 0,
+   "events": [],
+   "outcome": {
+    "error": "day must be YYYY-MM-DD",
+    "status": 400
+   }
+  },
+  {
    "name": "empty day",
    "input": {
     "characterDescription": "M",
@@ -3509,6 +3584,18 @@
    "name": "scene number",
    "body": {
     "scene_id": 12345
+   },
+   "script": [],
+   "unused": 0,
+   "events": [],
+   "outcome": {
+    "value": "{\"status\":400,\"body\":\"{\\\"error\\\":{\\\"code\\\":\\\"BAD_REQUEST\\\",\\\"message\\\":\\\"scene_id must be a UUID\\\"}}\"}"
+   }
+  },
+  {
+   "name": "scene with a final LF",
+   "body": {
+    "scene_id": "6d2a0c1e-0000-4000-8000-0000000000a1\n"
    },
    "script": [],
    "unused": 0,

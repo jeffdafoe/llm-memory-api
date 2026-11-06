@@ -178,6 +178,10 @@ const distills = [
     { name: 'agent not a string', input: { agent: 5, day: '2026-11-05', events: [] }, script: [] },
     { name: 'bad day', input: { agent: 'x', day: '2026-11-5', events: [] }, script: [] },
     { name: 'day not a string', input: { agent: 'x', day: 20261105, events: [] }, script: [] },
+    // JavaScript's $ without the m flag matches only at the end of input.
+    { name: 'day with a final LF', input: { agent: 'x', day: '2026-11-05\n', events: [] }, script: [] },
+    { name: 'day with a final CR', input: { agent: 'x', day: '2026-11-05\r', events: [] }, script: [] },
+    { name: 'day with a final U+2028', input: { agent: 'x', day: '2026-11-05 ', events: [] }, script: [] },
     { name: 'events not an array', input: { agent: 'x', day: '2026-11-05', events: {} }, script: [] },
     { name: 'unknown agent', input: { agent: 'nobody', day: '2026-11-05', events: [] }, script: [agentStep([])] },
     { name: 'wrong mode', input: { agent: 'home', day: '2026-11-05', events: [] }, script: [agentStep([[3, 'home', 'companion']])] },
@@ -220,6 +224,8 @@ const souls = [
     { name: 'soul too long', input: { characterDescription: 'M', daySnapshot: 'P', currentSoul: 'x'.repeat(100001) }, script: [] },
     { name: 'bad day', input: { characterDescription: 'M', daySnapshot: 'P', day: '2026-11-05\n## Inject' }, script: [] },
     { name: 'day not a string', input: { characterDescription: 'M', daySnapshot: 'P', day: 5 }, script: [] },
+    { name: 'day with a final LF', input: { characterDescription: 'M', daySnapshot: 'P', day: '2026-11-05\n' }, script: [] },
+    { name: 'day with a final U+2029', input: { characterDescription: 'M', daySnapshot: 'P', day: '2026-11-05 ' }, script: [] },
     { name: 'empty day', input: { characterDescription: 'M', daySnapshot: 'P', day: '' }, script: [SOUL_AGENT], answers: [{ text: 'ok' }] },
 ];
 
@@ -248,6 +254,7 @@ const raws = [
     { name: 'scene', body: { scene_id: '6D2A0C1E-0000-4000-8000-0000000000A1' }, script: [turnsStep(1)] },
     { name: 'bad scene', body: { scene_id: 'nope' }, script: [] },
     { name: 'scene number', body: { scene_id: 12345 }, script: [] },
+    { name: 'scene with a final LF', body: { scene_id: '6d2a0c1e-0000-4000-8000-0000000000a1\n' }, script: [] },
     { name: 'agent', body: { agent: 'zbbs-john-ellis', limit: '7' }, script: [turnsStep(8)] },
     { name: 'agent not a string', body: { agent: 5 }, script: [] },
     { name: 'agent too long', body: { agent: 'a'.repeat(201) }, script: [] },
