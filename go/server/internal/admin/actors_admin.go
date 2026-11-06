@@ -203,7 +203,7 @@ func (rt *Routes) actorsAdminPermissionsSave(w http.ResponseWriter, r *http.Requ
 	// Editing one's own permissions returns the new map, so the dashboard
 	// can refresh.
 	if actorID == httpapi.StateOf(r).ActorID {
-		perms, err := rt.Admin.PermissionMap(r.Context(), actorID)
+		perms, err := rt.Admin.PermissionMap(ctx, actorID)
 		if err != nil {
 			return err
 		}
