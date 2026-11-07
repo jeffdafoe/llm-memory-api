@@ -220,6 +220,19 @@ var proposeRace = []KnownDifference{
 
 const proposeRaceReason = "a vote propose writes the discussion event and the virtual agents' notice concurrently; their ids depend on which insert runs first"
 
+// joinRace is a join that makes a discussion active (the route and the MCP
+// discussion_join tool): Node starts the "joined" discussion event without
+// awaiting it, then evaluateReadiness starts the virtual agents'
+// discussion-active notice the same way, so which text takes the lower id
+// is a race.
+var joinRace = []KnownDifference{
+	{Where: "table chat_message_texts row *.id", Volatile: true, Reason: joinRaceReason},
+	{Where: "table chat_messages row *.id", Volatile: true, Reason: joinRaceReason},
+	{Where: "table chat_messages row *.message_text_id", Volatile: true, Reason: joinRaceReason},
+}
+
+const joinRaceReason = "a join that makes the discussion active writes the join event and the virtual agents' notice concurrently; their ids depend on which insert runs first"
+
 var discussionConcludeCases = []Scenario{
 	postCase("discussion conclude", discussionConcludePath, "agent-a-session", `{"discussion_id":`+asyncDiscussion+`}`, deliveryRace...),
 	postCase("discussion conclude with an invited member", discussionConcludePath, "agent-b-session", `{"discussion_id":101}`, deliveryRace...),
@@ -241,7 +254,7 @@ var discussionConcludeCases = []Scenario{
 }
 
 var discussionJoinCases = []Scenario{
-	postCase("discussion join makes it active", discussionJoinPath, "agent-b-session", `{"discussion_id":"`+waitingDiscussion+`"}`),
+	postCase("discussion join makes it active", discussionJoinPath, "agent-b-session", `{"discussion_id":"`+waitingDiscussion+`"}`, joinRace...),
 	postCase("discussion join a timed-out discussion", discussionJoinPath, "agent-b-session", `{"discussion_id":`+pastTimeoutRequired+`}`),
 	postCase("discussion join already joined", discussionJoinPath, "agent-a-session", `{"discussion_id":101}`),
 	postCase("discussion join a concluded discussion", discussionJoinPath, "agent-b-session", `{"discussion_id":`+concludedDiscussion+`}`),
