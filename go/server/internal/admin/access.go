@@ -79,10 +79,12 @@ func (rt *Routes) accessRequestsList(w http.ResponseWriter, r *http.Request) err
 }
 
 // pendingRequest reads an access request and checks it is pending. It
-// writes the 404 or the 400 itself; ok is false then.
-func (rt *Routes) pendingRequest(w http.ResponseWriter, r *http.Request, id any) (email *string, ok bool, err error) {
+// writes the 404 or the 400 itself; ok is false then. ctx is the route's
+// detached context: Node's check ran on after a client hung up, and so did
+// the write after it.
+func (rt *Routes) pendingRequest(ctx context.Context, w http.ResponseWriter, id any) (email *string, ok bool, err error) {
 	var status string
-	err = rt.DB.QueryRow(r.Context(), "SELECT status, email FROM access_requests WHERE id = $1", id).Scan(&status, &email)
+	err = rt.DB.QueryRow(ctx, "SELECT status, email FROM access_requests WHERE id = $1", id).Scan(&status, &email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, notFound(w, "Access request not found")
 	}
@@ -107,7 +109,9 @@ func (rt *Routes) accessRequestsApprove(w http.ResponseWriter, r *http.Request) 
 		return httpapi.BadRequest(w, "Required field: id")
 	}
 	id := pgbind.Value(f.Raw("id"))
-	email, ok, err := rt.pendingRequest(w, r, id)
+	ctx, cancel := detached(r)
+	defer cancel()
+	email, ok, err := rt.pendingRequest(ctx, w, id)
 	if !ok {
 		return err
 	}
@@ -117,8 +121,6 @@ func (rt *Routes) accessRequestsApprove(w http.ResponseWriter, r *http.Request) 
 	}
 	code := inviteCode()
 
-	ctx, cancel := detached(r)
-	defer cancel()
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -182,15 +184,15 @@ func (rt *Routes) accessRequestsReject(w http.ResponseWriter, r *http.Request) e
 		return httpapi.BadRequest(w, "Required field: id")
 	}
 	id := pgbind.Value(f.Raw("id"))
-	if _, ok, err := rt.pendingRequest(w, r, id); !ok {
+	ctx, cancel := detached(r)
+	defer cancel()
+	if _, ok, err := rt.pendingRequest(ctx, w, id); !ok {
 		return err
 	}
 	notes, err := optionalText(f, "notes")
 	if err != nil {
 		return err
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
 	if _, err := rt.DB.Exec(ctx,
 		`UPDATE access_requests SET status = 'rejected', reviewed_at = NOW(), reviewer_notes = $1 WHERE id = $2`, notes, id); err != nil {
 		return err
@@ -287,8 +289,11 @@ func (rt *Routes) inviteCodesDelete(w http.ResponseWriter, r *http.Request) erro
 		return httpapi.BadRequest(w, "Required field: id")
 	}
 	id := pgbind.Value(f.Raw("id"))
+	// The check and the delete run on after a client hangs up, as in Node.
+	ctx, cancel := detached(r)
+	defer cancel()
 	var usedBy *string
-	err := rt.DB.QueryRow(r.Context(), "SELECT used_by FROM invite_codes WHERE id = $1", id).Scan(&usedBy)
+	err := rt.DB.QueryRow(ctx, "SELECT used_by FROM invite_codes WHERE id = $1", id).Scan(&usedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return notFound(w, "Invite code not found")
 	}
@@ -298,8 +303,6 @@ func (rt *Routes) inviteCodesDelete(w http.ResponseWriter, r *http.Request) erro
 	if usedBy != nil && *usedBy != "" {
 		return httpapi.BadRequest(w, "Cannot delete a used invite code")
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
 	if _, err := rt.DB.Exec(ctx, "DELETE FROM invite_codes WHERE id = $1", id); err != nil {
 		return err
 	}
