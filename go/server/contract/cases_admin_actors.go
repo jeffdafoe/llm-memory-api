@@ -184,12 +184,29 @@ var adminActorDeleteCases = []Scenario{
 		adminPost(actorsDeletePath, "admin-web", `{"actor_id":{{helper}}}`),
 		adminPost(actorsListPath, "admin-web", `{}`),
 		Step{Settle: true}),
-	// agent-b created discussions that other actors joined: Node deletes
-	// the discussions before their other participants, so the foreign key
-	// refuses it and the transaction rolls back (in Go too).
+	// agent-b created discussion 104, which agent-a joined: the delete
+	// takes the discussion and agent-a's participation with it.
 	withIDs("admin actors delete an agent with history",
 		verifyID("b", "agent-b-session"),
 		adminPost(actorsDeletePath, "admin-web", `{"actor_id":{{b}}}`),
+		adminPost(actorsListPath, "admin-web", `{}`),
+		Step{Settle: true}),
+	// agent-a created discussions 102, 103, 105 and 109, which agent-b
+	// joined and voted in (ballot on 203). The SQL step adds the other rows
+	// that point at what the delete removes: agent-b's chat in discussion
+	// 102, delivered to the superadmin, and agent-b's ballot on vote 205,
+	// which agent-a proposed in the superadmin's discussion 101. Each would
+	// fail the delete on its foreign key if left behind.
+	withIDs("admin actors delete the creator of joined discussions",
+		Step{SQL: `
+            INSERT INTO chat_message_texts (id, message, from_actor_id, discussion_id, sent_at)
+            SELECT 9001, 'In agent-a''s discussion.', id, 102, '2026-10-05 10:00:00+00' FROM actors WHERE name = 'agent-b';
+            INSERT INTO chat_messages (id, message_text_id, to_actor_id)
+            SELECT 9001, 9001, id FROM actors WHERE name = 'contract-admin';
+            INSERT INTO discussion_ballots (vote_id, actor_id, choice, cast_at)
+            SELECT 205, id, 1, '2026-10-01 09:40:00+00' FROM actors WHERE name = 'agent-b';`},
+		verifyID("a", "agent-a-session"),
+		adminPost(actorsDeletePath, "admin-web", `{"actor_id":{{a}}}`),
 		adminPost(actorsListPath, "admin-web", `{}`),
 		Step{Settle: true}),
 	withIDs("admin actors delete cascades to created virtual agents",

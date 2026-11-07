@@ -2685,15 +2685,21 @@ router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('
 
         // Delete in dependency order for all actor IDs (actor + their virtual agents)
         for (const id of allActorIds) {
-            // Discussion system
+            // Discussion system. The discussions this actor created are deleted
+            // below, so every row that points at them goes here too, other
+            // actors' included: their ballots, votes and participation, and the
+            // discussion's chat. Other actors' ballots on a vote this actor
+            // proposed go before that vote. (No foreign key here cascades.)
+            const ownDiscussions = 'SELECT id FROM discussions WHERE created_by_actor_id = $1';
             await client.query('DELETE FROM discussion_ballots WHERE actor_id = $1', [id]);
-            await client.query('DELETE FROM discussion_votes WHERE proposed_by_actor_id = $1', [id]);
-            await client.query('DELETE FROM discussion_participants WHERE actor_id = $1', [id]);
+            await client.query(`DELETE FROM discussion_ballots WHERE vote_id IN (SELECT id FROM discussion_votes WHERE proposed_by_actor_id = $1 OR discussion_id IN (${ownDiscussions}))`, [id]);
+            await client.query(`DELETE FROM discussion_votes WHERE proposed_by_actor_id = $1 OR discussion_id IN (${ownDiscussions})`, [id]);
+            await client.query(`DELETE FROM discussion_participants WHERE actor_id = $1 OR discussion_id IN (${ownDiscussions})`, [id]);
 
             // Chat & mail — delete delivery rows first (FK to chat_message_texts), then orphaned text rows
             await client.query('DELETE FROM chat_messages WHERE to_actor_id = $1', [id]);
-            await client.query('DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM chat_message_texts WHERE from_actor_id = $1)', [id]);
-            await client.query('DELETE FROM chat_message_texts WHERE from_actor_id = $1', [id]);
+            await client.query(`DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM chat_message_texts WHERE from_actor_id = $1 OR discussion_id IN (${ownDiscussions}))`, [id]);
+            await client.query(`DELETE FROM chat_message_texts WHERE from_actor_id = $1 OR discussion_id IN (${ownDiscussions})`, [id]);
             await client.query('DELETE FROM mail WHERE from_actor_id = $1 OR to_actor_id = $1', [id]);
 
             // Sessions & keys
@@ -2726,7 +2732,7 @@ router.post('/admin/actors/delete', requirePerm('agents', 'write'), adminRoute('
             await client.query('UPDATE documents SET created_by_actor_id = NULL WHERE created_by_actor_id = $1', [id]);
         }
 
-        // Delete discussions created by any of the actors (after participants/votes/ballots are gone)
+        // Delete discussions created by any of the actors (after every row that points at them is gone)
         for (const id of allActorIds) {
             await client.query('DELETE FROM discussions WHERE created_by_actor_id = $1', [id]);
         }

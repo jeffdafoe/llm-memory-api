@@ -223,14 +223,19 @@ func (rt *Routes) actorsAdminPermissionsSave(w http.ResponseWriter, r *http.Requ
 // actorDeleteSteps are the per-actor statements of actors/delete, in
 // dependency order.
 var actorDeleteSteps = []string{
-	// Discussion system
+	// Discussion system. The discussions the actor created are deleted after
+	// these steps, so every row that points at them goes here too, other
+	// actors' included: their ballots, votes and participation, and the
+	// discussion's chat. Other actors' ballots on a vote the actor proposed
+	// go before that vote.
 	"DELETE FROM discussion_ballots WHERE actor_id = $1",
-	"DELETE FROM discussion_votes WHERE proposed_by_actor_id = $1",
-	"DELETE FROM discussion_participants WHERE actor_id = $1",
+	"DELETE FROM discussion_ballots WHERE vote_id IN (SELECT id FROM discussion_votes WHERE proposed_by_actor_id = $1 OR discussion_id IN (SELECT id FROM discussions WHERE created_by_actor_id = $1))",
+	"DELETE FROM discussion_votes WHERE proposed_by_actor_id = $1 OR discussion_id IN (SELECT id FROM discussions WHERE created_by_actor_id = $1)",
+	"DELETE FROM discussion_participants WHERE actor_id = $1 OR discussion_id IN (SELECT id FROM discussions WHERE created_by_actor_id = $1)",
 	// Chat and mail: delivery rows first (FK to chat_message_texts), then the texts
 	"DELETE FROM chat_messages WHERE to_actor_id = $1",
-	"DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM chat_message_texts WHERE from_actor_id = $1)",
-	"DELETE FROM chat_message_texts WHERE from_actor_id = $1",
+	"DELETE FROM chat_messages WHERE message_text_id IN (SELECT id FROM chat_message_texts WHERE from_actor_id = $1 OR discussion_id IN (SELECT id FROM discussions WHERE created_by_actor_id = $1))",
+	"DELETE FROM chat_message_texts WHERE from_actor_id = $1 OR discussion_id IN (SELECT id FROM discussions WHERE created_by_actor_id = $1)",
 	"DELETE FROM mail WHERE from_actor_id = $1 OR to_actor_id = $1",
 	// Sessions and keys
 	"DELETE FROM sessions WHERE actor_id = $1",
@@ -324,7 +329,7 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 	}
-	// Discussions they created, after their participants, votes and ballots.
+	// Discussions they created, after every row that points at them.
 	for _, id := range ids {
 		if _, err := tx.Exec(ctx, "DELETE FROM discussions WHERE created_by_actor_id = $1", id); err != nil {
 			return err
