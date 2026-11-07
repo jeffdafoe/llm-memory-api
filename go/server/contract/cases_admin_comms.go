@@ -155,6 +155,10 @@ func apiLogDuration(step int) KnownDifference {
 
 var adminLogCases = []Scenario{
 	{Name: "admin dashboard", Steps: steps(routeShape(adminDashboard), []Step{
+		// routeShape's requests stamp last_seen in the background on both
+		// servers, and the agent list is ordered by status and last_seen:
+		// the writes land before the read.
+		{Settle: true},
 		contentPost(adminDashboard, `{}`),
 		// The limited admin sees itself only.
 		limitedPost(adminDashboard, `{}`),
