@@ -16,6 +16,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/discussion"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/dream"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/enrichment"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
@@ -97,6 +98,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sysHandler.Register("virtual-agent", vaService.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
 	notifier := &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler}
+	recorder.Notifier = notifier
 	// Chat calls the virtual agents the same way: a chat message to one is
 	// answered through HandleDirectChat, which sends its reply as chat.
 	chatService := &chat.Service{
@@ -202,6 +204,10 @@ func Handler(s *Services) http.Handler {
 		Common: adminCommon, Config: s.Config, Notes: s.Notes, Memory: s.Memory, Namespaces: s.Namespaces,
 		Discussions: s.Discussions, Chat: s.Chat,
 	}).Register(adminMux)
+	(&admin.DreamRoutes{
+		Common: adminCommon, Notes: s.Notes,
+		Dream: &dream.Job{DB: s.DB, Log: s.Log, Notes: s.Notes, Agents: s.Agents, Trust: s.Admin},
+	}).Register(adminMux)
 
 	// /v1: every route behind the session middleware and the last_seen
 	// heartbeat, matched on the raw path below /v1. A path no route has goes
@@ -217,6 +223,7 @@ func Handler(s *Services) http.Handler {
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
 		Namespaces: s.Namespaces, Visibility: s.Visibility, Agents: s.Agents,
 	}).Register(v1)
+	(&syserrors.Routes{Recorder: s.Errors, Router: s.Router, Log: s.Log}).Register(v1)
 	// routes/sim.js is mounted after the routes above in Node; its /sim gate
 	// sits in front of the mux because it applies to every method and
 	// path under /sim (simapi.Routes.Mount).
