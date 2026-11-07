@@ -195,7 +195,8 @@ func Handler(s *Services) http.Handler {
 	}
 	(&admin.Routes{
 		Common: adminCommon, Config: s.Config, Sessions: s.Sessions, SessionAuth: s.SessionAuth,
-		Providers: s.Providers, Namespaces: s.Namespaces,
+		Providers: s.Providers, Namespaces: s.Namespaces, Agents: s.Agents, Mail: s.Mail, Notes: s.Notes,
+		Moderator: virtualagent.Moderator{DB: s.DB, Log: s.Log},
 	}).Register(adminMux)
 	(&admin.ContentRoutes{
 		Common: adminCommon, Config: s.Config, Notes: s.Notes, Memory: s.Memory, Namespaces: s.Namespaces,
