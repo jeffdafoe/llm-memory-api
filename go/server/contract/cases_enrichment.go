@@ -23,6 +23,10 @@ var enrichmentCases = []Scenario{
 			// Each side must classify, so the case cannot pass on two
 			// identical failures.
 			classified("notes/deploy-steps", "procedural"),
+			// The note's indexing runs apart from the classification; the
+			// upsert's own indexing must not overlap it (concurrent ingests
+			// of one file are not serialized, in either server).
+			{Settle: true},
 			{Method: "POST", Path: savePath, Auth: "agent-a-session", Header: jsonType,
 				Body: `{"namespace":"agent-a","title":"Deploy steps","content":"# Deploy\n\nRun the deploy script.","slug":"notes/deploy-steps","upsert":true}`},
 			{Settle: true},
