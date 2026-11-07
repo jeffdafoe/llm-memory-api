@@ -874,3 +874,78 @@ func TestSendEventNowSurvivesHangUp(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// When the readiness check before the participant write activates the
+// discussion (timeout passed, every required member joined), the trigger's
+// rows are written before activate returns, so they come before the join's
+// event. The joining optional member was timed out by that check and joins
+// again.
+func TestJoinAfterFirstCheckActivatesWritesTriggerFirst(t *testing.T) {
+	ctx := context.Background()
+	s, mock := newService(t)
+	expectActorByName(mock, "system", 10)
+	if _, _, err := s.Actors.ResolveByName(ctx, "system"); err != nil {
+		t.Fatal(err)
+	}
+	past := fixedNow.Add(-time.Minute)
+	statusOf := q("SELECT status FROM discussions WHERE id = $1")
+	participantUpdate := q("UPDATE discussion_participants SET status = $1")
+	const event = "b joined the discussion"
+	const trigger = `{"type":"virtual-agent","discussionId":7,"triggerType":"discussion-active"}`
+
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("waiting"))
+	mock.ExpectQuery(q(readinessHead)).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status", "timeout_at"}).AddRow("waiting", &past))
+	mock.ExpectQuery(q(readinessMembers)).WithArgs(num("7")).WillReturnRows(members(
+		[3]string{"a", "joined", "required"}, [3]string{"b", "invited", "optional"}))
+	expectActorByName(mock, "b", 2)
+	mock.ExpectExec(participantUpdate).WithArgs("timed_out", num("7"), 2).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec(q("UPDATE discussions SET status = $1 WHERE id = $2")).WithArgs("active", num("7")).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs(trigger, 10, nil).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
+	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("active"))
+	mock.ExpectQuery(q("SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2")).WithArgs(num("7"), 2).
+		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("timed_out"))
+	mock.ExpectExec(participantUpdate).WithArgs("joined", num("7"), 2).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs(event, 10, num("7")).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(51, fixedNow))
+	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(51, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(61))
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("active"))
+
+	// Hold the trigger's delivery once its insert has returned its id.
+	held := newHeldDB(t, mock, func(sql string, args []any) bool {
+		return strings.HasPrefix(sql, insertDeliverySQL) && args[0] == 50
+	})
+	s.DB, s.Notifier.DB = held, held
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Join(ctx, IntID(7), "b")
+		done <- err
+	}()
+	select {
+	case <-held.reached:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the trigger's delivery was never written")
+	}
+	// While the trigger's delivery is held, the join must not write its event.
+	select {
+	case <-done:
+		t.Fatal("Join returned before the trigger was written")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if got, want := held.seen(), "activate | "+trigger; got != want {
+		t.Fatalf("with the trigger's delivery held\n got %s\nwant %s", got, want)
+	}
+	held.Release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Join did not return after the trigger was released")
+	}
+	testutil.WaitMet(t, mock)
+	if got, want := held.seen(), "activate | "+trigger+" | "+event; got != want {
+		t.Errorf("order\n got %s\nwant %s", got, want)
+	}
+}

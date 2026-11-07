@@ -261,7 +261,14 @@ func (s *Service) activate(ctx context.Context, discussionID ID, reason string) 
 		return err
 	}
 	s.log("ready", logger.Fields{field("discussion_id", discussionID), field("reason", reason)})
-	s.notifyVirtualAgents(ctx, discussionID, "discussion-active", nil)
+	// The trigger's rows are written before activate returns, so they take
+	// their chat ids ahead of whatever the caller writes next (a join's
+	// event). The virtual agents still run in the background, from
+	// NotifySystem. A failure is ignored, as Node's .catch did, and a client
+	// hanging up does not stop the write.
+	notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), eventTimeout)
+	defer cancel()
+	s.Notifier.NotifySystem(notifyCtx, vaTrigger{Type: "virtual-agent", DiscussionID: discussionID, TriggerType: "discussion-active"})
 	return nil
 }
 
