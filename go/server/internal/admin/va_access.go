@@ -92,8 +92,7 @@ func (rt *Routes) vaAccessGrant(w http.ResponseWriter, r *http.Request) error {
 	if f.Truthy("grantee_actor_id") {
 		grantee = pgbind.Value(f.Raw("grantee_actor_id"))
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tag, err := rt.DB.Exec(ctx,
 		"INSERT INTO virtual_agent_access (virtual_agent_id, grantee_actor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id",
 		vaID, grantee)
@@ -134,8 +133,7 @@ func (rt *Routes) vaAccessRevoke(w http.ResponseWriter, r *http.Request) error {
 	if ok, err := rt.RequireOwnershipID(w, r, vaID); !ok {
 		return err
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if _, err := rt.DB.Exec(ctx, "DELETE FROM virtual_agent_access WHERE id = $1", id); err != nil {
 		return err
 	}

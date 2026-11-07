@@ -144,8 +144,7 @@ func (rt *Routes) templatesSave(w http.ResponseWriter, r *http.Request) error {
 		descriptionValue = description
 	}
 
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	var (
 		row   pgjson.Row
 		found bool
@@ -213,8 +212,7 @@ func (rt *Routes) templatesDelete(w http.ResponseWriter, r *http.Request) error 
 	if !f.Truthy("id") {
 		return httpapi.BadRequest(w, "Required field: id")
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	var name string
 	err := rt.DB.QueryRow(ctx, "DELETE FROM templates WHERE id = $1 RETURNING name", pgbind.Value(f.Raw("id"))).Scan(&name)
 	if errors.Is(err, pgx.ErrNoRows) {

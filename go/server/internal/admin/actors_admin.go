@@ -174,8 +174,7 @@ func (rt *Routes) actorsAdminPermissionsSave(w http.ResponseWriter, r *http.Requ
 	// One transaction, where Node ran the delete and each insert on their
 	// own: a crash part way no longer leaves the actor with a partial set.
 	// The end state on success is the same.
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -303,8 +302,7 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 	ids = append(ids, vaIDs...)
 	names = append(names, vaNames...)
 
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
 		return err
