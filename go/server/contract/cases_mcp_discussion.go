@@ -78,7 +78,7 @@ var mcpDiscussionCases = []Scenario{
 	discussionToolCase("mcp discussion_cancel a waiting discussion", mcpA, "discussion_cancel", `{"discussion_id":`+waitingDiscussion+`}`, deliveryRace...),
 
 	// Join, leave, defer.
-	discussionToolCase("mcp discussion_join makes it active", mcpB, "discussion_join", `{"discussion_id":`+waitingDiscussion+`}`),
+	discussionToolCase("mcp discussion_join makes it active", mcpB, "discussion_join", `{"discussion_id":`+waitingDiscussion+`}`, joinRace...),
 	discussionToolCase("mcp discussion_join already joined", mcpA, "discussion_join", `{"discussion_id":101}`),
 	discussionToolCase("mcp discussion_join a concluded discussion", mcpB, "discussion_join", `{"discussion_id":`+concludedDiscussion+`}`),
 	discussionToolCase("mcp discussion_join unknown", mcpA, "discussion_join", `{"discussion_id":999}`),
