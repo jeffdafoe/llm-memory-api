@@ -1,5 +1,7 @@
 package contract
 
+import "context"
+
 // enrichmentCases turn note enrichment on through the admin config route
 // (both servers read config from their cache, which that route updates),
 // add the memory-enrichment virtual agent (va-anthropic's provider, model,
@@ -18,7 +20,9 @@ var enrichmentCases = []Scenario{
 			{SQL: enrichmentAgent},
 			{Method: "POST", Path: savePath, Auth: "agent-a-session", Header: jsonType,
 				Body: `{"namespace":"agent-a","title":"Deploy steps","content":"# Deploy\n\nRun the deploy script, then check the health route.","slug":"notes/deploy-steps"}`},
-			{Settle: true},
+			// Each side must classify, so the case cannot pass on two
+			// identical failures.
+			classified("notes/deploy-steps", "procedural"),
 			{Method: "POST", Path: savePath, Auth: "agent-a-session", Header: jsonType,
 				Body: `{"namespace":"agent-a","title":"Deploy steps","content":"# Deploy\n\nRun the deploy script.","slug":"notes/deploy-steps","upsert":true}`},
 			{Settle: true},
@@ -38,6 +42,12 @@ var enrichmentCases = []Scenario{
 			{SQL: enrichmentAgent},
 			{Method: "POST", Path: savePath, Auth: "agent-a-session", Header: jsonType,
 				Body: `{"namespace":"agent-a","title":"Odd","content":"Something.","slug":"notes/odd"}`},
+			// The model must have been called on each side.
+			{Settle: true, Until: func(ctx context.Context, t *Target) (bool, error) {
+				return t.Holds(ctx, `SELECT EXISTS (SELECT 1 FROM virtual_agent_calls c JOIN actors a ON a.id = c.actor_id
+                    WHERE a.name = 'memory-enrichment' AND c.context = 'note-enrichment')
+                    AND EXISTS (SELECT 1 FROM actors WHERE name = 'memory-enrichment' AND active_since IS NULL)`)
+			}},
 		},
 		OutboundMultiset: true,
 		Known:            []KnownDifference{callDuration},
@@ -89,3 +99,15 @@ INSERT INTO agent_configuration (actor_id, virtual, provider, model, api_key, co
            'You classify notes.'
     FROM agent_configuration WHERE actor_id = (SELECT id FROM actors WHERE name = 'va-anthropic');
 `
+
+// classified waits until agent-a's note has the cognitive type and the
+// enrichment agent is no longer active.
+func classified(slug, cognitiveType string) Step {
+	return Step{Settle: true, Until: func(ctx context.Context, t *Target) (bool, error) {
+		return t.Holds(ctx, `SELECT
+                EXISTS (SELECT 1 FROM documents WHERE namespace = 'agent-a' AND slug = $1
+                        AND metadata->>'cognitive_type' = $2 AND metadata ? '_enriched_at')
+                AND EXISTS (SELECT 1 FROM actors WHERE name = 'memory-enrichment' AND active_since IS NULL)`,
+			slug, cognitiveType)
+	}}
+}
