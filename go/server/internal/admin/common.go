@@ -65,11 +65,25 @@ type Common struct {
 // requirePerm(resource, action) then adminRoute(label), both run by detach.
 // An empty resource is a route Node registered with adminRoute alone.
 func (c *Common) Handle(mux *httpapi.RawMux, path, resource, action, label string, fn httpapi.HandlerFunc) {
+	mux.Handle(http.MethodPost, path, detach(c.route(resource, action, label, fn)))
+}
+
+// HandleUnbounded is Handle for a route that runs for minutes (one model
+// call per item): the client hang-up still does not cancel it, and there
+// is no routeTimeout, as Node had no limit.
+func (c *Common) HandleUnbounded(mux *httpapi.RawMux, path, resource, action, label string, fn httpapi.HandlerFunc) {
+	h := c.route(resource, action, label, fn)
+	mux.Handle(http.MethodPost, path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(context.WithoutCancel(r.Context())))
+	}))
+}
+
+func (c *Common) route(resource, action, label string, fn httpapi.HandlerFunc) http.Handler {
 	var h http.Handler = c.Router.Route("admin", label, fn)
 	if resource != "" {
 		h = c.Admin.RequirePerm(resource, action, h)
 	}
-	mux.Handle(http.MethodPost, path, detach(h))
+	return h
 }
 
 // routeTimeout bounds an admin route once it no longer ends with the request.

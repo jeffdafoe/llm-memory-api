@@ -16,6 +16,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/discussion"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/dream"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/enrichment"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
@@ -202,6 +203,10 @@ func Handler(s *Services) http.Handler {
 	(&admin.ContentRoutes{
 		Common: adminCommon, Config: s.Config, Notes: s.Notes, Memory: s.Memory, Namespaces: s.Namespaces,
 		Discussions: s.Discussions, Chat: s.Chat,
+	}).Register(adminMux)
+	(&admin.DreamRoutes{
+		Common: adminCommon, Notes: s.Notes,
+		Dream: &dream.Job{DB: s.DB, Log: s.Log, Notes: s.Notes, Agents: s.Agents, Trust: s.Admin},
 	}).Register(adminMux)
 
 	// /v1: every route behind the session middleware and the last_seen
