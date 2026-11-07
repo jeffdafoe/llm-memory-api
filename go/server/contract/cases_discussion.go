@@ -209,6 +209,17 @@ var deliveryRace = []KnownDifference{
 
 const raceReason = "Node's conclude writes the event and the participant messages concurrently; their ids depend on which commit returns first"
 
+// proposeRace is a vote propose: the discussion event and the virtual
+// agents' vote notice are both started without awaiting either (Node, and
+// Go's Service.Propose), so which text takes the lower id is a race.
+var proposeRace = []KnownDifference{
+	{Where: "table chat_message_texts row *.id", Volatile: true, Reason: proposeRaceReason},
+	{Where: "table chat_messages row *.id", Volatile: true, Reason: proposeRaceReason},
+	{Where: "table chat_messages row *.message_text_id", Volatile: true, Reason: proposeRaceReason},
+}
+
+const proposeRaceReason = "a vote propose writes the discussion event and the virtual agents' notice concurrently; their ids depend on which insert runs first"
+
 var discussionConcludeCases = []Scenario{
 	postCase("discussion conclude", discussionConcludePath, "agent-a-session", `{"discussion_id":`+asyncDiscussion+`}`, deliveryRace...),
 	postCase("discussion conclude with an invited member", discussionConcludePath, "agent-b-session", `{"discussion_id":101}`, deliveryRace...),
@@ -288,11 +299,11 @@ var discussionLeaveCases = []Scenario{
 
 var discussionProposeCases = []Scenario{
 	postCase("discussion vote propose", discussionProposePath, "agent-a-session",
-		`{"discussion_id":101,"question":"Ship it? 1=yes 2=no"}`),
+		`{"discussion_id":101,"question":"Ship it? 1=yes 2=no"}`, proposeRace...),
 	postCase("discussion vote propose conclude with a close time", discussionProposePath, "agent-b-session",
-		`{"discussion_id":"`+asyncDiscussion+`","question":"Wrap up?","type":"conclude","threshold":"majority","closes_at":"2099-06-01T00:00:00Z"}`),
+		`{"discussion_id":"`+asyncDiscussion+`","question":"Wrap up?","type":"conclude","threshold":"majority","closes_at":"2099-06-01T00:00:00Z"}`, proposeRace...),
 	postCase("discussion vote propose in a waiting discussion", discussionProposePath, "agent-a-session",
-		`{"discussion_id":`+waitingDiscussion+`,"question":"Early question","closes_at":""}`),
+		`{"discussion_id":`+waitingDiscussion+`,"question":"Early question","closes_at":""}`, proposeRace...),
 	postCase("discussion vote propose bad type", discussionProposePath, "agent-a-session", `{"discussion_id":101,"question":"q","type":"poll"}`),
 	postCase("discussion vote propose type a number", discussionProposePath, "agent-a-session", `{"discussion_id":101,"question":"q","type":7}`),
 	postCase("discussion vote propose bad threshold", discussionProposePath, "agent-a-session", `{"discussion_id":101,"question":"q","threshold":"most"}`),
