@@ -574,3 +574,42 @@ func TestRetryExhaustionFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A client that hangs up while its token is looked up does not lose the
+// request: Node's queries ran on after a disconnect, so it found the session
+// and ran the route. The route still gets the request's own context.
+func TestSessionAuthLookupOutlivesAHangUp(t *testing.T) {
+	mock := testutil.NewMock(t)
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(`token_lookup_hash = \$2`).WithArgs(SessionKindAPI, vectorSHA).
+		WillDelayFor(50 * time.Millisecond).WillReturnRows(sessionRow(now.Add(20*time.Hour), 4, "work"))
+
+	a := newSessionAuth(mock, func() time.Time { return now })
+	var seen *httpapi.State
+	var routeCtx context.Context
+	h := httpapi.WithState(a.Middleware("/v1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = httpapi.StateOf(r)
+		routeCtx = r.Context()
+		w.WriteHeader(204)
+	})))
+	r := httptest.NewRequest("POST", "/v1/mail/check", nil)
+	r.Header.Set("Authorization", "Bearer "+vectorToken)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r.WithContext(ctx))
+
+	if rec.Code != 204 || seen == nil || seen.AuthenticatedAgent != "work" || seen.ActorID != 4 {
+		t.Fatalf("got %d, state %+v", rec.Code, seen)
+	}
+	if routeCtx.Err() == nil {
+		t.Fatal("the route should get the request's context, which the hang-up cancelled")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

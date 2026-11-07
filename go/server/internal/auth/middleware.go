@@ -29,6 +29,9 @@ type cachedSession struct {
 	method  string
 }
 
+// lookupTimeout bounds a token lookup, which a client hang-up does not stop.
+const lookupTimeout = 30 * time.Second
+
 // lookupAttempts bounds the retries when invalidations keep landing during a
 // lookup. Past it the token is refused: every result read may describe a
 // session revoked meanwhile.
@@ -145,7 +148,13 @@ func (a *SessionAuth) Middleware(prefix string, next http.Handler) http.Handler 
 		// leading one, exactly as the Node code's header.replace did.
 		token := strings.Replace(header, "Bearer ", "", 1)
 
-		entry, found := a.resolve(r.Context(), token)
+		// The lookup runs on after the client hangs up, as Node's queries did:
+		// on the request's context a cancelled query reads as a miss and
+		// refuses a request whose token is valid. The route still gets the
+		// request's context.
+		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), lookupTimeout)
+		entry, found := a.resolve(lookupCtx, token)
+		cancel()
 		if !found {
 			httpapi.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Invalid or expired session token")
 			return

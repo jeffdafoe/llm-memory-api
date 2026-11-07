@@ -164,8 +164,7 @@ func (rt *Routes) actorsCreate(w http.ResponseWriter, r *http.Request) error {
 
 	// The actor and its configuration are written on after the client hangs
 	// up, as in Node, and so are the welcome templates after the commit.
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
 		return err
