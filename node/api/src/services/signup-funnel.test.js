@@ -97,10 +97,36 @@ test('recordSignupEvent destroys the client when ROLLBACK fails, and keeps the o
 });
 
 test('stampToolCall passes the tracking start, and skips an unknown actor', async () => {
-    funnel.stampToolCall(7);
+    await funnel.stampToolCall(7);
     assert.deepEqual(queries[0].params, [7, SINCE]);
-    funnel.stampToolCall(undefined);
+    await funnel.stampToolCall(undefined);
     assert.equal(queries.length, 1);
+});
+
+// LLM-954: the tool call awaits the stamp, so it must settle only after the
+// UPDATE does, and a failed UPDATE must not reject.
+test('stampToolCall resolves after its UPDATE, and swallows a failure', async (t) => {
+    const original = pool.query;
+    t.after(() => { pool.query = original; });
+    let finished = false;
+    pool.query = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        finished = true;
+        return { rows: [] };
+    };
+    await funnel.stampToolCall(7);
+    assert.equal(finished, true);
+
+    pool.query = async () => { throw new Error('simulated stamp failure'); };
+    const logged = [];
+    const originalError = console.error;
+    console.error = (...args) => logged.push(args.join(' '));
+    try {
+        await funnel.stampToolCall(7);
+    } finally {
+        console.error = originalError;
+    }
+    assert.deepEqual(logged, ['signup-funnel: tool-call stamp failed: simulated stamp failure']);
 });
 
 test('activeAfter is unknown until the account is old enough', () => {

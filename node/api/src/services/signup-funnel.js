@@ -32,12 +32,15 @@ function trackingSince() {
 const connectedSql = `first_connected_at = COALESCE(first_connected_at,
                  CASE WHEN created_at >= $2::timestamptz THEN NOW() END)`;
 
-// Fire-and-forget: a lost stamp must never fail the tool call it describes.
-function stampToolCall(actorId) {
+// The caller awaits this, so the stamp is written before the tool call's
+// response goes out (LLM-954: left running, it could land after whoever read
+// the actor next). It never rejects: a lost stamp must never fail the tool
+// call it describes.
+async function stampToolCall(actorId) {
     if (!actorId) {
         return;
     }
-    pool.query(
+    await pool.query(
         `UPDATE actors
          SET first_tool_call_at = COALESCE(first_tool_call_at,
                  CASE WHEN created_at >= $2::timestamptz THEN NOW() END),
