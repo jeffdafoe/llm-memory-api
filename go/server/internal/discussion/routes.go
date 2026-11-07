@@ -728,7 +728,8 @@ func (rt *Routes) join(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	s.log("join", logger.Fields{field("discussion_id", id), field("agent", agent)})
-	s.sendEvent(ctx, id, agent+" joined the discussion", "Failed to send join event")
+	// Written before readiness, as in Service.Join.
+	s.sendEventNow(ctx, id, agent+" joined the discussion", "Failed to send join event")
 
 	if status == "waiting" {
 		if err := s.EvaluateReadiness(ctx, id); err != nil {

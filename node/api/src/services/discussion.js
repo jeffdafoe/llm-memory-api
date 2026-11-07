@@ -43,7 +43,10 @@ async function evaluateReadiness(discussionId) {
     if (allRequiredJoined && allOptionalJoined) {
         await pool.query('UPDATE discussions SET status = $1 WHERE id = $2', ['active', discussionId]);
         logDiscussion('ready', { discussion_id: discussionId, reason: 'all_joined' });
-        notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'discussion-active' }).catch(() => {});
+        // Awaited so the trigger's rows take their chat ids before the caller
+        // writes anything next (a join's event); notifySystem itself still
+        // runs the virtual agents in the background (LLM-952).
+        await notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'discussion-active' }).catch(() => {});
         return;
     }
 
@@ -61,7 +64,7 @@ async function evaluateReadiness(discussionId) {
             }
             await pool.query('UPDATE discussions SET status = $1 WHERE id = $2', ['active', discussionId]);
             logDiscussion('ready', { discussion_id: discussionId, reason: 'timeout_required_present' });
-            notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'discussion-active' }).catch(() => {});
+            await notifySystem({ type: 'virtual-agent', discussionId, triggerType: 'discussion-active' }).catch(() => {});
         } else {
             const timeoutOutcome = await computeOutcome(discussionId, 'timed_out');
             await pool.query('UPDATE discussions SET status = $1, outcome = $2 WHERE id = $3', ['timed_out', timeoutOutcome, discussionId]);
@@ -621,7 +624,10 @@ async function discussionJoin(discussionId, agent) {
 
     logDiscussion('join', { discussion_id: discussionId, agent });
 
-    sendDiscussionEvent(discussionId, `${agent} joined the discussion`).catch(err => {
+    // Awaited so the event takes its chat ids before the evaluateReadiness
+    // below can start the discussion-active trigger; un-awaited, the two raced
+    // for the lower ids (LLM-952). A failure is still logged and ignored.
+    await sendDiscussionEvent(discussionId, `${agent} joined the discussion`).catch(err => {
         console.error('Failed to send join event:', err.message);
     });
 

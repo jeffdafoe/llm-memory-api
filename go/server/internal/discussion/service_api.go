@@ -541,7 +541,9 @@ func (s *Service) Join(ctx context.Context, discussionID ID, agent string) (*Joi
 		}
 	}
 	s.log("join", logger.Fields{field("discussion_id", discussionID), field("agent", agent)})
-	s.sendEvent(ctx, discussionID, agent+" joined the discussion", "Failed to send join event")
+	// Written before the readiness check below, so the event takes lower chat
+	// ids than the discussion-active trigger that check may start.
+	s.sendEventNow(ctx, discussionID, agent+" joined the discussion", "Failed to send join event")
 	if status == "waiting" {
 		if err := s.EvaluateReadiness(ctx, discussionID); err != nil {
 			return nil, err

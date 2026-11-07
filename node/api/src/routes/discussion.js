@@ -537,7 +537,10 @@ router.post('/discussion/join', apiRoute('discussion', 'join', async (req, res) 
 
     logDiscussion('join', { discussion_id, agent });
 
-    sendDiscussionEvent(discussion_id, `${agent} joined the discussion`).catch(err => {
+    // Awaited so the event takes its chat ids before the evaluateReadiness
+    // below can start the discussion-active trigger; un-awaited, the two raced
+    // for the lower ids (LLM-952). A failure is still logged and ignored.
+    await sendDiscussionEvent(discussion_id, `${agent} joined the discussion`).catch(err => {
         console.error('Failed to send join event:', err.message);
     });
 
