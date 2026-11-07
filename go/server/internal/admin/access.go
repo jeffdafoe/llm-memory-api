@@ -22,8 +22,8 @@ const maxInviteExpiryDays = 3650
 // maxInviteBatch is the most codes one generate call makes.
 const maxInviteBatch = 50
 
-// inviteCode is 16 random bytes in hex.
-func inviteCode() string {
+// InviteCode is 16 random bytes in hex: an invite code as Node makes one.
+func InviteCode() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return hex.EncodeToString(b)
@@ -118,7 +118,7 @@ func (rt *Routes) accessRequestsApprove(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	code := inviteCode()
+	code := InviteCode()
 
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
@@ -257,7 +257,7 @@ func (rt *Routes) inviteCodesGenerate(w http.ResponseWriter, r *http.Request) er
 	}
 	codes := []string{}
 	for i := int64(0); i < count; i++ {
-		code := inviteCode()
+		code := InviteCode()
 		if _, err := rt.DB.Exec(ctx,
 			`INSERT INTO invite_codes (code, created_by, expires_at, realm)
              VALUES ($1, $2,
