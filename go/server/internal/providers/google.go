@@ -251,10 +251,19 @@ func googleCreateCall(p *Providers, model, apiKey string, configuration any) cal
 			})
 		}
 
+		// Thinking tokens (thoughtsTokenCount) are billed at the output
+		// rate, so they are added in; only when both are numbers, as Node's
+		// typeof checks.
 		meta := optional(data, "usageMetadata")
+		outputTokens := or(optional(meta, "candidatesTokenCount"), 0.0)
+		if candidates, ok := jsutil.AsFloat(outputTokens); ok {
+			if thoughts, ok := jsutil.AsFloat(optional(meta, "thoughtsTokenCount")); ok {
+				outputTokens = candidates + thoughts
+			}
+		}
 		usage := Usage{
 			InputTokens:  or(optional(meta, "promptTokenCount"), 0.0),
-			OutputTokens: or(optional(meta, "candidatesTokenCount"), 0.0),
+			OutputTokens: outputTokens,
 		}
 		finishValue, _ := get(candidate, "finishReason")
 		finish := NormalizeGoogleFinish(finishValue)

@@ -280,15 +280,19 @@ function messagesToResponsesInput(messages) {
     // when an earlier fire bailed mid-loop or when truncation drops
     // one side of a pair, so this guard is necessary even for healthy
     // callers.
+    //
+    // assistantToolCallIds holds only the calls the emit pass below can
+    // send (type "function" with a function). Counting a skipped call would
+    // keep its tool result, which would then go out without its call.
     const pairedCallIds = new Set();         // call_ids that have a tool-result row
-    const assistantToolCallIds = new Set();  // call_ids that have an assistant tool_call row
+    const assistantToolCallIds = new Set();  // call_ids of assistant tool_calls the emit pass sends
     for (const msg of messages) {
         if (msg.role === 'tool' && msg.tool_call_id) {
             pairedCallIds.add(msg.tool_call_id);
         }
         if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
             for (const tc of msg.tool_calls) {
-                if (tc && tc.id) assistantToolCallIds.add(tc.id);
+                if (tc && tc.type === 'function' && tc.function && tc.id) assistantToolCallIds.add(tc.id);
             }
         }
     }
@@ -413,6 +417,13 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
         body.reasoning = { effort: conf.reasoning_effort };
     }
 
+    // Service tier, as on the chat-completions path: "flex" is half price at
+    // higher latency. Sent only when set to something other than "auto".
+    const requestedServiceTier = conf.service_tier || 'auto';
+    if (requestedServiceTier && requestedServiceTier !== 'auto') {
+        body.service_tier = requestedServiceTier;
+    }
+
     // Per-call tool definitions. /v1/responses uses a flat tool shape
     // — name/description/parameters at the top level of the tool object,
     // no nested "function" wrapper.
@@ -426,7 +437,7 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
         }));
     }
 
-    logProvider('api-call', { provider: 'openai', model, endpoint: 'responses', tools: useTools });
+    logProvider('api-call', { provider: 'openai', model, endpoint: 'responses', serviceTier: requestedServiceTier, tools: useTools });
 
     const response = await fetch(apiBase('OPENAI_API_BASE') + '/v1/responses', {
         method: 'POST',
@@ -490,7 +501,8 @@ async function callResponses(model, apiKey, conf, fullMessages, opts) {
     const cachedTokens = Math.max(0, Math.min(rawCachedTokens, promptTokens));
     const uncachedInput = Math.max(0, promptTokens - cachedTokens);
 
-    const appliedServiceTier = data.service_tier ?? 'default';
+    // The tier OpenAI applied; the requested one when the answer omits it.
+    const appliedServiceTier = data.service_tier ?? requestedServiceTier;
 
     const usage = {
         input_tokens: uncachedInput,

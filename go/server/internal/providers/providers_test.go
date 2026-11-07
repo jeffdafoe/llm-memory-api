@@ -388,6 +388,25 @@ func TestGoogleTruncation(t *testing.T) {
 	}
 }
 
+// LLM-930: Gemini reports thinking tokens apart from the answer and bills
+// them at the output rate, so they are part of output_tokens.
+func TestGoogleThinkingTokens(t *testing.T) {
+	for _, tc := range []struct{ usage, want string }{
+		{`{"promptTokenCount":10,"candidatesTokenCount":40,"thoughtsTokenCount":900,"totalTokenCount":950}`, "940"},
+		{`{"promptTokenCount":10,"candidatesTokenCount":40,"totalTokenCount":50}`, "40"},
+		{`{"promptTokenCount":10,"thoughtsTokenCount":8192,"totalTokenCount":8202}`, "8192"},
+	} {
+		c := run(t, newProviders(), "google", "gemini-2.5-flash", `{}`, TextPrompt("sys"), "hi", &RawOpts{},
+			reply(`{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":`+tc.usage+`}`))
+		if c.err != nil {
+			t.Fatal(c.err)
+		}
+		if got := jsutil.Marshal(c.result.Usage.OutputTokens); got != tc.want {
+			t.Errorf("%s: output_tokens %s, want %s", tc.usage, got, tc.want)
+		}
+	}
+}
+
 // ── index.test.js ──────────────────────────────────────────────────────────
 
 func objectsOf(t *testing.T, s string) []*jsutil.Object {
@@ -550,6 +569,55 @@ func TestOpenAIResponsesEndpoint(t *testing.T) {
 	}
 	if b := responsesCall(t, "gpt-5.6-luna", `{"reasoning_effort":"none"}`, "").body(t, 0); b["reasoning"] != nil {
 		t.Errorf("gpt-5 none: %v", b["reasoning"])
+	}
+}
+
+// LLM-930: the Service Tier control reaches /v1/responses, as on the
+// chat-completions path.
+func TestOpenAIResponsesServiceTier(t *testing.T) {
+	for _, id := range []string{"gpt-5.4-mini", "gpt-5.6-luna", "gpt-6-luna"} {
+		if b := responsesCall(t, id, `{"service_tier":"flex"}`, "").body(t, 0); b["service_tier"] != "flex" {
+			t.Errorf("%s flex: %v", id, b["service_tier"])
+		}
+		for _, conf := range []string{`{"service_tier":"auto"}`, `{}`} {
+			if b := responsesCall(t, id, conf, "").body(t, 0); b["service_tier"] != nil {
+				t.Errorf("%s %s: %v", id, conf, b["service_tier"])
+			}
+		}
+	}
+	usage := `{"input_tokens":1000,"output_tokens":100}`
+	standard := (1000*1.00 + 100*6) / 1_000_000
+	if c := responsesCall(t, "gpt-5.6-luna", `{"service_tier":"flex"}`, usage); c.err != nil || math.Abs(*c.result.Usage.Cost-standard/2) >= 1e-12 {
+		t.Errorf("requested flex: cost %v (%v)", c.result.Usage.Cost, c.err)
+	}
+	if c := responsesCall(t, "gpt-5.6-luna", `{}`, usage); c.err != nil || math.Abs(*c.result.Usage.Cost-standard) >= 1e-12 {
+		t.Errorf("unset: cost %v (%v)", c.result.Usage.Cost, c.err)
+	}
+}
+
+// LLM-930: a call the emit pass skips must not make its tool result look
+// paired, or the output goes out alone and OpenAI refuses the request.
+func TestOpenAIResponsesPairingSkippedCalls(t *testing.T) {
+	msgs := `[{"role":"user","content":"start"},` +
+		`{"role":"assistant","content":"","tool_calls":[{"id":"good","type":"function","function":{"name":"look","arguments":"{}"}},{"id":"wrong-type","type":"custom","function":{"name":"look","arguments":"{}"}},{"id":"no-function","type":"function"}]},` +
+		`{"role":"tool","tool_call_id":"good","content":"seen"},{"role":"tool","tool_call_id":"wrong-type","content":"orphan 1"},{"role":"tool","tool_call_id":"no-function","content":"orphan 2"}]`
+	c := run(t, newProviders(), "openai", "gpt-5.4", `{}`, TextPrompt("sys"), "hi", &RawOpts{Messages: value(t, msgs)},
+		reply(`{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":10,"output_tokens":2}}`))
+	if c.err != nil {
+		t.Fatal(c.err)
+	}
+	var calls, outputs []string
+	for _, item := range c.body(t, 0)["input"].([]any) {
+		m := item.(map[string]any)
+		switch m["type"] {
+		case "function_call":
+			calls = append(calls, m["call_id"].(string))
+		case "function_call_output":
+			outputs = append(outputs, m["call_id"].(string))
+		}
+	}
+	if jsonText(calls) != `["good"]` || jsonText(outputs) != `["good"]` {
+		t.Errorf("calls %v, outputs %v", calls, outputs)
 	}
 }
 

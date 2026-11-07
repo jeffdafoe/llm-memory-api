@@ -225,3 +225,74 @@ test('gpt-5.x cost is unchanged above 272K input (no long-context entry)', async
     const expected = (300000 * 1.00 + 10000 * 6) / 1_000_000;
     assert.ok(Math.abs(result.usage.cost - expected) < 1e-12, `cost ${result.usage.cost} != ${expected}`);
 });
+
+// LLM-930 — the Service Tier control reaches /v1/responses. Before, only the
+// chat-completions path sent it, so a gpt-5.x / gpt-6.x agent set to flex ran
+// at the standard tier while the admin UI showed flex prices.
+test('/v1/responses sends service_tier flex; auto and unset send nothing', async () => {
+    for (const id of ['gpt-5.4-mini', 'gpt-5.6-luna', 'gpt-6-luna']) {
+        const flex = await captureResponsesBody(id, { service_tier: 'flex' });
+        assert.equal(flex.body.service_tier, 'flex', id);
+
+        const auto = await captureResponsesBody(id, { service_tier: 'auto' });
+        assert.equal(auto.body.service_tier, undefined, id);
+
+        const unset = await captureResponsesBody(id, {});
+        assert.equal(unset.body.service_tier, undefined, id);
+    }
+});
+
+test('/v1/responses flex cost: the reported tier wins, else the requested one', async () => {
+    const usage = { input_tokens: 1000, output_tokens: 100 };
+    const standard = (1000 * 1.00 + 100 * 6) / 1_000_000;
+
+    // No service_tier in the answer: the requested flex tier prices it.
+    const requested = await captureResponsesBody('gpt-5.6-luna', { service_tier: 'flex' }, usage);
+    assert.ok(Math.abs(requested.result.usage.cost - standard / 2) < 1e-12, `cost ${requested.result.usage.cost}`);
+
+    // Unset: standard rates, as before.
+    const unset = await captureResponsesBody('gpt-5.6-luna', {}, usage);
+    assert.ok(Math.abs(unset.result.usage.cost - standard) < 1e-12, `cost ${unset.result.usage.cost}`);
+});
+
+// LLM-930 — tool pairing on /v1/responses. A call the emit pass skips (type
+// not "function", or no function) must not make its tool result look paired,
+// or the output goes out alone and OpenAI refuses the whole request with
+// "No tool call found for function call output".
+test('/v1/responses drops the result of a call it does not send', async () => {
+    const original = globalThis.fetch;
+    let body = null;
+    globalThis.fetch = async function (url, init) {
+        body = JSON.parse(init.body);
+        return {
+            ok: true,
+            json: async () => ({
+                status: 'completed',
+                output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }],
+                usage: { input_tokens: 10, output_tokens: 2 },
+            }),
+        };
+    };
+    try {
+        const messages = [
+            { role: 'user', content: 'start' },
+            {
+                role: 'assistant', content: '', tool_calls: [
+                    { id: 'good', type: 'function', function: { name: 'look', arguments: '{}' } },
+                    { id: 'wrong-type', type: 'custom', function: { name: 'look', arguments: '{}' } },
+                    { id: 'no-function', type: 'function' },
+                ],
+            },
+            { role: 'tool', tool_call_id: 'good', content: 'seen' },
+            { role: 'tool', tool_call_id: 'wrong-type', content: 'orphan 1' },
+            { role: 'tool', tool_call_id: 'no-function', content: 'orphan 2' },
+        ];
+        await openai.createCall('gpt-5.4', 'k', {})('sys', 'hi', { messages });
+        const calls = body.input.filter(item => item.type === 'function_call').map(item => item.call_id);
+        const outputs = body.input.filter(item => item.type === 'function_call_output').map(item => item.call_id);
+        assert.deepEqual(calls, ['good']);
+        assert.deepEqual(outputs, ['good']);
+    } finally {
+        globalThis.fetch = original;
+    }
+});

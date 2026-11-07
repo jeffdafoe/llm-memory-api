@@ -204,8 +204,11 @@ function history(rounds) {
 // Orphans on both sides, for /v1/responses pairing.
 const ORPHANS = [
     { role: 'user', content: 'start' },
-    { role: 'assistant', content: '  ', tool_calls: [{ id: 'paired', type: 'function', function: { name: 'a', arguments: '' } }, { id: 'lonely', type: 'function', function: { name: 'b', arguments: '{}' } }, { id: 'paired2', type: 'nope', function: { name: 'c' } }] },
+    { role: 'assistant', content: '  ', tool_calls: [{ id: 'paired', type: 'function', function: { name: 'a', arguments: '' } }, { id: 'lonely', type: 'function', function: { name: 'b', arguments: '{}' } }, { id: 'paired2', type: 'nope', function: { name: 'c' } }, { id: 'paired3', type: 'function' }, { id: 'paired4', type: 'function', function: 0 }] },
     { role: 'tool', tool_call_id: 'paired', content: 'ok' },
+    { role: 'tool', tool_call_id: 'paired2', content: 'output of a skipped call' },
+    { role: 'tool', tool_call_id: 'paired3', content: 'output of a call with no function' },
+    { role: 'tool', tool_call_id: 'paired4', content: 'output of a call with a falsy function' },
     { role: 'tool', tool_call_id: 'stranger', content: 'orphan output' },
     { role: 'tool', content: 'no id' },
     { role: 'developer', content: 'dev note', extra: 1 },
@@ -279,6 +282,9 @@ add({ name: 'openai responses history tools', provider: 'openai', model: 'gpt-5.
 add({ name: 'openai responses orphans', provider: 'openai', model: 'gpt-5.4', conf: {}, opts: { messages: ORPHANS }, responses: [responsesReply] });
 add({ name: 'openai responses null tool call', provider: 'openai', model: 'gpt-5.4', conf: {}, opts: { messages: [{ role: 'assistant', tool_calls: [null] }] }, responses: [responsesReply] });
 add({ name: 'openai responses incomplete', provider: 'openai', model: 'gpt-5.4', conf: {}, responses: [ok({ status: 'incomplete', incomplete_details: { reason: 'content_filter' }, output: [], usage: { input_tokens: 5, output_tokens: 1, input_tokens_details: { cached_tokens: 9 } }, service_tier: 'flex' })] });
+add({ name: 'openai responses flex, answer reports default', provider: 'openai', model: 'gpt-5.4-nano', conf: { service_tier: 'flex' }, responses: [ok({ status: 'completed', output: [], usage: { input_tokens: 1000, output_tokens: 10 }, service_tier: 'default' })] });
+add({ name: 'openai responses flex reported', provider: 'openai', model: 'gpt-6.1-terra', conf: { service_tier: 'flex' }, responses: [ok({ status: 'completed', output: [], usage: { input_tokens: 1000, output_tokens: 10 }, service_tier: 'flex' })] });
+add({ name: 'openai responses service_tier non-string', provider: 'openai', model: 'gpt-5.4', conf: { service_tier: 7 }, responses: [responsesReply] });
 add({ name: 'openai responses no output', provider: 'openai', model: 'gpt-5.4', conf: {}, responses: [ok({ status: 'completed' })] });
 add({ name: 'openai responses unknown model', provider: 'openai', model: 'gpt-5.9-new', conf: {}, responses: [responsesReply] });
 add({ name: 'openai chat no choices', provider: 'openai', model: 'gpt-4o-mini', conf: {}, responses: [ok({ choices: [] })] });
@@ -296,6 +302,11 @@ add({ name: 'google plain', provider: 'google', model: 'gemini-2.5-pro', conf: {
 add({ name: 'google alias, no conf numbers', provider: 'GEMINI', model: 'gemini-2.5-flash', conf: { temperature: '', top_k: 'abc' }, system: STRUCT, responses: [googleReply] });
 add({ name: 'google history tools stop turn context', provider: 'google', model: 'gemini-2.5-flash', conf: {}, opts: { tools: TOOLS, stop: STOPS, messages: history(2).concat([{ role: 'tool', tool_call_id: 'gemini-', content: 'x' }, { role: 'tool', tool_call_id: '', content: 'y' }, { role: 'assistant' }, { role: 'user' }]), turnContext: 'ctx' }, responses: [googleReply] });
 add({ name: 'google numeric tool_call_id', provider: 'google', model: 'gemini-2.5-flash', conf: {}, opts: { messages: [{ role: 'tool', tool_call_id: 5, content: 'x' }] }, responses: [googleReply] });
+add({ name: 'google thinking tokens', provider: 'google', model: 'gemini-2.5-flash', conf: {}, responses: [ok({ candidates: [{ content: { parts: [{ text: 'a' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 3, thoughtsTokenCount: 900, totalTokenCount: 915 } })] });
+add({ name: 'google thinking tokens, no candidates count', provider: 'google', model: 'gemini-2.5-pro', conf: {}, responses: [ok({ candidates: [{ content: { parts: [{ text: '' }] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 12, thoughtsTokenCount: 8192 } })] });
+add({ name: 'google thinking tokens, string counts', provider: 'google', model: 'gemini-2.5-flash', conf: {}, responses: [ok({ candidates: [{ content: { parts: [{ text: 'a' }] } }], usageMetadata: { candidatesTokenCount: '3', thoughtsTokenCount: 5 } })] });
+add({ name: 'google thinking tokens, string thoughts', provider: 'google', model: 'gemini-2.5-flash', conf: {}, responses: [ok({ candidates: [{ content: { parts: [{ text: 'a' }] } }], usageMetadata: { candidatesTokenCount: 3, thoughtsTokenCount: '5' } })] });
+add({ name: 'google thinking tokens, usageMetadata string', provider: 'google', model: 'gemini-2.5-flash', conf: {}, responses: [ok({ candidates: [{ content: { parts: [{ text: 'a' }] } }], usageMetadata: 'abc' })] });
 add({ name: 'google no candidates', provider: 'google', model: 'gemini-2.5-flash', conf: {}, responses: [ok({ candidates: [] })] });
 add({ name: 'google parts object', provider: 'google', model: 'gemini-2.5-flash', conf: {}, responses: [ok({ candidates: [{ content: { parts: {} } }] })] });
 add({ name: 'google null part', provider: 'google', model: 'gemini-2.5-flash', conf: {}, responses: [ok({ candidates: [{ content: { parts: [null] } }] })] });

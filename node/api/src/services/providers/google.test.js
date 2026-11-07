@@ -50,3 +50,53 @@ test('finishReason "STOP" surfaces truncated:false', async () => {
         stub.restore();
     }
 });
+
+// LLM-930 — Gemini reports thinking tokens apart from the answer
+// (usageMetadata.thoughtsTokenCount; totalTokenCount is prompt + tool-use
+// prompt + thoughts + candidates) and bills them at the output rate, so they
+// belong in output_tokens or the recorded cost is too low.
+function stubUsage(usageMetadata) {
+    const original = globalThis.fetch;
+    globalThis.fetch = async function () {
+        return {
+            ok: true,
+            json: async () => ({
+                candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+                usageMetadata,
+            }),
+        };
+    };
+    return { restore() { globalThis.fetch = original; } };
+}
+
+test('thinking tokens count as output tokens', async () => {
+    const stub = stubUsage({ promptTokenCount: 10, candidatesTokenCount: 40, thoughtsTokenCount: 900, totalTokenCount: 950 });
+    try {
+        const res = await google.createCall('gemini-2.5-flash', 'k', {})('sys', 'hi', {});
+        assert.equal(res.usage.input_tokens, 10);
+        assert.equal(res.usage.output_tokens, 940);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('no thoughtsTokenCount (thinking off) leaves output tokens as the candidates count', async () => {
+    const stub = stubUsage({ promptTokenCount: 10, candidatesTokenCount: 40, totalTokenCount: 50 });
+    try {
+        const res = await google.createCall('gemini-2.5-flash', 'k', { thinking_budget: 0 })('sys', 'hi', {});
+        assert.equal(res.usage.output_tokens, 40);
+    } finally {
+        stub.restore();
+    }
+});
+
+test('an answer cut off while thinking still records the thinking tokens', async () => {
+    // Gemini leaves candidatesTokenCount out when no answer text was made.
+    const stub = stubUsage({ promptTokenCount: 10, thoughtsTokenCount: 8192, totalTokenCount: 8202 });
+    try {
+        const res = await google.createCall('gemini-2.5-pro', 'k', {})('sys', 'hi', {});
+        assert.equal(res.usage.output_tokens, 8192);
+    } finally {
+        stub.restore();
+    }
+});
