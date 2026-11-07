@@ -67,8 +67,7 @@ func (rt *Routes) configUpdate(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	// Node's write and its in-memory update ran on after a disconnect.
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tag, err := rt.DB.Exec(ctx, "UPDATE config SET value = $1 WHERE key = $2", value, key)
 	if err != nil {
 		return err

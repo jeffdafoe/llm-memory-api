@@ -273,8 +273,7 @@ func (rt *Routes) agentsInstructionsSave(w http.ResponseWriter, r *http.Request)
 		}
 		content = &s
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	var id int
 	err = rt.DB.QueryRow(ctx, "UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = $2 RETURNING actor_id", content, actor.ID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -332,8 +331,7 @@ func (rt *Routes) agentsExpertiseSave(w http.ResponseWriter, r *http.Request) er
 	if ok, err := rt.RequireOwnershipID(w, r, actor.ID); !ok {
 		return err
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	var id int
 	err = rt.DB.QueryRow(ctx, "UPDATE actors SET expertise = $1 WHERE id = $2 RETURNING id", string(text), actor.ID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -382,8 +380,7 @@ func (rt *Routes) agentsResetPassphrase(w http.ResponseWriter, r *http.Request) 
 
 	// The new hash and the session delete commit together, so a failure
 	// cannot leave the old sessions working after the reset.
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -728,8 +725,7 @@ func (rt *Routes) agentsUpdate(w http.ResponseWriter, r *http.Request) error {
 		return httpapi.BadRequest(w, "No fields to update")
 	}
 
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if len(columns) > 0 {
 		assignments := make([]string, len(columns))
 		for i, column := range columns {

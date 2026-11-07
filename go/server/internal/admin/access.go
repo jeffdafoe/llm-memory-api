@@ -109,8 +109,7 @@ func (rt *Routes) accessRequestsApprove(w http.ResponseWriter, r *http.Request) 
 		return httpapi.BadRequest(w, "Required field: id")
 	}
 	id := pgbind.Value(f.Raw("id"))
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	email, ok, err := rt.pendingRequest(ctx, w, id)
 	if !ok {
 		return err
@@ -184,8 +183,7 @@ func (rt *Routes) accessRequestsReject(w http.ResponseWriter, r *http.Request) e
 		return httpapi.BadRequest(w, "Required field: id")
 	}
 	id := pgbind.Value(f.Raw("id"))
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if _, ok, err := rt.pendingRequest(ctx, w, id); !ok {
 		return err
 	}
@@ -249,8 +247,7 @@ func (rt *Routes) inviteCodesGenerate(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if realm == nil {
 		first, err := rt.firstRealm(ctx, rt.DB, User(r).ID)
 		if err != nil {
@@ -290,8 +287,7 @@ func (rt *Routes) inviteCodesDelete(w http.ResponseWriter, r *http.Request) erro
 	}
 	id := pgbind.Value(f.Raw("id"))
 	// The check and the delete run on after a client hangs up, as in Node.
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	var usedBy *string
 	err := rt.DB.QueryRow(ctx, "SELECT used_by FROM invite_codes WHERE id = $1", id).Scan(&usedBy)
 	if errors.Is(err, pgx.ErrNoRows) {

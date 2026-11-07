@@ -6,11 +6,13 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -60,14 +62,30 @@ type Common struct {
 }
 
 // Handle registers POST path (below /v1, "/admin/...") as
-// requirePerm(resource, action) then adminRoute(label). An empty resource is
-// a route Node registered with adminRoute alone.
+// requirePerm(resource, action) then adminRoute(label), both run by detach.
+// An empty resource is a route Node registered with adminRoute alone.
 func (c *Common) Handle(mux *httpapi.RawMux, path, resource, action, label string, fn httpapi.HandlerFunc) {
 	var h http.Handler = c.Router.Route("admin", label, fn)
 	if resource != "" {
 		h = c.Admin.RequirePerm(resource, action, h)
 	}
-	mux.Handle(http.MethodPost, path, h)
+	mux.Handle(http.MethodPost, path, detach(h))
+}
+
+// routeTimeout bounds an admin route once it no longer ends with the request.
+const routeTimeout = 30 * time.Second
+
+// detach runs h on a context that a client hang-up does not cancel, bounded
+// by routeTimeout. Node did not cancel a route's queries when the client
+// hung up, so the permission, visibility and ownership checks and the write
+// after them ran to the end; on the request context a hang-up during a
+// check would fail the check and skip the write.
+func detach(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), routeTimeout)
+		defer cancel()
+		h.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // LogAdmin is logAdmin: an activity line under the admin subsystem.
