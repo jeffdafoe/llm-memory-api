@@ -686,3 +686,151 @@ func TestConcludeChainsAreIndependent(t *testing.T) {
 	close(held.release)
 	testutil.WaitMet(t, mock)
 }
+
+// heldDB holds the QueryRow whose first argument is block until release is
+// closed, and records, in order, the first argument of each chat text insert
+// and "activate" for the discussion's move to active. A QueryRow whose
+// context has ended fails, as a real database would.
+type heldDB struct {
+	db.DB
+	block   any
+	reached chan struct{}
+	release chan struct{}
+	mu      sync.Mutex
+	order   []string
+}
+
+type errRow struct{ err error }
+
+func (r errRow) Scan(...any) error { return r.err }
+
+func (h *heldDB) note(entry string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.order = append(h.order, entry)
+}
+
+func (h *heldDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if h.block != nil && len(args) > 0 && args[0] == h.block {
+		close(h.reached)
+		<-h.release
+	}
+	if err := ctx.Err(); err != nil {
+		return errRow{err}
+	}
+	if strings.HasPrefix(sql, insertTextSQL) {
+		h.note(args[0].(string))
+	}
+	return h.DB.QueryRow(ctx, sql, args...)
+}
+
+func (h *heldDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if strings.HasPrefix(sql, "UPDATE discussions SET status") {
+		h.note("activate")
+	}
+	return h.DB.Exec(ctx, sql, args...)
+}
+
+// A join that makes the discussion active writes its event before readiness
+// runs, so the event's chat rows always come before the discussion-active
+// trigger's. The context has no InOrder, as on the MCP path.
+func TestJoinWritesEventBeforeReadiness(t *testing.T) {
+	ctx := context.Background()
+	s, mock := newService(t)
+	// Warm the cache, so the event and the trigger do not look the system
+	// actor up.
+	expectActorByName(mock, "system", 10)
+	if _, _, err := s.Actors.ResolveByName(ctx, "system"); err != nil {
+		t.Fatal(err)
+	}
+	future := fixedNow.Add(time.Minute)
+	statusOf := q("SELECT status FROM discussions WHERE id = $1")
+	waiting := func() *pgxmock.Rows {
+		return pgxmock.NewRows([]string{"status", "timeout_at"}).AddRow("waiting", &future)
+	}
+	const event = "b joined the discussion"
+	const trigger = `{"type":"virtual-agent","discussionId":7,"triggerType":"discussion-active"}`
+
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("waiting"))
+	mock.ExpectQuery(q(readinessHead)).WithArgs(num("7")).WillReturnRows(waiting())
+	mock.ExpectQuery(q(readinessMembers)).WithArgs(num("7")).WillReturnRows(members(
+		[3]string{"a", "joined", "required"}, [3]string{"b", "invited", "required"}))
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("waiting"))
+	expectActorByName(mock, "b", 2)
+	mock.ExpectQuery(q("SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2")).WithArgs(num("7"), 2).
+		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("invited"))
+	mock.ExpectExec(q("UPDATE discussion_participants SET status = $1, joined_at = NOW() WHERE discussion_id = $2 AND actor_id = $3")).
+		WithArgs("joined", num("7"), 2).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs(event, 10, num("7")).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
+	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
+	mock.ExpectQuery(q(readinessHead)).WithArgs(num("7")).WillReturnRows(waiting())
+	mock.ExpectQuery(q(readinessMembers)).WithArgs(num("7")).WillReturnRows(members(
+		[3]string{"a", "joined", "required"}, [3]string{"b", "joined", "required"}))
+	mock.ExpectExec(q("UPDATE discussions SET status = $1 WHERE id = $2")).WithArgs("active", num("7")).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs(trigger, 10, nil).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(51, fixedNow))
+	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(51, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(61))
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("active"))
+
+	held := &heldDB{DB: mock, block: event, reached: make(chan struct{}), release: make(chan struct{})}
+	s.DB, s.Notifier.DB = held, held
+
+	type outcome struct {
+		res *JoinResult
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		res, err := s.Join(ctx, IntID(7), "b")
+		done <- outcome{res, err}
+	}()
+	select {
+	case <-held.reached:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the join event was never written")
+	}
+	// The join must not go on, or answer, while its event is held.
+	select {
+	case <-done:
+		close(held.release)
+		t.Fatal("Join returned before its event was written")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(held.release)
+	var out outcome
+	select {
+	case out = <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Join did not return after the event was released")
+	}
+	if out.err != nil || out.res.DiscussionStatus != "active" {
+		t.Fatalf("%+v %v", out.res, out.err)
+	}
+	testutil.WaitMet(t, mock)
+	held.mu.Lock()
+	got := strings.Join(held.order, " | ")
+	held.mu.Unlock()
+	if want := event + " | activate | " + trigger; got != want {
+		t.Errorf("order\n got %s\nwant %s", got, want)
+	}
+}
+
+// The awaited event is written on a detached context: a client that has
+// already hung up does not stop it.
+func TestSendEventNowSurvivesHangUp(t *testing.T) {
+	s, mock := newService(t)
+	expectActorByName(mock, "system", 10)
+	if _, _, err := s.Actors.ResolveByName(context.Background(), "system"); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs("b joined the discussion", 10, num("7")).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
+	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
+	held := &heldDB{DB: mock}
+	s.Notifier.DB = held
+
+	ctx, hangUp := context.WithCancel(context.Background())
+	hangUp()
+	s.sendEventNow(ctx, IntID(7), "b joined the discussion", "Failed to send join event")
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

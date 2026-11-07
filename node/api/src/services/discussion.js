@@ -621,7 +621,10 @@ async function discussionJoin(discussionId, agent) {
 
     logDiscussion('join', { discussion_id: discussionId, agent });
 
-    sendDiscussionEvent(discussionId, `${agent} joined the discussion`).catch(err => {
+    // Awaited so the event takes its chat ids before evaluateReadiness can
+    // start the discussion-active trigger; un-awaited, the two writes raced
+    // for the lower ids (LLM-952). A failure is still logged and ignored.
+    await sendDiscussionEvent(discussionId, `${agent} joined the discussion`).catch(err => {
         console.error('Failed to send join event:', err.message);
     });
 

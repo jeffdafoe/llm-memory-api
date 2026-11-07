@@ -133,14 +133,34 @@ func (s *Service) notifyVirtualAgents(ctx context.Context, discussionID ID, trig
 // sendEvent is sendDiscussionEvent(id, message).catch(log): the event line
 // in the discussion, written after the response.
 func (s *Service) sendEvent(ctx context.Context, discussionID ID, message, failure string) {
-	param := discussionID.Param()
-	if !discussionID.Truthy() {
-		param = nil
-	}
+	param := eventParam(discussionID)
 	s.background(ctx, failure, func(ctx context.Context) error {
 		_, err := s.Notifier.SendDiscussionEvent(ctx, param, message)
 		return err
 	})
+}
+
+// eventTimeout bounds an awaited event write once it no longer follows the
+// request's context.
+const eventTimeout = 30 * time.Second
+
+// sendEventNow is `await sendDiscussionEvent(id, message).catch(log)`: the
+// event line is written before the caller goes on, so it takes its chat ids
+// ahead of any job the caller starts next. A failure is logged and ignored,
+// and a client hanging up does not stop the write.
+func (s *Service) sendEventNow(ctx context.Context, discussionID ID, message, failure string) {
+	eventCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), eventTimeout)
+	defer cancel()
+	if _, err := s.Notifier.SendDiscussionEvent(eventCtx, eventParam(discussionID), message); err != nil {
+		s.Log.Errorf("%s: %s", failure, err)
+	}
+}
+
+func eventParam(discussionID ID) any {
+	if !discussionID.Truthy() {
+		return nil
+	}
+	return discussionID.Param()
 }
 
 type participantState struct {
