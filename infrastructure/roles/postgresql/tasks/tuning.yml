@@ -56,7 +56,8 @@
 
   # Undo only this run's change: put the previous file back, or remove the
   # new one when there was none. An unchanged file is left alone, since the
-  # error is then elsewhere in the config.
+  # error is then elsewhere in the config. The backup is removed only once it
+  # is back in place; a failed restore keeps it for recovery by hand.
   rescue:
     - name: Put the previous tuning file back
       copy:
@@ -66,7 +67,15 @@
         owner: postgres
         group: postgres
         mode: '0644'
+      register: postgresql_tuning_restore
+      ignore_errors: yes
       when: postgresql_tuning_file.backup_file is defined
+
+    - name: Remove the backup now the previous file is back
+      file:
+        path: "{{ postgresql_tuning_file.backup_file }}"
+        state: absent
+      when: postgresql_tuning_restore is succeeded and postgresql_tuning_restore is not skipped
 
     - name: Remove the new tuning file
       file:
@@ -78,15 +87,18 @@
       fail:
         msg: >-
           PostgreSQL could not parse its config.
-          {{ 'The previous tuning file is back.' if postgresql_tuning_file.backup_file is defined
+          {{ ('Putting the previous tuning file back FAILED: the bad file is still in conf.d. The previous file is at '
+              ~ postgresql_tuning_file.backup_file ~ ' - copy it back by hand.')
+             if postgresql_tuning_restore is failed
+             else ('The previous tuning file is back.' if postgresql_tuning_file.backup_file is defined
              else ('The new tuning file was removed.' if postgresql_tuning_file.changed
-             else 'The tuning file did not change, so the error is elsewhere.') }}
+             else 'The tuning file did not change, so the error is elsewhere.')) }}
           Fix the config before the next PostgreSQL start. postgres -C said:
           {{ postgresql_tuning_parse.stderr | default('?') }}
 
-  always:
-    - name: Remove the backup of the previous tuning file
-      file:
-        path: "{{ postgresql_tuning_file.backup_file }}"
-        state: absent
-      when: postgresql_tuning_file.backup_file is defined
+# Reached only when the parse passed (the rescue always ends in a fail).
+- name: Remove the backup of the previous tuning file
+  file:
+    path: "{{ postgresql_tuning_file.backup_file }}"
+    state: absent
+  when: postgresql_tuning_file.backup_file is defined
