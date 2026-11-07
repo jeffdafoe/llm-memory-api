@@ -19,10 +19,6 @@ import (
 // sessionTTL is how long a dashboard login session lasts.
 const sessionTTL = 24 * time.Hour
 
-// credentialWriteTimeout bounds the credential writes, which run on after
-// the client hangs up, as Node's did.
-const credentialWriteTimeout = 30 * time.Second
-
 // The account-link throttles (LLM-670): per caller and per target, so one
 // session cannot hammer and an attacker cannot spread guesses over many
 // signups.
