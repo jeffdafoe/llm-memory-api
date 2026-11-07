@@ -1,8 +1,8 @@
 ---
 # Install the Go server and the admin UI's built files from the per-commit
 # build CI publishes (the build-artifacts job in .github/workflows/ci.yml,
-# release build-<sha>). The VPS compiles nothing. The Go unit is installed NOT
-# enabled and NOT started; Node keeps serving until the switch (LLM-902).
+# release build-<sha>). The VPS compiles nothing. The Go unit is enabled only
+# when memory_api_backend is "go" (group_vars/all.yml).
 # deploy.yml runs this role before the Node one, so a missing or corrupt build
 # stops the deploy before it changes anything of Node's and before migrations.
 
@@ -97,9 +97,10 @@
     - name: Install the Go server binary
       command: mv -f {{ go_server_bin }}.new {{ go_server_bin }}
 
-    # Express serves the admin UI from public/admin/dist until the switch. The
-    # memory-api role copies node/api from repo_root to project_root after
-    # this role, so the files land where Express reads them. The old dist is
+    # The admin UI is served from project_root's public/admin/dist: by Express
+    # under "node", by nginx under "go". The memory-api role copies node/api
+    # from repo_root to project_root after this role, so the files land where
+    # both read them. The old dist is
     # replaced whole, so no file of an older build stays behind.
     - name: Install the admin UI build
       shell: |
@@ -121,10 +122,13 @@
     mode: "0644"
   notify: Reload systemd for memory-api-go
 
-# Stays off until the switch. The unit also Conflicts= with memory-api, so
-# starting it by hand stops Node rather than fighting it for the port.
-- name: Keep the Go server disabled until the switch
+# Enabled only when memory_api_backend is "go". The unit Conflicts= with
+# memory-api, so starting one stops the other rather than fighting it for the
+# port. Nothing is started or stopped here: deploy.sh restarts the enabled unit
+# after the migrations, so on the switch Node serves until then, and on a
+# switch back the memory-api role starts Node (which stops Go).
+- name: Enable the Go server only when it is the backend
   systemd:
     name: memory-api-go
-    enabled: no
+    enabled: "{{ memory_api_backend == 'go' }}"
     daemon_reload: yes

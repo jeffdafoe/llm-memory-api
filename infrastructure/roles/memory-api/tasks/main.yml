@@ -137,11 +137,23 @@
     - Reload systemd
     - Restart memory-api
 
+# A switch in either direction takes effect when deploy.sh restarts the
+# enabled unit after the migrations; the units' Conflicts= then stops the
+# other. So under "go" Node is only disabled, not stopped, and under "node"
+# Node is not started while Go is running (the switch back), only on an
+# install where neither runs. Node's code and npm tree above stay current
+# under "go", so a switch back can start it at once.
+- name: Check whether the Go server is running
+  command: systemctl is-active --quiet memory-api-go
+  register: go_server_active
+  changed_when: false
+  failed_when: false
+
 - name: Enable and start memory-api service
   service:
     name: memory-api
-    enabled: yes
-    state: started
+    enabled: "{{ memory_api_backend == 'node' }}"
+    state: "{{ 'started' if memory_api_backend == 'node' and go_server_active.rc != 0 else omit }}"
 
 - name: Ensure cleanup script is executable
   file:
@@ -181,13 +193,17 @@
     that: staleness_recipient is match('^[A-Za-z0-9][A-Za-z0-9._@-]*\Z')
     fail_msg: "staleness_check_recipient (or admin_username) '{{ staleness_recipient }}' must be a plain actor name: letters, digits, . _ @ -"
 
+# Runs the backend's own implementation: scripts/staleness-check.js under
+# "node", `memory-api staleness-check` (the Go binary) under "go".
 - name: Configure weekly staleness check cron job
+  vars:
+    staleness_command: "{{ (go_server_bin | quote) ~ ' staleness-check' if memory_api_backend == 'go' else '/usr/bin/node ' ~ ((project_root ~ '/scripts/staleness-check.js') | quote) }}"
   cron:
     name: "memory-api staleness check"
     weekday: "1"
     minute: "30"
     hour: "12"
-    job: "/usr/bin/node {{ (project_root ~ '/scripts/staleness-check.js') | quote }} {{ staleness_recipient | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
+    job: "{{ staleness_command }} {{ staleness_recipient | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
 
 - name: Deploy tools (Go client binaries)
   include_tasks: deploy-tools.yml

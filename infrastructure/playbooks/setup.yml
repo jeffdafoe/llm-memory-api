@@ -13,6 +13,12 @@
       debug:
         msg: "Setting up {{ deploy_environment }} environment on {{ inventory_hostname }}"
 
+    - name: Check the backend setting
+      assert:
+        that: memory_api_backend in ['node', 'go']
+        fail_msg: "memory_api_backend is '{{ memory_api_backend }}'; it must be node or go"
+        quiet: yes
+
   roles:
     - role: ../roles/common
     - role: ../roles/nodejs

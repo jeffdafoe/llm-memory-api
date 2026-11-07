@@ -3,7 +3,10 @@
   systemd:
     daemon_reload: yes
 
+# Restarts whichever server is the backend (memory_api_unit), since both read
+# /etc/memory-api/env and the config table. Restarting the other one would
+# start it and, through the units' Conflicts=, stop the backend.
 - name: Restart memory-api
   service:
-    name: memory-api
+    name: "{{ memory_api_unit }}"
     state: restarted

@@ -2180,13 +2180,14 @@ router.post('/admin/dream/consolidate-people', requirePerm('agents', 'write'), a
     // a per-call cap; iterate until a short page lands so an agent
     // with >1000 people files doesn't get silently truncated. Hot
     // path is the cron, not this; dropping the silent-truncate hazard
-    // is worth the extra round-trips.
+    // is worth the extra round-trips. listNotes answers { notes: rows }
+    // (LLM-958: this read the object as the array and always threw).
     async function listAllPeopleNotes(agentName) {
         const limit = 1000;
         let offset = 0;
         const all = [];
         while (true) {
-            const page = await listNotes(agentName, limit, offset, 'context/people/');
+            const { notes: page } = await listNotes(agentName, limit, offset, 'context/people/');
             all.push(...page);
             if (page.length < limit) break;
             offset += limit;
