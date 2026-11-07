@@ -155,6 +155,9 @@ func apiLogDuration(step int) KnownDifference {
 
 var adminLogCases = []Scenario{
 	{Name: "admin dashboard", Steps: steps(routeShape(adminDashboard), []Step{
+		// Wait for routeShape's background heartbeats before reading the
+		// dashboard, whose agent status and ordering depend on last_seen.
+		{Settle: true},
 		contentPost(adminDashboard, `{}`),
 		// The limited admin sees itself only.
 		limitedPost(adminDashboard, `{}`),
