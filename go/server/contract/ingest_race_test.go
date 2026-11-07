@@ -101,7 +101,7 @@ func raceIngestOneSide(t *testing.T, side string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(context.Background())
+	defer bounded(func(ctx context.Context) { conn.Close(ctx) })
 	texts := raceChunks(t, ctx, conn)
 	versions := map[string]bool{}
 	for _, text := range texts {
@@ -121,7 +121,7 @@ func raceIngestOneSide(t *testing.T, side string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer holder.Rollback(context.Background())
+	defer bounded(func(ctx context.Context) { holder.Rollback(ctx) })
 	if _, err := holder.Exec(ctx, "SELECT pg_advisory_xact_lock(919001, hashtext('agent-a' || '/' || LOWER('RACE/Doc')))"); err != nil {
 		t.Fatal(err)
 	}
@@ -163,6 +163,14 @@ func raceIngestOneSide(t *testing.T, side string) {
 	if len(texts) != 2 || !strings.Contains(texts[0], "version held") || !strings.Contains(texts[1], "version held") {
 		t.Errorf("after the held ingest: %q, want its 2 chunks only", texts)
 	}
+}
+
+// bounded runs a cleanup on its own one-minute context, so a database that
+// stops answering cannot hold up the cleanups after it.
+func bounded(cleanup func(ctx context.Context)) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cleanup(ctx)
 }
 
 // raceBody is an ingest of two chunks, each tagged with the version.
