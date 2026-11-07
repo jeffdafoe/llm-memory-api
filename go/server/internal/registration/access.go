@@ -1,7 +1,9 @@
 package registration
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/admin"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
@@ -14,6 +16,10 @@ const (
 	maxAccessEmail = 255
 	maxAccessUsage = 5000
 )
+
+// accessWriteTimeout bounds the access request's writes. They run detached
+// from the request: Node's queries ran on after a client hung up.
+const accessWriteTimeout = 30 * time.Second
 
 // accessRequest is server.js's POST /api/access-request, the landing page's
 // request form. With open registration on, the request is approved at once
@@ -51,7 +57,8 @@ func (rt *Routes) accessRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	emailText, usageText = jsutil.Trim(emailText), jsutil.Trim(usageText)
-	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), accessWriteTimeout)
+	defer cancel()
 
 	if !open {
 		if _, err := rt.DB.Exec(ctx,
@@ -72,7 +79,7 @@ func (rt *Routes) accessRequest(w http.ResponseWriter, r *http.Request) {
 		rt.accessFailed(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(context.WithoutCancel(ctx))
 	var requestID int
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO access_requests (email, usage_description, status, reviewed_at)

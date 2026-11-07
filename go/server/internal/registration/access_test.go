@@ -1,12 +1,14 @@
 package registration
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pashagolub/pgxmock/v6"
 )
@@ -44,8 +46,8 @@ func TestAccessRequestAutoApproved(t *testing.T) {
 func TestAccessRequestAutoApprovedRollsBack(t *testing.T) {
 	rg := newRig(t, true)
 	rg.mock.ExpectBegin()
-	rg.mock.ExpectQuery("INSERT INTO access_requests").WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(42))
-	rg.mock.ExpectExec("INSERT INTO invite_codes").WillReturnError(errors.New("boom"))
+	rg.mock.ExpectQuery("INSERT INTO access_requests").WithArgs("a@example.com", "testing").WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(42))
+	rg.mock.ExpectExec("INSERT INTO invite_codes").WithArgs(pgxmock.AnyArg(), 42).WillReturnError(errors.New("boom"))
 	rg.mock.ExpectRollback()
 	status, body := rg.post("/api/access-request", `{"email":"a@example.com","usage":"testing"}`)
 	if status != 500 || body["error"] != "Something went wrong" {
@@ -90,5 +92,38 @@ func TestAccessRequestWithoutJSONBody(t *testing.T) {
 	rg.h.ServeHTTP(rec, req)
 	if rec.Code != 500 || !strings.Contains(rec.Body.String(), "Cannot destructure property 'email' of 'req.body' as it is undefined.") {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// postHungUp sends an access request whose client hangs up 10ms in, while
+// the first statement is still running.
+func (rg *rig) postHungUp(body string) *httptest.ResponseRecorder {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(10*time.Millisecond, cancel)
+	req := httptest.NewRequest(http.MethodPost, "/api/access-request", strings.NewReader(body)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	rg.h.ServeHTTP(rec, req)
+	return rec
+}
+
+// A client that hangs up does not stop the writes, as Node's queries ran on.
+func TestAccessRequestWritesOutliveTheRequest(t *testing.T) {
+	rg := newRig(t, false)
+	rg.mock.ExpectExec("INSERT INTO access_requests").WithArgs("a@example.com", "testing").
+		WillDelayFor(50 * time.Millisecond).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	if rec := rg.postHungUp(`{"email":"a@example.com","usage":"testing"}`); rec.Code != 200 {
+		t.Fatalf("pending: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rg = newRig(t, true)
+	rg.mock.ExpectBegin()
+	rg.mock.ExpectQuery("INSERT INTO access_requests").WithArgs("a@example.com", "testing").
+		WillDelayFor(50 * time.Millisecond).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(42))
+	rg.mock.ExpectExec("INSERT INTO invite_codes").WithArgs(pgxmock.AnyArg(), 42).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	rg.mock.ExpectCommit()
+	if rec := rg.postHungUp(`{"email":"a@example.com","usage":"testing"}`); rec.Code != 200 {
+		t.Fatalf("auto-approved: %d %s", rec.Code, rec.Body.String())
 	}
 }
