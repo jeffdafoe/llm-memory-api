@@ -112,18 +112,6 @@ func (rt *Routes) actorsCreate(w http.ResponseWriter, r *http.Request) error {
 	if emailIsString && jsutil.UTF16Len(jsutil.Trim(email)) > maxEmailLength {
 		return httpapi.BadRequest(w, "email must be 255 characters or less")
 	}
-	// `value || null` text columns.
-	var text [3]any
-	for i, field := range []string{"provider", "model", "personality"} {
-		s, err := f.OptionalString(field)
-		if err != nil {
-			return err
-		}
-		if s != "" {
-			text[i] = s
-		}
-	}
-
 	availability, err := rt.Actors.CheckNameAvailability(r.Context(), rt.DB, actorName)
 	if err != nil {
 		return err
@@ -227,6 +215,19 @@ func (rt *Routes) actorsCreate(w http.ResponseWriter, r *http.Request) error {
 	monthly, err := parseCostBudget(f.Raw("cost_budget_monthly"), "cost_budget_monthly")
 	if err != nil {
 		return err
+	}
+	// The `value || null` text columns. Node bound them as they were, so
+	// the refusal of another JSON type comes here, after every check Node
+	// made, and rolls back the actor as a budget refusal does.
+	var text [3]any
+	for i, field := range []string{"provider", "model", "personality"} {
+		s, err := f.OptionalString(field)
+		if err != nil {
+			return err
+		}
+		if s != "" {
+			text[i] = s
+		}
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO agent_configuration (actor_id, provider, model, virtual, personality, cost_budget_daily, cost_budget_monthly, cache_prompts, learning_enabled, max_tokens, temperature, configuration, dream_mode, dream_source)

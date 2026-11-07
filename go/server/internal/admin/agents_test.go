@@ -135,7 +135,8 @@ func call(fn func(*Routes, http.ResponseWriter, *http.Request) error) func(*Rout
 }
 
 // Fields of another JSON type are refused after the required check; no
-// body at all is V8's TypeError, as in Node.
+// body at all is V8's TypeError, as in Node. content and the create text
+// fields are refused later, after the checks Node made (contract cases).
 func TestAgentsFieldTypes(t *testing.T) {
 	rt, mock, _ := newRoutes(t, map[string]string{"minimum_password_length": "10"})
 	cases := []struct {
@@ -145,10 +146,8 @@ func TestAgentsFieldTypes(t *testing.T) {
 		want string
 	}{
 		{"agent", call((*Routes).agentsRead), `{"agent":7}`, "agent must be a string"},
-		{"content", call((*Routes).agentsInstructionsSave), `{"agent":"a","content":5}`, "content must be a string"},
 		{"name", call((*Routes).actorsCreate), `{"name":5}`, "name must be a string"},
 		{"password", call((*Routes).actorsCreate), `{"name":"x","ui_access":true,"password":12345678901}`, "password must be a string"},
-		{"provider", call((*Routes).actorsCreate), `{"name":"x","provider":{"a":1}}`, "provider must be a string"},
 		{"no body", call((*Routes).agentsUpdate), ``, "Cannot read properties of undefined (reading 'agent')"},
 		{"no body create", call((*Routes).actorsCreate), ``, "Cannot destructure property 'name' of 'req.body' as it is undefined."},
 	}

@@ -256,7 +256,15 @@ func (rt *Routes) agentsInstructionsSave(w http.ResponseWriter, r *http.Request)
 	if agentErr != nil {
 		return agentErr
 	}
-	// A JSON null is stored as NULL, and then Node failed reading its length.
+	actor, ok, err := rt.RequireVisibility(w, r, agent)
+	if !ok {
+		return err
+	}
+	if ok, err := rt.RequireOwnershipID(w, r, actor.ID); !ok {
+		return err
+	}
+	// Node used content only in the update, after both checks. A JSON null
+	// is stored as NULL, and then Node failed reading its length.
 	var content *string
 	if string(contentRaw) != "null" {
 		s, err := f.RequireString("content")
@@ -264,13 +272,6 @@ func (rt *Routes) agentsInstructionsSave(w http.ResponseWriter, r *http.Request)
 			return err
 		}
 		content = &s
-	}
-	actor, ok, err := rt.RequireVisibility(w, r, agent)
-	if !ok {
-		return err
-	}
-	if ok, err := rt.RequireOwnershipID(w, r, actor.ID); !ok {
-		return err
 	}
 	ctx, cancel := detached(r)
 	defer cancel()

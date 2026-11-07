@@ -86,6 +86,11 @@ var adminAgentInstructionCases = []Scenario{
 		adminPost(agentsInstructionsRead, "admin-web", `{"agent":"agent-a"}`)),
 	postCase("admin agents instructions save number content", agentsInstructionsSave, "admin-web", `{"agent":"agent-a","content":5}`,
 		storedAsText("POST "+agentsInstructionsSave, "startup_instructions")...),
+	// Visibility and ownership come before the content's type, as in Node.
+	withIDs("admin agents instructions save number content for another's agent",
+		grantLimitedSight,
+		adminPost(agentsInstructionsSave, "admin-limited-web", `{"agent":"agent-a","content":5}`),
+		adminPost(agentsInstructionsSave, "admin-limited-web", `{"agent":"agent-b","content":5}`)),
 	noBodyPost("admin agents instructions save no body", agentsInstructionsSave, "admin-web"),
 }
 
@@ -279,6 +284,12 @@ var adminActorCreateCases = []Scenario{
 	noBodyPost("admin actors create no body", actorsCreatePath, "admin-web"),
 	postCase("admin actors create number name", actorsCreatePath, "admin-web", `{"name":5}`,
 		notAStringInAdminSession("POST "+actorsCreatePath)...),
+	// A taken name and a refused budget come before a text field's type,
+	// as in Node, which never converted those fields.
+	withIDs("admin actors create number provider with other refusals",
+		adminPost(actorsCreatePath, "admin-web", `{"name":"agent-a","provider":5}`),
+		adminPost(actorsCreatePath, "admin-web", `{"name":"x3","personality":[1],"cost_budget_daily":-1}`),
+		createStep("admin-web", `{"name":"x4"}`)),
 }
 
 var longEmail = func() string {
