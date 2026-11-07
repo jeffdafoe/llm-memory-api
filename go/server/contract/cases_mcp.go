@@ -68,7 +68,7 @@ func modern(id int, method, params string, extra ...[2]string) Step {
 		Body: fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":%q,"params":%s}`, id, method, p)}
 }
 
-var mcpCases = concat(mcpProtocolCases, mcpModernCases, mcpToolCases, mcpNoteCases, mcpCommsCases, mcpClientCases)
+var mcpCases = concat(mcpProtocolCases, mcpModernCases, mcpToolCases, mcpNoteCases, mcpCommsCases, mcpDiscussionCases, mcpClientCases)
 
 var mcpProtocolCases = []Scenario{
 	one("mcp HEAD needs no auth", Step{Method: "HEAD", Path: mcpPath}),
