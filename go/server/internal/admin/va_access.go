@@ -28,17 +28,27 @@ type vaAccessRow struct {
 	CreatedAt        isoTime `json:"created_at"`
 }
 
-// vaAccessList is POST /admin/virtual-agent-access/list: every access rule.
-// A rule with no grantee opens the agent to everyone.
+// vaAccessList is POST /admin/virtual-agent-access/list: the access rules of
+// the virtual agents the caller may see, which keeps the list inside the
+// caller's realms. A rule with no grantee opens the agent to everyone.
 func (rt *Routes) vaAccessList(w http.ResponseWriter, r *http.Request) error {
-	rows, err := rt.DB.Query(r.Context(), `
+	visible, err := rt.Visibility.VisibleActorIDs(r.Context(), httpapi.StateOf(r).ActorID)
+	if err != nil {
+		return err
+	}
+	sql := `
         SELECT vaa.id, vaa.virtual_agent_id, va.name AS virtual_agent_name,
                vaa.grantee_actor_id, ga.name AS grantee_name, vaa.created_at
         FROM virtual_agent_access vaa
         JOIN actors va ON va.id = vaa.virtual_agent_id
-        LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id
-        ORDER BY va.name, ga.name NULLS FIRST
-    `)
+        LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id`
+	var args []any
+	if !visible.All {
+		sql += " WHERE vaa.virtual_agent_id = ANY($1)"
+		args = append(args, visible.IDs)
+	}
+	sql += " ORDER BY va.name, ga.name NULLS FIRST"
+	rows, err := rt.DB.Query(r.Context(), sql, args...)
 	if err != nil {
 		return err
 	}

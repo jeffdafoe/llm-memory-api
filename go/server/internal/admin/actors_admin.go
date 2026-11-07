@@ -78,6 +78,15 @@ func (rt *Routes) actorsAdminPermissionsRead(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return httpapi.BadRequest(w, "Required field: actor_id (positive integer)")
 	}
+	// Only an actor the caller may see; a hidden one reads as missing.
+	visible, err := rt.Visibility.CanSee(r.Context(), httpapi.StateOf(r).ActorID, actorID)
+	if err != nil {
+		return err
+	}
+	if !visible {
+		httpapi.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Actor not found")
+		return nil
+	}
 	rows, err := rt.DB.Query(r.Context(),
 		"SELECT resource, action FROM admin_permissions WHERE actor_id = $1 ORDER BY resource, action", actorID)
 	if err != nil {
