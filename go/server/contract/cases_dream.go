@@ -68,6 +68,16 @@ var dreamCases = []Scenario{
 			adminPost(consolidatePeoplePath, "admin-web", `{"agent":"agent-a"}`),
 			adminPost(consolidatePeoplePath, "admin-web", `{"agent":"nobody","dry_run":true}`),
 			adminPost(consolidatePeoplePath, "admin-web", `{"agent":"","person_slug":null}`),
+			// Precedence: agent's type, then the slug, then the agent lookup.
+			adminPost(consolidatePeoplePath, "admin-web", `{"agent":5,"person_slug":"Bad"}`),
+			adminPost(consolidatePeoplePath, "admin-web", `{"agent":"nobody","person_slug":"Bad"}`),
+			adminPost(consolidatePeoplePath, "admin-web", `{"agent":false,"person_slug":0}`),
+			adminPost(consolidatePeoplePath, "admin-web", `{"agent":"agent-b","person_slug":0}`),
+			// dry_run is JavaScript truthiness.
+			adminPost(consolidatePeoplePath, "admin-web", `{"dry_run":"false"}`),
+			adminPost(consolidatePeoplePath, "admin-web", `{"dry_run":[]}`),
+			adminPost(consolidatePeoplePath, "admin-web", `{"dry_run":{}}`),
+			adminPost(consolidatePeoplePath, "admin-web", `{"dry_run":""}`),
 		},
 	},
 	{
@@ -83,6 +93,7 @@ var dreamCases = []Scenario{
 			anthropicText("- quiet"),
 			anthropicText("- likes tea\n- prefers Monday releases"),
 			anthropicText("- owes nothing\n- paid for the lamp"),
+			anthropicText("- erin"),
 		},
 		Known: []KnownDifference{callDuration},
 	},
@@ -121,7 +132,8 @@ const consolidatePeoplePath = "/v1/admin/dream/consolidate-people"
 
 // consolidatePeopleSetup makes va-anthropic (owned by the system actor, so
 // the trust check passes) the companion people writer and gives agent-b
-// four relationship files a day apart, and one note outside the folder.
+// five relationship files a day apart (one titled only with spaces), and
+// one note outside the folder.
 const consolidatePeopleSetup = `
 UPDATE actors SET expertise = '["dream-companion-people"]',
     created_by = (SELECT id FROM actors WHERE name = 'system')
@@ -133,6 +145,7 @@ INSERT INTO documents (namespace, slug, title, content, created_at, updated_at) 
     ('agent-b', 'context/people/carol', NULL, '- quiet', NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days'),
     ('agent-b', 'context/people/agent-a', E'People — Agent\nA', E'- likes tea\n- likes tea\n- prefers Monday releases', NOW() - INTERVAL '3 days', NOW() - INTERVAL '3 days'),
     ('agent-b', 'context/people/dave', 'People — Dave ✓', '- owes nothing 🕯', NOW() - INTERVAL '4 days', NOW() - INTERVAL '4 days'),
+    ('agent-b', 'context/people/erin', '   ', '- erin', NOW() - INTERVAL '5 days', NOW() - INTERVAL '5 days'),
     ('agent-b', 'notes/people', 'Not a person', '- y', NOW(), NOW());
 `
 

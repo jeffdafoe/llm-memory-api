@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strconv"
@@ -143,11 +144,34 @@ func TestPersonDisplay(t *testing.T) {
 		{s("People — Jane Doe"), "Jane Doe"},
 		{s("  Jane\r\n## Injected\t x "), "Jane ## Injected x"},
 		{s("People — People — Jane"), "People — Jane"},
-		{s("Jane  Doe"), "Jane Doe"},
+		{s("Jane\u00a0\u2028Doe"), "Jane Doe"},
+		{s("\ufeffJane\u202fDoe"), "Jane Doe"},
+		{s("Jane\u0085Doe"), "Jane\u0085Doe"},
+		{s("   "), ""},
+		{s("People — \t "), ""},
 	}
 	for _, c := range cases {
 		if got := personDisplay(c.title, "jane"); got != c.want {
 			t.Errorf("personDisplay(%v) = %q, want %q", c.title, got, c.want)
 		}
+	}
+}
+
+// The route keeps running when the client hangs up, with no deadline.
+func TestHandleUnboundedOutlivesClient(t *testing.T) {
+	rt, _ := newDreamRoutes(t)
+	mux := NewMux()
+	var errAfter error
+	var hasDeadline bool
+	rt.HandleUnbounded(mux, "/admin/x", "", "", "x", func(w http.ResponseWriter, r *http.Request) error {
+		errAfter = r.Context().Err()
+		_, hasDeadline = r.Context().Deadline()
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	mux.ServeHTTP(httptest.NewRecorder(), request(`{}`).WithContext(ctx))
+	if errAfter != nil || hasDeadline {
+		t.Errorf("context error %v, deadline %v", errAfter, hasDeadline)
 	}
 }
