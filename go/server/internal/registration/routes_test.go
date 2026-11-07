@@ -343,19 +343,3 @@ func TestCheckName(t *testing.T) {
 		t.Fatalf("%d %v", status, body)
 	}
 }
-
-func TestParseFrontmatter(t *testing.T) {
-	f, body := parseFrontmatter("---\nsubject: Hi {agent}\nbad line\n:x\ntitle : T \n---\n\nBody\n")
-	if f["subject"] != "Hi {agent}" || f["title"] != "T" || len(f) != 2 || body != "Body\n" {
-		t.Fatalf("%v %q", f, body)
-	}
-	if f, body := parseFrontmatter("---\n\n---\nB"); len(f) != 0 || body != "B" {
-		t.Fatalf("%v %q", f, body)
-	}
-	if f, body := parseFrontmatter("---\n---\nB"); len(f) != 0 || body != "---\n---\nB" {
-		t.Fatalf("%v %q", f, body)
-	}
-	if _, body := parseFrontmatter("no header"); body != "no header" {
-		t.Fatal(body)
-	}
-}

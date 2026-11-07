@@ -22,6 +22,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/chat"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/discussion"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
@@ -36,17 +37,18 @@ import (
 
 // Server holds what the tools call.
 type Server struct {
-	DB         db.DB
-	Config     *config.Store
-	Log        *logger.Logger
-	Events     events.Broadcaster
-	Namespaces *permissions.Namespaces
-	Shares     *permissions.NoteShares
-	Notes      *notes.Service
-	Memory     *memory.Service
-	Chat       *chat.Service
-	Mail       *mail.Service
-	Visibility *visibility.Visibility
+	DB          db.DB
+	Config      *config.Store
+	Log         *logger.Logger
+	Events      events.Broadcaster
+	Namespaces  *permissions.Namespaces
+	Shares      *permissions.NoteShares
+	Notes       *notes.Service
+	Memory      *memory.Service
+	Chat        *chat.Service
+	Mail        *mail.Service
+	Visibility  *visibility.Visibility
+	Discussions *discussion.Service
 	// Location is the zone dates are printed in (Date.prototype.toString);
 	// nil is time.Local, the process zone, as in Node.
 	Location *time.Location
@@ -72,35 +74,47 @@ type toolHandler func(s *Server, ctx context.Context, args *jsutil.Object, c cal
 
 // toolHandlers is Node's TOOL_HANDLERS for the tools ported so far.
 var toolHandlers = map[string]toolHandler{
-	"search":            (*Server).search,
-	"save_note":         (*Server).saveNote,
-	"list_notes":        (*Server).listNotes,
-	"read_note":         (*Server).readNote,
-	"delete_note":       (*Server).deleteNote,
-	"restore_note":      (*Server).restoreNote,
-	"edit_note":         (*Server).editNote,
-	"move_note":         (*Server).moveNote,
-	"move_folder":       (*Server).moveFolder,
-	"grep":              (*Server).grep,
-	"read_instructions": (*Server).readInstructions,
-	"save_instructions": (*Server).saveInstructions,
-	"chat_send":         (*Server).chatSend,
-	"chat_receive":      (*Server).chatReceive,
-	"chat_ack":          (*Server).chatAck,
-	"chat_status":       (*Server).chatStatus,
-	"mail_send":         (*Server).mailSend,
-	"mail_check":        (*Server).mailCheck,
-	"mail_receive":      (*Server).mailReceive,
-	"mail_ack":          (*Server).mailAck,
-	"mail_edit":         (*Server).mailEdit,
-	"mail_unsend":       (*Server).mailUnsend,
-	"mail_sent":         (*Server).mailSent,
-	"mail_history":      (*Server).mailHistory,
-	"agent_status":      (*Server).agentStatus,
-	"update_expertise":  (*Server).updateExpertise,
-	"update_profile":    (*Server).updateProfile,
-	"activity_start":    (*Server).activityStart,
-	"activity_stop":     (*Server).activityStop,
+	"search":                  (*Server).search,
+	"save_note":               (*Server).saveNote,
+	"list_notes":              (*Server).listNotes,
+	"read_note":               (*Server).readNote,
+	"delete_note":             (*Server).deleteNote,
+	"restore_note":            (*Server).restoreNote,
+	"edit_note":               (*Server).editNote,
+	"move_note":               (*Server).moveNote,
+	"move_folder":             (*Server).moveFolder,
+	"grep":                    (*Server).grep,
+	"read_instructions":       (*Server).readInstructions,
+	"save_instructions":       (*Server).saveInstructions,
+	"chat_send":               (*Server).chatSend,
+	"chat_receive":            (*Server).chatReceive,
+	"chat_ack":                (*Server).chatAck,
+	"chat_status":             (*Server).chatStatus,
+	"mail_send":               (*Server).mailSend,
+	"mail_check":              (*Server).mailCheck,
+	"mail_receive":            (*Server).mailReceive,
+	"mail_ack":                (*Server).mailAck,
+	"mail_edit":               (*Server).mailEdit,
+	"mail_unsend":             (*Server).mailUnsend,
+	"mail_sent":               (*Server).mailSent,
+	"mail_history":            (*Server).mailHistory,
+	"agent_status":            (*Server).agentStatus,
+	"update_expertise":        (*Server).updateExpertise,
+	"update_profile":          (*Server).updateProfile,
+	"activity_start":          (*Server).activityStart,
+	"activity_stop":           (*Server).activityStop,
+	"discussion_create":       (*Server).discussionCreate,
+	"discussion_list":         (*Server).discussionList,
+	"discussion_status":       (*Server).discussionStatus,
+	"discussion_pending":      (*Server).discussionPending,
+	"discussion_conclude":     (*Server).discussionConclude,
+	"discussion_cancel":       (*Server).discussionCancel,
+	"discussion_join":         (*Server).discussionJoin,
+	"discussion_leave":        (*Server).discussionLeave,
+	"discussion_defer":        (*Server).discussionDefer,
+	"discussion_vote_propose": (*Server).voteProposeTool,
+	"discussion_vote_cast":    (*Server).voteCastTool,
+	"discussion_vote_status":  (*Server).voteStatusTool,
 }
 
 // toolResult is a CallToolResult with one text block.

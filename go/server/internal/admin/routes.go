@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -8,8 +9,11 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/mail"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
 )
 
 // sessionTTL is how long a dashboard login session lasts.
@@ -38,6 +42,10 @@ type Routes struct {
 	SessionAuth TokenCache
 	Providers   *providers.Providers
 	Namespaces  *permissions.Namespaces
+	Agents      *virtualagent.Service
+	Mail        *mail.Service
+	Notes       *notes.Service
+	Moderator   Moderator
 	// Now is the clock for session expiry; nil is time.Now.
 	Now func() time.Time
 
@@ -46,10 +54,17 @@ type Routes struct {
 }
 
 // TokenCache is the /v1 auth middleware's token cache (auth.SessionAuth):
-// logout drops one token, actor deletion every token of the deleted actors.
+// logout drops one token, a passphrase reset every agent token of the
+// agent, actor deletion every token of the deleted actors.
 type TokenCache interface {
 	Forget(token string)
+	ForgetAgent(agent string)
 	ForgetActor(actorID int)
+}
+
+// Moderator reviews a proposed actor name (virtualagent.Moderator).
+type Moderator interface {
+	ModerateActorName(ctx context.Context, name string) (approved bool, reason string)
 }
 
 func (rt *Routes) now() time.Time {
@@ -90,10 +105,21 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	rt.Handle(mux, "/admin/actors/admin-permissions/read", "agents", "read", "actors-admin-permissions-read", rt.actorsAdminPermissionsRead)
 	rt.Handle(mux, "/admin/actors/admin-permissions/save", "agents", "write", "actors-admin-permissions-save", rt.actorsAdminPermissionsSave)
 	rt.Handle(mux, "/admin/actors/delete", "agents", "write", "actors-delete", rt.actorsDelete)
+	rt.Handle(mux, "/admin/actors/create", "agents", "write", "actors-create", rt.actorsCreate)
 	rt.Handle(mux, "/admin/actors/searchable", "notes", "read", "actors-searchable", rt.actorsSearchable)
 	rt.Handle(mux, "/admin/virtual-agent-access/list", "agents", "read", "va-access-list", rt.vaAccessList)
 	rt.Handle(mux, "/admin/virtual-agent-access/grant", "agents", "write", "va-access-grant", rt.vaAccessGrant)
 	rt.Handle(mux, "/admin/virtual-agent-access/revoke", "agents", "write", "va-access-revoke", rt.vaAccessRevoke)
+
+	rt.Handle(mux, "/admin/agents", "agents", "read", "agents-list", rt.agentsList)
+	rt.Handle(mux, "/admin/agents/instructions/read", "agents", "read", "agents-instructions-read", rt.agentsInstructionsRead)
+	rt.Handle(mux, "/admin/agents/instructions/save", "agents", "write", "agents-instructions-save", rt.agentsInstructionsSave)
+	rt.Handle(mux, "/admin/agents/expertise/save", "agents", "write", "agents-expertise-save", rt.agentsExpertiseSave)
+	rt.Handle(mux, "/admin/agents/reset-passphrase", "agents", "write", "agents-reset-passphrase", rt.agentsResetPassphrase)
+	rt.Handle(mux, "/admin/agents/read", "agents", "read", "agents-read", rt.agentsRead)
+	rt.Handle(mux, "/admin/agents/update", "agents", "write", "agents-update", rt.agentsUpdate)
+	rt.Handle(mux, "/admin/agents/usage", "agents", "read", "agents-usage", rt.agentsUsage)
+	rt.Handle(mux, "/admin/agents/call-detail", "agents", "read", "agents-call-detail", rt.agentsCallDetail)
 }
 
 // fail is the catch block of the routes outside adminRoute: the error on
