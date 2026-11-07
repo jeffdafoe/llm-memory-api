@@ -3,7 +3,7 @@ package contract
 // adminCases cover the admin router's mount (requireUser in front of every
 // admin route), the account routes, config, providers and /v1/auth/verify.
 var adminCases = concat(adminMountCases, adminLoginCases, adminLogoutCases, adminPasswordCases,
-	adminLinkCases, adminProfileCases, adminConfigCases, adminProviderCases, authVerifyCases, adminActorCases)
+	adminLinkCases, adminProfileCases, adminConfigCases, adminProviderCases, authVerifyCases, adminActorCases, adminAgentCases)
 
 const (
 	adminLoginPath          = "/v1/admin/login"

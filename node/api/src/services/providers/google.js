@@ -369,9 +369,18 @@ function createCall(model, apiKey, configuration) {
                 input: p.functionCall.args || {}
             }));
 
+        // Thinking tokens are reported apart from the answer
+        // (thoughtsTokenCount) and billed at the output rate, so they are
+        // part of output_tokens. Added only when both are numbers: JS `+`
+        // would join a malformed string count instead of adding it.
+        const usageMetadata = data.usageMetadata;
+        let outputTokens = usageMetadata?.candidatesTokenCount || 0;
+        if (typeof outputTokens === 'number' && typeof usageMetadata?.thoughtsTokenCount === 'number') {
+            outputTokens += usageMetadata.thoughtsTokenCount;
+        }
         const usage = {
-            input_tokens: data.usageMetadata?.promptTokenCount || 0,
-            output_tokens: data.usageMetadata?.candidatesTokenCount || 0
+            input_tokens: usageMetadata?.promptTokenCount || 0,
+            output_tokens: outputTokens
         };
 
         // finishReason "MAX_TOKENS" means output hit the cap. Gemini is the

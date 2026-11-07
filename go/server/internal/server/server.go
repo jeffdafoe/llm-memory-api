@@ -16,6 +16,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/discussion"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/enrichment"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/events"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
@@ -78,7 +79,6 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	llm := &providers.Providers{Config: store, Log: log}
 	notesService := &notes.Service{
 		DB: conn, Config: store, Actors: actorCache, Memory: mem, Errors: recorder, Events: bc,
-		Enricher: &notes.GatedEnricher{Config: store},
 	}
 	// Mail and the virtual agents call each other: a mail to a virtual
 	// agent triggers its reply, which is sent as mail.
@@ -88,6 +88,9 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		Notes: notesService, Memory: mem, Mail: mailService,
 	}
 	mailService.Agents = vaService
+	// Enrichment classifies each saved note through a virtual agent, which
+	// itself saves notes through the notes service.
+	notesService.Enricher = &enrichment.Enricher{DB: conn, Config: store, Agents: vaService, Log: log}
 	sysHandler := &system.Handler{Log: log}
 	// A discussion's virtual participants answer through the system
 	// handler's "virtual-agent" messages.
@@ -192,7 +195,8 @@ func Handler(s *Services) http.Handler {
 	}
 	(&admin.Routes{
 		Common: adminCommon, Config: s.Config, Sessions: s.Sessions, SessionAuth: s.SessionAuth,
-		Providers: s.Providers, Namespaces: s.Namespaces,
+		Providers: s.Providers, Namespaces: s.Namespaces, Agents: s.Agents, Mail: s.Mail, Notes: s.Notes,
+		Moderator: virtualagent.Moderator{DB: s.DB, Log: s.Log},
 	}).Register(adminMux)
 	(&admin.ContentRoutes{
 		Common: adminCommon, Config: s.Config, Notes: s.Notes, Memory: s.Memory, Namespaces: s.Namespaces,

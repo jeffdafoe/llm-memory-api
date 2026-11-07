@@ -25,15 +25,17 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/visibility"
 )
 
-// fakeCache records what logout and actor deletion drop from the token
-// cache.
+// fakeCache records what logout, a passphrase reset and actor deletion
+// drop from the token cache.
 type fakeCache struct {
 	tokens []string
+	agents []string
 	actors []int
 }
 
-func (f *fakeCache) Forget(token string)     { f.tokens = append(f.tokens, token) }
-func (f *fakeCache) ForgetActor(actorID int) { f.actors = append(f.actors, actorID) }
+func (f *fakeCache) Forget(token string)      { f.tokens = append(f.tokens, token) }
+func (f *fakeCache) ForgetAgent(agent string) { f.agents = append(f.agents, agent) }
+func (f *fakeCache) ForgetActor(actorID int)  { f.actors = append(f.actors, actorID) }
 
 var testNow = time.Date(2026, 11, 6, 12, 0, 0, 123456789, time.UTC)
 

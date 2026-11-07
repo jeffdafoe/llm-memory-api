@@ -4864,10 +4864,10 @@
        "application/json"
       ]
      ],
-     "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"max_output_tokens\":50}"
+     "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"max_output_tokens\":50,\"service_tier\":\"flex\"}"
     }
    ],
-   "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":1.4998500000000001},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
+   "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":0.7499250000000001},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
    "error": null
   },
   {
@@ -4949,7 +4949,7 @@
        "application/json"
       ]
      ],
-     "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}]}"
+     "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"service_tier\":\"priority\"}"
     }
    ],
    "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":1.4998500000000001},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
@@ -5074,10 +5074,10 @@
        "application/json"
       ]
      ],
-     "body": "{\"model\":\"gpt-6.1-sol\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"max_output_tokens\":50,\"reasoning\":{\"effort\":\"none\"}}"
+     "body": "{\"model\":\"gpt-6.1-sol\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"max_output_tokens\":50,\"reasoning\":{\"effort\":\"none\"},\"service_tier\":\"flex\"}"
     }
    ],
-   "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":1.19977},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
+   "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":0.599885},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
    "error": null
   },
   {
@@ -5159,7 +5159,7 @@
        "application/json"
       ]
      ],
-     "body": "{\"model\":\"gpt-6.1-sol\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}]}"
+     "body": "{\"model\":\"gpt-6.1-sol\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"service_tier\":\"priority\"}"
     }
    ],
    "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":1.19977},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
@@ -5284,10 +5284,10 @@
        "application/json"
       ]
      ],
-     "body": "{\"model\":\"gpt-6-luna\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"max_output_tokens\":50,\"reasoning\":{\"effort\":\"none\"}}"
+     "body": "{\"model\":\"gpt-6-luna\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"max_output_tokens\":50,\"reasoning\":{\"effort\":\"none\"},\"service_tier\":\"flex\"}"
     }
    ],
-   "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":0.0599895},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
+   "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":0.02999475},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
    "error": null
   },
   {
@@ -5369,7 +5369,7 @@
        "application/json"
       ]
      ],
-     "body": "{\"model\":\"gpt-6-luna\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}]}"
+     "body": "{\"model\":\"gpt-6-luna\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"service_tier\":\"priority\"}"
     }
    ],
    "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":0.0599895},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
@@ -5725,6 +5725,15 @@
          "function": {
           "name": "c"
          }
+        },
+        {
+         "id": "paired3",
+         "type": "function"
+        },
+        {
+         "id": "paired4",
+         "type": "function",
+         "function": 0
         }
        ]
       },
@@ -5732,6 +5741,21 @@
        "role": "tool",
        "tool_call_id": "paired",
        "content": "ok"
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "paired2",
+       "content": "output of a skipped call"
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "paired3",
+       "content": "output of a call with no function"
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "paired4",
+       "content": "output of a call with a falsy function"
       },
       {
        "role": "tool",
@@ -5857,6 +5881,129 @@
     }
    ],
    "result": "{\"text\":\"\",\"tool_calls\":[],\"usage\":{\"input_tokens\":0,\"output_tokens\":1,\"cache_read_input_tokens\":5,\"cost\":0.000008125000000000001},\"finish_reason\":\"content_filter\",\"truncated\":false}",
+   "error": null
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "openai responses flex, answer reports default",
+    "provider": "openai",
+    "model": "gpt-5.4-nano",
+    "conf": {
+     "service_tier": "flex"
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1000,\"output_tokens\":10},\"service_tier\":\"default\"}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1/responses",
+     "headers": [
+      [
+       "authorization",
+       "Bearer sk-test"
+      ],
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "body": "{\"model\":\"gpt-5.4-nano\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"service_tier\":\"flex\"}"
+    }
+   ],
+   "result": "{\"text\":\"\",\"tool_calls\":[],\"usage\":{\"input_tokens\":1000,\"output_tokens\":10,\"cache_read_input_tokens\":0,\"cost\":0.00021250000000000002},\"finish_reason\":\"stop\",\"truncated\":false}",
+   "error": null
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "openai responses flex reported",
+    "provider": "openai",
+    "model": "gpt-6.1-terra",
+    "conf": {
+     "service_tier": "flex"
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1000,\"output_tokens\":10},\"service_tier\":\"flex\"}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1/responses",
+     "headers": [
+      [
+       "authorization",
+       "Bearer sk-test"
+      ],
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "body": "{\"model\":\"gpt-6.1-terra\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"service_tier\":\"flex\"}"
+    }
+   ],
+   "result": "{\"text\":\"\",\"tool_calls\":[],\"usage\":{\"input_tokens\":1000,\"output_tokens\":10,\"cache_read_input_tokens\":0,\"cost\":0.000525},\"finish_reason\":\"stop\",\"truncated\":false}",
+   "error": null
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "openai responses service_tier non-string",
+    "provider": "openai",
+    "model": "gpt-5.4",
+    "conf": {
+     "service_tier": 7
+    },
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\"},{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"a\"},{\"type\":\"refusal\",\"text\":\"x\"},{\"type\":\"output_text\",\"text\":\"b\"}]},{\"type\":\"function_call\",\"call_id\":\"fc1\",\"name\":\"look\",\"arguments\":\"{\\\"x\\\":1}\"},{\"type\":\"function_call\",\"call_id\":\"fc2\",\"name\":\"look\",\"arguments\":\"nope\"}],\"usage\":{\"input_tokens\":300000,\"output_tokens\":10,\"input_tokens_details\":{\"cached_tokens\":100}}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1/responses",
+     "headers": [
+      [
+       "authorization",
+       "Bearer sk-test"
+      ],
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "body": "{\"model\":\"gpt-5.4\",\"input\":[{\"role\":\"system\",\"content\":\"You are a test.\"},{\"role\":\"user\",\"content\":\"hello\"}],\"service_tier\":7}"
+    }
+   ],
+   "result": "{\"text\":\"ab\",\"tool_calls\":[{\"id\":\"fc1\",\"name\":\"look\",\"input\":{\"x\":1}},{\"id\":\"fc2\",\"name\":\"look\",\"input\":{}}],\"usage\":{\"input_tokens\":299900,\"output_tokens\":10,\"cache_read_input_tokens\":100,\"cost\":0.7499250000000001},\"finish_reason\":\"tool_calls\",\"truncated\":false}",
    "error": null
   },
   {
@@ -6652,6 +6799,201 @@
     "message": "(msg.tool_call_id || \"\").replace is not a function",
     "status": null
    }
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "google thinking tokens",
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"a\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":12,\"candidatesTokenCount\":3,\"thoughtsTokenCount\":900,\"totalTokenCount\":915}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1beta/models/gemini-2.5-flash:generateContent",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "x-goog-api-key",
+       "sk-test"
+      ]
+     ],
+     "body": "{\"system_instruction\":{\"parts\":{\"text\":\"You are a test.\"}},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hello\"}]}],\"generationConfig\":{}}"
+    }
+   ],
+   "result": "{\"text\":\"a\",\"tool_calls\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":903},\"finish_reason\":\"stop\",\"truncated\":false}",
+   "error": null
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "google thinking tokens, no candidates count",
+    "provider": "google",
+    "model": "gemini-2.5-pro",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}]},\"finishReason\":\"MAX_TOKENS\"}],\"usageMetadata\":{\"promptTokenCount\":12,\"thoughtsTokenCount\":8192}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1beta/models/gemini-2.5-pro:generateContent",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "x-goog-api-key",
+       "sk-test"
+      ]
+     ],
+     "body": "{\"system_instruction\":{\"parts\":{\"text\":\"You are a test.\"}},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hello\"}]}],\"generationConfig\":{}}"
+    }
+   ],
+   "result": "{\"text\":\"\",\"tool_calls\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":8192},\"finish_reason\":\"length\",\"truncated\":true}",
+   "error": null
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "google thinking tokens, string counts",
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"a\"}]}}],\"usageMetadata\":{\"candidatesTokenCount\":\"3\",\"thoughtsTokenCount\":5}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1beta/models/gemini-2.5-flash:generateContent",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "x-goog-api-key",
+       "sk-test"
+      ]
+     ],
+     "body": "{\"system_instruction\":{\"parts\":{\"text\":\"You are a test.\"}},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hello\"}]}],\"generationConfig\":{}}"
+    }
+   ],
+   "result": "{\"text\":\"a\",\"tool_calls\":[],\"usage\":{\"input_tokens\":0,\"output_tokens\":\"3\"},\"finish_reason\":\"other\",\"truncated\":false}",
+   "error": null
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "google thinking tokens, string thoughts",
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"a\"}]}}],\"usageMetadata\":{\"candidatesTokenCount\":3,\"thoughtsTokenCount\":\"5\"}}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1beta/models/gemini-2.5-flash:generateContent",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "x-goog-api-key",
+       "sk-test"
+      ]
+     ],
+     "body": "{\"system_instruction\":{\"parts\":{\"text\":\"You are a test.\"}},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hello\"}]}],\"generationConfig\":{}}"
+    }
+   ],
+   "result": "{\"text\":\"a\",\"tool_calls\":[],\"usage\":{\"input_tokens\":0,\"output_tokens\":3},\"finish_reason\":\"other\",\"truncated\":false}",
+   "error": null
+  },
+  {
+   "case": {
+    "apiKey": "sk-test",
+    "system": "You are a test.",
+    "user": "hello",
+    "opts": {},
+    "name": "google thinking tokens, usageMetadata string",
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "conf": {},
+    "responses": [
+     {
+      "status": 200,
+      "delay": 0,
+      "body": "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"a\"}]}}],\"usageMetadata\":\"abc\"}"
+     }
+    ],
+    "has_conf": true
+   },
+   "requests": [
+    {
+     "method": "POST",
+     "url": "http://upstream.test/prefix/v1beta/models/gemini-2.5-flash:generateContent",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "x-goog-api-key",
+       "sk-test"
+      ]
+     ],
+     "body": "{\"system_instruction\":{\"parts\":{\"text\":\"You are a test.\"}},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hello\"}]}],\"generationConfig\":{}}"
+    }
+   ],
+   "result": "{\"text\":\"a\",\"tool_calls\":[],\"usage\":{\"input_tokens\":0,\"output_tokens\":0},\"finish_reason\":\"other\",\"truncated\":false}",
+   "error": null
   },
   {
    "case": {
