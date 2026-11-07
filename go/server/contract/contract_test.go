@@ -169,23 +169,12 @@ func runScenario(t *testing.T, sc Scenario) {
 	logRoot := t.TempDir()
 	var wg sync.WaitGroup
 	for _, s := range sides {
-		spec := ServerSpec{
-			Name:        s.name,
-			Side:        s.name,
-			DatabaseURL: harness.cluster.URL(s.db.Name, true),
-			LogDir:      filepath.Join(logRoot, s.name),
-		}
-		s.jobs = &JobRunner{Spec: spec, Fake: fake}
+		spec := serverSpec(s.name, s.db, logRoot)
+		s.jobs = &JobRunner{Spec: spec, Fake: fake, Dir: spec.Dir}
 		if s.name == "node" {
-			spec.Command = []string{"node", "src/server.js"}
-			spec.Dir = filepath.Join(harness.repoRoot, "node", "api")
 			s.jobs.Command = []string{"node", filepath.Join(harness.repoRoot, "go", "server", "contract", "runjob", "runjob.js")}
-			s.jobs.Dir = spec.Dir
 		} else {
-			spec.Command = []string{harness.goBin}
-			spec.Dir = logRoot
 			s.jobs.Command = []string{harness.jobBin}
-			s.jobs.Dir = logRoot
 		}
 		wg.Add(1)
 		go func(s *side, spec ServerSpec) {
@@ -235,6 +224,25 @@ func runScenario(t *testing.T, sc Scenario) {
 	} else if len(out.Report.Allowed) > 0 {
 		t.Log(out.Report.String())
 	}
+}
+
+// serverSpec says how to start one side's server on its copy of the
+// template. Node runs from node/api; Go runs the built binary from logRoot.
+func serverSpec(side string, db *ScenarioDB, logRoot string) ServerSpec {
+	spec := ServerSpec{
+		Name:        side,
+		Side:        side,
+		DatabaseURL: harness.cluster.URL(db.Name, true),
+		LogDir:      filepath.Join(logRoot, side),
+	}
+	if side == "node" {
+		spec.Command = []string{"node", "src/server.js"}
+		spec.Dir = filepath.Join(harness.repoRoot, "node", "api")
+	} else {
+		spec.Command = []string{harness.goBin}
+		spec.Dir = logRoot
+	}
+	return spec
 }
 
 var unsafeFileChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
