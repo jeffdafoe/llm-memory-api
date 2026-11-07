@@ -139,7 +139,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 		MCP: &mcp.Server{
 			DB: conn, Config: store, Log: log, Events: bc, Namespaces: namespaces,
 			Shares: &permissions.NoteShares{DB: conn}, Notes: notesService, Memory: mem,
-			Chat: chatService, Mail: mailService, Visibility: vis,
+			Chat: chatService, Mail: mailService, Visibility: vis, Discussions: discussions,
 		},
 	}
 	hub.Validate = adminTokenValidator(s.SessionAuth, sessions, log.Errorf)

@@ -100,6 +100,69 @@ var adminNotesCases = []Scenario{
 		contentPost(adminNotesMove, `{"namespace":"agent-a","slug":"no/such","new_slug":"x"}`),
 		contentPost(adminNotesMove, `{"namespace":"agent-a","slug":"notes/moved","new_slug":"notes/codebase/dream-lock"}`),
 	}},
+	{Name: "admin notes move-prefix", Steps: steps(routeShape(adminNotesMovePrefix), []Step{
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/"}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/","new_prefix":null}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"","new_prefix":"x/"}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"*","old_prefix":"notes/","new_prefix":"x/"}`),
+		// contract-admin reads agent-a's notes through no grant: refused.
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/","new_prefix":"x/","dry_run":true}`),
+		// The order of the checks: required fields, the namespace, access,
+		// then the prefixes.
+		contentPost(adminNotesMovePrefix, `{"namespace":"*","old_prefix":"/x"}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"*","old_prefix":"/x","new_prefix":5}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"/x","new_prefix":5,"overwrite_slugs":7}`),
+	})},
+	{Name: "admin notes move-prefix refusals", Steps: []Step{
+		grantAdmin("agent-a", true, true, false),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":5,"new_prefix":"x/"}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/","new_prefix":false}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"/notes","new_prefix":0}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/","new_prefix":"a//b/"}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/","new_prefix":"notes/sub/"}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/","new_prefix":"notes/"}`),
+		// The Set is built after the scan, and only for a real move.
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/codebase/","new_prefix":"archive/","overwrite_slugs":7}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/codebase/","new_prefix":"archive/","overwrite_slugs":{"a":1}}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/codebase/","new_prefix":"archive/","overwrite_slugs":true}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"/x","new_prefix":"archive/","overwrite_slugs":7}`),
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/codebase/","new_prefix":"archive/","dry_run":true,"overwrite_slugs":7}`),
+		{Settle: true},
+	}},
+	{Name: "admin notes move-prefix conflicts", Steps: []Step{
+		grantAdmin("agent-a", true, true, false),
+		contentPost(adminNotesSave, `{"namespace":"agent-a","slug":"archive/auth-middleware","title":"c","content":"conflict"}`),
+		contentPost(adminNotesSave, `{"namespace":"agent-a","slug":"notes/codebase/second","title":"s","content":"second"}`),
+		// A skipped note keeps its sync mapping; a moved one's follows it.
+		{SQL: `INSERT INTO note_synchronization (actor_id, namespace, slug, local_path, created_at)
+               SELECT id, 'agent-a', s, 'C:/sync/' || s, '2026-10-01T09:00:00Z' FROM actors,
+                      unnest(ARRAY['notes/codebase/auth-middleware', 'notes/codebase/second']) s
+               WHERE name = 'agent-a'`},
+		{Settle: true},
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/codebase/","new_prefix":"archive/","dry_run":true}`),
+		// A string is a Set of its characters: no conflict matches it.
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/codebase/","new_prefix":"archive/","overwrite_slugs":"archive/auth-middleware"}`),
+		{Settle: true},
+		contentPost(adminNotesList, `{"namespace":"agent-a","prefix":"archive/"}`),
+		contentPost(adminNotesList, `{"namespace":"agent-a","prefix":"notes/codebase/"}`),
+		contentPost(adminSyncList, `{"actor_id":0}`),
+	}},
+	{Name: "admin notes move-prefix overwrite", Steps: []Step{
+		grantAdmin("agent-a", true, true, false),
+		contentPost(adminNotesSave, `{"namespace":"agent-a","slug":"archive/auth-middleware","title":"c","content":"conflict"}`),
+		{Settle: true},
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/codebase/","new_prefix":"archive/","overwrite_slugs":["archive/other",5,"archive/auth-middleware"]}`),
+		{Settle: true},
+		contentPost(adminNotesList, `{"namespace":"agent-a","prefix":"archive/"}`),
+	}},
+	{Name: "admin notes move-prefix to the root", Steps: []Step{
+		grantAdmin("agent-a", true, true, false),
+		// Only dry_run true previews: 1 moves.
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"notes/","new_prefix":"","dry_run":1}`),
+		{Settle: true},
+		contentPost(adminNotesMovePrefix, `{"namespace":"agent-a","old_prefix":"no-such/","new_prefix":"x/"}`),
+		{Settle: true},
+	}},
 	{Name: "admin notes search", Steps: steps(routeShape(adminNotesSearch), []Step{
 		contentPost(adminNotesSearch, `{}`),
 		contentPost(adminNotesSearch, `{"query":""}`),
