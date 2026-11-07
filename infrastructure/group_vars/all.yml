@@ -19,7 +19,7 @@ go_server_bin: /usr/local/bin/memory-api
 # check runs the Go binary. Node stays installed and up to date under "go", so
 # switching back is the same flip: a deploy with "node" enables Node and
 # disables Go.
-memory_api_backend: node
+memory_api_backend: go
 memory_api_unit: "{{ 'memory-api-go' if memory_api_backend == 'go' else 'memory-api' }}"
 
 # Weekly staleness check (pending apt upgrades, end-of-life warnings) mails
