@@ -133,6 +133,7 @@ func (rg *rig) expectPhase3(lockedID int, lockedUsed, wantEmail bool, realm *any
 		rg.mock.ExpectRollback()
 		return
 	}
+	rg.expectClaim(false)
 	rg.mock.ExpectExec("INSERT INTO actors").WithArgs("newcomer", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), capture{realm}, capture{email}).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	rg.mock.ExpectExec("UPDATE actors SET created_by = id").WithArgs("newcomer").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -150,6 +151,18 @@ func (rg *rig) expectPhase3(lockedID int, lockedUsed, wantEmail bool, realm *any
 	for _, kind := range []string{"welcome", "welcome-note"} {
 		rg.mock.ExpectQuery("SELECT content FROM templates WHERE kind").WithArgs(kind).WillReturnRows(pgxmock.NewRows([]string{"content"}))
 	}
+}
+
+// expectClaim is actors.ClaimNamespace: the documents lock, then the
+// namespace check again; taken finds a note there.
+func (rg *rig) expectClaim(taken bool) {
+	rg.mock.ExpectExec("SET LOCAL lock_timeout = '5s'").WillReturnResult(pgxmock.NewResult("SET", 0))
+	rg.mock.ExpectExec("LOCK TABLE documents IN SHARE MODE").WillReturnResult(pgxmock.NewResult("LOCK TABLE", 0))
+	rows := pgxmock.NewRows([]string{"?column?"})
+	if taken {
+		rows.AddRow(1)
+	}
+	rg.mock.ExpectQuery("SELECT 1 FROM documents WHERE namespace").WithArgs("newcomer").WillReturnRows(rows)
 }
 
 func (rg *rig) post(path, body string) (int, map[string]any) {
@@ -271,6 +284,23 @@ func TestInviteOnlyRefusesCodeLostUnderLock(t *testing.T) {
 	rg.expectPhase3(4, true, false, nil, nil, true)
 	status, body := rg.post("/api/register", registerBody("raced"))
 	if status != 400 || body["error"] != "This invite code has already been used" {
+		t.Fatalf("%d %v", status, body)
+	}
+	if err := rg.mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A note saved into the name's namespace after the phase 1 check (LLM-931):
+// the check under the lock in phase 3 finds it, and no actor is inserted.
+func TestRegisterRefusesANamespaceTakenAfterPhase1(t *testing.T) {
+	rg := newRig(t, true)
+	rg.expectPhase1("")
+	rg.mock.ExpectBegin()
+	rg.expectClaim(true)
+	rg.mock.ExpectRollback()
+	status, body := rg.post("/api/register", registerBody(""))
+	if status != http.StatusConflict || body["error"] != "This name conflicts with an existing namespace." {
 		t.Fatalf("%d %v", status, body)
 	}
 	if err := rg.mock.ExpectationsWereMet(); err != nil {

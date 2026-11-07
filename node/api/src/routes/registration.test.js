@@ -35,6 +35,9 @@ const RACED_AT_LOCK = { ...INVITES.raced, used_by: 'someone-else' };
 
 let openRegistration = true;
 let statements = [];
+// True when a note lands in the new name's namespace after the Phase 1 check
+// (which is stubbed to "available"), so only the Phase 3 re-check can see it.
+let namespaceTakenAtLock = false;
 
 config.get = (key) => {
     if (key === 'open_registration') return openRegistration ? 'true' : 'false';
@@ -58,6 +61,9 @@ function answer(sql, params) {
     }
     if (/SELECT email FROM access_requests/.test(sql)) {
         return { rows: [{ email: `request-${params[0]}@example.com` }] };
+    }
+    if (/SELECT 1 FROM documents WHERE namespace = \$1/.test(sql)) {
+        return { rows: namespaceTakenAtLock ? [{ '?column?': 1 }] : [] };
     }
     if (/SELECT id FROM actors WHERE name/.test(sql)) {
         return { rows: [{ id: 99 }] };
@@ -93,6 +99,7 @@ after(() => {
 beforeEach(() => {
     openRegistration = true;
     statements = [];
+    namespaceTakenAtLock = false;
 });
 
 async function register(code) {
@@ -185,4 +192,29 @@ test('invite-only registration refuses a code lost under the row lock', async ()
     assert.equal(res.body.error, 'This invite code has already been used');
     assert.ok(statements.some((s) => s.sql === 'ROLLBACK'));
     assert.ok(!statements.some((s) => /INSERT INTO actors/.test(s.sql)));
+});
+
+// LLM-931: a note saved into the name's namespace between the Phase 1 check
+// and the actor insert. Phase 3 locks documents writes, checks again, and
+// refuses without inserting the actor.
+test('a namespace taken after the Phase 1 check is refused under the documents lock', async () => {
+    namespaceTakenAtLock = true;
+    const res = await register();
+    assert.equal(res.status, 409);
+    assert.equal(res.body.error, 'This name conflicts with an existing namespace.');
+    const sqls = statements.map((s) => s.sql);
+    const lock = sqls.indexOf('LOCK TABLE documents IN SHARE MODE');
+    const recheck = sqls.findIndex((sql) => /SELECT 1 FROM documents WHERE namespace/.test(sql));
+    assert.ok(lock > sqls.indexOf('BEGIN') && recheck > lock, 'the re-check runs inside the transaction, after the lock');
+    assert.ok(sqls.includes('ROLLBACK'));
+    assert.ok(!sqls.some((sql) => /INSERT INTO actors/.test(sql)), 'no actor row');
+});
+
+test('registration takes the documents lock before inserting the actor', async () => {
+    const res = await register();
+    assert.equal(res.status, 200);
+    const sqls = statements.map((s) => s.sql);
+    const lock = sqls.indexOf('LOCK TABLE documents IN SHARE MODE');
+    assert.ok(lock > sqls.indexOf('BEGIN'), 'lock taken inside the transaction');
+    assert.ok(sqls.findIndex((sql) => /INSERT INTO actors/.test(sql)) > lock, 'actor inserted after the lock');
 });
