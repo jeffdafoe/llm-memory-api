@@ -16,6 +16,7 @@ const (
 	adminNotesSave       = "/v1/admin/notes/save"
 	adminNotesDelete     = "/v1/admin/notes/delete"
 	adminNotesMove       = "/v1/admin/notes/move"
+	adminNotesMovePrefix = "/v1/admin/notes/move-prefix"
 	adminNotesSearch     = "/v1/admin/notes/search"
 	adminNotesNamespaces = "/v1/admin/notes/namespaces"
 	adminNotesUsage      = "/v1/admin/notes/usage"
