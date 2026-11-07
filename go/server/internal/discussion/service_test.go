@@ -687,22 +687,52 @@ func TestConcludeChainsAreIndependent(t *testing.T) {
 	testutil.WaitMet(t, mock)
 }
 
-// heldDB holds the QueryRow whose first argument is block until release is
-// closed, and records, in order, the first argument of each chat text insert
-// and "activate" for the discussion's move to active. A QueryRow whose
-// context has ended fails, as a real database would.
+// heldDB records, in order, the first argument of each chat text insert and
+// "activate" for a discussion's move to active. When hold matches a
+// QueryRow, the row's Scan completes and then waits for release, so the
+// write has landed but the caller cannot go on. A QueryRow whose context
+// has ended fails, as a real database would.
 type heldDB struct {
 	db.DB
-	block   any
+	hold    func(sql string, args []any) bool
 	reached chan struct{}
 	release chan struct{}
+	once    sync.Once
 	mu      sync.Mutex
 	order   []string
 }
 
+func newHeldDB(t *testing.T, inner db.DB, hold func(sql string, args []any) bool) *heldDB {
+	h := &heldDB{DB: inner, hold: hold, reached: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(h.Release)
+	return h
+}
+
+// Release lets the held row go; safe to call more than once.
+func (h *heldDB) Release() { h.once.Do(func() { close(h.release) }) }
+
 type errRow struct{ err error }
 
 func (r errRow) Scan(...any) error { return r.err }
+
+type heldRow struct {
+	pgx.Row
+	ctx context.Context
+	h   *heldDB
+}
+
+func (r heldRow) Scan(dest ...any) error {
+	if err := r.Row.Scan(dest...); err != nil {
+		return err
+	}
+	close(r.h.reached)
+	select {
+	case <-r.h.release:
+		return nil
+	case <-r.ctx.Done():
+		return r.ctx.Err()
+	}
+}
 
 func (h *heldDB) note(entry string) {
 	h.mu.Lock()
@@ -710,18 +740,24 @@ func (h *heldDB) note(entry string) {
 	h.order = append(h.order, entry)
 }
 
+func (h *heldDB) seen() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return strings.Join(h.order, " | ")
+}
+
 func (h *heldDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
-	if h.block != nil && len(args) > 0 && args[0] == h.block {
-		close(h.reached)
-		<-h.release
-	}
 	if err := ctx.Err(); err != nil {
 		return errRow{err}
 	}
 	if strings.HasPrefix(sql, insertTextSQL) {
 		h.note(args[0].(string))
 	}
-	return h.DB.QueryRow(ctx, sql, args...)
+	row := h.DB.QueryRow(ctx, sql, args...)
+	if h.hold != nil && h.hold(sql, args) {
+		return heldRow{Row: row, ctx: ctx, h: h}
+	}
+	return row
 }
 
 func (h *heldDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -731,9 +767,10 @@ func (h *heldDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.Comm
 	return h.DB.Exec(ctx, sql, args...)
 }
 
-// A join that makes the discussion active writes its event before readiness
-// runs, so the event's chat rows always come before the discussion-active
-// trigger's. The context has no InOrder, as on the MCP path.
+// A join that makes the discussion active writes its event, delivery
+// included, before readiness runs, so the event's chat rows always come
+// before the discussion-active trigger's. The context has no InOrder, as on
+// the MCP path.
 func TestJoinWritesEventBeforeReadiness(t *testing.T) {
 	ctx := context.Background()
 	s, mock := newService(t)
@@ -771,7 +808,11 @@ func TestJoinWritesEventBeforeReadiness(t *testing.T) {
 	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(51, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(61))
 	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("active"))
 
-	held := &heldDB{DB: mock, block: event, reached: make(chan struct{}), release: make(chan struct{})}
+	// Hold the event's delivery once its insert has returned its id: the
+	// last write of the event.
+	held := newHeldDB(t, mock, func(sql string, args []any) bool {
+		return strings.HasPrefix(sql, insertDeliverySQL) && args[0] == 50
+	})
 	s.DB, s.Notifier.DB = held, held
 
 	type outcome struct {
@@ -786,16 +827,19 @@ func TestJoinWritesEventBeforeReadiness(t *testing.T) {
 	select {
 	case <-held.reached:
 	case <-time.After(2 * time.Second):
-		t.Fatal("the join event was never written")
+		t.Fatal("the join event's delivery was never written")
 	}
-	// The join must not go on, or answer, while its event is held.
+	// While the event's delivery is held, the join must not go on to
+	// readiness, nor answer.
 	select {
 	case <-done:
-		close(held.release)
 		t.Fatal("Join returned before its event was written")
 	case <-time.After(100 * time.Millisecond):
 	}
-	close(held.release)
+	if got := held.seen(); got != event {
+		t.Fatalf("with the event's delivery held, got %q, want only the event", got)
+	}
+	held.Release()
 	var out outcome
 	select {
 	case out = <-done:
@@ -806,10 +850,7 @@ func TestJoinWritesEventBeforeReadiness(t *testing.T) {
 		t.Fatalf("%+v %v", out.res, out.err)
 	}
 	testutil.WaitMet(t, mock)
-	held.mu.Lock()
-	got := strings.Join(held.order, " | ")
-	held.mu.Unlock()
-	if want := event + " | activate | " + trigger; got != want {
+	if got, want := held.seen(), event+" | activate | "+trigger; got != want {
 		t.Errorf("order\n got %s\nwant %s", got, want)
 	}
 }
@@ -824,8 +865,7 @@ func TestSendEventNowSurvivesHangUp(t *testing.T) {
 	}
 	mock.ExpectQuery(q(insertTextSQL)).WithArgs("b joined the discussion", 10, num("7")).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
 	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
-	held := &heldDB{DB: mock}
-	s.Notifier.DB = held
+	s.Notifier.DB = newHeldDB(t, mock, nil)
 
 	ctx, hangUp := context.WithCancel(context.Background())
 	hangUp()
