@@ -2,15 +2,14 @@ package admin
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
-	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 )
 
 // enrichPause is the pause after each note's enrichment call in a reindex,
@@ -137,10 +136,14 @@ func (rt *ContentRoutes) runReindex(ctx context.Context, p *reindexProgress, use
 	p.total = len(docs)
 	rt.reindex.mu.Unlock()
 
-	enrich := false
-	if v, ok := rt.Config.Lookup("note_enrichment_enabled"); ok && v == "true" {
-		enrich = true
+	// config.get threw on a missing key, outside the per-note try: the
+	// whole reindex fails, its chunks already deleted.
+	enabled, err := rt.Config.Get("note_enrichment_enabled")
+	if err != nil {
+		fail(err)
+		return
 	}
+	enrich := enabled == "true"
 	for _, d := range docs {
 		res, err := rt.Memory.Ingest(ctx, d.namespace, d.slug, d.content)
 		rt.reindex.mu.Lock()
@@ -151,7 +154,7 @@ func (rt *ContentRoutes) runReindex(ctx context.Context, p *reindexProgress, use
 		}
 		rt.reindex.mu.Unlock()
 		if err == nil && enrich && rt.Notes.Enricher != nil {
-			metadata, perr := enrichMetadata(d.metadata)
+			metadata, perr := notes.EnrichMetadata(d.metadata)
 			if perr != nil {
 				// JSON.parse threw inside the per-note try: the note counts
 				// as an error, its chunks stay.
@@ -159,13 +162,15 @@ func (rt *ContentRoutes) runReindex(ctx context.Context, p *reindexProgress, use
 				p.errors = append(p.errors, reindexError{Namespace: d.namespace, Slug: d.slug, Error: perr.Error()})
 				rt.reindex.mu.Unlock()
 			} else {
-				title := ""
+				// Node concatenated a NULL title into the prompt as "null".
+				title := "null"
 				if d.title != nil {
 					title = *d.title
 				}
 				// Fire and forget, its failure dropped, as Node's .catch(() => {}).
+				// Unbounded: the provider call has its own timeout.
 				n := d
-				db.Background(func(ctx context.Context) {
+				db.BackgroundUnbounded(func(ctx context.Context) {
 					rt.Notes.Enricher.Enrich(ctx, n.namespace, n.slug, title, n.content, metadata)
 				})
 				select {
@@ -196,28 +201,6 @@ func (rt *ContentRoutes) runReindex(ctx context.Context, p *reindexProgress, use
 		{Key: "chunks_created", Value: result.ChunksCreated},
 		{Key: "errors", Value: len(result.Errors)},
 	})
-}
-
-// enrichMetadata is the reindex's
-// `doc.metadata ? (typeof doc.metadata === 'object' ? doc.metadata : JSON.parse(doc.metadata)) : null`
-// over the jsonb text: a falsy value is null, an object or array passes, and
-// any other value is given to JSON.parse (a JSON string its contents, a
-// number or boolean its own text), which may fail.
-func enrichMetadata(raw []byte) ([]byte, error) {
-	v, err := jsutil.Parse(raw)
-	if err != nil || raw == nil || !jsutil.Truthy(v) {
-		return nil, nil
-	}
-	switch x := v.(type) {
-	case string:
-		if !json.Valid([]byte(x)) {
-			var probe any
-			return nil, json.Unmarshal([]byte(x), &probe)
-		}
-		return []byte(x), nil
-	default:
-		return raw, nil
-	}
 }
 
 // notesReindexStatus is POST /admin/notes/reindex-status: the progress of

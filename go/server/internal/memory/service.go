@@ -29,6 +29,11 @@ type Service struct {
 	Errors *syserrors.Recorder
 }
 
+// ingestLockClass is the first key of the two-key advisory lock that
+// serializes the ingests of one source file (the second key is a hash of the
+// file's identity).
+const ingestLockClass = 919001
+
 // IngestResult is the ingest response. A context/ document is not indexed
 // and answers only {"chunks_created":0}.
 type IngestResult struct {
@@ -87,6 +92,17 @@ func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content str
 		return IngestResult{}, err
 	}
 	defer tx.Rollback(ctx)
+	// Two ingests of one file at once would both run their DELETE before
+	// either inserts, and both versions' chunks would stay. The lock makes
+	// the second wait for the first to commit; its DELETE is a later
+	// statement, so under READ COMMITTED it sees and removes the first one's
+	// rows. The key matches the DELETE: the namespace as is, the source file
+	// lowercased.
+	if _, err := tx.Exec(ctx,
+		"SELECT pg_advisory_xact_lock($1, hashtext($2::text || '/' || LOWER($3::text)))",
+		ingestLockClass, namespace, sourceFile); err != nil {
+		return IngestResult{}, err
+	}
 	if _, err := tx.Exec(ctx,
 		"DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
 		namespace, sourceFile); err != nil {

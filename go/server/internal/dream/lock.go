@@ -12,7 +12,8 @@ import (
 )
 
 // runLockKey is the dream run's advisory lock key (LLM-532). Keys follow
-// <ticket number>001 and are never reused; this is the app's only one.
+// <ticket number>001 and are never reused; Node's services/dream.js keeps
+// the list.
 const runLockKey = 532001
 
 // lockTimeout bounds the lock's own statements: the unlock runs when the

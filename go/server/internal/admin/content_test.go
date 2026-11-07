@@ -32,6 +32,12 @@ import (
 // (2) reads "alpha" plus her own namespace.
 
 func newContent(t *testing.T) (http.Handler, pgxmock.PgxPoolIface) {
+	return newContentWith(t, nil)
+}
+
+// newContentWith is newContent with the routes adjusted by edit before they
+// are registered.
+func newContentWith(t *testing.T, edit func(*ContentRoutes)) (http.Handler, pgxmock.PgxPoolIface) {
 	mock := testutil.NewMock(t)
 	// The list queries share one statement; their order is what the
 	// tests check.
@@ -39,14 +45,19 @@ func newContent(t *testing.T) (http.Handler, pgxmock.PgxPoolIface) {
 	cache := actors.NewCache(mock)
 	log := logger.New(mock, cache, "")
 	adm := &permissions.Admin{DB: mock}
+	store := config.NewStore()
+	store.Set("note_enrichment_enabled", "false")
 	rt := &ContentRoutes{
 		Common: &Common{
 			DB: mock, Log: log, Router: &httpapi.Router{Log: log}, Admin: adm, Actors: cache,
 			Visibility: &visibility.Visibility{DB: mock, Admin: adm},
 		},
-		Config:     config.NewStore(),
+		Config:     store,
 		Notes:      &notes.Service{DB: mock},
 		Namespaces: &permissions.Namespaces{DB: mock},
+	}
+	if edit != nil {
+		edit(rt)
 	}
 	mux := NewMux()
 	rt.Register(mux)
@@ -259,33 +270,6 @@ func TestReindexRunsWhenTheAnswerFails(t *testing.T) {
 	rec := serve(h, asUser(1, "/v1/admin/notes/reindex", `{}`))
 	check(t, "second start", rec, 200, `{"started":true}`)
 	testutil.WaitMet(t, mock)
-}
-
-func TestEnrichMetadata(t *testing.T) {
-	cases := []struct {
-		raw, want string
-		fails     bool
-	}{
-		{`{"b":1,"a":2}`, `{"b":1,"a":2}`, false},
-		{``, ``, false},
-		{`null`, ``, false},
-		{`false`, ``, false},
-		{`""`, ``, false},
-		{`0`, ``, false},
-		{`"{\"x\":1}"`, `{"x":1}`, false},
-		{`"not json"`, ``, true},
-		{`7`, `7`, false},
-	}
-	for _, c := range cases {
-		var raw []byte
-		if c.raw != "" {
-			raw = []byte(c.raw)
-		}
-		got, err := enrichMetadata(raw)
-		if (err != nil) != c.fails || string(got) != c.want {
-			t.Errorf("%s: %s %v", c.raw, got, err)
-		}
-	}
 }
 
 // Participants of the wrong shape are one 400, logged as Node's thrown

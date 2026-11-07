@@ -78,6 +78,11 @@ function preprocessQuery(query) {
     return words.join(' ');
 }
 
+// First key of the two-key advisory lock that serializes the ingests of one
+// source file (the second key is a hash of the file's identity). Any fixed
+// int4 unique to this use.
+const INGEST_LOCK_CLASS = 919001;
+
 async function ingestContent(namespace, sourceFile, content) {
     // Context documents (e.g. context/soul) are injected directly into sessions,
     // not indexed for search — skip chunking entirely.
@@ -109,6 +114,17 @@ async function ingestContent(namespace, sourceFile, content) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        // Two ingests of one file at once (two quick saves of a note) would
+        // both run their DELETE before either inserts, and both versions'
+        // chunks would stay. The lock makes the second wait for the first to
+        // commit; its DELETE is a later statement, so under READ COMMITTED it
+        // sees and removes the first one's rows. The key matches the DELETE:
+        // the namespace as is, the source file lowercased.
+        await client.query(
+            "SELECT pg_advisory_xact_lock($1, hashtext($2::text || '/' || LOWER($3::text)))",
+            [INGEST_LOCK_CLASS, namespace, sourceFile]
+        );
 
         await client.query(
             'DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)',
