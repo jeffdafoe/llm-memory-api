@@ -107,8 +107,7 @@ func (rt *Routes) login(w http.ResponseWriter, r *http.Request) {
 	}
 	expiresAt := rt.now().Add(sessionTTL).Truncate(time.Millisecond)
 
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if _, err := rt.DB.Exec(ctx,
 		"INSERT INTO sessions (actor_id, token_hash, token_salt, token_lookup_hash, kind, expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
 		account.ID, tokenHash, salt, auth.TokenLookupHash(token), auth.SessionKindWeb, expiresAt); err != nil {
@@ -142,8 +141,7 @@ func (rt *Routes) logout(w http.ResponseWriter, r *http.Request) {
 	user := User(r)
 	token := strings.Replace(r.Header.Get("Authorization"), "Bearer ", "", 1)
 	if token != "" {
-		ctx, cancel := detached(r)
-		defer cancel()
+		ctx := r.Context()
 		// The cached entry goes even when the delete fails, so a session the
 		// caller asked to end is looked up again on its next request.
 		defer rt.SessionAuth.Forget(token)
@@ -256,8 +254,7 @@ func (rt *Routes) linkAccount(w http.ResponseWriter, r *http.Request) {
 	// One statement, so both halves land or neither does. The unique
 	// (actor_id, target_actor_id) makes an existing half a no-op; a wildcard
 	// row is not touched.
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tag, err := rt.DB.Exec(ctx,
 		`INSERT INTO actor_visibility_configuration (actor_id, target_actor_id)
                      VALUES ($1, $2), ($2, $1)
@@ -338,8 +335,7 @@ func (rt *Routes) changePassword(w http.ResponseWriter, r *http.Request) {
 		rt.fail(w, "Admin change-password error", "Failed to change password", err)
 		return
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if _, err := rt.DB.Exec(ctx, "UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3", newHash, newSalt, userID); err != nil {
 		rt.fail(w, "Admin change-password error", "Failed to change password", err)
 		return
@@ -365,8 +361,7 @@ func (rt *Routes) profileVisibility(w http.ResponseWriter, r *http.Request) erro
 	}
 	if raw, present := f["visible_to_others"]; present {
 		visible := pgbind.Truthy(raw)
-		ctx, cancel := detached(r)
-		defer cancel()
+		ctx := r.Context()
 		if _, err := rt.DB.Exec(ctx, "UPDATE actors SET visible_to_others = $1 WHERE id = $2", visible, target); err != nil {
 			return err
 		}

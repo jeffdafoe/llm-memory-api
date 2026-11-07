@@ -85,10 +85,10 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 
 	// These four have their own try/catch in Node, not adminRoute: a failure
 	// is a 500 with the route's own message and is not in error_log.
-	mux.Handle(http.MethodPost, "/admin/login", http.HandlerFunc(rt.login))
-	mux.Handle(http.MethodPost, "/admin/logout", http.HandlerFunc(rt.logout))
-	mux.Handle(http.MethodPost, "/admin/link-account", http.HandlerFunc(rt.linkAccount))
-	mux.Handle(http.MethodPost, "/admin/change-password", http.HandlerFunc(rt.changePassword))
+	mux.Handle(http.MethodPost, "/admin/login", detach(http.HandlerFunc(rt.login)))
+	mux.Handle(http.MethodPost, "/admin/logout", detach(http.HandlerFunc(rt.logout)))
+	mux.Handle(http.MethodPost, "/admin/link-account", detach(http.HandlerFunc(rt.linkAccount)))
+	mux.Handle(http.MethodPost, "/admin/change-password", detach(http.HandlerFunc(rt.changePassword)))
 
 	rt.Handle(mux, "/admin/providers/registry", "", "", "providers-registry", rt.providersRegistry)
 	rt.Handle(mux, "/admin/providers/defaults", "", "", "providers-defaults", rt.providersDefaults)

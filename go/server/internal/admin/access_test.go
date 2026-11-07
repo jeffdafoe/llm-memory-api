@@ -1,9 +1,7 @@
 package admin
 
 import (
-	"context"
 	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"testing"
@@ -216,21 +214,12 @@ func TestAccessWritesOutliveTheRequest(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta(sql)).WithArgs(args...).WillDelayFor(50 * time.Millisecond).WillReturnRows(rows)
 	}
 	// The request's context is cancelled while the check is in flight.
-	run := func(name string, fn func(*Routes, http.ResponseWriter, *http.Request) error, body string) {
-		req := request(body)
-		ctx, cancel := context.WithCancel(req.Context())
-		go func() {
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-		rec := httptest.NewRecorder()
-		if err := fn(rt, rec, req.WithContext(ctx)); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if rec.Code != 200 {
+	run := func(name, path, body string) {
+		if rec := serveHungUp(t, rt, path, body); rec.Code != 200 {
 			t.Fatalf("%s: %d %s", name, rec.Code, rec.Body.String())
 		}
 	}
+	grants(mock, 2, "access", "write")
 
 	delayedCheck("SELECT status, email FROM access_requests WHERE id = $1", []any{boundNumber("4")}, []any{"pending", "a@example.com"}, []string{"status", "email"})
 	mock.ExpectBegin()
@@ -242,17 +231,17 @@ func TestAccessWritesOutliveTheRequest(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), "admin", boundNumber("4"), "r").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
 	mock.ExpectRollback()
-	run("approve", (*Routes).accessRequestsApprove, `{"id":4}`)
+	run("approve", "/admin/access-requests/approve", `{"id":4}`)
 
 	delayedCheck("SELECT status, email FROM access_requests WHERE id = $1", []any{boundNumber("5")}, []any{"pending", "b@example.com"}, []string{"status", "email"})
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE access_requests SET status = 'rejected'")).WithArgs(nil, boundNumber("5")).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	run("reject", (*Routes).accessRequestsReject, `{"id":5}`)
+	run("reject", "/admin/access-requests/reject", `{"id":5}`)
 
 	delayedCheck("SELECT used_by FROM invite_codes WHERE id = $1", []any{boundNumber("6")}, []any{(*string)(nil)}, []string{"used_by"})
 	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM invite_codes WHERE id = $1")).WithArgs(boundNumber("6")).
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
-	run("invite delete", (*Routes).inviteCodesDelete, `{"id":6}`)
+	run("invite delete", "/admin/invite-codes/delete", `{"id":6}`)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

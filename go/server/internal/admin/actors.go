@@ -288,8 +288,7 @@ func (rt *Routes) actorsPermissionsSave(w http.ResponseWriter, r *http.Request) 
 		seen[p.Namespace] = true
 	}
 
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -456,8 +455,7 @@ func (rt *Routes) actorsVisibilitySave(w http.ResponseWriter, r *http.Request) e
 		}
 	}
 
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	tx, err := rt.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -512,8 +510,7 @@ func (rt *Routes) actorsPassword(w http.ResponseWriter, r *http.Request) error {
 
 	raw := f.Raw("password")
 	if raw == nil || string(raw) == "null" {
-		ctx, cancel := detached(r)
-		defer cancel()
+		ctx := r.Context()
 		if _, err := rt.DB.Exec(ctx, "UPDATE actors SET password_hash = NULL, password_salt = NULL WHERE id = $1", actorID); err != nil {
 			return err
 		}
@@ -541,8 +538,7 @@ func (rt *Routes) actorsPassword(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := detached(r)
-	defer cancel()
+	ctx := r.Context()
 	if _, err := rt.DB.Exec(ctx, "UPDATE actors SET password_hash = $1, password_salt = $2 WHERE id = $3", hash, salt, actorID); err != nil {
 		return err
 	}
