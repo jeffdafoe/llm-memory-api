@@ -38,19 +38,16 @@ async function createAccount(name, createdAt, offset) {
     return id;
 }
 
-// stampToolCall does not wait for its UPDATE; poll until it lands.
+// stampToolCall resolves once its UPDATE is done (LLM-954), so one read sees it.
 async function readStamps(id) {
-    for (let i = 0; i < 50; i++) {
-        const result = await pool.query(
-            'SELECT first_tool_call_at, tool_call_count FROM actors WHERE id = $1',
-            [id]
-        );
-        if (result.rows[0].tool_call_count > 0) {
-            return result.rows[0];
-        }
-        await new Promise((resolve) => setTimeout(resolve, 20));
+    const result = await pool.query(
+        'SELECT first_tool_call_at, tool_call_count FROM actors WHERE id = $1',
+        [id]
+    );
+    if (result.rows[0].tool_call_count === 0) {
+        throw new Error('tool-call stamp not written');
     }
-    throw new Error('tool-call stamp never landed');
+    return result.rows[0];
 }
 
 before(async () => {
@@ -93,8 +90,8 @@ test('an account created just before the tracking start never gets a first stamp
     // would wrongly count this account as tracked.
     const before = await createAccount('edgebefore', since, '1 microsecond');
     const at = await createAccount('edgeat', since);
-    funnel.stampToolCall(before);
-    funnel.stampToolCall(at);
+    await funnel.stampToolCall(before);
+    await funnel.stampToolCall(at);
     assert.equal((await readStamps(before)).first_tool_call_at, null);
     assert.ok((await readStamps(at)).first_tool_call_at);
 });

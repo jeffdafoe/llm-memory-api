@@ -1545,7 +1545,7 @@ async function createMcpServer(req) {
         // Signup funnel (LLM-734): only a real tool call counts as use —
         // initialize / tools/list never reach this handler. Stamped before the
         // handler runs so a call that errors still counts as an attempt to use it.
-        stampToolCall(req.mcpActorId);
+        await stampToolCall(req.mcpActorId);
 
         try {
             // Fail fast on malformed input — bad args must never reach the

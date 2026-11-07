@@ -150,7 +150,7 @@ func (s *Server) callTool(ctx context.Context, c caller, name string, args any) 
 
 	// Signup funnel (LLM-734): a real tool call counts as use, stamped before
 	// the tool runs so one that fails still counts.
-	if err := s.stampToolCall(c.actorID); err != nil {
+	if err := s.stampToolCall(ctx, c.actorID); err != nil {
 		return toolResult{}, err
 	}
 
@@ -185,10 +185,15 @@ func (s *Server) runTool(ctx context.Context, handler toolHandler, name string, 
 }
 
 // stampToolCall is signup-funnel's stampToolCall: the account's first and
-// last tool call and its count, in the background. A failed write goes to
-// stderr; a missing signup_funnel_since key is returned, as Node's config
-// read threw before the query.
-func (s *Server) stampToolCall(actorID int) error {
+// last tool call and its count. It finishes before the tool runs, so the
+// stamp is written by the time the response goes out (LLM-954: in the
+// background it could land after a reader that came right after the call).
+// It runs on the tool call's context, which is already detached from the
+// client with toolTimeout (detached), so a hang-up does not stop it and it
+// shares the tool's time limit. A failed write goes to stderr and the tool
+// still runs; a missing signup_funnel_since key is returned, as Node's
+// config read threw before the query.
+func (s *Server) stampToolCall(ctx context.Context, actorID int) error {
 	if actorID == 0 {
 		return nil
 	}
@@ -196,17 +201,15 @@ func (s *Server) stampToolCall(actorID int) error {
 	if err != nil {
 		return err
 	}
-	db.Background(func(ctx context.Context) {
-		_, err := s.DB.Exec(ctx, `UPDATE actors
+	_, err = s.DB.Exec(ctx, `UPDATE actors
          SET first_tool_call_at = COALESCE(first_tool_call_at,
                  CASE WHEN created_at >= $2::timestamptz THEN NOW() END),
              last_tool_call_at = NOW(),
              tool_call_count = tool_call_count + 1
          WHERE id = $1`, actorID, since)
-		if err != nil {
-			s.Log.Errorf("signup-funnel: tool-call stamp failed: %s", httpapi.ErrorMessage(err))
-		}
-	})
+	if err != nil {
+		s.Log.Errorf("signup-funnel: tool-call stamp failed: %s", httpapi.ErrorMessage(err))
+	}
 	return nil
 }
 

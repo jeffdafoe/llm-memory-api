@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -33,11 +32,6 @@ func newSessionToken() string {
 	b := make([]byte, 48)
 	rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-// detached is a context for writes Node finished after the client hung up.
-func detached(r *http.Request) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(r.Context()), credentialWriteTimeout)
 }
 
 // readError is V8's TypeError for req.body.<field> on an undefined body.
