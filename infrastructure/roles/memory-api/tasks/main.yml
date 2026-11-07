@@ -137,11 +137,15 @@
     - Reload systemd
     - Restart memory-api
 
+# Under "go" the Node unit is only disabled, not stopped: it keeps serving
+# until deploy.sh restarts memory-api-go after the migrations, which stops it
+# through Conflicts=. Its code and npm tree above stay current, so a switch
+# back to "node" can start it at once.
 - name: Enable and start memory-api service
   service:
     name: memory-api
-    enabled: yes
-    state: started
+    enabled: "{{ memory_api_backend == 'node' }}"
+    state: "{{ 'started' if memory_api_backend == 'node' else omit }}"
 
 - name: Ensure cleanup script is executable
   file:
@@ -181,13 +185,17 @@
     that: staleness_recipient is match('^[A-Za-z0-9][A-Za-z0-9._@-]*\Z')
     fail_msg: "staleness_check_recipient (or admin_username) '{{ staleness_recipient }}' must be a plain actor name: letters, digits, . _ @ -"
 
+# Runs the backend's own implementation: scripts/staleness-check.js under
+# "node", `memory-api staleness-check` (the Go binary) under "go".
 - name: Configure weekly staleness check cron job
+  vars:
+    staleness_command: "{{ (go_server_bin | quote) ~ ' staleness-check' if memory_api_backend == 'go' else '/usr/bin/node ' ~ ((project_root ~ '/scripts/staleness-check.js') | quote) }}"
   cron:
     name: "memory-api staleness check"
     weekday: "1"
     minute: "30"
     hour: "12"
-    job: "/usr/bin/node {{ (project_root ~ '/scripts/staleness-check.js') | quote }} {{ staleness_recipient | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
+    job: "{{ staleness_command }} {{ staleness_recipient | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
 
 - name: Deploy tools (Go client binaries)
   include_tasks: deploy-tools.yml
