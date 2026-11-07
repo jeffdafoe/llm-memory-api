@@ -83,24 +83,39 @@ async function create() {
     return { status: res.status, body: await res.json() };
 }
 
+// Where each step of the claim sits in the recorded statements. Every step
+// must be there: a missing one fails here, before any order is compared.
+function claimOrder() {
+    const sqls = statements.map((s) => s.sql);
+    const find = (label, match) => {
+        const at = sqls.findIndex(match);
+        assert.ok(at >= 0, `${label} was run`);
+        return at;
+    };
+    return {
+        begin: find('BEGIN', (sql) => sql === 'BEGIN'),
+        lock: find('the documents lock', (sql) => sql === 'LOCK TABLE documents IN SHARE MODE'),
+        recheck: find('the namespace re-check', (sql) => /SELECT 1 FROM documents WHERE namespace/.test(sql)),
+        insert: sqls.findIndex((sql) => /INSERT INTO actors/.test(sql)),
+        commit: sqls.indexOf('COMMIT')
+    };
+}
+
 test('a namespace taken after the availability check is refused under the documents lock', async () => {
     namespaceTakenAtLock = true;
     const res = await create();
     assert.equal(res.status, 409);
     assert.deepEqual(res.body, { error: { code: 'ALREADY_EXISTS', message: 'This name conflicts with an existing namespace.' } });
-    const sqls = statements.map((s) => s.sql);
-    const lock = sqls.indexOf('LOCK TABLE documents IN SHARE MODE');
-    const recheck = sqls.findIndex((sql) => /SELECT 1 FROM documents WHERE namespace/.test(sql));
-    assert.ok(lock > sqls.indexOf('BEGIN') && recheck > lock, 'the re-check runs inside the transaction, after the lock');
-    assert.ok(sqls.includes('ROLLBACK'));
-    assert.ok(!sqls.some((sql) => /INSERT INTO actors/.test(sql)), 'no actor row');
+    const { begin, lock, recheck, insert } = claimOrder();
+    assert.ok(begin < lock && lock < recheck, 'the re-check runs inside the transaction, after the lock');
+    assert.ok(statements.some((s) => s.sql === 'ROLLBACK'));
+    assert.equal(insert, -1, 'no actor row');
 });
 
 test('actor create takes the documents lock before inserting the actor', async () => {
     const res = await create();
     assert.equal(res.status, 200);
-    const sqls = statements.map((s) => s.sql);
-    const lock = sqls.indexOf('LOCK TABLE documents IN SHARE MODE');
-    assert.ok(lock > sqls.indexOf('BEGIN'), 'lock taken inside the transaction');
-    assert.ok(sqls.findIndex((sql) => /INSERT INTO actors/.test(sql)) > lock, 'actor inserted after the lock');
+    const { begin, lock, recheck, insert, commit } = claimOrder();
+    assert.ok(begin < lock && lock < recheck && recheck < insert && insert < commit,
+        'BEGIN, lock, re-check, actor insert, COMMIT in that order');
 });
