@@ -19,7 +19,7 @@ const { formatPricing } = require('../services/provider');
 const { resolveEffectiveLimits } = require('../services/virtual-agent');
 const { runPersonContextUpdate, findDreamAgent } = require('../services/dream');
 const { personContextSlug } = require('../services/people-slug');
-const { requireByName, resolveByName, resolveById, checkNameAvailability, moderateActorName, clearCache: clearActorCache } = require('../services/actors');
+const { requireByName, resolveByName, resolveById, checkNameAvailability, claimNamespace, moderateActorName, clearCache: clearActorCache } = require('../services/actors');
 const { hasAccess, requireAccess, getReadableNamespaces, validateNamespace, clearCache: clearPermissionsCache } = require('../services/namespace-permissions');
 const { SESSION_KIND } = require('../constants');
 const { getVisibleActorIds, canSee, clearCache: clearVisibilityCache } = require('../services/actor-visibility');
@@ -1677,6 +1677,17 @@ router.post('/admin/actors/create', requirePerm('agents', 'write'), adminRoute('
             actorEmail = email.trim();
         } else if (isVirtual !== true && creatorRow) {
             actorEmail = creatorRow.email || null;
+        }
+
+        // A note saved into the namespace since the availability check would
+        // belong to this actor. Lock documents writes and check again
+        // (LLM-931, as registration does).
+        const claim = await claimNamespace(client, actorName);
+        if (!claim.available) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                error: { code: 'ALREADY_EXISTS', message: claim.reason }
+            });
         }
 
         // Create actor

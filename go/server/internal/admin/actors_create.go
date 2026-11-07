@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/actors"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/auth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/diceware"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/frontmatter"
@@ -198,6 +199,17 @@ func (rt *Routes) actorsCreate(w http.ResponseWriter, r *http.Request) error {
 	status := "active"
 	if virtualTrue {
 		status = "available"
+	}
+	// A note saved into the namespace since the availability check would
+	// belong to this actor: lock documents writes and check again (LLM-931,
+	// as registration does).
+	claim, err := actors.ClaimNamespace(ctx, tx, actorName)
+	if err != nil {
+		return err
+	}
+	if !claim.Available {
+		httpapi.WriteError(w, http.StatusConflict, "ALREADY_EXISTS", claim.Reason)
+		return nil
 	}
 	var actorID int
 	err = tx.QueryRow(ctx,
