@@ -162,15 +162,20 @@ func TestHandleUnboundedOutlivesClient(t *testing.T) {
 	rt, _ := newDreamRoutes(t)
 	mux := NewMux()
 	var errAfter error
-	var hasDeadline bool
+	var hasDeadline, called bool
 	rt.HandleUnbounded(mux, "/admin/x", "", "", "x", func(w http.ResponseWriter, r *http.Request) error {
+		called = true
 		errAfter = r.Context().Err()
 		_, hasDeadline = r.Context().Deadline()
 		return nil
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	// request's path is /v1/admin/x, the registered route below /v1.
 	mux.ServeHTTP(httptest.NewRecorder(), request(`{}`).WithContext(ctx))
+	if !called {
+		t.Fatal("handler was not invoked")
+	}
 	if errAfter != nil || hasDeadline {
 		t.Errorf("context error %v, deadline %v", errAfter, hasDeadline)
 	}
