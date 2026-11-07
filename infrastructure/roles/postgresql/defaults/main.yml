@@ -1,0 +1,5 @@
+---
+# Loaded at server start (conf.d/50-llm-memory-tuning.conf); tuning.yml
+# checks each one loads before writing the file.
+postgresql_preload_libraries:
+  - pg_stat_statements

@@ -4,11 +4,12 @@
 # include_dir = 'conf.d' is the last line of Debian's postgresql.conf, so
 # this file overrides it.
 #
-# Runs from setup.yml only, never from deploy.yml, and does not restart or
-# reload PostgreSQL. shared_buffers and shared_preload_libraries load only at
-# server start: a deploy that wrote this file would leave the new values on
-# disk until some later restart, possibly an unplanned reboot. Roll a change
-# out in a planned window instead:
+# Runs from setup.yml only, never from deploy.yml, and never restarts or
+# reloads PostgreSQL. shared_buffers and shared_preload_libraries load only
+# at server start: a deploy that wrote this file would leave them on disk
+# until some later restart, possibly an unplanned reboot. The other settings
+# apply at the next reload, which a full setup.yml run can send (the pg_hba
+# handler). Roll a change out in a planned window instead:
 #
 #   cd /opt/llm-memory-api/infrastructure
 #   sudo ansible-playbook -i inventory/production.yml playbooks/setup.yml --tags postgresql-tuning
@@ -16,43 +17,76 @@
 #
 # The tag skips everything else in setup.yml, including the secrets prompt.
 
-- name: Write and check the PostgreSQL tuning file
-  block:
-    - name: Write conf.d/50-llm-memory-tuning.conf
-      template:
-        src: llm-memory-tuning.conf.j2
-        dest: /etc/postgresql/{{ postgresql_version }}/main/conf.d/50-llm-memory-tuning.conf
-        owner: postgres
-        group: postgres
-        mode: '0644'
+# A preload library that cannot load stops the server at start. LOAD in a
+# normal session loads the .so and its dependencies the same way;
+# pg_stat_statements' init does nothing outside the preload phase.
+- name: Check each preload library loads
+  command: >-
+    /usr/sbin/runuser -u postgres --
+    psql -d postgres -v ON_ERROR_STOP=1 -c "LOAD '{{ item }}'"
+  loop: "{{ postgresql_preload_libraries }}"
+  changed_when: false
 
-    # Parse the whole config (postgresql.conf plus conf.d) the way the next
-    # start will. postgres -C exits non-zero on any config error and is safe
-    # while the server runs; it must run as postgres, not root.
-    - name: Check the server can start with the new config
+# backup keeps the previous file (name ends in ~, which include_dir skips:
+# it reads only *.conf) so a failed check below can put it back.
+- name: Write conf.d/50-llm-memory-tuning.conf
+  template:
+    src: llm-memory-tuning.conf.j2
+    dest: /etc/postgresql/{{ postgresql_version }}/main/conf.d/50-llm-memory-tuning.conf
+    owner: postgres
+    group: postgres
+    mode: '0644'
+    backup: yes
+  register: postgresql_tuning_file
+
+- name: Check the config parses with the new file
+  block:
+    # Parses postgresql.conf plus conf.d the way the next start will, and
+    # exits non-zero on any error. Safe while the server runs; must run as
+    # postgres, not root. It does not load preload libraries (checked above).
+    - name: Parse the whole PostgreSQL config
       command: >-
         /usr/sbin/runuser -u postgres --
         /usr/lib/postgresql/{{ postgresql_version }}/bin/postgres
         -D /var/lib/postgresql/{{ postgresql_version }}/main
         -c config_file=/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
         -C shared_preload_libraries
-      register: postgresql_tuning_check
+      register: postgresql_tuning_parse
       changed_when: false
-      failed_when: >-
-        postgresql_tuning_check.rc != 0
-        or 'pg_stat_statements' not in postgresql_tuning_check.stdout
 
-  # A file the server cannot parse would stop the next PostgreSQL start, and
-  # Debian's unit never retries. Take it away so the cluster stays startable.
+  # Undo only this run's change: put the previous file back, or remove the
+  # new one when there was none. An unchanged file is left alone, since the
+  # error is then elsewhere in the config.
   rescue:
-    - name: Remove the tuning file the server cannot use
+    - name: Put the previous tuning file back
+      copy:
+        src: "{{ postgresql_tuning_file.backup_file }}"
+        dest: /etc/postgresql/{{ postgresql_version }}/main/conf.d/50-llm-memory-tuning.conf
+        remote_src: yes
+        owner: postgres
+        group: postgres
+        mode: '0644'
+      when: postgresql_tuning_file.backup_file is defined
+
+    - name: Remove the new tuning file
       file:
         path: /etc/postgresql/{{ postgresql_version }}/main/conf.d/50-llm-memory-tuning.conf
         state: absent
+      when: postgresql_tuning_file.changed and postgresql_tuning_file.backup_file is not defined
 
-    - name: Stop on the bad tuning file
+    - name: Stop on the config parse error
       fail:
         msg: >-
-          conf.d/50-llm-memory-tuning.conf was removed: the server could not
-          parse the config with it. postgres -C said:
-          {{ postgresql_tuning_check.stderr | default(ansible_failed_result.msg | default('?')) }}
+          PostgreSQL could not parse its config.
+          {{ 'The previous tuning file is back.' if postgresql_tuning_file.backup_file is defined
+             else ('The new tuning file was removed.' if postgresql_tuning_file.changed
+             else 'The tuning file did not change, so the error is elsewhere.') }}
+          Fix the config before the next PostgreSQL start. postgres -C said:
+          {{ postgresql_tuning_parse.stderr | default('?') }}
+
+  always:
+    - name: Remove the backup of the previous tuning file
+      file:
+        path: "{{ postgresql_tuning_file.backup_file }}"
+        state: absent
+      when: postgresql_tuning_file.backup_file is defined
