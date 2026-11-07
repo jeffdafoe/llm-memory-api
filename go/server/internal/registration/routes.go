@@ -380,6 +380,11 @@ func (rt *Routes) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		var conflict nameConflict
+		if errors.As(err, &conflict) {
+			writeError(w, http.StatusConflict, string(conflict))
+			return
+		}
 		var pgErr *pgconn.PgError
 		// A concurrent registration claimed the name between the phase 1
 		// check and this insert.
@@ -423,6 +428,12 @@ func (rt *Routes) readInvite(ctx context.Context, q interface {
 	}
 	return &inv, nil
 }
+
+// nameConflict is createAccount's error when the name's namespace gained a
+// note after phase 1; its text is the 409's message.
+type nameConflict string
+
+func (e nameConflict) Error() string { return string(e) }
 
 type newAccount struct {
 	name, realm, dreamMode string
@@ -480,6 +491,16 @@ func (rt *Routes) createAccount(ctx context.Context, r *http.Request, a newAccou
 				}
 			}
 		}
+	}
+
+	// A note saved into the namespace since phase 1 would belong to this
+	// actor: lock documents writes and check again.
+	claim, err := actors.ClaimNamespace(ctx, tx, a.name)
+	if err != nil {
+		return 0, "", err
+	}
+	if !claim.Available {
+		return 0, "", nameConflict(claim.Reason)
 	}
 
 	if _, err := tx.Exec(ctx,

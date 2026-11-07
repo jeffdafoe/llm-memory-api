@@ -7,7 +7,7 @@ const generatePassphrase = require('eff-diceware-passphrase');
 const { generateSalt, hash: hashToken, generateKey, tokenLookupHash } = require('../services/hashing');
 const { mailSend } = require('../services/mail');
 const { saveNote } = require('../services/documents');
-const { checkNameAvailability, moderateActorName } = require('../services/actors');
+const { checkNameAvailability, claimNamespace, moderateActorName } = require('../services/actors');
 
 // Parse YAML-style frontmatter from template content (same logic as admin.js)
 function parseTemplateFrontmatter(content = '') {
@@ -198,6 +198,14 @@ router.post('/api/register', async (req, res) => {
                     registrantEmail = areq.rows[0].email;
                 }
             }
+        }
+
+        // A note saved into the namespace since Phase 1 would belong to this
+        // actor. Lock documents writes and check again (LLM-931).
+        const claim = await claimNamespace(client, agentName);
+        if (!claim.available) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: claim.reason });
         }
 
         // Create actor with realm

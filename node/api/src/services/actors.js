@@ -138,6 +138,32 @@ async function checkNameAvailability(name) {
     return { available: true };
 }
 
+// Re-checks the namespace half of checkNameAvailability inside the
+// transaction that inserts a new actor, just before the INSERT (LLM-931).
+// The first check runs outside any transaction, and registration then spends
+// the moderation call and the PBKDF2 hashes before it inserts the actor. A
+// note saved or moved into namespace <name> in that gap would belong to the
+// new actor, because an actor has its own namespace with no grant.
+//
+// SHARE mode conflicts with the ROW EXCLUSIVE lock that every INSERT, UPDATE
+// and DELETE on documents takes. So the LOCK waits for in-flight writers to
+// commit, the SELECT after it sees their rows, and no new row can land until
+// this transaction ends, by which time the actor exists. Two registrations
+// can both hold SHARE at once. lock_timeout bounds the wait: while this LOCK
+// waits, every new note write queues behind it, so a stuck writer must fail
+// this registration instead of stalling all note saves.
+async function claimNamespace(client, name) {
+    await client.query("SET LOCAL lock_timeout = '5s'");
+    await client.query('LOCK TABLE documents IN SHARE MODE');
+    const nsResult = await client.query(
+        'SELECT 1 FROM documents WHERE namespace = $1 LIMIT 1', [name]
+    );
+    if (nsResult.rows.length > 0) {
+        return { available: false, reason: 'This name conflicts with an existing namespace.' };
+    }
+    return { available: true };
+}
+
 // Send a proposed actor name to the "actor-name-check" virtual agent for
 // moderation.  Returns { approved: true } or { approved: false, reason }.
 // Gracefully degrades — if the VA doesn't exist, has no API key, or times
@@ -222,4 +248,4 @@ async function moderateActorName(name) {
     }
 }
 
-module.exports = { resolveByName, resolveById, resolveMultipleByName, requireByName, clearCache, canAccessVirtualAgent, checkNameAvailability, moderateActorName };
+module.exports = { resolveByName, resolveById, resolveMultipleByName, requireByName, clearCache, canAccessVirtualAgent, checkNameAvailability, claimNamespace, moderateActorName };
