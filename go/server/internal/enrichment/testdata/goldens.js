@@ -173,7 +173,7 @@ const scenarios = [
     { name: 'mixed-case slug', config: ON, slug: 'Notes/Mixed' },
 ];
 
-const metaInputs = ['null', '{"a": 1}', '[]', '[1]', '"x"', '"{\\"a\\": 1}"', '"null"', '""', '0', '5', 'true', 'false', '"5"', '" 7 "', '"\\"nested\\""', '{}'];
+const metaInputs = ['null', '{"a": 1}', '[]', '[1]', '"x"', '"{\\"a\\": 1}"', '"null"', '""', '0', '5', 'true', 'false', '"5"', '" 7 "', '"\\"nested\\""', '{}', '1e400', '-1e400', '1e-400', '1e21', '"1e400"', '12345678901234567890'];
 
 async function main() {
     const out = { scenarios: [], metadata: [] };

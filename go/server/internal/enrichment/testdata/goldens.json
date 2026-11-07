@@ -4364,6 +4364,30 @@
   {
    "raw": "{}",
    "ok": "{}"
+  },
+  {
+   "raw": "1e400",
+   "error": "\"Infinity\" is not valid JSON"
+  },
+  {
+   "raw": "-1e400",
+   "error": "No number after minus sign in JSON at position 1 (line 1 column 2)"
+  },
+  {
+   "raw": "1e-400",
+   "ok": "null"
+  },
+  {
+   "raw": "1e21",
+   "ok": "1e+21"
+  },
+  {
+   "raw": "\"1e400\"",
+   "ok": "null"
+  },
+  {
+   "raw": "12345678901234567890",
+   "ok": "12345678901234567000"
   }
  ]
 }

@@ -65,6 +65,17 @@ var enrichmentCases = []Scenario{
 			{Where: "table error_log row *.error_message", Reason: "a stored metadata string that is not JSON fails with Go's JSON error text, not V8's"},
 		},
 	},
+	{
+		// A jsonb number past the float64 range is Infinity to
+		// node-postgres, and JSON.parse("Infinity") throws: the same 500,
+		// with V8's text in both.
+		Name: "notes save upsert over metadata past the number range",
+		Steps: []Step{
+			{SQL: `UPDATE documents SET metadata = '1e400'::jsonb WHERE namespace = 'agent-a' AND slug = 'notes/codebase/auth-middleware';`},
+			{Method: "POST", Path: savePath, Auth: "agent-a-session", Header: jsonType,
+				Body: `{"namespace":"agent-a","title":"Replaced","content":"## Replaced\nNew body.","slug":"notes/codebase/auth-middleware","upsert":true}`},
+		},
+	},
 }
 
 var enrichmentOn = Step{Method: "POST", Path: adminConfigUpdatePath, Auth: "admin-web", Header: jsonType,

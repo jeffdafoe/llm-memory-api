@@ -167,8 +167,8 @@ func (r *recorder) Exec(ctx context.Context, sql string, args ...any) (pgconn.Co
 }
 
 func (r *recorder) Query(context.Context, string, ...any) (pgx.Rows, error) { panic("Query") }
-func (r *recorder) QueryRow(context.Context, string, ...any) pgx.Row      { panic("QueryRow") }
-func (r *recorder) Begin(context.Context) (pgx.Tx, error)                 { panic("Begin") }
+func (r *recorder) QueryRow(context.Context, string, ...any) pgx.Row        { panic("QueryRow") }
+func (r *recorder) Begin(context.Context) (pgx.Tx, error)                   { panic("Begin") }
 
 var spaceRun = regexp.MustCompile(`\s+`)
 
@@ -254,10 +254,12 @@ func TestEnrichMetadataMatchesNode(t *testing.T) {
 	for _, c := range loadGoldens(t).Metadata {
 		got, err := notes.EnrichMetadata([]byte(c.Raw))
 		if c.Error != nil {
-			// The text is Go's JSON error (Known differences); only the
-			// failure is compared.
+			// A JSON string's text is Go's JSON error (Known differences);
+			// for the rest, V8's text is kept.
 			if err == nil {
 				t.Errorf("%s: no error, want %q", c.Raw, *c.Error)
+			} else if !strings.HasPrefix(c.Raw, `"`) && err.Error() != *c.Error {
+				t.Errorf("%s: error %q, want %q", c.Raw, err, *c.Error)
 			}
 			continue
 		}
