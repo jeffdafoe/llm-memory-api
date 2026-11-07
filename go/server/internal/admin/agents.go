@@ -789,7 +789,8 @@ func (rt *Routes) agentsUsage(w http.ResponseWriter, r *http.Request) error {
 }
 
 // agentsCallDetail is POST /admin/agents/call-detail: one recorded provider
-// call. Node checks no visibility here; the port keeps that.
+// call, of an agent the caller may see (a hidden agent's call is the same
+// 404 as a missing one).
 func (rt *Routes) agentsCallDetail(w http.ResponseWriter, r *http.Request) error {
 	f, ok := httpapi.BodyFields(r)
 	if !ok {
@@ -799,8 +800,11 @@ func (rt *Routes) agentsCallDetail(w http.ResponseWriter, r *http.Request) error
 	if !ok || callID <= 0 {
 		return httpapi.BadRequest(w, "Required field: call_id")
 	}
-	row, found, err := pgjson.QueryOne(r.Context(), rt.DB,
-		`SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model,
+	visible, err := rt.Visibility.VisibleActorIDs(r.Context(), httpapi.StateOf(r).ActorID)
+	if err != nil {
+		return err
+	}
+	sql := `SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model,
                 c.sim_actor_id, c.sim_actor_name,
                 c.system_prompt, c.user_message, c.response,
                 c.status, c.status_code, c.error_message,
@@ -808,7 +812,13 @@ func (rt *Routes) agentsCallDetail(w http.ResponseWriter, r *http.Request) error
                 c.cost, c.duration_ms, c.created_at
          FROM virtual_agent_calls c
          JOIN actors ac ON ac.id = c.actor_id
-         WHERE c.id = $1`, callID)
+         WHERE c.id = $1`
+	args := []any{callID}
+	if !visible.All {
+		sql += " AND c.actor_id = ANY($2)"
+		args = append(args, visible.IDs)
+	}
+	row, found, err := pgjson.QueryOne(r.Context(), rt.DB, sql, args...)
 	if err != nil {
 		return err
 	}

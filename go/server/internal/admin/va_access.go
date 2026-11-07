@@ -28,17 +28,28 @@ type vaAccessRow struct {
 	CreatedAt        isoTime `json:"created_at"`
 }
 
-// vaAccessList is POST /admin/virtual-agent-access/list: every access rule.
-// A rule with no grantee opens the agent to everyone.
+// vaAccessList is POST /admin/virtual-agent-access/list: the access rules of
+// the virtual agents the caller may see, and of those only the ones open to
+// everyone (no grantee) or naming a grantee the caller may see, so a hidden
+// actor's name never shows.
 func (rt *Routes) vaAccessList(w http.ResponseWriter, r *http.Request) error {
-	rows, err := rt.DB.Query(r.Context(), `
+	visible, err := rt.Visibility.VisibleActorIDs(r.Context(), httpapi.StateOf(r).ActorID)
+	if err != nil {
+		return err
+	}
+	sql := `
         SELECT vaa.id, vaa.virtual_agent_id, va.name AS virtual_agent_name,
                vaa.grantee_actor_id, ga.name AS grantee_name, vaa.created_at
         FROM virtual_agent_access vaa
         JOIN actors va ON va.id = vaa.virtual_agent_id
-        LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id
-        ORDER BY va.name, ga.name NULLS FIRST
-    `)
+        LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id`
+	var args []any
+	if !visible.All {
+		sql += " WHERE vaa.virtual_agent_id = ANY($1) AND (vaa.grantee_actor_id IS NULL OR vaa.grantee_actor_id = ANY($1))"
+		args = append(args, visible.IDs)
+	}
+	sql += " ORDER BY va.name, ga.name NULLS FIRST"
+	rows, err := rt.DB.Query(r.Context(), sql, args...)
 	if err != nil {
 		return err
 	}

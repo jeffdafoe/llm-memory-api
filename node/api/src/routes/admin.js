@@ -2062,8 +2062,7 @@ router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRou
     if (!callId || callId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: call_id' } });
     }
-    const result = await pool.query(
-        `SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model,
+    let sql = `SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model,
                 c.sim_actor_id, c.sim_actor_name,
                 c.system_prompt, c.user_message, c.response,
                 c.status, c.status_code, c.error_message,
@@ -2071,9 +2070,16 @@ router.post('/admin/agents/call-detail', requirePerm('agents', 'read'), adminRou
                 c.cost, c.duration_ms, c.created_at
          FROM virtual_agent_calls c
          JOIN actors ac ON ac.id = c.actor_id
-         WHERE c.id = $1`,
-        [callId]
-    );
+         WHERE c.id = $1`;
+    const params = [callId];
+    // Only calls made by an agent the caller may see. A hidden agent's call
+    // gets the same 404 as a missing one (null = superadmin, unfiltered).
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    if (visibleIds !== null) {
+        sql += ' AND c.actor_id = ANY($2)';
+        params.push(Array.from(visibleIds));
+    }
+    const result = await pool.query(sql, params);
     if (result.rows.length === 0) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Call detail not found (may have been purged)' } });
     }
@@ -2297,9 +2303,9 @@ router.post('/admin/actors/list', requirePerm('agents', 'read'), adminRoute('act
 router.post('/admin/actors/permissions/read', requirePerm('agents', 'read'), adminRoute('actors-permissions-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
-    // Verify actor exists
+    // Verify actor exists and the caller may see it (a hidden actor reads as missing)
     const actor = await resolveById(actorId);
-    if (!actor) {
+    if (!actor || !await canSee(req.actorId, actorId)) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
     const result = await pool.query(
@@ -2383,9 +2389,9 @@ router.post('/admin/actors/permissions/save', requirePerm('agents', 'write'), ad
 router.post('/admin/actors/visibility/read', requirePerm('agents', 'read'), adminRoute('actors-visibility-read', async (req, res) => {
     const actorId = parseActorId(req.body.actor_id, res);
     if (actorId === null) return;
-    // Verify actor exists
+    // Verify actor exists and the caller may see it (a hidden actor reads as missing)
     const actor = await resolveById(actorId);
-    if (!actor) {
+    if (!actor || !await canSee(req.actorId, actorId)) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
     const result = await pool.query(
@@ -2573,6 +2579,10 @@ router.post('/admin/actors/admin-permissions/read', requirePerm('agents', 'read'
     const actorId = safeInt(req.body.actor_id);
     if (actorId === null || actorId <= 0) {
         return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Required field: actor_id (positive integer)' } });
+    }
+    // Only an actor the caller may see; a hidden one reads as missing.
+    if (!await canSee(req.actorId, actorId)) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } });
     }
     const result = await pool.query(
         'SELECT resource, action FROM admin_permissions WHERE actor_id = $1 ORDER BY resource, action',
@@ -2980,8 +2990,11 @@ router.post('/admin/invite-codes/delete', requirePerm('access', 'write'), adminR
 
 // POST /admin/profile/visibility — get or set visible_to_others
 // Accepts optional actor_id for admin to manage other actors; defaults to self.
+// Another actor's setting is read or changed only by its creator or a
+// superadmin (requireOwnership), as for every other per-actor write.
 router.post('/admin/profile/visibility', adminRoute('profile-visibility', async (req, res) => {
     const targetId = req.body.actor_id || req.actorId;
+    if (req.body.actor_id && !await requireOwnership(req, res, targetId)) return;
     if (req.body.visible_to_others !== undefined) {
         await pool.query('UPDATE actors SET visible_to_others = $1 WHERE id = $2', [!!req.body.visible_to_others, targetId]);
         logAdmin('visibility_update', { actor_id: targetId, visible_to_others: !!req.body.visible_to_others, user_id: req.authenticatedUser.id });
@@ -3112,14 +3125,23 @@ router.post('/admin/actors/searchable', requirePerm('notes', 'read'), adminRoute
 
 // POST /admin/virtual-agent-access/list — list access rules for virtual agents
 router.post('/admin/virtual-agent-access/list', requirePerm('agents', 'read'), adminRoute('va-access-list', async (req, res) => {
-    const result = await pool.query(`
+    let sql = `
         SELECT vaa.id, vaa.virtual_agent_id, va.name AS virtual_agent_name,
                vaa.grantee_actor_id, ga.name AS grantee_name, vaa.created_at
         FROM virtual_agent_access vaa
         JOIN actors va ON va.id = vaa.virtual_agent_id
-        LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id
-        ORDER BY va.name, ga.name NULLS FIRST
-    `);
+        LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id`;
+    const params = [];
+    // Only the rules of virtual agents the caller may see, and of those only
+    // the ones open to everyone or naming a grantee the caller may see, so a
+    // hidden actor's name never shows (null = superadmin, unfiltered).
+    const visibleIds = await getVisibleActorIds(req.actorId);
+    if (visibleIds !== null) {
+        sql += ' WHERE vaa.virtual_agent_id = ANY($1) AND (vaa.grantee_actor_id IS NULL OR vaa.grantee_actor_id = ANY($1))';
+        params.push(Array.from(visibleIds));
+    }
+    sql += ' ORDER BY va.name, ga.name NULLS FIRST';
+    const result = await pool.query(sql, params);
     res.json({ access: result.rows });
 }));
 

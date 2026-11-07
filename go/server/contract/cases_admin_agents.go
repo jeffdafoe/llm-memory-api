@@ -214,7 +214,7 @@ var adminAgentUsageCases = []Scenario{
 		adminPost(agentsUsagePath, "admin-web", `{"agent":"va-anthropic","limit":"many"}`),
 		adminPost(agentsCallDetailPath, "admin-web", `{"call_id":{{call}}}`),
 		adminPost(agentsCallDetailPath, "admin-web", `{"call_id":"9102"}`),
-		// No visibility check on call detail, as in Node.
+		// The limited admin cannot see va-anthropic, so its call is a 404.
 		adminPost(agentsCallDetailPath, "admin-limited-web", `{"call_id":9101}`),
 		adminPost(agentsUsagePath, "admin-limited-web", `{"agent":"va-anthropic"}`)),
 	postCase("admin agents usage none", agentsUsagePath, "admin-limited-web", `{"agent":"limited-va"}`),

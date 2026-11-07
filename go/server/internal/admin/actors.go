@@ -51,6 +51,26 @@ func (rt *Routes) actorExists(w http.ResponseWriter, r *http.Request, id int) (b
 	return true, nil
 }
 
+// actorVisible is actorExists for an actor the caller may also see: a
+// hidden actor gets the same 404 as a missing one.
+func (rt *Routes) actorVisible(w http.ResponseWriter, r *http.Request, id int) (bool, error) {
+	_, found, err := rt.Actors.ResolveByID(r.Context(), id)
+	if err != nil {
+		return false, err
+	}
+	if found {
+		found, err = rt.Visibility.CanSee(r.Context(), httpapi.StateOf(r).ActorID, id)
+		if err != nil {
+			return false, err
+		}
+	}
+	if !found {
+		httpapi.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Actor not found")
+		return false, nil
+	}
+	return true, nil
+}
+
 // requireSuperadmin answers 403 with message unless the caller holds *:*.
 func (rt *Routes) requireSuperadmin(w http.ResponseWriter, r *http.Request, message string) (bool, error) {
 	super, err := rt.Admin.IsSuperadmin(r.Context(), httpapi.StateOf(r).ActorID)
@@ -186,7 +206,7 @@ func (rt *Routes) actorsPermissionsRead(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return nil
 	}
-	if ok, err := rt.actorExists(w, r, actorID); !ok {
+	if ok, err := rt.actorVisible(w, r, actorID); !ok {
 		return err
 	}
 	rows, err := rt.DB.Query(r.Context(),
@@ -330,7 +350,7 @@ func (rt *Routes) actorsVisibilityRead(w http.ResponseWriter, r *http.Request) e
 	if !ok {
 		return nil
 	}
-	if ok, err := rt.actorExists(w, r, actorID); !ok {
+	if ok, err := rt.actorVisible(w, r, actorID); !ok {
 		return err
 	}
 	rows, err := rt.DB.Query(r.Context(),

@@ -465,16 +465,27 @@ func TestProfileVisibility(t *testing.T) {
 	}
 	check(t, "read self", rec, 200, `{"visible_to_others":true}`)
 
-	mock.ExpectQuery(read).WithArgs("9").WillReturnRows(pgxmock.NewRows([]string{"visible_to_others"}))
+	// Another actor's setting needs ownership: user 2 holds no *:* and did
+	// not create actor 9, so a read and a write of it are both refused.
+	createdBy := regexp.QuoteMeta("SELECT created_by FROM actors WHERE id = $1")
+	grants(mock, 2)
+	mock.ExpectQuery(createdBy).WithArgs("9").WillReturnRows(pgxmock.NewRows([]string{"created_by"}).AddRow(nil))
 	rec = httptest.NewRecorder()
 	rt.profileVisibility(rec, request(`{"actor_id":"9"}`))
-	check(t, "read missing", rec, 200, `{"visible_to_others":false}`)
+	check(t, "read not owned", rec, 403, errorBody("FORBIDDEN", "You can only modify agents you created"))
 
+	mock.ExpectQuery(createdBy).WithArgs(jsutil.Number("9")).WillReturnRows(pgxmock.NewRows([]string{"created_by"}).AddRow(5))
+	rec = httptest.NewRecorder()
+	rt.profileVisibility(rec, request(`{"actor_id":9,"visible_to_others":true}`))
+	check(t, "set not owned", rec, 403, errorBody("FORBIDDEN", "You can only modify agents you created"))
+
+	// Its creator may.
+	mock.ExpectQuery(createdBy).WithArgs(jsutil.Number("9")).WillReturnRows(pgxmock.NewRows([]string{"created_by"}).AddRow(2))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE actors SET visible_to_others = $1 WHERE id = $2")).WithArgs(false, jsutil.Number("9")).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	rec = httptest.NewRecorder()
 	rt.profileVisibility(rec, request(`{"actor_id":9,"visible_to_others":null}`))
-	check(t, "set", rec, 200, `{"visible_to_others":false}`)
+	check(t, "set owned", rec, 200, `{"visible_to_others":false}`)
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}

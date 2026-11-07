@@ -345,8 +345,8 @@ func (rt *Routes) changePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // profileVisibility is POST /admin/profile/visibility: reads or sets
-// visible_to_others for actor_id, or for the caller. Node checks no
-// permission and no ownership here; the port keeps that.
+// visible_to_others for actor_id, or for the caller. Another actor's
+// setting needs ownership (its creator or a superadmin).
 func (rt *Routes) profileVisibility(w http.ResponseWriter, r *http.Request) error {
 	f, ok := httpapi.BodyFields(r)
 	if !ok {
@@ -358,6 +358,9 @@ func (rt *Routes) profileVisibility(w http.ResponseWriter, r *http.Request) erro
 	if f.Truthy("actor_id") {
 		target = pgbind.Value(f.Raw("actor_id"))
 		logTarget = json.RawMessage(f.Raw("actor_id"))
+		if ok, err := rt.RequireOwnership(w, r, target, strictlyEquals(f.Raw("actor_id"), httpapi.StateOf(r).ActorID)); !ok {
+			return err
+		}
 	}
 	if raw, present := f["visible_to_others"]; present {
 		visible := pgbind.Truthy(raw)
