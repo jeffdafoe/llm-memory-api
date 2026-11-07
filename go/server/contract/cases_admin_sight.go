@@ -35,7 +35,12 @@ var adminSightCases = []Scenario{
 	withIDs("admin va access list holds only visible agents",
 		limitedIDs(),
 		adminPost(vaAccessListPath, "admin-limited-web", `{}`),
+		verifyID("a", "agent-a-session"),
 		adminPost(vaAccessGrantPath, "admin-limited-web", `{"virtual_agent_id":{{limited_va_id}},"grantee_actor_id":{{limited_agent_id}}}`),
+		// A rule naming a grantee the limited admin cannot see stays out of
+		// its list (agent-a's name must not show), not out of the superadmin's.
+		adminPost(vaAccessGrantPath, "admin-limited-web", `{"virtual_agent_id":{{limited_va_id}},"grantee_actor_id":{{a}}}`),
+		adminPost(vaAccessGrantPath, "admin-limited-web", `{"virtual_agent_id":{{limited_va_id}}}`),
 		adminPost(vaAccessListPath, "admin-limited-web", `{}`),
 		adminPost(vaAccessListPath, "admin-web", `{}`)),
 	withIDs("admin agents call detail of a hidden agent",

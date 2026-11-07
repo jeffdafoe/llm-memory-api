@@ -76,7 +76,7 @@ func TestCallDetailAndAccessListNeedSight(t *testing.T) {
 	}
 	check(t, "hidden call", rec, 404, errorBody("NOT_FOUND", "Call detail not found (may have been purged)"))
 
-	mock.ExpectQuery(regexp.QuoteMeta("WHERE vaa.virtual_agent_id = ANY($1) ORDER BY va.name, ga.name NULLS FIRST")).WithArgs([]int{2, 5}).
+	mock.ExpectQuery(regexp.QuoteMeta("WHERE vaa.virtual_agent_id = ANY($1) AND (vaa.grantee_actor_id IS NULL OR vaa.grantee_actor_id = ANY($1)) ORDER BY va.name, ga.name NULLS FIRST")).WithArgs([]int{2, 5}).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "virtual_agent_id", "virtual_agent_name", "grantee_actor_id", "grantee_name", "created_at"}))
 	rec = httptest.NewRecorder()
 	if err := rt.vaAccessList(rec, request(`{}`)); err != nil {
@@ -96,6 +96,13 @@ func TestCallDetailAndAccessListNeedSight(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(t, "superadmin call", rec, 404, errorBody("NOT_FOUND", "Call detail not found (may have been purged)"))
+	mock.ExpectQuery(`(?s)LEFT JOIN actors ga ON ga\.id = vaa\.grantee_actor_id ORDER BY va\.name, ga\.name NULLS FIRST$`).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "virtual_agent_id", "virtual_agent_name", "grantee_actor_id", "grantee_name", "created_at"}))
+	rec = httptest.NewRecorder()
+	if err := super.vaAccessList(rec, request(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	check(t, "superadmin access list", rec, 200, `{"access":[]}`)
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}

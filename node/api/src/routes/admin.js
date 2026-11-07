@@ -3121,11 +3121,12 @@ router.post('/admin/virtual-agent-access/list', requirePerm('agents', 'read'), a
         JOIN actors va ON va.id = vaa.virtual_agent_id
         LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id`;
     const params = [];
-    // Only the rules of virtual agents the caller may see, which keeps the
-    // list inside the caller's realms (null = superadmin, unfiltered).
+    // Only the rules of virtual agents the caller may see, and of those only
+    // the ones open to everyone or naming a grantee the caller may see, so a
+    // hidden actor's name never shows (null = superadmin, unfiltered).
     const visibleIds = await getVisibleActorIds(req.actorId);
     if (visibleIds !== null) {
-        sql += ' WHERE vaa.virtual_agent_id = ANY($1)';
+        sql += ' WHERE vaa.virtual_agent_id = ANY($1) AND (vaa.grantee_actor_id IS NULL OR vaa.grantee_actor_id = ANY($1))';
         params.push(Array.from(visibleIds));
     }
     sql += ' ORDER BY va.name, ga.name NULLS FIRST';

@@ -29,8 +29,9 @@ type vaAccessRow struct {
 }
 
 // vaAccessList is POST /admin/virtual-agent-access/list: the access rules of
-// the virtual agents the caller may see, which keeps the list inside the
-// caller's realms. A rule with no grantee opens the agent to everyone.
+// the virtual agents the caller may see, and of those only the ones open to
+// everyone (no grantee) or naming a grantee the caller may see, so a hidden
+// actor's name never shows.
 func (rt *Routes) vaAccessList(w http.ResponseWriter, r *http.Request) error {
 	visible, err := rt.Visibility.VisibleActorIDs(r.Context(), httpapi.StateOf(r).ActorID)
 	if err != nil {
@@ -44,7 +45,7 @@ func (rt *Routes) vaAccessList(w http.ResponseWriter, r *http.Request) error {
         LEFT JOIN actors ga ON ga.id = vaa.grantee_actor_id`
 	var args []any
 	if !visible.All {
-		sql += " WHERE vaa.virtual_agent_id = ANY($1)"
+		sql += " WHERE vaa.virtual_agent_id = ANY($1) AND (vaa.grantee_actor_id IS NULL OR vaa.grantee_actor_id = ANY($1))"
 		args = append(args, visible.IDs)
 	}
 	sql += " ORDER BY va.name, ga.name NULLS FIRST"
