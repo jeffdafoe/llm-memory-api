@@ -104,11 +104,21 @@ func (s *Service) broadcast(namespace, slug, operation string) {
 // system_errors under source "documents" with code and the note's
 // namespace and slug.
 func (s *Service) background(code, namespace, slug string, fn func(ctx context.Context) error) {
-	db.Background(func(ctx context.Context) {
+	db.Background(s.recordFailure(code, namespace, slug, fn))
+}
+
+// backgroundUnbounded is background for a job with no time bound of its
+// own (db.BackgroundUnbounded).
+func (s *Service) backgroundUnbounded(code, namespace, slug string, fn func(ctx context.Context) error) {
+	db.BackgroundUnbounded(s.recordFailure(code, namespace, slug, fn))
+}
+
+func (s *Service) recordFailure(code, namespace, slug string, fn func(ctx context.Context) error) func(ctx context.Context) {
+	return func(ctx context.Context) {
 		if err := fn(ctx); err != nil && s.Errors != nil {
 			s.Errors.Record(ctx, "", "documents", code, map[string]string{"namespace": namespace, "slug": slug, "error": err.Error()})
 		}
-	})
+	}
 }
 
 // updateUsage moves the namespace_usage counters in the background. Usage
@@ -381,10 +391,18 @@ func (s *Service) Save(ctx context.Context, in SaveInput) (SavedNote, error) {
 		return err
 	})
 	s.broadcast(namespace, slug, "saved")
+	// Node parsed the stored metadata in the save itself, so metadata kept
+	// by an upsert that is a JSON string holding no JSON fails the save
+	// (after the row is written), with the enrichment on or off.
+	meta, err := EnrichMetadata([]byte(doc.Metadata))
+	if err != nil {
+		return SavedNote{}, err
+	}
 	if s.Enricher != nil {
-		meta := []byte(doc.Metadata)
 		title := in.Title
-		s.background("NOTE_ENRICHMENT_FAILED", namespace, slug, func(ctx context.Context) error {
+		// Unbounded: the classification is a provider call, which has its
+		// own timeout (virtual_agent_request_timeout, 120 s by default).
+		s.backgroundUnbounded("NOTE_ENRICHMENT_FAILED", namespace, slug, func(ctx context.Context) error {
 			return s.Enricher.Enrich(ctx, namespace, slug, title, content, meta)
 		})
 	}

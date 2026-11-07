@@ -1,0 +1,4369 @@
+{
+ "scenarios": [
+  {
+   "name": "gate off",
+   "config": {
+    "note_enrichment_enabled": "false"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "gate key missing",
+   "config": null,
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "gate TRUE is off",
+   "config": {
+    "note_enrichment_enabled": "TRUE"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "gate empty is off",
+   "config": {
+    "note_enrichment_enabled": ""
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "classified",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "skip conversation",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "conversations/2026-11-06-x",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "skip context",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "context/soul",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "skip dream",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "dreams/2026-11-06",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "kind is case sensitive",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "Conversations/x",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"Conversations/x\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** Conversations/x\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "Conversations/x"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"Conversations/x\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "reference kind",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/codebase/x",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/codebase/x\",\"kind\":\"reference\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/codebase/x\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/codebase/x"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/codebase/x\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "instruction kind",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "instructions/bootstrap",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"instructions/bootstrap\",\"kind\":\"instruction\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** instructions/bootstrap\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "instructions/bootstrap"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"instructions/bootstrap\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "task kind",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "tasks/x",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"tasks/x\",\"kind\":\"task\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** tasks/x\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "tasks/x"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"tasks/x\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "learning kind",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "learnings/x",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"learnings/x\",\"kind\":\"learning\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** learnings/x\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "learnings/x"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"learnings/x\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "contexts is a note",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "contexts/x",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"contexts/x\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** contexts/x\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "contexts/x"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"contexts/x\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "null metadata",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "metadata without stamp",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"a\":1}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamped 30 s ago",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06T16:59:30.000Z\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamped 59.999 s ago",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06T16:59:00.001Z\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamped 60 s ago",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06T16:59:00.000Z\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamped 2 minutes ago",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06T16:58:00.000Z\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamped in the future",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06T18:00:00.000Z\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp not a date",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"yesterday\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp empty string",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp zero",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":0}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp recent number",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":1793984399000}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp true",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":true}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp array of a recent date",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":[\"2026-11-06T16:59:59.000Z\"]}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp object",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":{\"a\":1}}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp object with toString value",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":{\"toString\":1}}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "error": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "name": "stamp local time recent",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06T11:59:30\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp local time an hour off",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06T12:59:30\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "stamp date only",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "{\"_enriched_at\":\"2026-11-06\"}",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "metadata array",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "[1,2]",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "metadata string",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "\"x\"",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "metadata number",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "5",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "metadata false",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "false",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "no agent",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": null,
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "agent lookup fails",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": "connection refused",
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    }
+   ],
+   "result": {
+    "error": "connection refused"
+   }
+  },
+  {
+   "name": "agent without provider",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": null,
+    "model": "m",
+    "api_key": "k"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "agent without model",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "",
+    "api_key": "k"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "agent without key",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "m",
+    "api_key": null
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "model call fails",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": "Agent memory-enrichment over cost limit: Daily cost limit exceeded ($1.0000 / $1.00)",
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "agent-error",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"error\":\"Agent memory-enrichment over cost limit: Daily cost limit exceeded ($1.0000 / $1.00)\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fenced json",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"```json\\n{\\\"cognitive_type\\\":\\\"episodic\\\"}\\n```\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "episodic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"episodic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fenced no language",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"```\\n{\\\"cognitive_type\\\":\\\"reflective\\\"}\\n```\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "reflective",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"reflective\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fenced one line",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"```{\\\"cognitive_type\\\":\\\"procedural\\\"}```\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "procedural",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"procedural\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fenced JSON upper case",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"```JSON\\n{\\\"cognitive_type\\\":\\\"episodic\\\"}\\n```\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"```JSON\\n{\\\"cognitive_type\\\":\\\"episodic\\\"}\\n```\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fenced trailing text",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"```\\n{\\\"cognitive_type\\\":\\\"episodic\\\"}\\n```\\nDone.\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"```\\n{\\\"cognitive_type\\\":\\\"episodic\\\"}\\n```\\nDone.\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fenced unicode spaces",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\" ```json 　{\\\"cognitive_type\\\":\\\"episodic\\\"} ```﻿\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\" ```json 　{\\\"cognitive_type\\\":\\\"episodic\\\"} ```﻿\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fenced ideographic space",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"```json　{\\\"cognitive_type\\\":\\\"episodic\\\"}\\n```\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "episodic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"episodic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "fence only",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"``````\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"``````\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "padded mixed case",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"  {\\\"cognitive_type\\\":\\\"  Procedural\\\\t\\\"}  \"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "procedural",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"procedural\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "dotted capital I",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"EPİSODIC\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"{\\\"cognitive_type\\\":\\\"EPİSODIC\\\"}\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "capital sigma",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"SEMANTICΣ\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"{\\\"cognitive_type\\\":\\\"SEMANTICΣ\\\"}\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "unknown type",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"other\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"{\\\"cognitive_type\\\":\\\"other\\\"}\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "type not a string",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":7}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"{\\\"cognitive_type\\\":7}\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "duplicate keys",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"bogus\\\",\\\"cognitive_type\\\":\\\"episodic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "episodic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"episodic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "array answer",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"[{\\\"cognitive_type\\\":\\\"semantic\\\"}]\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"[{\\\"cognitive_type\\\":\\\"semantic\\\"}]\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "string answer",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"\\\"semantic\\\"\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"\\\"semantic\\\"\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "not json",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"It is semantic.\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"It is semantic.\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "trailing comma",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\",}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"{\\\"cognitive_type\\\":\\\"semantic\\\",}\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "null answer",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"null\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"null\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "empty text",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "null text",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "null",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "zero text",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "0",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "number text",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "5",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    }
+   ],
+   "result": {
+    "error": "text.trim is not a function"
+   }
+  },
+  {
+   "name": "array text",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "[{\"type\":\"text\",\"text\":\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"}]",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    }
+   ],
+   "result": {
+    "error": "text.trim is not a function"
+   }
+  },
+  {
+   "name": "long unparsed preview",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "preview of astral characters",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "preview cut through a pair",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"x😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "parse-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"responsePreview\":\"x😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\\ud83d\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "metadata write fails",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": "relation \"documents\" does not exist",
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "metadata-write-failed",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"error\":\"relation \\\"documents\\\" does not exist\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "free cost",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"unknown\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "tiny cost",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 4e-7,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.000000\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "content at the limit",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "content past the limit",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n[... truncated]\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "content astral at the limit",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\n😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "content astral past the limit",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\n😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\n\n[... truncated]\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "content cut through a pair",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": "Topic",
+   "content": "a😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** Topic\n\na😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\ud83d\n\n[... truncated]\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "null title",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "notes/topic",
+   "title": null,
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** notes/topic\n**Title:** null\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "notes/topic"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"notes/topic\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  },
+  {
+   "name": "mixed-case slug",
+   "config": {
+    "note_enrichment_enabled": "true"
+   },
+   "namespace": "agent-a",
+   "slug": "Notes/Mixed",
+   "title": "Topic",
+   "content": "Body of the note.",
+   "meta": "null",
+   "agent": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "api_key": "enc"
+   },
+   "loadError": null,
+   "invokeError": null,
+   "updateError": null,
+   "text": "\"{\\\"cognitive_type\\\":\\\"semantic\\\"}\"",
+   "cost": 0.0012345678,
+   "events": [
+    {
+     "kind": "load",
+     "name": "memory-enrichment"
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "start",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"Notes/Mixed\",\"kind\":\"note\"}"
+    },
+    {
+     "kind": "invoke",
+     "agent": "memory-enrichment",
+     "keys": [
+      "userMessage",
+      "skipRateLimit",
+      "skipCostLimit",
+      "skipRetry",
+      "context"
+     ],
+     "user": "## Note to classify\n\n**Namespace:** agent-a\n**Slug:** Notes/Mixed\n**Title:** Topic\n\nBody of the note.\n\nClassify this note and return a JSON object with a single field:\n- `cognitive_type`: one of \"semantic\" (facts, definitions, knowledge), \"episodic\" (events, things that happened), \"procedural\" (decisions, conventions, how-tos, institutional knowledge), or \"reflective\" (synthesized insights, lessons learned, analysis)\n\nReturn ONLY valid JSON, no markdown fences, no explanation.",
+     "context": "note-enrichment",
+     "skipRateLimit": true,
+     "skipCostLimit": false,
+     "skipRetry": true
+    },
+    {
+     "kind": "query",
+     "sql": "UPDATE documents\n             SET metadata = COALESCE(metadata, '{}'::jsonb)\n                 || jsonb_build_object('cognitive_type', $1::text, '_enriched_at', $2::text)\n             WHERE namespace = $3 AND LOWER(slug) = LOWER($4) AND deleted_at IS NULL",
+     "params": [
+      "semantic",
+      "2026-11-06T17:00:00.000Z",
+      "agent-a",
+      "Notes/Mixed"
+     ]
+    },
+    {
+     "kind": "log",
+     "subsystem": "enrichment",
+     "action": "complete",
+     "details": "{\"namespace\":\"agent-a\",\"slug\":\"Notes/Mixed\",\"cognitiveType\":\"semantic\",\"cost\":\"0.001235\"}"
+    }
+   ],
+   "result": {
+    "ok": true
+   }
+  }
+ ],
+ "metadata": [
+  {
+   "raw": "null",
+   "ok": "null"
+  },
+  {
+   "raw": "{\"a\": 1}",
+   "ok": "{\"a\":1}"
+  },
+  {
+   "raw": "[]",
+   "ok": "[]"
+  },
+  {
+   "raw": "[1]",
+   "ok": "[1]"
+  },
+  {
+   "raw": "\"x\"",
+   "error": "Unexpected token 'x', \"x\" is not valid JSON"
+  },
+  {
+   "raw": "\"{\\\"a\\\": 1}\"",
+   "ok": "{\"a\":1}"
+  },
+  {
+   "raw": "\"null\"",
+   "ok": "null"
+  },
+  {
+   "raw": "\"\"",
+   "ok": "null"
+  },
+  {
+   "raw": "0",
+   "ok": "null"
+  },
+  {
+   "raw": "5",
+   "ok": "5"
+  },
+  {
+   "raw": "true",
+   "ok": "true"
+  },
+  {
+   "raw": "false",
+   "ok": "null"
+  },
+  {
+   "raw": "\"5\"",
+   "ok": "5"
+  },
+  {
+   "raw": "\" 7 \"",
+   "ok": "7"
+  },
+  {
+   "raw": "\"\\\"nested\\\"\"",
+   "ok": "\"nested\""
+  },
+  {
+   "raw": "{}",
+   "ok": "{}"
+  }
+ ]
+}
