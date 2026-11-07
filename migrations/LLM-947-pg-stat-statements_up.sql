@@ -1,0 +1,15 @@
+-- LLM-947: pg_stat_statements, per-query statistics for the whole cluster.
+--
+-- The extension only records statements when the server loads it at start
+-- (shared_preload_libraries in conf.d/50-llm-memory-tuning.conf, written by
+-- roles/postgresql/tasks/tuning.yml). Before that restart the extension
+-- exists but its view raises "pg_stat_statements must be loaded via
+-- shared_preload_libraries" when read; nothing in the API reads it.
+--
+-- The view covers every database on the cluster (filter on dbid). Only
+-- superusers and pg_read_all_stats members see other roles' query text, so
+-- read it as postgres: sudo -u postgres psql memory_api.
+--
+-- Not trusted, so CREATE needs a superuser: the deploy runs migrations as
+-- postgres.
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;

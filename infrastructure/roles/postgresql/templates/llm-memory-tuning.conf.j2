@@ -1,0 +1,20 @@
+# Managed by Ansible (llm-memory-api roles/postgresql/tasks/tuning.yml).
+# Written only by setup.yml or a --tags postgresql-tuning run, never by a
+# deploy: shared_buffers and shared_preload_libraries load only at server
+# start, so they wait for a planned PostgreSQL restart.
+
+# Memory: 2 GB box with no swap, shared with the Node API, the salem engine,
+# Apache/Interchange and nginx. shared_buffers is about 19% of RAM.
+shared_buffers = 384MB
+effective_cache_size = 1200MB
+maintenance_work_mem = 128MB
+
+# Planner / IO: the VPS disk is SSD
+random_page_cost = 1.1
+effective_io_concurrency = 200
+
+# Query visibility
+shared_preload_libraries = '{{ postgresql_preload_libraries | join(",") }}'
+pg_stat_statements.track = top
+track_io_timing = on
+log_min_duration_statement = 500ms

@@ -52,6 +52,10 @@
     mode: '0640'
   notify: Reload postgresql
 
+- name: PostgreSQL tuning (conf.d, applied at the next restart)
+  import_tasks: tuning.yml
+  tags: [postgresql-tuning]
+
 - name: Create database user
   become_user: postgres
   postgresql_user:
