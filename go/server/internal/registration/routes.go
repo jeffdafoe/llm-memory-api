@@ -1,6 +1,7 @@
 // Package registration is Node's routes/registration.js: the public signup
 // endpoints (no auth). An account is created from an invite code, or without
-// one when open registration is on.
+// one when open registration is on. It also has server.js's access request
+// form (access.go), which is how a visitor asks for an invite code.
 package registration
 
 import (
@@ -58,6 +59,7 @@ func (rt *Routes) Register(m *httpapi.RawMux) {
 	m.Handle(http.MethodGet, "/api/registration-mode", http.HandlerFunc(rt.mode))
 	m.Handle(http.MethodPost, "/api/check-name", http.HandlerFunc(rt.checkName))
 	m.Handle(http.MethodPost, "/api/register", http.HandlerFunc(rt.register))
+	m.Handle(http.MethodPost, "/api/access-request", http.HandlerFunc(rt.accessRequest))
 }
 
 func (rt *Routes) now() time.Time {
@@ -216,11 +218,11 @@ func realmOr(realm *string) string {
 	return *realm
 }
 
-// passwordLength is password.length as JavaScript compares it with a
+// jsLength is value.length as JavaScript compares it with a
 // number: a string's UTF-16 length, an array's element count, an object's
 // own length property; ok is false where the comparison is false either way
 // (undefined or NaN).
-func passwordLength(v any) (float64, bool) {
+func jsLength(v any) (float64, bool) {
 	switch x := v.(type) {
 	case string:
 		return float64(jsutil.UTF16Len(x)), true
@@ -271,7 +273,7 @@ func (rt *Routes) register(w http.ResponseWriter, r *http.Request) {
 		minLen = 10
 	}
 	password := body["password"]
-	length, comparable := passwordLength(password)
+	length, comparable := jsLength(password)
 	if !jsutil.Truthy(password) || comparable && length < minLen {
 		writeError(w, http.StatusBadRequest, "Password must be at least "+jsutil.NumberString(minLen)+" characters")
 		return
