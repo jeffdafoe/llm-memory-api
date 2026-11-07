@@ -103,6 +103,8 @@ func usesResponsesEndpoint(model string) bool {
 // assistant tool calls become function_call items and tool messages
 // function_call_output items. /v1/responses refuses a call without its
 // output or an output without its call, so unpaired ones are dropped.
+// assistantIDs holds only the calls the emit pass sends (type "function"
+// with a function); a skipped call must not keep its output.
 func messagesToResponsesInput(messages []*object) ([]any, error) {
 	paired := valueSet{}
 	assistantIDs := valueSet{}
@@ -117,8 +119,10 @@ func messagesToResponsesInput(messages []*object) ([]any, error) {
 					if !truthy(tc) {
 						continue
 					}
+					typ, _ := get(tc, "type")
+					fn, _ := get(tc, "function")
 					id, _ := get(tc, "id")
-					if truthy(id) {
+					if isStr(typ, "function") && truthy(fn) && truthy(id) {
 						assistantIDs.add(id)
 					}
 				}
@@ -489,6 +493,11 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 		body.Set("reasoning", obj("effort", effort))
 	}
 
+	requestedTier := or(member(conf, "service_tier"), "auto")
+	if truthy(requestedTier) && !isStr(requestedTier, "auto") {
+		body.Set("service_tier", requestedTier)
+	}
+
 	useTools := opts != nil && len(opts.Tools) > 0
 	if useTools {
 		tools := make([]any, len(opts.Tools))
@@ -498,7 +507,7 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 		body.Set("tools", tools)
 	}
 
-	p.logProvider("api-call", logger.Fields{{Key: "provider", Value: "openai"}, {Key: "model", Value: model}, {Key: "endpoint", Value: "responses"}, {Key: "tools", Value: useTools}})
+	p.logProvider("api-call", logger.Fields{{Key: "provider", Value: "openai"}, {Key: "model", Value: model}, {Key: "endpoint", Value: "responses"}, {Key: "serviceTier", Value: logValue(requestedTier)}, {Key: "tools", Value: useTools}})
 
 	url, err := endpoint("OPENAI_API_BASE", "/v1/responses")
 	if err != nil {
@@ -574,7 +583,7 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 	}
 
 	serviceTier, _ := get(data, "service_tier")
-	appliedTier := coalesce(serviceTier, "default")
+	appliedTier := coalesce(serviceTier, requestedTier)
 	usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
 	cost, err := openaiComputeCost(model, appliedTier, promptTokens, cached, completionTokens)
 	if err != nil {
