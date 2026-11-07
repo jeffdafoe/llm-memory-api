@@ -1,0 +1,58 @@
+---
+# Memory, planner and query-visibility settings for the shared cluster
+# (memory_api, salem, the Interchange databases), as a conf.d file.
+# include_dir = 'conf.d' is the last line of Debian's postgresql.conf, so
+# this file overrides it.
+#
+# Runs from setup.yml only, never from deploy.yml, and does not restart or
+# reload PostgreSQL. shared_buffers and shared_preload_libraries load only at
+# server start: a deploy that wrote this file would leave the new values on
+# disk until some later restart, possibly an unplanned reboot. Roll a change
+# out in a planned window instead:
+#
+#   cd /opt/llm-memory-api/infrastructure
+#   sudo ansible-playbook -i inventory/production.yml playbooks/setup.yml --tags postgresql-tuning
+#   (graceful salem engine stop) → systemctl restart postgresql@17-main → checks
+#
+# The tag skips everything else in setup.yml, including the secrets prompt.
+
+- name: Write and check the PostgreSQL tuning file
+  block:
+    - name: Write conf.d/50-llm-memory-tuning.conf
+      template:
+        src: llm-memory-tuning.conf.j2
+        dest: /etc/postgresql/{{ postgresql_version }}/main/conf.d/50-llm-memory-tuning.conf
+        owner: postgres
+        group: postgres
+        mode: '0644'
+
+    # Parse the whole config (postgresql.conf plus conf.d) the way the next
+    # start will. postgres -C exits non-zero on any config error and is safe
+    # while the server runs; it must run as postgres, not root.
+    - name: Check the server can start with the new config
+      command: >-
+        /usr/sbin/runuser -u postgres --
+        /usr/lib/postgresql/{{ postgresql_version }}/bin/postgres
+        -D /var/lib/postgresql/{{ postgresql_version }}/main
+        -c config_file=/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
+        -C shared_preload_libraries
+      register: postgresql_tuning_check
+      changed_when: false
+      failed_when: >-
+        postgresql_tuning_check.rc != 0
+        or 'pg_stat_statements' not in postgresql_tuning_check.stdout
+
+  # A file the server cannot parse would stop the next PostgreSQL start, and
+  # Debian's unit never retries. Take it away so the cluster stays startable.
+  rescue:
+    - name: Remove the tuning file the server cannot use
+      file:
+        path: /etc/postgresql/{{ postgresql_version }}/main/conf.d/50-llm-memory-tuning.conf
+        state: absent
+
+    - name: Stop on the bad tuning file
+      fail:
+        msg: >-
+          conf.d/50-llm-memory-tuning.conf was removed: the server could not
+          parse the config with it. postgres -C said:
+          {{ postgresql_tuning_check.stderr | default(ansible_failed_result.msg | default('?')) }}
