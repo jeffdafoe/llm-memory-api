@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -302,6 +303,40 @@ func TestAgentsUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(t, "update", rec, 200, `{"agent":"admin","updated":true}`)
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type approveName struct{}
+
+func (approveName) ModerateActorName(ctx context.Context, name string) (bool, string) {
+	return true, ""
+}
+
+// A note saved into the new name's namespace after the availability check
+// (LLM-931): the check under the documents lock finds it, and no actor is
+// inserted.
+func TestActorsCreateRefusesANamespaceTakenAfterTheCheck(t *testing.T) {
+	rt, mock, _ := newRoutes(t, nil)
+	rt.Moderator = approveName{}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, name FROM actors WHERE name = $1")).WithArgs("newcomer").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT 1 FROM documents WHERE namespace = $1")).WithArgs("newcomer").
+		WillReturnRows(pgxmock.NewRows([]string{"?column?"}))
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT realms, email FROM actors WHERE id = $1")).WithArgs(2).
+		WillReturnRows(pgxmock.NewRows([]string{"realms", "email"}).AddRow([]string{"contract"}, (*string)(nil)))
+	mock.ExpectExec(regexp.QuoteMeta("SET LOCAL lock_timeout = '5s'")).WillReturnResult(pgxmock.NewResult("SET", 0))
+	mock.ExpectExec(regexp.QuoteMeta("LOCK TABLE documents IN SHARE MODE")).WillReturnResult(pgxmock.NewResult("LOCK TABLE", 0))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT 1 FROM documents WHERE namespace = $1")).WithArgs("newcomer").
+		WillReturnRows(pgxmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectRollback()
+	rec := httptest.NewRecorder()
+	if err := rt.actorsCreate(rec, request(`{"name":"newcomer"}`)); err != nil {
+		t.Fatal(err)
+	}
+	check(t, "create", rec, 409, errorBody("ALREADY_EXISTS", "This name conflicts with an existing namespace."))
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}
