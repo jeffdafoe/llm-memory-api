@@ -21,6 +21,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/diceware"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/frontmatter"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
@@ -554,14 +555,14 @@ func (rt *Routes) applyWelcome(ctx context.Context, agentName string) error {
 	if content == nil {
 		return errors.New("Cannot read properties of null (reading 'match')")
 	}
-	front, tplBody := parseFrontmatter(*content)
+	front, tplBody := frontmatter.Parse(*content)
 	mailBody := strings.ReplaceAll(tplBody, "{agent}", agentName)
 	if _, err := rt.DB.Exec(ctx,
 		"UPDATE agent_configuration SET startup_instructions = $1 WHERE actor_id = (SELECT id FROM actors WHERE name = $2)",
 		mailBody, agentName); err != nil {
 		return err
 	}
-	subject := front.get("subject", "Welcome, {agent}")
+	subject := front.Get("subject", "Welcome, {agent}")
 	_, err = rt.Mail.Send(ctx, agentName, "system", strings.ReplaceAll(subject, "{agent}", agentName), mailBody, "")
 	return err
 }
@@ -576,12 +577,12 @@ func (rt *Routes) saveGettingStarted(ctx context.Context, agentName, phrase, api
 	if content == nil {
 		return errors.New("Cannot read properties of null (reading 'match')")
 	}
-	front, tplBody := parseFrontmatter(*content)
+	front, tplBody := frontmatter.Parse(*content)
 	noteBody := strings.ReplaceAll(tplBody, "{agent}", agentName)
 	noteBody = strings.ReplaceAll(noteBody, "{passphrase}", phrase)
 	noteBody = strings.ReplaceAll(noteBody, "{api_key}", apiKey)
-	title := strings.ReplaceAll(front.get("title", "Getting Started"), "{agent}", agentName)
-	slug := front.get("slug", "instructions/getting-started")
+	title := strings.ReplaceAll(front.Get("title", "Getting Started"), "{agent}", agentName)
+	slug := front.Get("slug", "instructions/getting-started")
 	// Node passed the new actor's id where saveNote takes a creator name, so
 	// the creator is looked up by that number as a name.
 	_, err = rt.Notes.Save(ctx, notes.SaveInput{

@@ -191,7 +191,7 @@ func TestVAAccessPlainErrors(t *testing.T) {
 	rec := httptest.NewRecorder()
 	rt.vaAccessGrant(rec, request(`{}`))
 	check(t, "grant missing", rec, 400, `{"error":"virtual_agent_id required"}`)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT virtual FROM agent_configuration WHERE actor_id = $1")).WithArgs(jsNumber("3")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT virtual FROM agent_configuration WHERE actor_id = $1")).WithArgs(boundNumber("3")).
 		WillReturnRows(pgxmock.NewRows([]string{"virtual"}).AddRow(false))
 	rec = httptest.NewRecorder()
 	rt.vaAccessGrant(rec, request(`{"virtual_agent_id":3}`))
@@ -199,7 +199,7 @@ func TestVAAccessPlainErrors(t *testing.T) {
 	rec = httptest.NewRecorder()
 	rt.vaAccessRevoke(rec, request(`{"id":0}`))
 	check(t, "revoke missing", rec, 400, `{"error":"id required"}`)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT virtual_agent_id FROM virtual_agent_access WHERE id = $1")).WithArgs(jsNumber("9")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT virtual_agent_id FROM virtual_agent_access WHERE id = $1")).WithArgs(boundNumber("9")).
 		WillReturnRows(pgxmock.NewRows([]string{"virtual_agent_id"}))
 	rec = httptest.NewRecorder()
 	rt.vaAccessRevoke(rec, request(`{"id":9}`))
@@ -209,4 +209,4 @@ func TestVAAccessPlainErrors(t *testing.T) {
 	}
 }
 
-func jsNumber(s string) jsutil.Number { return jsutil.Number(s) }
+func boundNumber(s string) jsutil.Number { return jsutil.Number(s) }

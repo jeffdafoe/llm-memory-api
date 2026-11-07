@@ -67,7 +67,8 @@ func (r Row) Get(name string) (json.RawMessage, bool) {
 // String returns column name when it is a JSON string.
 func (r Row) String(name string) (string, bool) {
 	v, ok := r.Get(name)
-	if !ok {
+	// json.Unmarshal accepts null into a string; null is not a string.
+	if !ok || len(v) == 0 || v[0] != '"' {
 		return "", false
 	}
 	var s string
@@ -77,7 +78,9 @@ func (r Row) String(name string) (string, bool) {
 	return s, true
 }
 
-func (r *Row) set(name string, value json.RawMessage) {
+// Set is row[name] = value: an existing column keeps its place, a new one
+// goes last.
+func (r *Row) Set(name string, value json.RawMessage) {
 	for i := range *r {
 		if (*r)[i].Name == name {
 			(*r)[i].Value = value
@@ -85,6 +88,16 @@ func (r *Row) set(name string, value json.RawMessage) {
 		}
 	}
 	*r = append(*r, Field{Name: name, Value: value})
+}
+
+// Delete is delete row[name].
+func (r *Row) Delete(name string) {
+	for i := range *r {
+		if (*r)[i].Name == name {
+			*r = append((*r)[:i], (*r)[i+1:]...)
+			return
+		}
+	}
 }
 
 // Query runs sql and returns every row. The results are asked for in text
@@ -111,7 +124,7 @@ func Query(ctx context.Context, conn db.DB, sql string, args ...any) ([]Row, err
 					return nil, fmt.Errorf("column %s: %w", fd.Name, err)
 				}
 			}
-			row.set(fd.Name, v)
+			row.Set(fd.Name, v)
 		}
 		out = append(out, row)
 	}
