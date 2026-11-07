@@ -44,9 +44,9 @@ func TestParseMatchesNode(t *testing.T) {
 
 func TestRowKeepsFirstPlaceOfARepeatedName(t *testing.T) {
 	var r Row
-	r.set("a", json.RawMessage("1"))
-	r.set("b", json.RawMessage("2"))
-	r.set("a", json.RawMessage("3"))
+	r.Set("a", json.RawMessage("1"))
+	r.Set("b", json.RawMessage("2"))
+	r.Set("a", json.RawMessage("3"))
 	got, err := json.Marshal(r)
 	if err != nil || string(got) != `{"a":3,"b":2}` {
 		t.Errorf("%s %v", got, err)

@@ -1,4 +1,6 @@
-package registration
+// Package frontmatter reads the "key: value" header of a template
+// (Node's parseTemplateFrontmatter in routes/admin.js).
+package frontmatter
 
 import (
 	"strings"
@@ -6,24 +8,24 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 )
 
-// frontmatter is a template's "key: value" header lines.
-type frontmatter map[string]string
+// Header is a template's "key: value" header lines.
+type Header map[string]string
 
-// get is `frontmatter[key] || fallback`.
-func (f frontmatter) get(key, fallback string) string {
+// Get is `frontmatter[key] || fallback`.
+func (f Header) Get(key, fallback string) string {
 	if v := f[key]; v != "" {
 		return v
 	}
 	return fallback
 }
 
-// parseFrontmatter splits a template into its header and body, as Node's
+// Parse splits a template into its header and body, as Node's
 // parseTemplateFrontmatter: the content must match
 // /^---\n([\s\S]*?)\n---\n\n?([\s\S]*)$/, else there is no header and the
 // whole content is the body. Each header line with a colon after its first
 // character is a key and a value, both trimmed; a later key wins.
-func parseFrontmatter(content string) (frontmatter, string) {
-	f := frontmatter{}
+func Parse(content string) (Header, string) {
+	f := Header{}
 	if !strings.HasPrefix(content, "---\n") {
 		return f, content
 	}
