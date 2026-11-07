@@ -140,16 +140,27 @@ func (s *Service) sendEvent(ctx context.Context, discussionID ID, message, failu
 	})
 }
 
-// eventTimeout bounds an awaited event write once it no longer follows the
-// request's context.
+// eventTimeout bounds an inline write whose caller set no deadline.
 const eventTimeout = 30 * time.Second
+
+// keepDeadline is ctx without the client's cancellation but with its
+// deadline: an inline write shares the request's budget with the rest of
+// the request, so it cannot run past the point where the next query would
+// fail anyway. A context with no deadline gets eventTimeout.
+func keepDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	detached := context.WithoutCancel(ctx)
+	if deadline, ok := ctx.Deadline(); ok {
+		return context.WithDeadline(detached, deadline)
+	}
+	return context.WithTimeout(detached, eventTimeout)
+}
 
 // sendEventNow is `await sendDiscussionEvent(id, message).catch(log)`: the
 // event line is written before the caller goes on, so it takes its chat ids
 // ahead of any job the caller starts next. A failure is logged and ignored,
 // and a client hanging up does not stop the write.
 func (s *Service) sendEventNow(ctx context.Context, discussionID ID, message, failure string) {
-	eventCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), eventTimeout)
+	eventCtx, cancel := keepDeadline(ctx)
 	defer cancel()
 	if _, err := s.Notifier.SendDiscussionEvent(eventCtx, eventParam(discussionID), message); err != nil {
 		s.Log.Errorf("%s: %s", failure, err)
@@ -266,7 +277,7 @@ func (s *Service) activate(ctx context.Context, discussionID ID, reason string) 
 	// event). The virtual agents still run in the background, from
 	// NotifySystem. A failure is ignored, as Node's .catch did, and a client
 	// hanging up does not stop the write.
-	notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), eventTimeout)
+	notifyCtx, cancel := keepDeadline(ctx)
 	defer cancel()
 	s.Notifier.NotifySystem(notifyCtx, vaTrigger{Type: "virtual-agent", DiscussionID: discussionID, TriggerType: "discussion-active"})
 	return nil

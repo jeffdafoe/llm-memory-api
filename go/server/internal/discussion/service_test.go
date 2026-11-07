@@ -750,6 +750,11 @@ func (h *heldDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row 
 	if err := ctx.Err(); err != nil {
 		return errRow{err}
 	}
+	// A deadline that has passed fails the query even before the context's
+	// own timer has fired, as pgx does.
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return errRow{context.DeadlineExceeded}
+	}
 	if strings.HasPrefix(sql, insertTextSQL) {
 		h.note(args[0].(string))
 	}
@@ -947,5 +952,84 @@ func TestJoinAfterFirstCheckActivatesWritesTriggerFirst(t *testing.T) {
 	testutil.WaitMet(t, mock)
 	if got, want := held.seen(), "activate | "+trigger+" | "+event; got != want {
 		t.Errorf("order\n got %s\nwant %s", got, want)
+	}
+}
+
+// The inline event write shares the request's deadline. With the event's
+// delivery held past that deadline, Join gives up when the request's budget
+// runs out: the participant stays joined, readiness does not run, and the
+// discussion stays waiting until the next readiness check (a status read or
+// another join).
+func TestJoinSharesTheRequestDeadline(t *testing.T) {
+	s, mock := newService(t)
+	expectActorByName(mock, "system", 10)
+	if _, _, err := s.Actors.ResolveByName(context.Background(), "system"); err != nil {
+		t.Fatal(err)
+	}
+	future := fixedNow.Add(time.Minute)
+	statusOf := q("SELECT status FROM discussions WHERE id = $1")
+	const event = "b joined the discussion"
+
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("waiting"))
+	mock.ExpectQuery(q(readinessHead)).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status", "timeout_at"}).AddRow("waiting", &future))
+	mock.ExpectQuery(q(readinessMembers)).WithArgs(num("7")).WillReturnRows(members(
+		[3]string{"a", "joined", "required"}, [3]string{"b", "invited", "required"}))
+	mock.ExpectQuery(statusOf).WithArgs(num("7")).WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("waiting"))
+	expectActorByName(mock, "b", 2)
+	mock.ExpectQuery(q("SELECT status FROM discussion_participants WHERE discussion_id = $1 AND actor_id = $2")).WithArgs(num("7"), 2).
+		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("invited"))
+	mock.ExpectExec(q("UPDATE discussion_participants SET status = $1, joined_at = NOW() WHERE discussion_id = $2 AND actor_id = $3")).
+		WithArgs("joined", num("7"), 2).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(q(insertTextSQL)).WithArgs(event, 10, num("7")).WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(50, fixedNow))
+	mock.ExpectQuery(q(insertDeliverySQL)).WithArgs(50, 10).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(60))
+
+	held := newHeldDB(t, mock, func(sql string, args []any) bool {
+		return strings.HasPrefix(sql, insertDeliverySQL) && args[0] == 50
+	})
+	s.DB, s.Notifier.DB = held, held
+
+	// The request's context as the callers build it: no client
+	// cancellation, a deadline of its own.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), 150*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Join(ctx, IntID(7), "b")
+		done <- err
+	}()
+	// The delivery is never released by hand: only the deadline ends it.
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Join after the deadline: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Join outlived the request's deadline")
+	}
+	if got := held.seen(); got != event {
+		t.Errorf("after the deadline, got %q, want only the event (no activation)", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestKeepDeadline(t *testing.T) {
+	parent, cancelParent := context.WithTimeout(context.Background(), time.Hour)
+	want, _ := parent.Deadline()
+	ctx, cancel := keepDeadline(parent)
+	defer cancel()
+	cancelParent()
+	if got, ok := ctx.Deadline(); !ok || !got.Equal(want) {
+		t.Errorf("deadline %v %v, want the parent's %v", got, ok, want)
+	}
+	if ctx.Err() != nil {
+		t.Errorf("a cancelled parent ended the write: %v", ctx.Err())
+	}
+
+	ctx2, cancel2 := keepDeadline(context.Background())
+	defer cancel2()
+	if got, ok := ctx2.Deadline(); !ok || time.Until(got) > eventTimeout || time.Until(got) < eventTimeout-time.Minute {
+		t.Errorf("no parent deadline: got %v %v, want about %v from now", got, ok, eventTimeout)
 	}
 }
