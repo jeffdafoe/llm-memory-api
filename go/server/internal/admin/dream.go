@@ -26,7 +26,11 @@ type DreamRoutes struct {
 	Now func() time.Time
 }
 
-// Register adds the route to the admin mux.
+// Register adds the route to the admin mux. It is the one admin route
+// without detach's 30 s bound, on purpose: it makes one model call per
+// relationship file and runs for minutes. Node set no limit, and nginx does
+// not cut it either (proxy_read_timeout 86400s on /v1/). Each provider call
+// still has its own timeout. Do not move it to Handle.
 func (rt *DreamRoutes) Register(mux *httpapi.RawMux) {
 	rt.HandleUnbounded(mux, "/admin/dream/consolidate-people", "agents", "write", "dream-consolidate-people", rt.consolidatePeople)
 }
