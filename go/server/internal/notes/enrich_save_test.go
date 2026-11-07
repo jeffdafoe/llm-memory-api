@@ -14,6 +14,8 @@ import (
 
 // enrichProbe records the context and metadata the save hands the enricher.
 type enrichProbe struct {
+	// release holds the probe until the test has cancelled the request.
+	release     chan struct{}
 	done        chan struct{}
 	hasDeadline bool
 	cancelled   bool
@@ -21,12 +23,16 @@ type enrichProbe struct {
 }
 
 func (p *enrichProbe) Enrich(ctx context.Context, namespace, slug, title, content string, metadata []byte) error {
+	<-p.release
 	_, p.hasDeadline = ctx.Deadline()
-	// The caller's request is over by now (the test cancels it first).
 	p.cancelled = ctx.Err() != nil
 	p.metadata = string(metadata)
 	close(p.done)
 	return nil
+}
+
+func newProbe() *enrichProbe {
+	return &enrichProbe{release: make(chan struct{}), done: make(chan struct{})}
 }
 
 // upsertSaving answers an upsert of agent-a/context/x over a live note of
@@ -51,13 +57,14 @@ func upsertSaving(t *testing.T, meta string, enricher Enricher) (*Service, pgxmo
 // the provider call it makes has its own timeout, past the 30 s that
 // db.Background allows.
 func TestSaveEnrichesUnbounded(t *testing.T) {
-	probe := &enrichProbe{done: make(chan struct{})}
+	probe := newProbe()
 	s, mock := upsertSaving(t, `{"a": 1}`, probe)
 	ctx, cancel := context.WithCancel(context.Background())
 	if _, err := s.Save(ctx, SaveInput{Namespace: "agent-a", Slug: "context/x", Title: "T", Content: "body", Upsert: true}); err != nil {
 		t.Fatal(err)
 	}
 	cancel()
+	close(probe.release)
 	select {
 	case <-probe.done:
 	case <-time.After(5 * time.Second):
@@ -77,7 +84,8 @@ func TestSaveEnrichesUnbounded(t *testing.T) {
 // the save after the row is written.
 func TestSaveFailsOnStoredMetadataNodeCannotParse(t *testing.T) {
 	for _, meta := range []string{`"not json"`, `1e400`} {
-		probe := &enrichProbe{done: make(chan struct{})}
+		probe := newProbe()
+		close(probe.release)
 		s, mock := upsertSaving(t, meta, probe)
 		if _, err := s.Save(context.Background(), SaveInput{Namespace: "agent-a", Slug: "context/x", Title: "T", Content: "body", Upsert: true}); err == nil {
 			t.Errorf("%s: saved", meta)
@@ -86,7 +94,7 @@ func TestSaveFailsOnStoredMetadataNodeCannotParse(t *testing.T) {
 		select {
 		case <-probe.done:
 			t.Errorf("%s: enriched", meta)
-		default:
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 }
