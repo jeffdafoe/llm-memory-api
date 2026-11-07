@@ -19,6 +19,17 @@ server {
     return 444;
 }
 
+{# The server-wide security headers. A location with its own add_header
+   inherits none of the server's, so those locations repeat these. #}
+{% macro security_headers() %}
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Strict-Transport-Security "max-age=86400; includeSubDomains" always;
+{%- endmacro %}
+{# The admin UI's Content-Security-Policy, the same value Express sends
+   (node/api/src/middleware/admin-csp.js, where each part is explained). #}
+{% set admin_csp = "script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" %}
 {% for domain in server_name_list %}
 # HTTP → HTTPS redirect for {{ domain }}
 server {
@@ -54,10 +65,7 @@ server {
     client_max_body_size 10m;
 
     # Security headers
-    add_header X-Frame-Options "DENY" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Strict-Transport-Security "max-age=86400; includeSubDomains" always;
+    {{ security_headers() | indent(4) }}
 
     # Block WordPress/CMS scanning bots — return 444 (drop connection, no response body)
     # Logged so fail2ban can detect repeat offenders and ban their IP
@@ -155,6 +163,76 @@ server {
     location = / {
         return 302 /admin/;
     }
+{% endif %}
+{% if memory_api_backend == 'go' %}
+
+    # Files Express served and the Go server does not: the admin UI, the
+    # landing pages, llms.txt and openapi.yaml. Same headers as Express sent.
+    location = /admin {
+        return 301 /admin/;
+    }
+
+    # /admin/ws (above) is a longer prefix, so it still goes to the server.
+    location /admin/ {
+        alias {{ project_root }}/public/admin/dist/;
+        index index.html;
+        charset utf-8;
+        {{ security_headers() | indent(8) }}
+        add_header Content-Security-Policy "{{ admin_csp }}" always;
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    }
+
+    # Built files carry a content hash in their names.
+    location /admin/assets/ {
+        alias {{ project_root }}/public/admin/dist/assets/;
+        charset utf-8;
+        {{ security_headers() | indent(8) }}
+        add_header Content-Security-Policy "{{ admin_csp }}" always;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+{% if domain in public_domains %}
+    location = / {
+        root {{ project_root }}/public;
+        try_files /landing/index.html =404;
+        charset utf-8;
+        {{ security_headers() | indent(8) }}
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+    }
+
+{% endif %}
+    # expires 0 is Express's max-age=0 for these, and unlike add_header it
+    # keeps the server's security headers.
+    location = /register {
+        root {{ project_root }}/public;
+        try_files /landing/register.html =404;
+        charset utf-8;
+        expires 0;
+    }
+
+    location = /agents {
+        root {{ project_root }}/public;
+        try_files /landing/agents.html =404;
+        charset utf-8;
+        expires 0;
+    }
+
+    location = /llms.txt {
+        root {{ project_root }}/public;
+        charset utf-8;
+        expires 0;
+    }
+
+    location = /openapi.yaml {
+        root {{ project_root }}/public;
+        types { }
+        default_type text/yaml;
+        charset utf-8;
+        charset_types text/yaml;
+        expires 0;
+    }
+
 {% endif %}
 
     # Custom error page for upstream failures (e.g. during deploys)
