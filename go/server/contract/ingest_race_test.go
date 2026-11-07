@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -43,7 +45,10 @@ func TestIngestConcurrentKeepsOneVersion(t *testing.T) {
 }
 
 func raceIngestOneSide(t *testing.T, side string) {
-	ctx := context.Background()
+	// A stuck ingest fails the test with the server's output, instead of
+	// hanging until the package timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
 	fake := NewFakeUpstream()
 	t.Cleanup(fake.Close)
 	db, err := harness.cluster.Copy(ctx, side)
@@ -51,7 +56,9 @@ func raceIngestOneSide(t *testing.T, side string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := db.Drop(context.Background()); err != nil {
+		dropCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := db.Drop(dropCtx); err != nil {
 			t.Logf("drop %s: %v", db.Name, err)
 		}
 	})
@@ -60,6 +67,10 @@ func raceIngestOneSide(t *testing.T, side string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(proc.Stop)
+	fail := func(format string, args ...any) {
+		t.Helper()
+		t.Fatalf("%s\n--- %s output ---\n%s", fmt.Sprintf(format, args...), side, tail(proc.Output(), 3000))
+	}
 
 	token := Credentials()["agent-a-session"]
 	errs := make([]error, raceIngests)
@@ -74,16 +85,15 @@ func raceIngestOneSide(t *testing.T, side string) {
 			if i%2 == 1 {
 				file = "RACE/Doc"
 			}
-			body := fmt.Sprintf(`{"namespace":"agent-a","source_file":%q,"content":"# Part one\n\nversion %d, part one.\n\n# Part two\n\nversion %d, part two."}`, file, i, i)
 			start.Wait()
-			errs[i] = postIngest(ctx, proc.BaseURL, token, body)
+			errs[i] = postIngest(ctx, proc.BaseURL, token, raceBody(file, strconv.Itoa(i)))
 		}()
 	}
 	start.Done()
 	done.Wait()
 	for i, err := range errs {
 		if err != nil {
-			t.Fatalf("ingest %d: %v\n--- %s output ---\n%s", i, err, side, tail(proc.Output(), 3000))
+			fail("ingest %d: %v", i, err)
 		}
 	}
 
@@ -91,15 +101,8 @@ func raceIngestOneSide(t *testing.T, side string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(ctx)
-	rows, err := conn.Query(ctx, "SELECT chunk_text FROM memory_chunks WHERE namespace = 'agent-a' AND LOWER(source_file) = 'race/doc'")
-	if err != nil {
-		t.Fatal(err)
-	}
-	texts, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		t.Fatal(err)
-	}
+	defer conn.Close(context.Background())
+	texts := raceChunks(t, ctx, conn)
 	versions := map[string]bool{}
 	for _, text := range texts {
 		m := raceVersion.FindStringSubmatch(text)
@@ -111,6 +114,74 @@ func raceIngestOneSide(t *testing.T, side string) {
 	if len(texts) != 2 || len(versions) != 1 {
 		t.Errorf("%d chunks from %d versions after %d ingests at once, want 2 chunks from 1 version: %q", len(texts), len(versions), raceIngests, texts)
 	}
+
+	// The burst can pass by luck. This cannot: hold the file's lock from
+	// outside, and an ingest must wait on it until the holder commits.
+	holder, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback(context.Background())
+	if _, err := holder.Exec(ctx, "SELECT pg_advisory_xact_lock(919001, hashtext('agent-a' || '/' || LOWER('RACE/Doc')))"); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		result <- postIngest(ctx, proc.BaseURL, token, raceBody("Race/DOC", "held"))
+	}()
+	for {
+		var waiting bool
+		err := holder.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_locks
+			WHERE locktype = 'advisory' AND classid = 919001 AND NOT granted
+			AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))`).Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-result:
+			fail("the ingest finished while the file's lock was held (err %v)", err)
+		case <-ctx.Done():
+			fail("the ingest never waited on the file's lock")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			fail("ingest after the lock: %v", err)
+		}
+	case <-ctx.Done():
+		fail("the ingest did not finish after the lock was released")
+	}
+	texts = raceChunks(t, ctx, conn)
+	if len(texts) != 2 || !strings.Contains(texts[0], "version held") || !strings.Contains(texts[1], "version held") {
+		t.Errorf("after the held ingest: %q, want its 2 chunks only", texts)
+	}
+}
+
+// raceBody is an ingest of two chunks, each tagged with the version.
+func raceBody(file, version string) string {
+	return fmt.Sprintf(`{"namespace":"agent-a","source_file":%q,"content":"# Part one\n\nversion %s, part one.\n\n# Part two\n\nversion %s, part two."}`, file, version, version)
+}
+
+// raceChunks reads the test file's chunks.
+func raceChunks(t *testing.T, ctx context.Context, conn *pgx.Conn) []string {
+	t.Helper()
+	rows, err := conn.Query(ctx, "SELECT chunk_text FROM memory_chunks WHERE namespace = 'agent-a' AND LOWER(source_file) = 'race/doc' ORDER BY id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return texts
 }
 
 func postIngest(ctx context.Context, baseURL, token, body string) error {
