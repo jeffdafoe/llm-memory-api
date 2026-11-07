@@ -51,9 +51,11 @@ func reportArgs(actorID *int, source, code string, details *string, status strin
 	return []any{actorID, source, code, details, status, action, resolvedArg}
 }
 
+var testTime = time.Date(2026, 11, 7, 16, 0, 0, 0, time.UTC)
+
 func returned(id int, status string, action *string) *pgxmock.Rows {
 	return pgxmock.NewRows([]string{"id", "status", "handler_action", "reported_at"}).
-		AddRow(id, status, action, time.Date(2026, 11, 7, 16, 0, 0, 0, time.UTC))
+		AddRow(id, status, action, testTime)
 }
 
 func ptr[T any](v T) *T { return &v }
