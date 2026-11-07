@@ -34,6 +34,7 @@ func (rt *ContentRoutes) Register(mux *httpapi.RawMux) {
 	rt.handle(mux, "/admin/notes/save", "notes", "write", "notes-save", rt.notesSave)
 	rt.handle(mux, "/admin/notes/delete", "notes", "delete", "notes-delete", rt.notesDelete)
 	rt.handle(mux, "/admin/notes/move", "notes", "write", "notes-move", rt.notesMove)
+	rt.handle(mux, "/admin/notes/move-prefix", "notes", "write", "notes-move-prefix", rt.notesMovePrefix)
 	rt.handle(mux, "/admin/notes/search", "notes", "read", "notes-search", rt.notesSearch)
 	rt.handle(mux, "/admin/notes/namespaces", "notes", "read", "notes-namespaces", rt.notesNamespaces)
 	rt.handle(mux, "/admin/notes/reindex", "notes", "write", "notes-reindex", rt.notesReindex)
