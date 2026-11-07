@@ -184,16 +184,14 @@ func (s *Server) runTool(ctx context.Context, handler toolHandler, name string, 
 	return handler(s, ctx, valid, c)
 }
 
-// stampTimeout bounds the tool-call stamp, so a stuck database cannot hold
-// the tool call forever.
-const stampTimeout = 30 * time.Second
-
 // stampToolCall is signup-funnel's stampToolCall: the account's first and
 // last tool call and its count. It finishes before the tool runs, so the
 // stamp is written by the time the response goes out (LLM-954: in the
 // background it could land after a reader that came right after the call).
-// A client hang-up does not stop it. A failed write goes to stderr and the
-// tool still runs; a missing signup_funnel_since key is returned, as Node's
+// It runs on the tool call's context, which is already detached from the
+// client with toolTimeout (detached), so a hang-up does not stop it and it
+// shares the tool's time limit. A failed write goes to stderr and the tool
+// still runs; a missing signup_funnel_since key is returned, as Node's
 // config read threw before the query.
 func (s *Server) stampToolCall(ctx context.Context, actorID int) error {
 	if actorID == 0 {
@@ -203,9 +201,7 @@ func (s *Server) stampToolCall(ctx context.Context, actorID int) error {
 	if err != nil {
 		return err
 	}
-	stampCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), stampTimeout)
-	defer cancel()
-	_, err = s.DB.Exec(stampCtx, `UPDATE actors
+	_, err = s.DB.Exec(ctx, `UPDATE actors
          SET first_tool_call_at = COALESCE(first_tool_call_at,
                  CASE WHEN created_at >= $2::timestamptz THEN NOW() END),
              last_tool_call_at = NOW(),
