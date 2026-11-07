@@ -97,6 +97,7 @@ func NewServices(conn db.DB, store *config.Store, logDir string) *Services {
 	sysHandler.Register("virtual-agent", vaService.HandleVirtualAgent)
 	admin := &permissions.Admin{DB: conn, Errorf: log.Errorf}
 	notifier := &system.Notifier{DB: conn, Actors: actorCache, Handler: sysHandler}
+	recorder.Notifier = notifier
 	// Chat calls the virtual agents the same way: a chat message to one is
 	// answered through HandleDirectChat, which sends its reply as chat.
 	chatService := &chat.Service{
@@ -217,6 +218,7 @@ func Handler(s *Services) http.Handler {
 		Sessions: s.Sessions, SessionAuth: s.SessionAuth, Notes: s.Notes,
 		Namespaces: s.Namespaces, Visibility: s.Visibility, Agents: s.Agents,
 	}).Register(v1)
+	(&syserrors.Routes{Recorder: s.Errors, Router: s.Router, Log: s.Log}).Register(v1)
 	// routes/sim.js is mounted after the routes above in Node; its /sim gate
 	// sits in front of the mux because it applies to every method and
 	// path under /sim (simapi.Routes.Mount).
