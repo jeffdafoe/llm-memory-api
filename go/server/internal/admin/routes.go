@@ -46,6 +46,8 @@ type Routes struct {
 	Mail        *mail.Service
 	Notes       *notes.Service
 	Moderator   Moderator
+	// BaseURL is BASE_URL; empty means the request's own http://host.
+	BaseURL string
 	// Now is the clock for session expiry; nil is time.Now.
 	Now func() time.Time
 
@@ -120,6 +122,17 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	rt.Handle(mux, "/admin/agents/update", "agents", "write", "agents-update", rt.agentsUpdate)
 	rt.Handle(mux, "/admin/agents/usage", "agents", "read", "agents-usage", rt.agentsUsage)
 	rt.Handle(mux, "/admin/agents/call-detail", "agents", "read", "agents-call-detail", rt.agentsCallDetail)
+
+	rt.Handle(mux, "/admin/templates/list", "templates", "read", "templates-list", rt.templatesList)
+	rt.Handle(mux, "/admin/templates/read", "templates", "read", "templates-read", rt.templatesRead)
+	rt.Handle(mux, "/admin/templates/save", "templates", "write", "templates-save", rt.templatesSave)
+	rt.Handle(mux, "/admin/templates/delete", "templates", "delete", "templates-delete", rt.templatesDelete)
+	rt.Handle(mux, "/admin/access-requests", "access", "read", "access-requests-list", rt.accessRequestsList)
+	rt.Handle(mux, "/admin/access-requests/approve", "access", "write", "access-requests-approve", rt.accessRequestsApprove)
+	rt.Handle(mux, "/admin/access-requests/reject", "access", "write", "access-requests-reject", rt.accessRequestsReject)
+	rt.Handle(mux, "/admin/invite-codes", "access", "read", "invite-codes-list", rt.inviteCodesList)
+	rt.Handle(mux, "/admin/invite-codes/generate", "access", "write", "invite-codes-generate", rt.inviteCodesGenerate)
+	rt.Handle(mux, "/admin/invite-codes/delete", "access", "write", "invite-codes-delete", rt.inviteCodesDelete)
 }
 
 // fail is the catch block of the routes outside adminRoute: the error on
