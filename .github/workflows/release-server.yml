@@ -178,12 +178,19 @@ jobs:
           cat "$notes"
 
       # Before anything is uploaded, so the release never holds a file without
-      # its attestation.
+      # its attestation: the files checksums.txt lists, and checksums.txt
+      # itself, which is uploaded too.
       - name: Attest the release files
         if: steps.existing.outputs.state != 'false'
         uses: actions/attest@v4
         with:
           subject-checksums: ${{ runner.temp }}/out/checksums.txt
+
+      - name: Attest checksums.txt
+        if: steps.existing.outputs.state != 'false'
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ runner.temp }}/out/checksums.txt
 
       # Uploaded as a draft: an unauthenticated lookup (the deploy's) does not
       # see it until it is published.
@@ -197,8 +204,9 @@ jobs:
               echo "Removing the draft a failed run left"
               gh release delete "$TAG" --yes
           fi
+          # The version, not the tag: every tag has the hyphen of "server-v".
           prerelease=()
-          case "$TAG" in
+          case "$VERSION" in
               *-*) prerelease=(--prerelease) ;;
           esac
           gh release create "$TAG" \
