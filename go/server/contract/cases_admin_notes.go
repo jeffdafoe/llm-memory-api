@@ -132,6 +132,9 @@ var adminNotesCases = []Scenario{
 	{Name: "admin notes move-prefix conflicts", Steps: []Step{
 		grantAdmin("agent-a", true, true, false),
 		contentPost(adminNotesSave, `{"namespace":"agent-a","slug":"archive/auth-middleware","title":"c","content":"conflict"}`),
+		// Each save indexes its note in the background; settling between
+		// them keeps their embedding calls in a fixed order.
+		{Settle: true},
 		contentPost(adminNotesSave, `{"namespace":"agent-a","slug":"notes/codebase/second","title":"s","content":"second"}`),
 		// A skipped note keeps its sync mapping; a moved one's follows it.
 		{SQL: `INSERT INTO note_synchronization (actor_id, namespace, slug, local_path, created_at)
