@@ -2,6 +2,15 @@ version: 2
 
 project_name: llm-memory-client
 
+# CI tags every commit on main build-<sha> for its per-commit server build
+# (build-artifacts in .github/workflows/ci.yml). They must never be the
+# previous tag, which goreleaser finds with `git describe --exclude` (a glob).
+# The current tag is set by GORELEASER_CURRENT_TAG in release.yml, because
+# goreleaser compares this list with the tags on HEAD by exact name only.
+git:
+  ignore_tags:
+    - "build-*"
+
 builds:
   - id: memory-sync
     main: ./cmd/memory-sync/
@@ -51,6 +60,24 @@ builds:
       - amd64
       - arm64
 
+  # The server: a static binary, as CI's per-commit build-artifacts job makes
+  # it. Linux only, since the deploy is a systemd unit.
+  - id: memory-api
+    main: ./cmd/memory-api/
+    dir: go/server
+    binary: memory-api
+    flags:
+      - -trimpath
+    ldflags:
+      - -X main.version={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
 archives:
   - id: memory-sync
     ids:
@@ -85,8 +112,27 @@ archives:
           - zip
     name_template: "mail-send_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
+  # Uploaded as the bare binary, the form the deploy installs.
+  - id: memory-api
+    ids:
+      - memory-api
+    formats:
+      - binary
+    name_template: "memory-api_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+# The admin UI build. release.yml builds it with Vite before goreleaser runs
+# and passes its path in ADMIN_DIST; it is outside the checkout, so the tree
+# stays clean for goreleaser.
+release:
+  extra_files:
+    - glob: "{{ .Env.ADMIN_DIST }}"
+      name_template: "admin-dist_{{ .Version }}.tar.gz"
+
 checksum:
   name_template: checksums.txt
+  extra_files:
+    - glob: "{{ .Env.ADMIN_DIST }}"
+      name_template: "admin-dist_{{ .Version }}.tar.gz"
 
 changelog:
   sort: asc

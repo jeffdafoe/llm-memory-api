@@ -1,5 +1,10 @@
 name: Release
 
+# A v* tag publishes one release: the client tools (memory-sync, discuss,
+# mail-send) for every platform, the server binary for linux/amd64 and
+# linux/arm64, and the admin UI build, with one checksums.txt (.goreleaser.yml).
+# Every file in checksums.txt gets a signed build provenance attestation.
+
 on:
   push:
     tags:
@@ -12,14 +17,39 @@ jobs:
   release:
     name: Build and Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # id-token mints the OIDC token for the Sigstore signing certificate;
+      # attestations stores the attestation.
+      id-token: write
+      attestations: write
+    env:
+      ADMIN_DIST: ${{ runner.temp }}/admin-dist.tar.gz
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
+      # go/client and go/server pin the same toolchain.
       - uses: actions/setup-go@v7
         with:
           go-version-file: go/client/go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      # --ignore-scripts: no dependency install script runs in a job that can
+      # write releases. node_modules and public/admin/dist are gitignored, so
+      # the tree stays clean for goreleaser.
+      - name: Build the admin UI
+        working-directory: node/api
+        run: |
+          npm ci --ignore-scripts
+          npx vite build
+          tar -czf "$ADMIN_DIST" -C public/admin/dist .
 
       - uses: goreleaser/goreleaser-action@v7
         with:
@@ -27,3 +57,11 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The pushed tag. The commit also carries CI's build-<sha> tag,
+          # which goreleaser would otherwise consider (.goreleaser.yml, git).
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+      - name: Attest the release files
+        uses: actions/attest@v4
+        with:
+          subject-checksums: dist/checksums.txt

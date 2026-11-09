@@ -6,8 +6,9 @@
 // read.
 //
 // `memory-api staleness-check <recipient>` instead runs the weekly staleness
-// check once (staleness.go), and `memory-api create-user <username>
-// <password>` creates an admin web user (createuser.go).
+// check once (staleness.go), `memory-api create-user <username>
+// <password>` creates an admin web user (createuser.go), and
+// `memory-api --version` prints the version.
 package main
 
 import (
@@ -38,7 +39,17 @@ const (
 	poolCloseWait   = 5 * time.Second
 )
 
+// version is set at build time with -ldflags "-X main.version=...": the tag
+// for a release (.goreleaser.yml), the commit for a per-commit build
+// (build-artifacts in .github/workflows/ci.yml). A plain `go build` leaves
+// "dev".
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println(version)
+		return
+	}
 	// The weekly staleness check is a root cron job, not part of the
 	// server: it runs once and exits.
 	if len(os.Args) > 1 && os.Args[1] == "staleness-check" {

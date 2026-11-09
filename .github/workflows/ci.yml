@@ -205,6 +205,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # id-token mints the OIDC token for the Sigstore signing certificate;
+      # attestations stores the attestation.
+      id-token: write
+      attestations: write
     # No concurrency group: a group holds one pending job, and a newer one
     # replaces it, so a commit between two quick merges would get no build.
     env:
@@ -227,7 +231,8 @@ jobs:
           cache: npm
           cache-dependency-path: node/api/package-lock.json
 
-      # Static linux/amd64 binary with no runtime dependencies.
+      # Static linux/amd64 binary with no runtime dependencies. Its version
+      # (`memory-api --version`) is the commit.
       - name: Build the Go server
         working-directory: go/server
         env:
@@ -237,7 +242,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/out"
           go version
-          go build -trimpath -o "$RUNNER_TEMP/out/memory-api" ./cmd/memory-api
+          go build -trimpath -ldflags "-X main.version=$GITHUB_SHA" -o "$RUNNER_TEMP/out/memory-api" ./cmd/memory-api
+          test "$("$RUNNER_TEMP/out/memory-api" --version)" = "$GITHUB_SHA"
 
       # --ignore-scripts: no dependency install script runs in a job that can
       # write releases.
@@ -254,32 +260,46 @@ jobs:
           sha256sum memory-api admin-dist.tar.gz > SHA256SUMS
           cat SHA256SUMS
 
-      # Never "latest": deploy-tools.yml reads releases/latest for the client
-      # binaries. gh keeps the release a draft until every file is uploaded,
-      # so a deploy never sees it half-published. A published build is never
-      # replaced, since a deploy may be downloading it: a re-run leaves it
-      # alone and only clears a draft or incomplete release left by a failed
-      # run.
-      - name: Publish the build
-        working-directory: ${{ runner.temp }}/out
+      # A published build is never replaced, since a deploy may be downloading
+      # it: a re-run leaves it alone (and does not attest its own rebuild,
+      # whose archive differs in its timestamps) and only clears a draft or
+      # incomplete release left by a failed run.
+      - name: Look for an earlier publish
+        id: existing
         run: |
           if state=$(gh release view "$TAG" --json isDraft,assets \
               --jq 'if .isDraft then "incomplete"
                     elif ([.assets[].name] | sort) == ["SHA256SUMS", "admin-dist.tar.gz", "memory-api"] then "complete"
-                    else "incomplete" end' 2>view.err); then
+                    else "incomplete" end' 2>"$RUNNER_TEMP/view.err"); then
               :
-          elif grep -q "release not found" view.err; then
+          elif grep -q "release not found" "$RUNNER_TEMP/view.err"; then
               state=missing
           else
-              cat view.err
+              cat "$RUNNER_TEMP/view.err"
               exit 1
           fi
-          rm -f view.err
+          echo "state=$state" >> "$GITHUB_OUTPUT"
           if [ "$state" = complete ]; then
               echo "$TAG is already published; leaving it as it is."
-              exit 0
           fi
-          if [ "$state" = incomplete ]; then
+
+      # Before the publish, so a published build always has its attestation.
+      - name: Attest the build
+        if: steps.existing.outputs.state != 'complete'
+        uses: actions/attest@v4
+        with:
+          subject-checksums: ${{ runner.temp }}/out/SHA256SUMS
+
+      # Never "latest": deploy-tools.yml reads releases/latest for the client
+      # binaries. gh keeps the release a draft until every file is uploaded,
+      # so a deploy never sees it half-published.
+      - name: Publish the build
+        if: steps.existing.outputs.state != 'complete'
+        working-directory: ${{ runner.temp }}/out
+        env:
+          STATE: ${{ steps.existing.outputs.state }}
+        run: |
+          if [ "$STATE" = incomplete ]; then
               echo "Removing the incomplete release $TAG"
               gh release delete "$TAG" --cleanup-tag --yes
           fi
