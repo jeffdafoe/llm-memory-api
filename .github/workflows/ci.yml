@@ -193,6 +193,41 @@ jobs:
         if: always()
         run: cat "$RUNNER_TEMP/server.log" || true
 
+  # The admin UI half of the per-commit build. Vite runs dependency code
+  # (plugins, and the packages it bundles), so it runs here, with read-only
+  # permissions, and not in build-artifacts, which can write releases and
+  # sign attestations. --ignore-scripts keeps install hooks from running too.
+  build-admin-ui:
+    name: Build Admin UI
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      - name: Build
+        working-directory: node/api
+        run: |
+          npm ci --ignore-scripts
+          npx vite build
+          tar -czf "$RUNNER_TEMP/admin-dist.tar.gz" -C public/admin/dist .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: admin-dist
+          path: ${{ runner.temp }}/admin-dist.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   # Per-commit build of what the deploy installs (LLM-904): the Go server
   # binary and the admin UI's Vite output, published with their checksums as
   # the prerelease build-<sha>. infrastructure/roles/memory-api-go downloads
@@ -201,7 +236,7 @@ jobs:
   build-artifacts:
     name: Build Artifacts
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [go-server]
+    needs: [go-server, build-admin-ui]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -219,17 +254,13 @@ jobs:
       TAG: build-${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go/server/go.mod
           cache: false
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: node/api/package-lock.json
 
       # Static linux/amd64 binary with no runtime dependencies. Its version
       # (`memory-api --version`) is the commit.
@@ -245,14 +276,10 @@ jobs:
           go build -trimpath -ldflags "-X main.version=$GITHUB_SHA" -o "$RUNNER_TEMP/out/memory-api" ./cmd/memory-api
           test "$("$RUNNER_TEMP/out/memory-api" --version)" = "$GITHUB_SHA"
 
-      # --ignore-scripts: no dependency install script runs in a job that can
-      # write releases.
-      - name: Build the admin UI
-        working-directory: node/api
-        run: |
-          npm ci --ignore-scripts
-          npx vite build
-          tar -czf "$RUNNER_TEMP/out/admin-dist.tar.gz" -C public/admin/dist .
+      - uses: actions/download-artifact@v8
+        with:
+          name: admin-dist
+          path: ${{ runner.temp }}/out
 
       - name: Write SHA256SUMS
         working-directory: ${{ runner.temp }}/out

@@ -3,7 +3,8 @@ name: Release
 # A v* tag publishes one release: the client tools (memory-sync, discuss,
 # mail-send) for every platform, the server binary for linux/amd64 and
 # linux/arm64, and the admin UI build, with one checksums.txt (.goreleaser.yml).
-# Every file in checksums.txt gets a signed build provenance attestation.
+# Every file in checksums.txt gets a signed build provenance attestation, and
+# the release becomes public only after that.
 
 on:
   push:
@@ -11,11 +12,46 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  # Vite runs dependency code (plugins, and the packages it bundles), so the
+  # admin UI is built here, with read-only permissions, and not in the job
+  # that can write releases and sign attestations. --ignore-scripts keeps
+  # install hooks from running too.
+  admin-ui:
+    name: Build the admin UI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      - name: Build
+        working-directory: node/api
+        run: |
+          npm ci --ignore-scripts
+          npx vite build
+          tar -czf "$RUNNER_TEMP/admin-dist.tar.gz" -C public/admin/dist .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: admin-dist
+          path: ${{ runner.temp }}/admin-dist.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     name: Build and Release
+    needs: admin-ui
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -24,34 +60,53 @@ jobs:
       id-token: write
       attestations: write
     env:
-      ADMIN_DIST: ${{ runner.temp }}/admin-dist.tar.gz
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      ADMIN_DIST: ${{ runner.temp }}/admin-dist/admin-dist.tar.gz
     steps:
+      # A re-run never touches a release that is already public, since
+      # someone may be downloading it. A draft left by a failed run is
+      # replaced (.goreleaser.yml, replace_existing_draft).
+      - name: Look for an earlier publish
+        id: existing
+        run: |
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>"$RUNNER_TEMP/view.err"); then
+              :
+          elif grep -q "release not found" "$RUNNER_TEMP/view.err"; then
+              draft=missing
+          else
+              cat "$RUNNER_TEMP/view.err"
+              exit 1
+          fi
+          if [ "$draft" = false ]; then
+              echo "$TAG is already published; leaving it as it is."
+              echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.existing.outputs.published != 'true'
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # go/client and go/server pin the same toolchain.
       - uses: actions/setup-go@v7
+        if: steps.existing.outputs.published != 'true'
         with:
           go-version-file: go/client/go.mod
 
-      - uses: actions/setup-node@v7
+      - uses: actions/download-artifact@v8
+        if: steps.existing.outputs.published != 'true'
         with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: node/api/package-lock.json
+          name: admin-dist
+          path: ${{ runner.temp }}/admin-dist
 
-      # --ignore-scripts: no dependency install script runs in a job that can
-      # write releases. node_modules and public/admin/dist are gitignored, so
-      # the tree stays clean for goreleaser.
-      - name: Build the admin UI
-        working-directory: node/api
-        run: |
-          npm ci --ignore-scripts
-          npx vite build
-          tar -czf "$ADMIN_DIST" -C public/admin/dist .
-
+      # The release is created as a draft (.goreleaser.yml, release.draft).
       - uses: goreleaser/goreleaser-action@v7
+        if: steps.existing.outputs.published != 'true'
         with:
           version: '~> v2'
           args: release --clean
@@ -62,6 +117,18 @@ jobs:
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
       - name: Attest the release files
+        if: steps.existing.outputs.published != 'true'
         uses: actions/attest@v4
         with:
           subject-checksums: dist/checksums.txt
+
+      # Only after the attestation. A tag with a pre-release suffix (v1.7.0-rc1)
+      # stays a pre-release and never becomes latest; any other becomes
+      # latest, as goreleaser made it before.
+      - name: Publish the release
+        if: steps.existing.outputs.published != 'true'
+        run: |
+          case "$TAG" in
+              *-*) gh release edit "$TAG" --draft=false ;;
+              *) gh release edit "$TAG" --draft=false --latest ;;
+          esac

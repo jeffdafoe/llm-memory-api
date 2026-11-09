@@ -120,10 +120,16 @@ archives:
       - binary
     name_template: "memory-api_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
-# The admin UI build. release.yml builds it with Vite before goreleaser runs
-# and passes its path in ADMIN_DIST; it is outside the checkout, so the tree
-# stays clean for goreleaser.
+# The release is a draft until release.yml has attested its files; then the
+# workflow publishes it. A draft left by a failed run is replaced.
+#
+# The admin UI build comes from release.yml's admin-ui job, downloaded to the
+# path in ADMIN_DIST, which is outside the checkout, so the tree stays clean
+# for goreleaser.
 release:
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto
   extra_files:
     - glob: "{{ .Env.ADMIN_DIST }}"
       name_template: "admin-dist_{{ .Version }}.tar.gz"
