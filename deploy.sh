@@ -61,14 +61,8 @@ cd /opt/llm-memory-api/infrastructure
 export ANSIBLE_CONFIG=/opt/llm-memory-api/infrastructure/ansible.cfg
 ansible-playbook -i inventory/production.yml playbooks/deploy.yml
 
-# Restart the backend to pick up new code. Ansible enables exactly one of the
-# two units (memory_api_backend in group_vars/all.yml); restarting the Go one
-# also stops Node through the units' Conflicts=.
-if systemctl is-enabled --quiet memory-api-go.service; then
-    SERVICE=memory-api-go.service
-else
-    SERVICE=memory-api.service
-fi
+# Restart the server to pick up the new binary.
+SERVICE=memory-api-go.service
 echo -e "\033[1m[3/3] Restarting $SERVICE...\033[0m"
 systemctl restart "$SERVICE"
 sleep 2

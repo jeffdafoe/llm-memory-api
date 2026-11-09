@@ -44,12 +44,12 @@ When a session starts from a continuation summary, treat operational details in 
 ## Deployment
 
 - Push to GitHub, SSH to VPS, run `sudo bash /opt/llm-memory-api/deploy.sh`
-- Deploy script pulls code to `/opt/llm-memory-api`, syncs app code to `/var/www/memory-api`
+- Deploy script pulls code to `/opt/llm-memory-api`, installs the Go server binary and the admin UI build that CI published for that commit, and syncs the public files and cron scripts to `/var/www/memory-api`
 - Restart is handled by the deploy script (checks service health after restart)
 - Migrations run automatically during deploy via Ansible
 
 ## VPS
 
 - Credentials stored in remote note: `read_note(namespace="work", slug="instructions/credentials/vps")`
-- Service: `memory-api.service` (runs as `memory-api` system user)
-- Cron: daily DB cleanup at 3:15 AM (`/var/www/memory-api/scripts/db-cleanup.sh`) — request_log, expired sessions, stale MCP sessions. Conversation retention (soft-delete at `conversation_retention_days` + 1, tombstone one window later) runs inside the app's own cleanup cron (`services/cleanup.js`, `cleanup_cron_schedule`, 05:00 UTC) since LLM-642.
+- Service: `memory-api-go.service`, binary `/usr/local/bin/memory-api` (runs as `memory-api` system user)
+- Cron: daily DB cleanup at 3:15 AM (`/var/www/memory-api/scripts/db-cleanup.sh`) — request_log, expired sessions, stale MCP sessions. Conversation retention (soft-delete at `conversation_retention_days` + 1, tombstone one window later) runs inside the server's own cleanup job (`go/server/internal/cleanup`, `cleanup_cron_schedule`, 05:00 UTC).

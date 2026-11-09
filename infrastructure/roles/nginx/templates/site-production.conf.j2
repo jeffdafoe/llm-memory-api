@@ -27,8 +27,19 @@ add_header X-Content-Type-Options "nosniff" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 add_header Strict-Transport-Security "max-age=86400; includeSubDomains" always;
 {%- endmacro %}
-{# The admin UI's Content-Security-Policy, the same value Express sends
-   (node/api/src/middleware/admin-csp.js, where each part is explained). #}
+{# The admin UI's Content-Security-Policy (LLM-27), a backstop against XSS:
+   even if a v-html sink (the mermaid render, rendered markdown) lets markup
+   through its sanitizer, the browser runs only script files from this origin.
+   It holds only because the admin's Vue templates are compiled at build time
+   (node/api/vite.config.js); the in-browser compiler needs Function(), which
+   script-src 'self' forbids.
+   - script-src 'self'       same-origin script files only; no inline, no eval
+   - object-src 'none'       no <object>/<embed> plugin content
+   - base-uri 'none'         an injected <base> cannot re-point relative URLs
+   - form-action 'self'      injected markup cannot post a form to another site
+   - frame-ancestors 'none'  the login form cannot be framed (clickjacking)
+   Styles, images, fonts and connections are not restricted: mermaid writes
+   inline <style>, and the templates use style attributes. #}
 {% set admin_csp = "script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" %}
 {% for domain in server_name_list %}
 # HTTP → HTTPS redirect for {{ domain }}
@@ -164,10 +175,9 @@ server {
         return 302 /admin/;
     }
 {% endif %}
-{% if memory_api_backend == 'go' %}
 
-    # Files Express served and the Go server does not: the admin UI, the
-    # landing pages, llms.txt and openapi.yaml. Same headers as Express sent.
+    # Files nginx serves itself, because the Go server does not: the admin
+    # UI, the landing pages, llms.txt and openapi.yaml.
     location = /admin {
         return 301 /admin/;
     }
@@ -232,8 +242,6 @@ server {
         charset_types text/yaml;
         expires 0;
     }
-
-{% endif %}
 
     # Custom error page for upstream failures (e.g. during deploys)
     # Prevents browsers from caching stale pages when the app is briefly unavailable

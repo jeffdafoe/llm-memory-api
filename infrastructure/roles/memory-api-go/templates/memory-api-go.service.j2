@@ -1,11 +1,6 @@
 [Unit]
 Description=Memory API (Go)
-# Both servers listen on the same port. Starting this unit stops the Node
-# one, and the other way round. Conflicts= alone does not order the two; the
-# After= on memory-api.service makes systemd finish stopping Node before it
-# starts this one, so the port is free.
-After=network.target postgresql.service memory-api.service
-Conflicts=memory-api.service
+After=network.target postgresql.service
 
 [Service]
 Type=simple

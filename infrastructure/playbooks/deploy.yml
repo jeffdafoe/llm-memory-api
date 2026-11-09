@@ -11,13 +11,7 @@
 
     - name: Display deployment info
       debug:
-        msg: "Deploying to {{ deploy_environment }} environment, backend {{ memory_api_backend }}"
-
-    - name: Check the backend setting
-      assert:
-        that: memory_api_backend in ['node', 'go']
-        fail_msg: "memory_api_backend is '{{ memory_api_backend }}'; it must be node or go"
-        quiet: yes
+        msg: "Deploying to {{ deploy_environment }} environment"
 
     # The rest of the postgresql role runs only from setup.yml; this part runs
     # on every deploy so a server that already exists keeps the guard.
