@@ -9,7 +9,7 @@ postgresql_version: "17"
 go_server_bin: /usr/local/bin/memory-api
 
 # Which build the deploy installs. Empty: main's head and CI's per-commit build
-# build-<sha> (linux/amd64 only). A release tag such as v1.7.0: that tag's
+# build-<sha> (linux/amd64 only). A server release tag such as server-v1.0.0: that tag's
 # code and its release files. Set it per server in local-secrets.yml
 # (install.sh <version> does); deploy.sh reads it there too.
 memory_api_release: ""

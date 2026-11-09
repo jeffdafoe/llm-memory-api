@@ -6,7 +6,8 @@ set -e
 #   Re-install:  sudo bash /opt/llm-memory-api/install.sh [version]
 #   Deploy only: sudo bash /opt/llm-memory-api/deploy.sh
 #
-# [version] is a release tag such as v1.7.0 (see the repository's Releases).
+# [version] is a server release tag such as server-v1.0.0 (see the
+# repository's Releases; the v* releases are the client tools).
 # The install then uses that release's code and build, and later deploys stay
 # on it (memory_api_release in infrastructure/local-secrets.yml). Without it, a
 # re-install keeps the release already set there, and a first install follows
@@ -17,8 +18,8 @@ VERSION="${1:-}"
 if [ -z "$VERSION" ] && [ -f "$SECRETS" ]; then
     VERSION=$(sed -n "s/^memory_api_release:[[:space:]]*[\"']\{0,1\}\([^\"']*\)[\"']\{0,1\}[[:space:]]*$/\1/p" "$SECRETS" | head -n 1)
 fi
-if [ -n "$VERSION" ] && ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    echo "Version '$VERSION' is not a release tag such as v1.7.0"
+if [ -n "$VERSION" ] && ! [[ "$VERSION" =~ ^server-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "Version '$VERSION' is not a server release tag such as server-v1.0.0"
     exit 1
 fi
 

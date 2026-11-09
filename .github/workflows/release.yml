@@ -1,10 +1,11 @@
 name: Release
 
-# A v* tag publishes one release: the client tools (memory-sync, discuss,
-# mail-send) for every platform, the server binary for linux/amd64 and
-# linux/arm64, and the admin UI build, with one checksums.txt (.goreleaser.yml).
+# A v* tag publishes the client tools' release: memory-sync, discuss and
+# mail-send for every platform, with one checksums.txt (.goreleaser.yml).
 # Every file in checksums.txt gets a signed build provenance attestation, and
-# the release becomes public only after that.
+# the release becomes public only after that. This is the repository's
+# "latest" release, which the clients' self-update and the VPS tools page read.
+# The server has its own release line on server-v* tags (release-server.yml).
 
 on:
   push:
@@ -15,43 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  # Vite runs dependency code (plugins, and the packages it bundles), so the
-  # admin UI is built here, with read-only permissions, and not in the job
-  # that can write releases and sign attestations. --ignore-scripts keeps
-  # install hooks from running too.
-  admin-ui:
-    name: Build the admin UI
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: node/api/package-lock.json
-
-      - name: Build
-        working-directory: node/api
-        run: |
-          npm ci --ignore-scripts
-          npx vite build
-          tar -czf "$RUNNER_TEMP/admin-dist.tar.gz" -C public/admin/dist .
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: admin-dist
-          path: ${{ runner.temp }}/admin-dist.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-
   release:
     name: Build and Release
-    needs: admin-ui
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -63,7 +29,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
-      ADMIN_DIST: ${{ runner.temp }}/admin-dist/admin-dist.tar.gz
     steps:
       # A re-run never touches a release that is already public, since
       # someone may be downloading it. A draft left by a failed run is
@@ -92,17 +57,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # go/client and go/server pin the same toolchain.
       - uses: actions/setup-go@v7
         if: steps.existing.outputs.published != 'true'
         with:
           go-version-file: go/client/go.mod
-
-      - uses: actions/download-artifact@v8
-        if: steps.existing.outputs.published != 'true'
-        with:
-          name: admin-dist
-          path: ${{ runner.temp }}/admin-dist
 
       # The release is created as a draft (.goreleaser.yml, release.draft).
       - uses: goreleaser/goreleaser-action@v7
@@ -112,8 +70,9 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The pushed tag. The commit also carries CI's build-<sha> tag,
-          # which goreleaser would otherwise consider (.goreleaser.yml, git).
+          # The pushed tag. The commit may also carry CI's build-<sha> tag or
+          # a server-v* tag, which goreleaser would otherwise consider
+          # (.goreleaser.yml, git).
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
       - name: Attest the release files

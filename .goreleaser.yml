@@ -2,14 +2,17 @@ version: 2
 
 project_name: llm-memory-client
 
-# CI tags every commit on main build-<sha> for its per-commit server build
-# (build-artifacts in .github/workflows/ci.yml). They must never be the
-# previous tag, which goreleaser finds with `git describe --exclude` (a glob).
-# The current tag is set by GORELEASER_CURRENT_TAG in release.yml, because
-# goreleaser compares this list with the tags on HEAD by exact name only.
+# The client tools' release, on v* tags (release.yml). The server has its own
+# release line on server-v* tags (release-server.yml), and CI tags every
+# commit on main build-<sha> for its per-commit server build. Neither may be
+# the previous tag, which goreleaser finds with `git describe --exclude` (a
+# glob). The current tag is set by GORELEASER_CURRENT_TAG in release.yml,
+# because goreleaser compares this list with the tags on HEAD by exact name
+# only.
 git:
   ignore_tags:
     - "build-*"
+    - "server-v*"
 
 builds:
   - id: memory-sync
@@ -60,24 +63,6 @@ builds:
       - amd64
       - arm64
 
-  # The server: a static binary, as CI's per-commit build-artifacts job makes
-  # it. Linux only, since the deploy is a systemd unit.
-  - id: memory-api
-    main: ./cmd/memory-api/
-    dir: go/server
-    binary: memory-api
-    flags:
-      - -trimpath
-    ldflags:
-      - -X main.version={{ .Version }}
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - amd64
-      - arm64
-
 archives:
   - id: memory-sync
     ids:
@@ -112,33 +97,15 @@ archives:
           - zip
     name_template: "mail-send_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
-  # Uploaded as the bare binary, the form the deploy installs.
-  - id: memory-api
-    ids:
-      - memory-api
-    formats:
-      - binary
-    name_template: "memory-api_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-
 # The release is a draft until release.yml has attested its files; then the
 # workflow publishes it. A draft left by a failed run is replaced.
-#
-# The admin UI build comes from release.yml's admin-ui job, downloaded to the
-# path in ADMIN_DIST, which is outside the checkout, so the tree stays clean
-# for goreleaser.
 release:
   draft: true
   replace_existing_draft: true
   prerelease: auto
-  extra_files:
-    - glob: "{{ .Env.ADMIN_DIST }}"
-      name_template: "admin-dist_{{ .Version }}.tar.gz"
 
 checksum:
   name_template: checksums.txt
-  extra_files:
-    - glob: "{{ .Env.ADMIN_DIST }}"
-      name_template: "admin-dist_{{ .Version }}.tar.gz"
 
 changelog:
   sort: asc
