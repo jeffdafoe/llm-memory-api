@@ -9,7 +9,7 @@ import (
 )
 
 // TestMatchesNodePostgres compares Value with node-postgres's prepareValue
-// over testdata/goldens.json (written by testdata/goldens.js).
+// over testdata/goldens.json (recorded from node-postgres).
 func TestMatchesNodePostgres(t *testing.T) {
 	data, err := os.ReadFile("testdata/goldens.json")
 	if err != nil {

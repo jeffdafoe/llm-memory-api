@@ -12,7 +12,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/httpapi"
 )
 
-// goldens.json is written by testdata/goldens.js from Node's own code.
+// goldens.json is recorded from Node's own code.
 type goldens struct {
 	CIMD []struct {
 		Input string `json:"input"`

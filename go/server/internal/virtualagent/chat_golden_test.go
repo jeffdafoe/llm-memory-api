@@ -17,10 +17,10 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 )
 
-// The direct-chat goldens (testdata/goldens_chat.js) run Node's
-// handleDirectChat and the functions only it uses with the same stubs as
-// goldens.js, plus recorders for chatSend, the memory search, note reads
-// and logError.
+// The direct-chat goldens (testdata/goldens_chat.json) are what Node's
+// handleDirectChat and the functions only it uses did, with the same stubs
+// as the main goldens, plus recorders for chatSend, the memory search, note
+// reads and logError.
 
 func init() {
 	for name, id := range map[string]int{"salem-engine": 10, "salem-magistrate": 11, "salem-visitor": 12, "human": 13} {
@@ -158,7 +158,8 @@ func loadChatGoldens(t *testing.T) *chatGoldens {
 	return &g
 }
 
-// chatBaseConfig is what goldens_chat.js's BASE_CONFIG adds to goldens.js's.
+// chatBaseConfig is the config the direct-chat goldens were recorded with,
+// on top of the main goldens' config.
 var chatBaseConfig = map[string]string{
 	"virtual_agent_learning_enabled":   "false",
 	"virtual_agent_chat_history_hours": "72",
@@ -504,7 +505,7 @@ func directChatFrom(t *testing.T, in chatInput) chat.DirectChat {
 	return d
 }
 
-// chatOutcome is an outcome as goldens_chat.js's errInfo records it.
+// chatOutcome is an outcome in the form the direct-chat goldens record it.
 func chatOutcome(reply json.RawMessage, err error) string {
 	if err == nil {
 		var ok any

@@ -18,7 +18,7 @@ import (
 )
 
 // The direct-mail goldens: handleDirectMail end to end, its prompts and
-// helpers (testdata/goldens.js).
+// helpers, in testdata/goldens.json.
 
 type readRec struct {
 	Namespace string `json:"namespace"`

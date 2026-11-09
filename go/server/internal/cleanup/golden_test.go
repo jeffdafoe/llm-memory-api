@@ -20,7 +20,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 )
 
-// goldens is testdata/goldens.json, written by testdata/goldens.js from
+// goldens is testdata/goldens.json, recorded from
 // Node's cleanup.js with its database scripted. Regenerate it with that
 // script when the Node side changes.
 type goldens struct {

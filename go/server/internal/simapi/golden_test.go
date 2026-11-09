@@ -28,7 +28,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
 )
 
-// goldens is testdata/goldens.json, written by testdata/goldens.js from
+// goldens is testdata/goldens.json, recorded from
 // Node's sim-conversation-distiller.js, sim-soul.js and routes/sim.js.
 type goldens struct {
 	Narrate []struct {

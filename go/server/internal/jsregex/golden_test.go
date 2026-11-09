@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// goldens is testdata/goldens.json, written by testdata/goldens.js from
+// goldens is testdata/goldens.json, recorded from
 // Node itself: for each pattern, V8's syntax verdict (with its message),
 // safe-regex's verdict, and new RegExp(p, 'i').test(line) for every sample
 // line.

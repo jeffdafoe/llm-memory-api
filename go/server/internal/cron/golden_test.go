@@ -12,7 +12,7 @@ import (
 	_ "time/tzdata"
 )
 
-// goldens is testdata/goldens.json, written by testdata/goldens.js from
+// goldens is testdata/goldens.json, recorded from
 // node-cron itself. Regenerate it with that script when node-cron changes.
 type goldens struct {
 	NodeCron string `json:"node_cron"`

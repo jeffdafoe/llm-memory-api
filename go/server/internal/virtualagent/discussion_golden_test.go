@@ -16,9 +16,10 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/system"
 )
 
-// The discussion goldens (testdata/goldens_discussion.js) run Node's
-// handleVirtualAgent and the functions only it uses with the same stubs as
-// goldens_chat.js, plus recorders for evaluateVote and discussionLeave.
+// The discussion goldens (testdata/goldens_discussion.json) are what Node's
+// handleVirtualAgent and the functions only it uses did, with the same stubs
+// as the direct-chat goldens, plus recorders for evaluateVote and
+// discussionLeave.
 
 func init() {
 	for name, id := range map[string]int{"system": 1, "prudence": 7, "ezekiel-crane": 8, "wendy": 13, "home": 14} {
@@ -105,8 +106,8 @@ func loadDiscussionGoldens(t *testing.T) *discussionGoldens {
 	return &g
 }
 
-// discussionBaseConfig is what goldens_discussion.js's BASE_CONFIG adds to
-// goldens.js's.
+// discussionBaseConfig is the config the discussion goldens were recorded
+// with, on top of the main goldens' config.
 var discussionBaseConfig = map[string]string{
 	"virtual_agent_learning_enabled":         "false",
 	"virtual_agent_response_delay_seconds":   "0",

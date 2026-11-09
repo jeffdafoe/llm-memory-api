@@ -27,7 +27,7 @@ import (
 )
 
 // The goldens are what Node's virtual-agent.js did for each scenario, with
-// the same stubs this file builds (testdata/goldens.js). Each scenario is
+// the same stubs this file builds. Each scenario is
 // replayed against the Go service and the recordings compared: the queries
 // (kind and parameters as node-postgres prepared them), log lines,
 // broadcasts, notes, provider calls, timers and the outcome.

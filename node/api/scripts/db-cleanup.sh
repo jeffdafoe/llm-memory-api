@@ -9,7 +9,7 @@
 # until LLM-642, which bypassed the app's namespace_usage accounting and
 # hard-deleted rows the memory-sync diff then reported as missing, so every
 # retired session re-uploaded. It now runs in the app's nightly cleanup
-# (node/api/src/services/cleanup.js, retireConversations).
+# (go/server/internal/cleanup).
 #
 # Designed to run as a daily cron job. Reads DATABASE_URL from the app's
 # env file so it uses the same credentials as the running service.

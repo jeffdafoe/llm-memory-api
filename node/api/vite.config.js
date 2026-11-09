@@ -7,7 +7,8 @@ import { compile } from '@vue/compiler-dom';
 // emits: an exported render function that imports its helpers from 'vue'.
 // Nothing is compiled in the browser, so the app runs on Vue's runtime-only
 // build. The full build compiles templates with Function(), which a
-// Content-Security-Policy without 'unsafe-eval' blocks (see src/server.js).
+// Content-Security-Policy without 'unsafe-eval' blocks (nginx sends it; see
+// infrastructure/roles/nginx/templates/site-production.conf.j2).
 // A template syntax error fails the build instead of showing up at runtime.
 function vueTemplateCompiler() {
     return {

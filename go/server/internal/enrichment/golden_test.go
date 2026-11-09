@@ -21,7 +21,7 @@ import (
 )
 
 // The goldens are what Node's enrichment.js did for each scenario, with the
-// same stubs this file builds (testdata/goldens.js): the agent lookups, the
+// same stubs this file builds: the agent lookups, the
 // model calls and their options, the statements and their parameters, the
 // log lines, in order, and the outcome.
 
