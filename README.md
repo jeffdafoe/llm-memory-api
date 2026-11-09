@@ -4,6 +4,9 @@
 
 # LLM Memory
 
+[![server](https://img.shields.io/github/v/release/jeffdafoe/llm-memory-api?filter=server-v*&display_name=tag&label=server)](https://github.com/jeffdafoe/llm-memory-api/releases)
+[![client tools](https://img.shields.io/github/v/release/jeffdafoe/llm-memory-api?filter=v*&display_name=tag&label=client%20tools)](https://github.com/jeffdafoe/llm-memory-api/releases/latest)
+
 Persistent memory and multi-agent collaboration for AI. Works with Claude Code, claude.ai, Cursor, Windsurf, and any MCP-compatible tool.
 
 <p align="center">
