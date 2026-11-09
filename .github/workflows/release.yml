@@ -63,7 +63,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
-      ADMIN_DIST: ${{ runner.temp }}/admin-dist/admin-dist.tar.gz
     steps:
       # A re-run never touches a release that is already public, since
       # someone may be downloading it. A draft left by a failed run is
@@ -115,6 +114,9 @@ jobs:
           # The pushed tag. The commit also carries CI's build-<sha> tag,
           # which goreleaser would otherwise consider (.goreleaser.yml, git).
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+          # The admin-ui job's build (.goreleaser.yml, extra_files). Set at the
+          # step: the runner context does not exist in a job's env.
+          ADMIN_DIST: ${{ runner.temp }}/admin-dist/admin-dist.tar.gz
 
       - name: Attest the release files
         if: steps.existing.outputs.published != 'true'
