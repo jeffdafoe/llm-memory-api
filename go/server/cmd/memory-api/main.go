@@ -6,7 +6,8 @@
 // read.
 //
 // `memory-api staleness-check <recipient>` instead runs the weekly staleness
-// check once (staleness.go).
+// check once (staleness.go), and `memory-api create-user <username>
+// <password>` creates an admin web user (createuser.go).
 package main
 
 import (
@@ -42,6 +43,9 @@ func main() {
 	// server: it runs once and exits.
 	if len(os.Args) > 1 && os.Args[1] == "staleness-check" {
 		os.Exit(stalenessCheck(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "create-user" {
+		os.Exit(createUserCommand(os.Args[2:]))
 	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "memory-api:", err)

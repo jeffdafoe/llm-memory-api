@@ -25,6 +25,10 @@
     - role: ../roles/postgresql
     - role: ../roles/certbot
     - role: ../roles/nginx
+    # Installs the Go binary, which tasks/create-admin.yml runs below. On a
+    # fresh install setup.yml runs before deploy.yml, the other place this
+    # role runs.
+    - role: ../roles/memory-api-go
     - role: ../roles/memory-api
 
   tasks:

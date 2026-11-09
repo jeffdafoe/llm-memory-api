@@ -11,20 +11,17 @@
       - "{{ admin_username }}"
   register: admin_exists
 
-# create-user.js lives at the repo root and requires node/api/src from there,
-# so it runs from repo_root. Its pg dependency is installed with the app's own
-# packages, which is project_root/node_modules on a server (the memory-api role
-# copies node/api there) and node/api/node_modules in a dev checkout.
+# The Go binary's create-user subcommand (go/server/cmd/memory-api/createuser.go),
+# installed by roles/memory-api-go.
 - name: Create admin user
   command:
     argv:
-      - node
-      - "{{ repo_root }}/scripts/create-user.js"
+      - "{{ go_server_bin }}"
+      - create-user
       - "{{ admin_username }}"
       - "{{ admin_password }}"
   environment:
     DATABASE_URL: "postgresql://{{ database_user }}:{{ database_password }}@localhost:5432/{{ database_name }}"
-    NODE_PATH: "{{ (project_root ~ '/node_modules') if repo_root != project_root else (repo_root ~ '/node/api/node_modules') }}"
   no_log: true
   when: admin_exists.rowcount == 0 and admin_password | default('') | length > 0
 
