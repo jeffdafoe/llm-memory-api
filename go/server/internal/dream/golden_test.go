@@ -28,7 +28,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
 )
 
-// goldens is testdata/goldens.json, written by testdata/goldens.js from
+// goldens is testdata/goldens.json, recorded from
 // Node's dream.js. Regenerate it with that script when the Node side
 // changes.
 type goldens struct {
@@ -492,8 +492,8 @@ func TestScopeHelpersMatchNode(t *testing.T) {
 
 // ---------------------------------------------------------------- passes
 
-// stream records the run's events in order, in the shape goldens.js
-// writes them.
+// stream records the run's events in order, in the shape the goldens hold
+// them.
 type stream struct {
 	mu     sync.Mutex
 	events []map[string]any

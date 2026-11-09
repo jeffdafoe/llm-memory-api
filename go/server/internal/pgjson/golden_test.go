@@ -8,7 +8,7 @@ import (
 )
 
 // TestParseMatchesNode compares Parse with pg-types' text parsers
-// (testdata/goldens.js, run with TZ=America/New_York).
+// (testdata/goldens.json, recorded with TZ=America/New_York).
 func TestParseMatchesNode(t *testing.T) {
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {

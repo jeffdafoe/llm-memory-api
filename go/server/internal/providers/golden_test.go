@@ -18,7 +18,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 )
 
-// goldens is testdata/goldens.json, written by testdata/goldens.js from the
+// goldens is testdata/goldens.json, recorded from the
 // Node adapters. Rerun the script only when the Node side changes.
 type goldens struct {
 	Base           string         `json:"base"`

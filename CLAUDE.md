@@ -23,7 +23,7 @@ When a session starts from a continuation summary, treat operational details in 
 
 ## Code Style
 
-- **Comment the code** — Jeff doesn't know Node well, comments help him read it. Comment the *why* and non-obvious framework patterns (Express middleware, Node idioms, architectural decisions) — not the mechanics. He has 30 years of experience, so don't comment loops, conditionals, or anything self-evident.
+- **Comment the code** — Jeff doesn't know Go or Node well, comments help him read it. Comment the *why* and non-obvious language and framework patterns (Go idioms such as context cancellation, goroutines, channels, defer and interfaces; the admin UI's Vue and Vite patterns) and architectural decisions — not the mechanics. He has 30 years of experience, so don't comment loops, conditionals, or anything self-evident.
 - 4 spaces indentation
 - No abbreviations (`infrastructure` not `infra`)
 - No ternaries — use if/then
@@ -32,11 +32,11 @@ When a session starts from a continuation summary, treat operational details in 
 
 ## Architecture
 
-- **API server**: `node/api/src/` — Express app, routes in `routes/`, middleware in `middleware/`
-- **MCP endpoint**: `node/api/src/routes/mcp.js` — Streamable HTTP MCP endpoint, all agents connect here
-- **Auth**: HMAC OAuth tokens (primary) and API keys. No JWTs. See `middleware/mcp-auth.js`.
-- **Admin UI**: `node/api/public/admin/` — Vue 3 composables, no build step. Globals in `core.js`, features in separate modules.
-- **Scripts**: `node/api/scripts/` — operational scripts deployed with the app (e.g., `db-cleanup.sh` for cron)
+- **API server**: `go/server/` — Go. Entry point `cmd/memory-api` (also the `staleness-check` and `create-user` subcommands); the HTTP handler chain is in `internal/server`, and each area has its own package under `internal/` (notes, mail, chat, discussion, admin, ...)
+- **MCP endpoint**: `go/server/internal/mcp` — Streamable HTTP MCP endpoint, all agents connect here
+- **Auth**: HMAC OAuth tokens (primary), session tokens and API keys. No JWTs. See `go/server/internal/auth`.
+- **Admin UI**: `node/api/public/admin/` — Vue 3 composables; Vite compiles the templates at build time (`node/api/vite.config.js`), and CI publishes the build. nginx serves it. Globals in `core.js`, features in separate modules.
+- **Scripts**: `node/api/scripts/` — the cron scripts the deploy copies (`db-cleanup.sh`, `pg-backup.sh`)
 - **Migrations**: `migrations/` — raw SQL, sequential MEM-XXX numbering
 - **Infrastructure**: `infrastructure/` — Ansible playbooks, roles, and templates for deployment
 - **Discussion transport**: `go/client/cmd/discuss/` — Go binary for multi-agent discussions (replaces legacy `node/client/discuss.js`)

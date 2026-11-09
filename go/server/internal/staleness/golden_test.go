@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// goldens is testdata/goldens.json, written by testdata/goldens.js from
+// goldens is testdata/goldens.json, recorded from
 // Node's staleness.js and staleness-certificates.js. Regenerate it with that
 // script when the Node side changes.
 type goldens struct {
