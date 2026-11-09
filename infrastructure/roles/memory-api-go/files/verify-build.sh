@@ -5,22 +5,31 @@
 # fetches the attestations for the file's SHA-256 from GitHub's public API, no
 # token needed, and verifies them offline with cosign.
 #
-# Usage: verify-build.sh <file> <signer>
+# Usage: verify-build.sh <file> <signer> <commit>
 #   <signer> is the workflow the signing certificate must name, for example
 #   https://github.com/jeffdafoe/llm-memory-api/.github/workflows/ci.yml@refs/heads/main
+#   <commit> is the full SHA of the commit being deployed. The certificate's
+#   workflow run must have built that commit, from a push: every per-commit
+#   build has the same signer, so the signer alone would accept a genuine
+#   build of another commit.
 #
-# Exits 0 when one attestation of the file verifies with that signer, and 1
-# otherwise. VERIFY_REPO (default jeffdafoe/llm-memory-api) and COSIGN
+# Exits 0 when one attestation of the file verifies with that signer and
+# commit, and 1 otherwise. VERIFY_REPO (default jeffdafoe/llm-memory-api) and COSIGN
 # (default cosign) can be set for tests. Runs in the deploy
 # (roles/memory-api-go) and in CI (the verify-build job in ci.yml).
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-    echo "usage: verify-build.sh <file> <signer>" >&2
+if [ "$#" -ne 3 ]; then
+    echo "usage: verify-build.sh <file> <signer> <commit>" >&2
     exit 1
 fi
 file=$1
 signer=$2
+commit=$3
+if ! [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "verify-build: '$commit' is not a full commit SHA" >&2
+    exit 1
+fi
 repo=${VERIFY_REPO:-jeffdafoe/llm-memory-api}
 cosign=${COSIGN:-cosign}
 
@@ -57,13 +66,15 @@ for bundle in "$work"/bundle-*.json; do
             --bundle "$bundle" \
             --certificate-identity "$signer" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "$commit" \
+            --certificate-github-workflow-trigger push \
             --type slsaprovenance1 \
             "$file" >"$work/cosign.log" 2>&1; then
-        echo "verify-build: $file (sha256:$digest) verified, signed by $signer"
+        echo "verify-build: $file (sha256:$digest) verified, signed by $signer for commit $commit"
         exit 0
     fi
 done
 
-echo "verify-build: no attestation of $file (sha256:$digest) verifies with signer $signer" >&2
+echo "verify-build: no attestation of $file (sha256:$digest) verifies with signer $signer for commit $commit" >&2
 cat "$work/cosign.log" >&2 2>/dev/null || true
 exit 1

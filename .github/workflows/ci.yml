@@ -195,8 +195,9 @@ jobs:
 
   # The deploy's build check (infrastructure/roles/memory-api-go/files/
   # verify-build.sh, LLM-976) against the newest published per-commit build:
-  # both files must verify with the ci.yml-on-main signer, and a changed file
-  # and a wrong signer must not. cosign-release is the version
+  # both files must verify with the ci.yml-on-main signer and their own
+  # commit, and a changed file, a wrong signer, and a genuine file checked
+  # against another commit (the previous build's) must not. cosign-release is the version
   # infrastructure/group_vars/all.yml pins (cosign_version); stale-pins.sh
   # checks that the two agree.
   verify-build:
@@ -220,31 +221,41 @@ jobs:
         with:
           cosign-release: 'v3.1.4'
 
+      # The build's commit is its tag's suffix. OTHER is the previous build's
+      # commit, for the substitution test.
       - name: Download the newest per-commit build
         run: |
-          tag=$(gh release list --exclude-drafts --limit 100 --json tagName,createdAt \
-              --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | last | .tagName')
-          test -n "$tag"
-          echo "Checking $tag"
+          tags=$(gh release list --exclude-drafts --limit 100 --json tagName,createdAt \
+              --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[0:2] | .[].tagName')
+          tag=$(printf '%s\n' "$tags" | sed -n 1p)
+          other=$(printf '%s\n' "$tags" | sed -n 2p)
+          test -n "$tag" && test -n "$other"
+          echo "Checking $tag; another commit: $other"
+          echo "COMMIT=${tag#build-}" >> "$GITHUB_ENV"
+          echo "OTHER=${other#build-}" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/build"
           gh release download "$tag" -p memory-api -p admin-dist.tar.gz -D "$RUNNER_TEMP/build"
 
       - name: Both files verify
         run: |
-          bash "$SCRIPT" "$RUNNER_TEMP/build/memory-api" "$SIGNER"
-          bash "$SCRIPT" "$RUNNER_TEMP/build/admin-dist.tar.gz" "$SIGNER"
+          bash "$SCRIPT" "$RUNNER_TEMP/build/memory-api" "$SIGNER" "$COMMIT"
+          bash "$SCRIPT" "$RUNNER_TEMP/build/admin-dist.tar.gz" "$SIGNER" "$COMMIT"
 
-      - name: A changed file and a wrong signer are refused
+      - name: A changed file, a wrong signer and another commit are refused
         run: |
           cp "$RUNNER_TEMP/build/memory-api" "$RUNNER_TEMP/changed"
           printf 'x' >> "$RUNNER_TEMP/changed"
-          if bash "$SCRIPT" "$RUNNER_TEMP/changed" "$SIGNER"; then
+          if bash "$SCRIPT" "$RUNNER_TEMP/changed" "$SIGNER" "$COMMIT"; then
               echo "a changed file verified"
               exit 1
           fi
           wrong="https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/heads/main"
-          if bash "$SCRIPT" "$RUNNER_TEMP/build/memory-api" "$wrong"; then
+          if bash "$SCRIPT" "$RUNNER_TEMP/build/memory-api" "$wrong" "$COMMIT"; then
               echo "a wrong signer verified"
+              exit 1
+          fi
+          if bash "$SCRIPT" "$RUNNER_TEMP/build/memory-api" "$SIGNER" "$OTHER"; then
+              echo "a genuine build verified for another commit"
               exit 1
           fi
 

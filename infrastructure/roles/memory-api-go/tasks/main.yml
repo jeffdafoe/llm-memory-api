@@ -148,17 +148,19 @@
         timeout: 120
 
     # The checksum file comes from the same release as the files, so it only
-    # catches a corrupt download. The attestation proves the files were built
-    # by this repository's workflow (build_signer) from the deployed commit's
-    # build or the tag's release.
+    # catches a corrupt download. The attestation proves each file was built
+    # by this repository's workflow (build_signer) from the deployed commit,
+    # which for a release is the tag's commit (checked above). Binding the
+    # commit keeps a genuine build of another commit, or a binary and admin UI
+    # from two commits, from passing.
     - name: Verify the Go server binary's build provenance
-      script: verify-build.sh "{{ go_server_bin }}.new" "{{ build_signer }}"
+      script: verify-build.sh "{{ go_server_bin }}.new" "{{ build_signer }}" "{{ deploy_commit.stdout | trim }}"
       environment:
         COSIGN: "{{ cosign_bin }}"
       changed_when: false
 
     - name: Verify the admin UI build's build provenance
-      script: verify-build.sh "{{ build_dir.path }}/admin-dist.tar.gz" "{{ build_signer }}"
+      script: verify-build.sh "{{ build_dir.path }}/admin-dist.tar.gz" "{{ build_signer }}" "{{ deploy_commit.stdout | trim }}"
       environment:
         COSIGN: "{{ cosign_bin }}"
       changed_when: false
