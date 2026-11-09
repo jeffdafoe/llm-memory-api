@@ -130,20 +130,24 @@ Once connected, your AI gets 41 tools:
 
 ## Self-Host
 
-The full source is here if you want to run your own instance. The server is Go, with PostgreSQL and pgvector behind Nginx; the admin UI is Vue, built with Vite. There's an install script for Debian/Ubuntu that sets everything up:
+The full source is here if you want to run your own instance. The server is Go, with PostgreSQL and pgvector behind Nginx; the admin UI is Vue, built with Vite. There's an install script for Debian/Ubuntu (amd64 or arm64) that sets everything up. Give it a release tag from the [Releases](https://github.com/jeffdafoe/llm-memory-api/releases) page:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/jeffdafoe/llm-memory-api/main/install.sh -o /tmp/install.sh
-sudo bash /tmp/install.sh
+sudo bash /tmp/install.sh v1.7.0
 ```
 
 You'll need your own OpenAI API key for embeddings.
+
+- **Updates:** set `memory_api_release` in `/opt/llm-memory-api/infrastructure/local-secrets.yml` to the new tag, then run `sudo bash /opt/llm-memory-api/deploy.sh`. The deploy checks out that tag, installs its release, and applies the database migrations the new version adds.
+- **Without a tag**, the install follows `main` and each deploy installs the latest commit's build (amd64 only). This is how the hosted instance runs.
+- **Every build is verified before it is installed.** CI signs a build provenance attestation for each release file and per-commit build ([GitHub artifact attestations](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds), Sigstore). The deploy installs a pinned [cosign](https://github.com/sigstore/cosign) and refuses any file whose attestation is missing or names another workflow. You can check a file yourself with `gh attestation verify <file> -R jeffdafoe/llm-memory-api`.
 
 ## Security
 
 Supply chain attacks against npm registries have caught real production projects in 2025. To reduce that risk:
 
-- **The production server runs no npm packages.** The server is one static Go binary, and the admin UI is a static build. CI builds both for each commit on `main` after the tests pass, and the deploy downloads them with their checksums. The VPS installs nothing from npm.
+- **The production server runs no npm packages.** The server is one static Go binary, and the admin UI is a static build. CI builds both for each commit on `main` after the tests pass (and for each release tag), and the deploy downloads them and verifies their checksums and signed build provenance before installing them. The VPS installs nothing from npm.
 - **CI installs the admin UI's packages with `npm ci --ignore-scripts`**, so no package install script runs in the job that publishes the build.
 - **In local development, run npm installs through [Socket Firewall](https://docs.socket.dev/docs/socket-firewall-free) (`sfw`).** It filters install requests against Socket's malicious-package database at the network layer, blocking confirmed malware before any postinstall script can run. Install it with `npm i -g sfw` and use `sfw npm install` in place of `npm install`. No account or API key required.
 

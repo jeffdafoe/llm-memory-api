@@ -4,7 +4,8 @@ set -e
 # Usage:
 #   sudo bash /opt/llm-memory-api/deploy.sh
 #
-#   Pulls latest from GitHub (deploy key), runs ansible deploy playbook.
+#   Pulls main's head, or the release tag in memory_api_release
+#   (infrastructure/local-secrets.yml), runs ansible deploy playbook.
 
 echo -e "\033[1;36m==================================="
 echo "  Memory API Deploy"
@@ -49,11 +50,30 @@ if ! pg_lsclusters -h | grep -q 'online'; then
     fi
 fi
 
-# Pull latest (fetch + reset to handle force pushes cleanly)
+# The build to deploy: memory_api_release in local-secrets.yml (gitignored, so
+# the reset below keeps it). Empty or absent means main's head; a tag such as
+# v1.7.0 means that release (group_vars/all.yml, roles/memory-api-go).
+SECRETS=/opt/llm-memory-api/infrastructure/local-secrets.yml
+RELEASE=""
+if [ -f "$SECRETS" ]; then
+    RELEASE=$(sed -n "s/^memory_api_release:[[:space:]]*[\"']\{0,1\}\([^\"']*\)[\"']\{0,1\}[[:space:]]*$/\1/p" "$SECRETS" | head -n 1)
+fi
+if [ -n "$RELEASE" ] && ! [[ "$RELEASE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo -e "\033[1;31mmemory_api_release in $SECRETS is '$RELEASE'; it must be empty or a release tag such as v1.7.0\033[0m"
+    exit 1
+fi
+
+# Fetch + reset to handle force pushes cleanly.
 echo -e "\033[1m[1/3] Updating code...\033[0m"
 cd /opt/llm-memory-api
-git fetch origin
-git reset --hard origin/main
+if [ -n "$RELEASE" ]; then
+    echo "Deploying release $RELEASE"
+    git fetch --force origin "refs/tags/$RELEASE:refs/tags/$RELEASE"
+    git reset --hard "refs/tags/$RELEASE^{commit}"
+else
+    git fetch origin
+    git reset --hard origin/main
+fi
 
 # Run deploy playbook
 echo -e "\033[1m[2/3] Running deploy...\033[0m"
