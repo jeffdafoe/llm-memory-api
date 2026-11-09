@@ -20,17 +20,6 @@
     dest: /etc/logrotate.d/llm-memory-api
     mode: "0644"
 
-# Socket Firewall (sfw) — wraps `npm install` to block known-malicious
-# packages at the network layer before they can land on disk. Installed
-# globally so all subsequent npm tasks below can prefix `sfw`. The npm
-# install of sfw itself is unwrapped (chicken-and-egg) — we trust this
-# one package from socket.dev. Free tier, no API key, anonymous telemetry.
-- name: Install Socket Firewall (sfw) globally
-  npm:
-    name: sfw
-    global: yes
-    state: present
-
 - name: Create deployment directory
   file:
     path: "{{ project_root }}"
@@ -39,26 +28,43 @@
     mode: "0755"
   when: repo_root != project_root
 
-# The admin UI is built in CI; roles/memory-api-go unpacks it into
-# public/admin/dist before this role runs. The repo side used to get a full
-# npm install for the Vite build, and the copy below carried that tree over.
-- name: Remove the old build dependencies in repo
-  file:
-    path: "{{ repo_root }}/node/api/node_modules"
-    state: absent
+# What nginx serves itself: the admin UI (roles/memory-api-go unpacks the CI
+# build into public/admin/dist before this role runs), the landing pages,
+# llms.txt and openapi.yaml.
+- name: Deploy public files
+  synchronize:
+    src: "{{ repo_root }}/node/api/public/"
+    dest: "{{ project_root }}/public/"
+    delete: yes
+  delegate_to: "{{ inventory_hostname }}"
   when: repo_root != project_root
 
-# node_modules is excluded, and an excluded path is not deleted on the
-# receiving side either: project_root keeps its own tree, which the
-# `npm install --omit=dev` below brings up to date.
-- name: Deploy application code
+# Only the two cron scripts below. --delete-excluded removes anything else in
+# project_root/scripts, such as the Node scripts an older deploy copied.
+- name: Deploy cron scripts
   synchronize:
-    src: "{{ repo_root }}/node/api/"
-    dest: "{{ project_root }}/"
+    src: "{{ repo_root }}/node/api/scripts/"
+    dest: "{{ project_root }}/scripts/"
     delete: yes
     rsync_opts:
-      - "--exclude=/node_modules"
+      - "--include=/db-cleanup.sh"
+      - "--include=/pg-backup.sh"
+      - "--exclude=*"
+      - "--delete-excluded"
   delegate_to: "{{ inventory_hostname }}"
+  when: repo_root != project_root
+
+# Files of the Node server that earlier deploys copied into project_root.
+- name: Remove the Node server's files
+  file:
+    path: "{{ project_root }}/{{ item }}"
+    state: absent
+  loop:
+    - node_modules
+    - src
+    - package.json
+    - package-lock.json
+    - vite.config.js
   when: repo_root != project_root
 
 - name: Deploy static assets
@@ -105,55 +111,24 @@
     mode: "0600"
   notify: Restart memory-api
 
-# sfw checks for a new firewall binary at most once an hour and records the
-# time in its own install directory (/usr/lib/node_modules/sfw/.sfw-cache/
-# next-check), which only root can write. The npm installs below run as
-# app_user, so when the hour has passed, sfw fails with EACCES on that file.
-# Running sfw once as root here does the check and writes the file, so the
-# app_user run inside the same hour has nothing to write.
-- name: Refresh the sfw firewall binary as root
-  command: sfw npm --version
-  changed_when: false
+# The Node server's unit (memory-api.service), from before the Go server.
+- name: Look for the Node server's unit
+  stat:
+    path: /etc/systemd/system/memory-api.service
+  register: node_unit
 
-- name: Install npm dependencies
-  command: sfw npm install --omit=dev
-  args:
-    chdir: "{{ project_root }}"
-  become_user: "{{ app_user }}"
-  when: repo_root != project_root
-
-- name: Install npm dependencies (development)
-  command: sfw npm install
-  args:
-    chdir: "{{ project_root }}/node/api"
-  become_user: "{{ app_user }}"
-  when: repo_root == project_root
-
-- name: Create systemd service
-  template:
-    src: memory-api.service.j2
-    dest: /etc/systemd/system/memory-api.service
-  notify:
-    - Reload systemd
-    - Restart memory-api
-
-# A switch in either direction takes effect when deploy.sh restarts the
-# enabled unit after the migrations; the units' Conflicts= then stops the
-# other. So under "go" Node is only disabled, not stopped, and under "node"
-# Node is not started while Go is running (the switch back), only on an
-# install where neither runs. Node's code and npm tree above stay current
-# under "go", so a switch back can start it at once.
-- name: Check whether the Go server is running
-  command: systemctl is-active --quiet memory-api-go
-  register: go_server_active
-  changed_when: false
-  failed_when: false
-
-- name: Enable and start memory-api service
-  service:
+- name: Stop and disable the Node server's unit
+  systemd:
     name: memory-api
-    enabled: "{{ memory_api_backend == 'node' }}"
-    state: "{{ 'started' if memory_api_backend == 'node' and go_server_active.rc != 0 else omit }}"
+    state: stopped
+    enabled: no
+  when: node_unit.stat.exists
+
+- name: Remove the Node server's unit
+  file:
+    path: /etc/systemd/system/memory-api.service
+    state: absent
+  notify: Reload systemd
 
 - name: Ensure cleanup script is executable
   file:
@@ -193,17 +168,13 @@
     that: staleness_recipient is match('^[A-Za-z0-9][A-Za-z0-9._@-]*\Z')
     fail_msg: "staleness_check_recipient (or admin_username) '{{ staleness_recipient }}' must be a plain actor name: letters, digits, . _ @ -"
 
-# Runs the backend's own implementation: scripts/staleness-check.js under
-# "node", `memory-api staleness-check` (the Go binary) under "go".
 - name: Configure weekly staleness check cron job
-  vars:
-    staleness_command: "{{ (go_server_bin | quote) ~ ' staleness-check' if memory_api_backend == 'go' else '/usr/bin/node ' ~ ((project_root ~ '/scripts/staleness-check.js') | quote) }}"
   cron:
     name: "memory-api staleness check"
     weekday: "1"
     minute: "30"
     hour: "12"
-    job: "{{ staleness_command }} {{ staleness_recipient | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
+    job: "{{ go_server_bin | quote }} staleness-check {{ staleness_recipient | quote }} >> /var/log/llm-memory-api/staleness-check.log 2>&1"
 
 - name: Deploy tools (Go client binaries)
   include_tasks: deploy-tools.yml

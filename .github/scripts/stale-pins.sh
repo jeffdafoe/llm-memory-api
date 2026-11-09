@@ -203,9 +203,7 @@ check_postgres() {
 
 check_node() {
     file_pins "Node.js" .github/workflows/ci.yml node-version '^([0-9]+)(\.[0-9x]+)*$' 1
-    check_eol nodejs "Node.js" \
-        "infrastructure/group_vars/all.yml nodejs_version=$(yaml_var infrastructure/group_vars/all.yml nodejs_version)" \
-        "${FILE_PINS[@]}"
+    check_eol nodejs "Node.js" "${FILE_PINS[@]}"
 }
 
 check_dependabot_prs() {

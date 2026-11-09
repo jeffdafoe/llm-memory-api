@@ -130,7 +130,7 @@ Once connected, your AI gets 41 tools:
 
 ## Self-Host
 
-The full source is here if you want to run your own instance. The stack is Node.js, Express, PostgreSQL with pgvector, Nginx, and Vite. There's an install script for Debian/Ubuntu that sets everything up:
+The full source is here if you want to run your own instance. The server is Go, with PostgreSQL and pgvector behind Nginx; the admin UI is Vue, built with Vite. There's an install script for Debian/Ubuntu that sets everything up:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/jeffdafoe/llm-memory-api/main/install.sh -o /tmp/install.sh
@@ -143,11 +143,9 @@ You'll need your own OpenAI API key for embeddings.
 
 Supply chain attacks against npm registries have caught real production projects in 2025. To reduce that risk:
 
-- **Every `npm install` in this repo runs through [Socket Firewall](https://docs.socket.dev/docs/socket-firewall-free) (`sfw`)**, both in local development (by convention — see the auto-memory note) and in the VPS deploy playbook (enforced via Ansible). `sfw` filters install requests against Socket's malicious-package database at the network layer, blocking confirmed malware before any postinstall script can execute.
-- The wrap covers both the build-time install and the production install on the deploy host. A bad package that slipped past local review still can't execute on the production server.
-- `sfw` itself is the only npm package installed without the wrap — chicken-and-egg bootstrap from a known-good source.
-
-If you're contributing or self-hosting, you can opt into the same protection with `npm i -g sfw` and using `sfw npm install` in place of `npm install`. No account or API key required.
+- **The production server runs no npm packages.** The server is one static Go binary, and the admin UI is a static build. CI builds both for each commit on `main` after the tests pass, and the deploy downloads them with their checksums. The VPS installs nothing from npm.
+- **CI installs the admin UI's packages with `npm ci --ignore-scripts`**, so no package install script runs in the job that publishes the build.
+- **In local development, run npm installs through [Socket Firewall](https://docs.socket.dev/docs/socket-firewall-free) (`sfw`).** It filters install requests against Socket's malicious-package database at the network layer, blocking confirmed malware before any postinstall script can run. Install it with `npm i -g sfw` and use `sfw npm install` in place of `npm install`. No account or API key required.
 
 ## License
 

@@ -3,24 +3,10 @@
 # PostgreSQL
 postgresql_version: "17"
 
-# Node.js
-nodejs_version: "24"
-
-# Go server binary (LLM-902), built in CI and downloaded by
-# roles/memory-api-go. Installed outside project_root, which the Node deploy
-# rsyncs with delete.
+# The server binary, built in CI and downloaded by roles/memory-api-go. It
+# runs as memory-api-go.service. Installed outside project_root, parts of which
+# the deploy rsyncs with delete.
 go_server_bin: /usr/local/bin/memory-api
-
-# Which server answers on memory_api_port (LLM-902 step 11): "node"
-# (memory-api.service) or "go" (memory-api-go.service). Both listen on the
-# same port and their units conflict, so exactly one runs. With "go", nginx
-# serves the admin UI (with its CSP), the landing pages, llms.txt and
-# openapi.yaml itself, because the Go server does not; the weekly staleness
-# check runs the Go binary. Node stays installed and up to date under "go", so
-# switching back is the same flip: a deploy with "node" enables Node and
-# disables Go.
-memory_api_backend: go
-memory_api_unit: "{{ 'memory-api-go' if memory_api_backend == 'go' else 'memory-api' }}"
 
 # Weekly staleness check (pending apt upgrades, end-of-life warnings) mails
 # this actor. Empty means the admin user (admin_username). Set it per server
