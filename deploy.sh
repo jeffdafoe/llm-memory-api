@@ -52,14 +52,15 @@ fi
 
 # The build to deploy: memory_api_release in local-secrets.yml (gitignored, so
 # the reset below keeps it). Empty or absent means main's head; a tag such as
-# v1.7.0 means that release (group_vars/all.yml, roles/memory-api-go).
+# server-v1.0.0 means that server release (group_vars/all.yml,
+# roles/memory-api-go).
 SECRETS=/opt/llm-memory-api/infrastructure/local-secrets.yml
 RELEASE=""
 if [ -f "$SECRETS" ]; then
     RELEASE=$(sed -n "s/^memory_api_release:[[:space:]]*[\"']\{0,1\}\([^\"']*\)[\"']\{0,1\}[[:space:]]*$/\1/p" "$SECRETS" | head -n 1)
 fi
-if [ -n "$RELEASE" ] && ! [[ "$RELEASE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    echo -e "\033[1;31mmemory_api_release in $SECRETS is '$RELEASE'; it must be empty or a release tag such as v1.7.0\033[0m"
+if [ -n "$RELEASE" ] && ! [[ "$RELEASE" =~ ^server-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo -e "\033[1;31mmemory_api_release in $SECRETS is '$RELEASE'; it must be empty or a server release tag such as server-v1.0.0\033[0m"
     exit 1
 fi
 

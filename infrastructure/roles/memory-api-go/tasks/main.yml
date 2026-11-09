@@ -5,8 +5,9 @@
 #   - empty: the per-commit build of the checked-out commit (release
 #     build-<sha> from the build-artifacts job in .github/workflows/ci.yml),
 #     linux/amd64 only;
-#   - a v* tag: that release (.github/workflows/release.yml), whose tag the
-#     checkout must be on.
+#   - a server-v* tag: that server release
+#     (.github/workflows/release-server.yml), whose tag the checkout must be
+#     on.
 # Every downloaded file must match its line in the build's checksum file and
 # have a build provenance attestation from the expected workflow
 # (files/verify-build.sh, cosign) before anything is installed.
@@ -16,8 +17,8 @@
 
 - name: Check the release setting
   assert:
-    that: memory_api_release == '' or memory_api_release is match('^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\Z')
-    fail_msg: "memory_api_release is '{{ memory_api_release }}'; it must be empty or a release tag such as v1.7.0"
+    that: memory_api_release == '' or memory_api_release is match('^server-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\Z')
+    fail_msg: "memory_api_release is '{{ memory_api_release }}'; it must be empty or a server release tag such as server-v1.0.0"
     quiet: yes
 
 - name: Read the commit being deployed
@@ -54,10 +55,10 @@
 - name: Set the release facts
   set_fact:
     build_tag: "{{ memory_api_release }}"
-    build_binary: "memory-api_{{ memory_api_release | regex_replace('^v', '') }}_linux_{{ build_arch }}"
-    build_admin: "admin-dist_{{ memory_api_release | regex_replace('^v', '') }}.tar.gz"
+    build_binary: "memory-api_{{ memory_api_release | regex_replace('^server-v', '') }}_linux_{{ build_arch }}"
+    build_admin: "admin-dist_{{ memory_api_release | regex_replace('^server-v', '') }}.tar.gz"
     build_sums: checksums.txt
-    build_signer: "https://github.com/jeffdafoe/llm-memory-api/.github/workflows/release.yml@refs/tags/{{ memory_api_release }}"
+    build_signer: "https://github.com/jeffdafoe/llm-memory-api/.github/workflows/release-server.yml@refs/tags/{{ memory_api_release }}"
   when: memory_api_release != ''
 
 # The code (migrations, nginx and cron files) and the binary must be the same

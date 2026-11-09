@@ -1,0 +1,221 @@
+name: Server Release
+
+# A server-vX.Y.Z tag publishes the server's release (LLM-976): the server
+# binary for linux/amd64 and linux/arm64 and the admin UI build, with one
+# checksums.txt. Every file gets a signed build provenance attestation before
+# the release becomes public. The deploy installs it when memory_api_release
+# is set to the tag (infrastructure/roles/memory-api-go), and checks that the
+# attestation was made by this workflow at that tag, for the tag's commit.
+#
+# Server releases are never "latest": the client tools' v* releases
+# (release.yml) are, because the clients' self-update and the VPS tools page
+# read releases/latest.
+#
+# Release files, with <version> the tag without "server-v":
+#   memory-api_<version>_linux_amd64, memory-api_<version>_linux_arm64,
+#   admin-dist_<version>.tar.gz, checksums.txt
+
+on:
+  push:
+    tags:
+      - 'server-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  # Vite runs dependency code (plugins, and the packages it bundles), so the
+  # admin UI is built here, with read-only permissions, and not in the job
+  # that can write releases and sign attestations. --ignore-scripts keeps
+  # install hooks from running too.
+  admin-ui:
+    name: Build the admin UI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: node/api/package-lock.json
+
+      - name: Build
+        working-directory: node/api
+        run: |
+          npm ci --ignore-scripts
+          npx vite build
+          tar -czf "$RUNNER_TEMP/admin-dist.tar.gz" -C public/admin/dist .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: admin-dist
+          path: ${{ runner.temp }}/admin-dist.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Build and Release
+    needs: admin-ui
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # id-token mints the OIDC token for the Sigstore signing certificate;
+      # attestations stores the attestation.
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      # The same tag form deploy.sh, install.sh and the deploy role accept.
+      - name: Check the tag
+        run: |
+          if ! [[ "$TAG" =~ ^server-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "$TAG is not a server release tag such as server-v1.0.0"
+              exit 1
+          fi
+          echo "VERSION=${TAG#server-v}" >> "$GITHUB_ENV"
+
+      # A re-run never touches a release that is already public, since a
+      # deploy may be downloading it. A draft left by a failed run is deleted
+      # before the new upload (the tag stays).
+      - name: Look for an earlier publish
+        id: existing
+        run: |
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>"$RUNNER_TEMP/view.err"); then
+              :
+          elif grep -q "release not found" "$RUNNER_TEMP/view.err"; then
+              draft=missing
+          else
+              cat "$RUNNER_TEMP/view.err"
+              exit 1
+          fi
+          echo "state=$draft" >> "$GITHUB_OUTPUT"
+          if [ "$draft" = false ]; then
+              echo "$TAG is already published; leaving it as it is."
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.existing.outputs.state != 'false'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        if: steps.existing.outputs.state != 'false'
+        with:
+          go-version-file: go/server/go.mod
+          cache: false
+
+      # Static binaries with no runtime dependencies, as CI's per-commit
+      # build-artifacts job makes them. `memory-api --version` prints the
+      # version.
+      - name: Build the server
+        if: steps.existing.outputs.state != 'false'
+        working-directory: go/server
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          go version
+          for arch in amd64 arm64; do
+              GOARCH=$arch go build -trimpath -ldflags "-X main.version=$VERSION" \
+                  -o "$RUNNER_TEMP/out/memory-api_${VERSION}_linux_${arch}" ./cmd/memory-api
+          done
+          test "$("$RUNNER_TEMP/out/memory-api_${VERSION}_linux_amd64" --version)" = "$VERSION"
+
+      - uses: actions/download-artifact@v8
+        if: steps.existing.outputs.state != 'false'
+        with:
+          name: admin-dist
+          path: ${{ runner.temp }}/admin-dist
+
+      - name: Write checksums.txt
+        if: steps.existing.outputs.state != 'false'
+        working-directory: ${{ runner.temp }}/out
+        run: |
+          mv "$RUNNER_TEMP/admin-dist/admin-dist.tar.gz" "admin-dist_${VERSION}.tar.gz"
+          sha256sum "memory-api_${VERSION}_linux_amd64" "memory-api_${VERSION}_linux_arm64" \
+              "admin-dist_${VERSION}.tar.gz" > checksums.txt
+          cat checksums.txt
+
+      # The server-side commits since the previous server tag, and the
+      # migrations they add (a deploy applies them).
+      - name: Write the release notes
+        if: steps.existing.outputs.state != 'false'
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          paths=(go/server node/api migrations infrastructure deploy.sh install.sh reinstall.sh)
+          if previous=$(git describe --tags --abbrev=0 --match 'server-v*' "$TAG^" 2>/dev/null); then
+              {
+                  echo "Server changes since $previous:"
+                  echo
+                  git log --no-merges --format='- %s (%h)' "$previous..$TAG" -- "${paths[@]}"
+                  echo
+                  added=$(git diff --name-only --diff-filter=A "$previous" "$TAG" -- 'migrations/*_up.sql')
+                  if [ -n "$added" ]; then
+                      echo "Migrations this version adds (the deploy applies them):"
+                      echo
+                      printf '%s\n' "$added" | sed 's/^/- /'
+                  else
+                      echo "No new migrations."
+                  fi
+              } > "$notes"
+          else
+              echo "First server release. A new install loads the migrations baseline (migrations/schema.sql and seed.sql) and applies every later migration." > "$notes"
+          fi
+          {
+              echo
+              echo "Install or update: see the README's Self-Host section (\`install.sh $TAG\`, or \`memory_api_release: \"$TAG\"\` and \`deploy.sh\`). Every file here has a build provenance attestation: \`gh attestation verify <file> -R $GITHUB_REPOSITORY\`."
+          } >> "$notes"
+          cat "$notes"
+
+      # Before anything is uploaded, so the release never holds a file without
+      # its attestation: the files checksums.txt lists, and checksums.txt
+      # itself, which is uploaded too.
+      - name: Attest the release files
+        if: steps.existing.outputs.state != 'false'
+        uses: actions/attest@v4
+        with:
+          subject-checksums: ${{ runner.temp }}/out/checksums.txt
+
+      - name: Attest checksums.txt
+        if: steps.existing.outputs.state != 'false'
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ runner.temp }}/out/checksums.txt
+
+      # Uploaded as a draft: an unauthenticated lookup (the deploy's) does not
+      # see it until it is published.
+      - name: Upload the release as a draft
+        if: steps.existing.outputs.state != 'false'
+        working-directory: ${{ runner.temp }}/out
+        env:
+          STATE: ${{ steps.existing.outputs.state }}
+        run: |
+          if [ "$STATE" = true ]; then
+              echo "Removing the draft a failed run left"
+              gh release delete "$TAG" --yes
+          fi
+          # The version, not the tag: every tag has the hyphen of "server-v".
+          prerelease=()
+          case "$VERSION" in
+              *-*) prerelease=(--prerelease) ;;
+          esac
+          gh release create "$TAG" \
+              "memory-api_${VERSION}_linux_amd64" "memory-api_${VERSION}_linux_arm64" \
+              "admin-dist_${VERSION}.tar.gz" checksums.txt \
+              --draft --verify-tag --latest=false "${prerelease[@]}" \
+              --title "Server $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Publish the release
+        if: steps.existing.outputs.state != 'false'
+        run: gh release edit "$TAG" --draft=false --latest=false
