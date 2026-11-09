@@ -3,11 +3,13 @@
 #
 # Dependabot plus dependabot-auto-merge.yml keeps npm, Go modules and Actions
 # current for patch and minor updates. This script covers the rest:
-#   - exact pins nothing else bumps: the Go toolchain
+#   - exact pins nothing else bumps: the Go toolchain, and cosign (the build
+#     verifier the deploy installs, group_vars/all.yml, and its copy in the
+#     verify-build CI job)
 #   - major lines that only end by choice: PostgreSQL and Node.js, flagged
 #     near end of life. The server's own weekly check
-#     (node/api/scripts/staleness-check.js) warns on the installed versions,
-#     90 days out; this one reads the repo pins, a year out.
+#     (`memory-api staleness-check`) warns on the installed versions, 90 days
+#     out; this one reads the repo pins, a year out.
 #   - Dependabot PRs that wait for a person (majors are not auto-merged)
 #   - Go dependencies with a newer major module path, which Dependabot never
 #     offers because a new major is a new import path (pgx/v5 -> pgx/v6)
@@ -105,6 +107,20 @@ check_go_toolchain() {
     compare_pins "Go toolchain" "$latest" \
         "go/server/go.mod=$(sed -n 's/^toolchain go//p' "$ROOT/go/server/go.mod")" \
         "go/client/go.mod=$(sed -n 's/^toolchain go//p' "$ROOT/go/client/go.mod")"
+}
+
+# cosign has no security-only signal here (its checksums are pinned beside the
+# version), so any newer release is a finding. Raising it means the version
+# and both checksums in group_vars/all.yml and the cosign-release in ci.yml.
+check_cosign() {
+    local latest
+    if ! latest="$(gh api repos/sigstore/cosign/releases/latest --jq '.tag_name | ltrimstr("v")')" || [ -z "$latest" ]; then
+        error "cosign: could not read the latest release from GitHub."
+        return
+    fi
+    compare_pins "cosign" "$latest" \
+        "infrastructure/group_vars/all.yml cosign_version=$(yaml_var infrastructure/group_vars/all.yml cosign_version | sed 's/^v//')" \
+        ".github/workflows/ci.yml cosign-release=$(sed -nE "s/^[[:space:]]*cosign-release:[[:space:]]*'?v?([^'[:space:]]*)'?.*/\1/p" "$ROOT/.github/workflows/ci.yml" | head -n 1)"
 }
 
 # file_pins NAME FILE KEY VALUE_RE GROUP
@@ -294,6 +310,7 @@ check_go_majors() {
 }
 
 check_go_toolchain
+check_cosign
 check_postgres
 check_node
 check_dependabot_prs

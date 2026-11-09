@@ -1,29 +1,93 @@
 ---
-# Install the Go server and the admin UI's built files from the per-commit
-# build CI publishes (the build-artifacts job in .github/workflows/ci.yml,
-# release build-<sha>). The VPS compiles nothing.
-# deploy.yml runs this role before roles/memory-api, so a missing or corrupt
-# build stops the deploy before it changes anything else and before migrations.
+# Install the Go server and the admin UI's built files from a build CI
+# published. The VPS compiles nothing. Two sources (memory_api_release in
+# group_vars/all.yml):
+#   - empty: the per-commit build of the checked-out commit (release
+#     build-<sha> from the build-artifacts job in .github/workflows/ci.yml),
+#     linux/amd64 only;
+#   - a v* tag: that release (.github/workflows/release.yml), whose tag the
+#     checkout must be on.
+# Every downloaded file must match its line in the build's checksum file and
+# have a build provenance attestation from the expected workflow
+# (files/verify-build.sh, cosign) before anything is installed.
+# deploy.yml runs this role before roles/memory-api, so a missing, corrupt or
+# unattested build stops the deploy before it changes anything else and before
+# migrations. setup.yml runs it too, before tasks/create-admin.yml.
+
+- name: Check the release setting
+  assert:
+    that: memory_api_release == '' or memory_api_release is match('^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\Z')
+    fail_msg: "memory_api_release is '{{ memory_api_release }}'; it must be empty or a release tag such as v1.7.0"
+    quiet: yes
 
 - name: Read the commit being deployed
   command: git -C {{ repo_root }} rev-parse HEAD
   register: deploy_commit
   changed_when: false
 
-- name: Set the build release facts
+- name: Set the architecture
   set_fact:
-    build_sha: "{{ deploy_commit.stdout | trim }}"
-    build_url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/build-{{ deploy_commit.stdout | trim }}"
-    build_assets:
-      - memory-api
-      - admin-dist.tar.gz
-      - SHA256SUMS
+    build_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default('unsupported') }}"
 
-# CI publishes the build a few minutes after the merge. A deploy started
-# before that finds no release (404) and stops here.
+- name: Check the architecture
+  assert:
+    that: build_arch != 'unsupported'
+    fail_msg: "no build for {{ ansible_architecture }}; releases have linux amd64 and arm64"
+    quiet: yes
+
+- name: Set the per-commit build facts
+  set_fact:
+    build_tag: "build-{{ deploy_commit.stdout | trim }}"
+    build_binary: memory-api
+    build_admin: admin-dist.tar.gz
+    build_sums: SHA256SUMS
+    build_signer: https://github.com/jeffdafoe/llm-memory-api/.github/workflows/ci.yml@refs/heads/main
+  when: memory_api_release == ''
+
+- name: Check the per-commit build's architecture
+  assert:
+    that: build_arch == 'amd64'
+    fail_msg: "per-commit builds are linux/amd64 only; on {{ build_arch }} set memory_api_release to a release tag"
+    quiet: yes
+  when: memory_api_release == ''
+
+- name: Set the release facts
+  set_fact:
+    build_tag: "{{ memory_api_release }}"
+    build_binary: "memory-api_{{ memory_api_release | regex_replace('^v', '') }}_linux_{{ build_arch }}"
+    build_admin: "admin-dist_{{ memory_api_release | regex_replace('^v', '') }}.tar.gz"
+    build_sums: checksums.txt
+    build_signer: "https://github.com/jeffdafoe/llm-memory-api/.github/workflows/release.yml@refs/tags/{{ memory_api_release }}"
+  when: memory_api_release != ''
+
+# The code (migrations, nginx and cron files) and the binary must be the same
+# version. deploy.sh and install.sh check out the tag.
+- name: Read the release tag's commit
+  command: git -C {{ repo_root }} rev-parse "refs/tags/{{ memory_api_release }}^{commit}"
+  register: release_commit
+  changed_when: false
+  failed_when: false
+  when: memory_api_release != ''
+
+- name: Check the checkout is on the release tag
+  assert:
+    that:
+      - release_commit.rc == 0
+      - release_commit.stdout | trim == deploy_commit.stdout | trim
+    fail_msg: "{{ repo_root }} is at {{ deploy_commit.stdout | trim }}, not at tag {{ memory_api_release }}; deploy with deploy.sh, which checks the tag out"
+    quiet: yes
+  when: memory_api_release != ''
+
+- name: Set the download URL
+  set_fact:
+    build_url: "https://github.com/jeffdafoe/llm-memory-api/releases/download/{{ build_tag }}"
+
+# CI publishes a per-commit build a few minutes after the merge. A deploy
+# started before that finds no release (404) and stops here. A release that is
+# still a draft (not attested yet) is also a 404 to this unauthenticated call.
 - name: Look up the build release
   uri:
-    url: "https://api.github.com/repos/jeffdafoe/llm-memory-api/releases/tags/build-{{ build_sha }}"
+    url: "https://api.github.com/repos/jeffdafoe/llm-memory-api/releases/tags/{{ build_tag }}"
     status_code: [200, 404]
   register: build_release
 
@@ -31,13 +95,25 @@
   assert:
     that:
       - build_release.status == 200
-      - build_assets | difference(build_release.json.assets | default([]) | map(attribute='name') | list) | length == 0
-    fail_msg: "build for {{ build_sha }} is not published yet; wait for CI and deploy again"
+      - "[build_binary, build_admin, build_sums] | difference(build_release.json.assets | default([]) | map(attribute='name') | list) | length == 0"
+    fail_msg: "{{ build_tag }} is not published (or lacks {{ build_binary }}, {{ build_admin }} or {{ build_sums }}); for a per-commit build, wait for CI and deploy again"
     quiet: yes
+
+# get_url downloads only when the file is missing or its checksum differs, so
+# a raised version pin installs the new binary.
+- name: Install cosign
+  get_url:
+    url: "https://github.com/sigstore/cosign/releases/download/{{ cosign_version }}/cosign-linux-{{ build_arch }}"
+    dest: "{{ cosign_bin }}"
+    checksum: "sha256:{{ cosign_sha256[build_arch] }}"
+    owner: root
+    group: root
+    mode: "0755"
+    timeout: 120
 
 # Both files are downloaded, checked and staged before either is installed,
 # so a failure in either leaves both the binary and the admin UI as they were.
-- name: Download, stage and install the build
+- name: Download, verify, stage and install the build
   vars:
     admin_dist: "{{ repo_root }}/node/api/public/admin/dist"
   block:
@@ -47,16 +123,16 @@
         prefix: memory-api-build-
       register: build_dir
 
-    # get_url checks each download against the line for its name in
-    # SHA256SUMS and fails on a mismatch. It deletes an existing destination
-    # whose checksum differs before downloading, so the binary goes to a .new
-    # file next to the installed one (same filesystem, so the install below
-    # is a rename).
+    # get_url checks each download against the line for its name in the
+    # build's checksum file and fails on a mismatch. It deletes an existing
+    # destination whose checksum differs before downloading, so the binary
+    # goes to a .new file next to the installed one (same filesystem, so the
+    # install below is a rename).
     - name: Download the Go server binary
       get_url:
-        url: "{{ build_url }}/memory-api"
+        url: "{{ build_url }}/{{ build_binary }}"
         dest: "{{ go_server_bin }}.new"
-        checksum: "sha256:{{ build_url }}/SHA256SUMS"
+        checksum: "sha256:{{ build_url }}/{{ build_sums }}"
         force: yes
         owner: root
         group: root
@@ -65,11 +141,27 @@
 
     - name: Download the admin UI build
       get_url:
-        url: "{{ build_url }}/admin-dist.tar.gz"
+        url: "{{ build_url }}/{{ build_admin }}"
         dest: "{{ build_dir.path }}/admin-dist.tar.gz"
-        checksum: "sha256:{{ build_url }}/SHA256SUMS"
+        checksum: "sha256:{{ build_url }}/{{ build_sums }}"
         mode: "0600"
         timeout: 120
+
+    # The checksum file comes from the same release as the files, so it only
+    # catches a corrupt download. The attestation proves the files were built
+    # by this repository's workflow (build_signer) from the deployed commit's
+    # build or the tag's release.
+    - name: Verify the Go server binary's build provenance
+      script: verify-build.sh "{{ go_server_bin }}.new" "{{ build_signer }}"
+      environment:
+        COSIGN: "{{ cosign_bin }}"
+      changed_when: false
+
+    - name: Verify the admin UI build's build provenance
+      script: verify-build.sh "{{ build_dir.path }}/admin-dist.tar.gz" "{{ build_signer }}"
+      environment:
+        COSIGN: "{{ cosign_bin }}"
+      changed_when: false
 
     # Removes a dist.new left by an earlier failed run.
     - name: Clear the admin UI staging directory
@@ -112,6 +204,12 @@
         path: "{{ build_dir.path }}"
         state: absent
       when: build_dir.path is defined
+
+    # Left only when a check failed before the install.
+    - name: Remove an uninstalled binary download
+      file:
+        path: "{{ go_server_bin }}.new"
+        state: absent
 
 - name: Install the Go server's systemd unit
   template:
