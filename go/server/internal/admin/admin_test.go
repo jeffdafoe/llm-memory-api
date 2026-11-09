@@ -542,7 +542,9 @@ func TestProvidersDefaults(t *testing.T) {
 func TestVerify(t *testing.T) {
 	mock := testutil.NewMock(t)
 	log := logger.New(mock, actors.NewCache(mock), "")
-	v := &Verify{Sessions: &auth.Sessions{DB: mock}, Admin: &permissions.Admin{DB: mock}, Log: log}
+	// The session row's expiry is relative to testNow, so the clock must be too.
+	sessions := &auth.Sessions{DB: mock, Now: func() time.Time { return testNow }}
+	v := &Verify{Sessions: sessions, Admin: &permissions.Admin{DB: mock}, Log: log}
 	mux := v.Mux(http.NotFoundHandler())
 
 	post := func(body string) *httptest.ResponseRecorder {
