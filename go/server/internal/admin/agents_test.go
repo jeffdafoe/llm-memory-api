@@ -137,7 +137,8 @@ func call(fn func(*Routes, http.ResponseWriter, *http.Request) error) func(*Rout
 
 // Fields of another JSON type are refused after the required check; no
 // body at all is V8's TypeError, as in Node. content and the create text
-// fields are refused later, after the checks Node made (contract cases).
+// fields are refused later, after the checks Node made; those later
+// refusals have no test here.
 func TestAgentsFieldTypes(t *testing.T) {
 	rt, mock, _ := newRoutes(t, map[string]string{"minimum_password_length": "10"})
 	cases := []struct {

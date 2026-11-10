@@ -752,7 +752,10 @@ func (rt *Routes) agentsUpdate(w http.ResponseWriter, r *http.Request) error {
 }
 
 // agentsUsage is POST /admin/agents/usage: an agent's newest usage rows
-// (limit 1 to 200, default 50), each with its call detail id.
+// (limit 1 to 200, default 50), each with its call detail id and the
+// OpenRouter upstream that served it (served_by). Both come from one call
+// row: LATERAL runs the subquery once per usage row, and ON true keeps a
+// usage row that has no call (call_id and served_by null).
 func (rt *Routes) agentsUsage(w http.ResponseWriter, r *http.Request) error {
 	f, ok := httpapi.BodyFields(r)
 	if !ok {
@@ -777,8 +780,9 @@ func (rt *Routes) agentsUsage(w http.ResponseWriter, r *http.Request) error {
 	rows, err := pgjson.Query(r.Context(), rt.DB,
 		`SELECT u.id, u.provider, u.model, u.input_tokens, u.output_tokens, u.cache_write_tokens, u.cache_read_tokens,
                 u.cost, u.context, u.status, u.error_message, u.created_at,
-                (SELECT c.id FROM virtual_agent_calls c WHERE c.usage_id = u.id LIMIT 1) AS call_id
+                c.id AS call_id, c.served_by
          FROM virtual_agent_usage u
+         LEFT JOIN LATERAL (SELECT id, served_by FROM virtual_agent_calls WHERE usage_id = u.id LIMIT 1) c ON true
          WHERE u.actor_id = $1
          ORDER BY u.created_at DESC
          LIMIT $2`, actor.ID, limit)
@@ -804,7 +808,7 @@ func (rt *Routes) agentsCallDetail(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	sql := `SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model,
+	sql := `SELECT c.id, ac.name AS agent, c.context, c.context_id, c.provider, c.model, c.served_by,
                 c.sim_actor_id, c.sim_actor_name,
                 c.system_prompt, c.user_message, c.response,
                 c.status, c.status_code, c.error_message,

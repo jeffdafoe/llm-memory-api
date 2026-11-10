@@ -209,7 +209,7 @@
                                     :title="u.call_id ? 'Click to view call detail' : (u.status === 'error' ? u.error_message : 'Detail expired')"
                                     @click="u.call_id && viewCallDetail(u)">
                                     <td class="ts nowrap">{{ formatShortDate(u.created_at) }}</td>
-                                    <td class="ts">{{ u.model }}</td>
+                                    <td class="ts" :title="u.served_by ? 'OpenRouter upstream that served this call' : null">{{ u.model }}<template v-if="u.served_by"> via {{ u.served_by }}</template></td>
                                     <td>{{ u.context || '-' }}</td>
                                     <td><span v-if="u.status === 'error'" class="badge badge-error" style="font-size: 10px;">error</span><span v-else class="ts">ok</span></td>
                                     <td class="num ts">{{ (u.input_tokens + (u.cache_read_tokens || 0) + u.output_tokens).toLocaleString() }}</td>
@@ -320,7 +320,7 @@
             <div class="call-detail-meta">
                 <span><strong>{{ callDetail.context || '-' }}</strong></span>
                 <span v-if="callDetail.sim_actor_name || callDetail.sim_actor_id" class="ts" title="in-world actor this turn was made on behalf of (LLM-236)">as {{ callDetail.sim_actor_name || callDetail.sim_actor_id }}</span>
-                <span class="ts">{{ callDetail.provider }} / {{ callDetail.model }}</span>
+                <span class="ts">{{ callDetail.provider }} / {{ callDetail.model }}<template v-if="callDetail.served_by"> via {{ callDetail.served_by }}</template></span>
                 <span :class="callDetail.status === 'error' ? 'badge badge-error' : 'badge badge-online'" style="font-size: 11px;">{{ callDetail.status }}</span>
                 <span class="ts" v-if="callDetail.duration_ms">{{ callDetail.duration_ms }}ms</span>
                 <span class="ts">{{ (callDetail.input_tokens || 0) + (callDetail.cache_read_tokens || 0) }} in / {{ callDetail.output_tokens || 0 }} out</span>
