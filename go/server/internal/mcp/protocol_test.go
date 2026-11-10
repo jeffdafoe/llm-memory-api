@@ -20,8 +20,8 @@ import (
 )
 
 // The protocol cases below are byte-exact answers of the Node server (the
-// TypeScript SDK) for the same requests; the contract harness checks the
-// rest against Node directly.
+// TypeScript SDK) for the same requests. The cases with no Go test are
+// listed in the mcp-endpoint codebase note.
 
 func testServer(t *testing.T) (*Server, pgxmock.PgxPoolIface, *bytes.Buffer) {
 	mock := testutil.NewMock(t)

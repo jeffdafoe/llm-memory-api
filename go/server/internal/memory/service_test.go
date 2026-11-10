@@ -29,9 +29,8 @@ const (
 )
 
 // Ingest takes the per-file lock inside its transaction, before it deletes
-// the old chunks (LLM-919). pgxmock checks the order. The lock itself, two
-// ingests of one file at once on a real database, is the contract test
-// TestIngestConcurrentKeepsOneVersion.
+// the old chunks (LLM-919). pgxmock checks the order. The lock itself, on a
+// real database, is in service_db_test.go.
 func TestIngestLocksBeforeDelete(t *testing.T) {
 	mock := testutil.NewMock(t)
 	mock.ExpectBegin()

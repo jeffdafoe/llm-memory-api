@@ -12,8 +12,8 @@ import (
 )
 
 // runLockKey is the dream run's advisory lock key (LLM-532). Keys follow
-// <ticket number>001 and are never reused; Node's services/dream.js keeps
-// the list.
+// <ticket number>001 and are never reused. The other key in use is
+// memory.ingestLockClass (919001), the first of a two-key lock.
 const runLockKey = 532001
 
 // lockTimeout bounds the lock's own statements: the unlock runs when the
@@ -83,9 +83,9 @@ type runLock struct {
 // acquireRunLock takes the lock, or returns nil when another run holds it.
 // Two overlapping runs would read the same last_dream_at cursors, plan
 // overlapping windows, and the later writer would move a cursor past days
-// the other never dreamed. The guard must work across processes (operator
-// runs are separate processes), and an advisory lock ends with its session,
-// so a crashed run leaves nothing stuck.
+// the other never dreamed. The lock is in Postgres, not in the process, so
+// it also holds when two servers run against one database. An advisory lock
+// ends with its session, so a crashed run leaves nothing stuck.
 func (j *Job) acquireRunLock(ctx context.Context) (*runLock, error) {
 	conn, err := j.Conns.Connect(ctx)
 	if err != nil {

@@ -139,8 +139,8 @@ func run() error {
 		pool.Close()
 		return err
 	}
-	// The bound port, not the setting: with PORT=0 the OS picks it, and the
-	// contract harness reads it from this line.
+	// The bound port, not the setting: with PORT=0 the OS picks it, and this
+	// line is the only place it shows.
 	fmt.Printf("Memory API listening on %s:%d\n", host, listener.Addr().(*net.TCPAddr).Port)
 	watchdog.Start(services.Log)
 	// The admin WebSocket ping timer (events.js's setInterval).

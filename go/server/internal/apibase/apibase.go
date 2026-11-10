@@ -1,8 +1,8 @@
 // Package apibase gives the base URL of each outside API the server calls
 // (Node's services/api-base.js). Production sets none of the variables and
-// gets the public origins. The contract tests set them so every provider call
-// and the embeddings call go to a local fake server. A base may carry a path
-// prefix; the caller appends its own path.
+// gets the public origins. A test sets one to send provider or embeddings
+// calls to a local fake server. A base may carry a path prefix; the caller
+// appends its own path.
 package apibase
 
 import (
