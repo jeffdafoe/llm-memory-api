@@ -154,8 +154,8 @@ func TestReportWithoutHandlerIsUnhandled(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}
-	// The mock gives no column types, so the JSON shape of the row is the
-	// contract harness's to check.
+	// The mock gives no column types, so this test cannot check the JSON
+	// shape of the row, and no other test does.
 	if s, _ := row.String("status"); s != "unhandled" {
 		t.Errorf("status %q", s)
 	}

@@ -43,7 +43,7 @@ func Recover(next http.Handler) http.Handler {
 }
 
 // NotFound answers an unmatched route with the page Express's finalhandler
-// sends, so clients and the contract tests see the same 404.
+// sent, so clients see the same 404 the Node server gave.
 func NotFound(w http.ResponseWriter, r *http.Request) {
 	body := "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>" +
 		"Cannot " + html.EscapeString(r.Method) + " " + html.EscapeString(r.URL.EscapedPath()) +

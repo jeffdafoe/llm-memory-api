@@ -62,6 +62,23 @@ jobs:
   go-server:
     name: Go Server
     runs-on: ubuntu-latest
+    # The real-Postgres tests (testutil.ScratchDB) make a database per test,
+    # so they connect as the superuser. In CI they fail rather than skip when
+    # TEST_PG_URL is missing.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_PG_URL: postgresql://postgres:postgres@localhost:5432/postgres
     defaults:
       run:
         working-directory: go/server

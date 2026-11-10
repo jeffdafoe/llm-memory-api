@@ -121,8 +121,8 @@ func message(err error) string {
 }
 
 // detail is error_log.detail: Node stored err.stack; Go stores the error's
-// %+v, as every ported job and route does (the contract harness never
-// compares the column).
+// %+v, as every ported job and route does. The column is for people to read;
+// no code parses it.
 func detail(err error) string { return fmt.Sprintf("%+v", err) }
 
 // stopTask stops a replaced schedule; tests record it.
