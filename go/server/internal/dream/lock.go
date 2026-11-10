@@ -12,8 +12,9 @@ import (
 )
 
 // runLockKey is the dream run's advisory lock key (LLM-532). Keys follow
-// <ticket number>001 and are never reused. The other key in use is
-// memory.ingestLockClass (919001), the first of a two-key lock.
+// <ticket number>001 and are never reused. The other keys in use are
+// signup.eventLockClass (734001) and memory.ingestLockClass (919001), each
+// the first of a two-key lock.
 const runLockKey = 532001
 
 // lockTimeout bounds the lock's own statements: the unlock runs when the
