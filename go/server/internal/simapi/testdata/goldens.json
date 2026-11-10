@@ -3095,6 +3095,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -3120,6 +3121,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3144,6 +3146,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3168,6 +3171,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3192,6 +3196,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3216,6 +3221,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3240,6 +3246,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3263,14 +3270,14 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"98\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"97\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"96\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":5,\\\"has_more\\\":true}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"98\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"97\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"96\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":5,\\\"has_more\\\":true}\"}"
    }
   },
   {
@@ -3289,6 +3296,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -3314,6 +3322,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3338,6 +3347,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3361,14 +3371,14 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "4"
      ]
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":2,\\\"has_more\\\":false}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":2,\\\"has_more\\\":false}\"}"
    }
   },
   {
@@ -3387,6 +3397,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -3412,6 +3423,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3436,6 +3448,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3460,6 +3473,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3483,14 +3497,14 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "4"
      ]
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"98\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":3,\\\"has_more\\\":false}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"98\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":3,\\\"has_more\\\":false}\"}"
    }
   },
   {
@@ -3509,6 +3523,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -3534,6 +3549,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3557,7 +3573,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.scene_id = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.scene_id = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
      "params": [
       "6D2A0C1E-0000-4000-8000-0000000000A1",
       "501"
@@ -3565,7 +3581,7 @@
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":1,\\\"has_more\\\":false}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":1,\\\"has_more\\\":false}\"}"
    }
   },
   {
@@ -3621,6 +3637,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -3646,6 +3663,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3670,6 +3688,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3694,6 +3713,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3718,6 +3738,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3742,6 +3763,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3766,6 +3788,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3790,6 +3813,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3814,6 +3838,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -3837,7 +3862,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE ac.name = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE ac.name = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
      "params": [
       "zbbs-john-ellis",
       "8"
@@ -3845,7 +3870,7 @@
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"98\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"97\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"96\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"95\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"94\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":7,\\\"has_more\\\":true}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"98\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"97\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"96\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"95\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"94\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":7,\\\"has_more\\\":true}\"}"
    }
   },
   {
@@ -3889,6 +3914,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -3912,7 +3938,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.conversation_id = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.conversation_id = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
      "params": [
       "hud-abc",
       "501"
@@ -3965,6 +3991,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -3990,6 +4017,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -4013,7 +4041,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.sim_actor_id = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.sim_actor_id = $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
      "params": [
       "alice",
       "501"
@@ -4021,7 +4049,7 @@
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":1,\\\"has_more\\\":false}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":1,\\\"has_more\\\":false}\"}"
    }
   },
   {
@@ -4040,6 +4068,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4063,7 +4092,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]
@@ -4115,6 +4144,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4138,7 +4168,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.created_at >= $1 AND c.created_at < $2 AND c.status = $3\n         ORDER BY c.created_at DESC\n         LIMIT $4",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.created_at >= $1 AND c.created_at < $2 AND c.status = $3\n         ORDER BY c.created_at DESC\n         LIMIT $4",
      "params": [
       "2026-11-05T10:00:00.500Z",
       "2026-11-06T00:00:00.000Z",
@@ -4167,6 +4197,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4190,7 +4221,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.created_at >= $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.created_at >= $1\n         ORDER BY c.created_at DESC\n         LIMIT $2",
      "params": [
       "2026-11-06T18:33:20.000Z",
       "6"
@@ -4259,6 +4290,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4282,7 +4314,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]
@@ -4308,6 +4340,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4331,7 +4364,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]
@@ -4357,6 +4390,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4382,6 +4416,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -4406,6 +4441,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -4429,14 +4465,14 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "2"
      ]
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":1,\\\"has_more\\\":true}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":1,\\\"has_more\\\":true}\"}"
    }
   },
   {
@@ -4455,6 +4491,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4478,7 +4515,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "2"
      ]
@@ -4504,6 +4541,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4527,7 +4565,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "51"
      ]
@@ -4553,6 +4591,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4576,7 +4615,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]
@@ -4602,6 +4641,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4625,7 +4665,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]
@@ -4658,6 +4698,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4683,6 +4724,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -4707,6 +4749,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -4731,6 +4774,7 @@
        null,
        "openrouter",
        "m",
+       null,
        "a1",
        "John",
        "sys",
@@ -4754,7 +4798,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.scene_id = $1 AND ac.name = $2 AND c.conversation_id = $3 AND c.sim_actor_id = $4 AND c.created_at >= $5 AND c.created_at < $6 AND c.status = $7\n         ORDER BY c.created_at DESC\n         LIMIT $8",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         WHERE c.scene_id = $1 AND ac.name = $2 AND c.conversation_id = $3 AND c.sim_actor_id = $4 AND c.created_at >= $5 AND c.created_at < $6 AND c.status = $7\n         ORDER BY c.created_at DESC\n         LIMIT $8",
      "params": [
       "6d2a0c1e-0000-4000-8000-0000000000a1",
       "a",
@@ -4768,7 +4812,7 @@
     }
    ],
    "outcome": {
-    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":2,\\\"has_more\\\":true}\"}"
+    "value": "{\"status\":200,\"body\":\"{\\\"turns\\\":[{\\\"id\\\":\\\"100\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"},{\\\"id\\\":\\\"99\\\",\\\"agent\\\":\\\"zbbs-john-ellis\\\",\\\"scene_id\\\":\\\"6d2a0c1e-0000-4000-8000-0000000000a1\\\",\\\"context\\\":\\\"chat\\\",\\\"context_id\\\":null,\\\"provider\\\":\\\"openrouter\\\",\\\"model\\\":\\\"m\\\",\\\"served_by\\\":null,\\\"sim_actor_id\\\":\\\"a1\\\",\\\"sim_actor_name\\\":\\\"John\\\",\\\"system_prompt\\\":\\\"sys\\\",\\\"user_message\\\":\\\"user\\\",\\\"response\\\":\\\"resp\\\",\\\"status\\\":\\\"success\\\",\\\"status_code\\\":null,\\\"error_message\\\":null,\\\"input_tokens\\\":10,\\\"output_tokens\\\":5,\\\"cache_read_tokens\\\":0,\\\"cache_write_tokens\\\":0,\\\"cost\\\":\\\"0.000035\\\",\\\"duration_ms\\\":120,\\\"created_at\\\":\\\"2026-11-05T10:00:00.123Z\\\"}],\\\"returned\\\":2,\\\"has_more\\\":true}\"}"
    }
   },
   {
@@ -4784,7 +4828,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]
@@ -4815,6 +4859,7 @@
       "context_id",
       "provider",
       "model",
+      "served_by",
       "sim_actor_id",
       "sim_actor_name",
       "system_prompt",
@@ -4838,7 +4883,7 @@
    "events": [
     {
      "kind": "query",
-     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
+     "sql": "SELECT c.id, ac.name AS agent, c.scene_id, c.context, c.context_id, c.provider, c.model, c.served_by,\n                c.sim_actor_id, c.sim_actor_name,\n                c.system_prompt, c.user_message, c.response,\n                c.status, c.status_code, c.error_message,\n                c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,\n                c.cost, c.duration_ms, c.created_at\n         FROM virtual_agent_calls c\n         JOIN actors ac ON ac.id = c.actor_id\n         \n         ORDER BY c.created_at DESC\n         LIMIT $1",
      "params": [
       "6"
      ]

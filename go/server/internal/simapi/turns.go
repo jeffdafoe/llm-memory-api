@@ -19,6 +19,7 @@ type Turn struct {
 	ContextID        *string `json:"context_id"`
 	Provider         string  `json:"provider"`
 	Model            string  `json:"model"`
+	ServedBy         *string `json:"served_by"`
 	SimActorID       *string `json:"sim_actor_id"`
 	SimActorName     *string `json:"sim_actor_name"`
 	SystemPrompt     *string `json:"system_prompt"`
@@ -39,7 +40,7 @@ type Turn struct {
 // RawTurns runs the raw-turns query: where is the WHERE clause over
 // params, and the last parameter ($limitParam) is the row limit.
 func (s *Service) RawTurns(ctx context.Context, where string, limitParam int, params []any) ([]Turn, error) {
-	rows, err := s.DB.Query(ctx, `SELECT c.id::text, ac.name AS agent, c.scene_id::text, c.context, c.context_id, c.provider, c.model,
+	rows, err := s.DB.Query(ctx, `SELECT c.id::text, ac.name AS agent, c.scene_id::text, c.context, c.context_id, c.provider, c.model, c.served_by,
                 c.sim_actor_id, c.sim_actor_name,
                 c.system_prompt, c.user_message, c.response,
                 c.status, c.status_code, c.error_message,
@@ -58,7 +59,7 @@ func (s *Service) RawTurns(ctx context.Context, where string, limitParam int, pa
 	for rows.Next() {
 		var t Turn
 		var created time.Time
-		if err := rows.Scan(&t.ID, &t.Agent, &t.SceneID, &t.Context, &t.ContextID, &t.Provider, &t.Model,
+		if err := rows.Scan(&t.ID, &t.Agent, &t.SceneID, &t.Context, &t.ContextID, &t.Provider, &t.Model, &t.ServedBy,
 			&t.SimActorID, &t.SimActorName, &t.SystemPrompt, &t.UserMessage, &t.Response,
 			&t.Status, &t.StatusCode, &t.ErrorMessage,
 			&t.InputTokens, &t.OutputTokens, &t.CacheReadTokens, &t.CacheWriteTokens,
