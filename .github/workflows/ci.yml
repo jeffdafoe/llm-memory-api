@@ -280,9 +280,30 @@ jobs:
   # (plugins, and the packages it bundles), so it runs here, with read-only
   # permissions, and not in build-artifacts, which can write releases and
   # sign attestations. --ignore-scripts keeps install hooks from running too.
+  # The admin is served with script-src 'self', so a component that needs
+  # Vue's runtime template compiler renders blank (LLM-977). Runs on every PR,
+  # and the main build waits for it. Node built-ins only: no npm ci.
+  admin-ui-templates:
+    name: Admin UI Templates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: No runtime-compiled templates
+        run: node node/api/scripts/check-admin-templates.js
+
   build-admin-ui:
     name: Build Admin UI
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: admin-ui-templates
     runs-on: ubuntu-latest
     permissions:
       contents: read
