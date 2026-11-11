@@ -1,11 +1,11 @@
 package selfupdate
 
-// These tests run Check against a fake GitHub: an httptest server (a real
-// HTTP server on a random local port, started and stopped by the test)
-// that serves the "latest release" API response, the release archive and
-// checksums.txt. The package-level seams in selfupdate.go point Check at
-// that server and stub out the final binary swap, so the test binary on
-// disk is never touched.
+// These tests run the update against a fake GitHub: an httptest server (a
+// real HTTP server on a random local port, started and stopped by the
+// test) that serves the "latest release" API response, the release archive
+// and checksums.txt. The package-level seams in selfupdate.go point the
+// code at that server and stub out the final binary swap, so the test
+// binary on disk is never touched.
 
 import (
     "archive/tar"
@@ -18,8 +18,11 @@ import (
     "fmt"
     "net/http"
     "net/http/httptest"
+    "os"
     "runtime"
+    "strconv"
     "strings"
+    "sync/atomic"
     "testing"
 )
 
@@ -38,25 +41,37 @@ type fakeRelease struct {
     // checksumsStatus, when set, is the HTTP status for checksums.txt
     // (the asset is still listed in the release).
     checksumsStatus int
+    // truncateArchive declares the full archive length but sends only half
+    // of it, like a connection that drops mid-download.
+    truncateArchive bool
 }
 
-// replaceCall records what Check tried to install. Nil means Check never
-// reached the binary swap.
+// replaceCall records what the update tried to install.
 type replaceCall struct {
     binaryName string
     data       []byte
 }
 
-// startFakeGitHub serves release and points the package seams at it. It
-// returns the captured output and a pointer to the recorded swap. The
-// t.Cleanup calls restore the seams after the test, like a tearDown().
-func startFakeGitHub(t *testing.T, release fakeRelease) (*bytes.Buffer, **replaceCall) {
+// fakeGitHub is what a test inspects afterwards. replaced stays nil when
+// the update never reached the binary swap.
+type fakeGitHub struct {
+    url             string
+    out             bytes.Buffer
+    replaced        *replaceCall
+    archiveRequests atomic.Int32
+}
+
+// startFakeGitHub serves release under archiveName and points the package
+// seams at it. The t.Cleanup calls restore the seams after the test, like
+// a tearDown().
+func startFakeGitHub(t *testing.T, archiveName string, release fakeRelease) *fakeGitHub {
     t.Helper()
 
-    archiveName := buildAssetName(testBinary, testNewVersion)
+    fake := &fakeGitHub{}
     mux := http.NewServeMux()
     server := httptest.NewServer(mux)
     t.Cleanup(server.Close)
+    fake.url = server.URL
 
     assets := []asset{{Name: archiveName, BrowserDownloadURL: server.URL + "/download/" + archiveName}}
     if release.checksums != nil {
@@ -67,6 +82,14 @@ func startFakeGitHub(t *testing.T, release fakeRelease) (*bytes.Buffer, **replac
         json.NewEncoder(w).Encode(releaseResponse{TagName: "v" + testNewVersion, Assets: assets})
     })
     mux.HandleFunc("/download/"+archiveName, func(w http.ResponseWriter, r *http.Request) {
+        fake.archiveRequests.Add(1)
+        if release.truncateArchive {
+            // The server closes the connection when a handler writes less
+            // than the Content-Length it declared.
+            w.Header().Set("Content-Length", strconv.Itoa(len(release.archive)))
+            w.Write(release.archive[:len(release.archive)/2])
+            return
+        }
         w.Write(release.archive)
     })
     mux.HandleFunc("/download/"+checksumsAssetName, func(w http.ResponseWriter, r *http.Request) {
@@ -77,30 +100,58 @@ func startFakeGitHub(t *testing.T, release fakeRelease) (*bytes.Buffer, **replac
         w.Write(release.checksums)
     })
 
-    var recorded *replaceCall
-    var out bytes.Buffer
-
     savedBase, savedReplace, savedOutput, savedVersion := apiBaseURL, replaceExecutable, output, Version
     t.Cleanup(func() {
         apiBaseURL, replaceExecutable, output, Version = savedBase, savedReplace, savedOutput, savedVersion
     })
     apiBaseURL = server.URL
-    output = &out
+    output = &fake.out
     Version = testOldVersion
     replaceExecutable = func(binaryName string, data []byte) error {
-        recorded = &replaceCall{binaryName: binaryName, data: data}
+        fake.replaced = &replaceCall{binaryName: binaryName, data: data}
         return nil
     }
 
-    return &out, &recorded
+    return fake
 }
 
-// buildArchive packs contents as the binary, in the format the release
-// uses for this platform (zip on Windows, tar.gz elsewhere).
-func buildArchive(t *testing.T, contents string) []byte {
+// isolateTempDir points os.TempDir at an empty directory for this test
+// (TMPDIR on Unix, TMP/TEMP on Windows), so the test can check that the
+// update left no temp files behind.
+func isolateTempDir(t *testing.T) string {
+    t.Helper()
+    dir := t.TempDir()
+    t.Setenv("TMPDIR", dir)
+    t.Setenv("TMP", dir)
+    t.Setenv("TEMP", dir)
+    return dir
+}
+
+func assertTempDirEmpty(t *testing.T, dir string) {
+    t.Helper()
+    entries, err := os.ReadDir(dir)
+    if err != nil {
+        t.Fatal(err)
+    }
+    for _, e := range entries {
+        t.Errorf("temp file left behind: %s", e.Name())
+    }
+}
+
+// hostFormat is the archive format the release uses for this platform.
+func hostFormat() string {
+    if runtime.GOOS == "windows" {
+        return "zip"
+    }
+    return "tar.gz"
+}
+
+// buildArchive packs contents as the binary in the given format ("zip"
+// or "tar.gz").
+func buildArchive(t *testing.T, format, contents string) []byte {
     t.Helper()
     var buf bytes.Buffer
-    if runtime.GOOS == "windows" {
+    if format == "zip" {
         zw := zip.NewWriter(&buf)
         f, err := zw.Create(testBinary + ".exe")
         if err != nil {
@@ -143,89 +194,209 @@ func checksumsFile(entries map[string]string) []byte {
     return []byte(b.String())
 }
 
+// --- Check, end to end, with this platform's archive name ---
+
 func TestCheckInstallsArchiveThatMatchesChecksum(t *testing.T) {
-    archive := buildArchive(t, testBinaryBytes)
+    tempDir := isolateTempDir(t)
+    archive := buildArchive(t, hostFormat(), testBinaryBytes)
     archiveName := buildAssetName(testBinary, testNewVersion)
-    out, recorded := startFakeGitHub(t, fakeRelease{
+    fake := startFakeGitHub(t, archiveName, fakeRelease{
         archive:   archive,
         checksums: checksumsFile(map[string]string{archiveName: sha256Hex(archive)}),
     })
 
     Check(testBinary)
 
-    if *recorded == nil {
-        t.Fatalf("binary was not replaced; output:\n%s", out)
+    if fake.replaced == nil {
+        t.Fatalf("binary was not replaced; output:\n%s", &fake.out)
     }
-    if (*recorded).binaryName != testBinary || string((*recorded).data) != testBinaryBytes {
-        t.Fatalf("replaced with %q / %q, want %q / %q", (*recorded).binaryName, (*recorded).data, testBinary, testBinaryBytes)
+    if fake.replaced.binaryName != testBinary || string(fake.replaced.data) != testBinaryBytes {
+        t.Fatalf("replaced with %q / %q, want %q / %q", fake.replaced.binaryName, fake.replaced.data, testBinary, testBinaryBytes)
     }
-    if !strings.Contains(out.String(), "Updated to v"+testNewVersion) {
-        t.Fatalf("output missing success line:\n%s", out)
+    if !strings.Contains(fake.out.String(), "Updated to v"+testNewVersion) {
+        t.Fatalf("output missing success line:\n%s", &fake.out)
     }
+    assertTempDirEmpty(t, tempDir)
 }
 
 func TestCheckRejectsChecksumMismatch(t *testing.T) {
-    archive := buildArchive(t, testBinaryBytes)
+    tempDir := isolateTempDir(t)
+    archive := buildArchive(t, hostFormat(), testBinaryBytes)
     archiveName := buildAssetName(testBinary, testNewVersion)
     // The digest of a different archive: what a swapped or corrupted
     // download looks like.
-    other := buildArchive(t, "tampered binary")
-    out, recorded := startFakeGitHub(t, fakeRelease{
+    other := buildArchive(t, hostFormat(), "tampered binary")
+    fake := startFakeGitHub(t, archiveName, fakeRelease{
         archive:   archive,
         checksums: checksumsFile(map[string]string{archiveName: sha256Hex(other)}),
     })
 
     Check(testBinary)
 
-    assertNotReplaced(t, out, *recorded, "checksum mismatch for "+archiveName)
+    assertNotReplaced(t, fake, "checksum mismatch for "+archiveName)
+    assertTempDirEmpty(t, tempDir)
 }
 
 func TestCheckRejectsMissingChecksumEntry(t *testing.T) {
-    archive := buildArchive(t, testBinaryBytes)
-    out, recorded := startFakeGitHub(t, fakeRelease{
+    archive := buildArchive(t, hostFormat(), testBinaryBytes)
+    archiveName := buildAssetName(testBinary, testNewVersion)
+    fake := startFakeGitHub(t, archiveName, fakeRelease{
         archive:   archive,
         checksums: checksumsFile(map[string]string{"memory-sync_" + testNewVersion + "_linux_amd64.tar.gz": sha256Hex(archive)}),
     })
 
     Check(testBinary)
 
-    assertNotReplaced(t, out, *recorded, "no entry for "+buildAssetName(testBinary, testNewVersion))
+    assertNotReplaced(t, fake, "no entry for "+archiveName)
 }
 
 func TestCheckRejectsReleaseWithoutChecksumsFile(t *testing.T) {
-    out, recorded := startFakeGitHub(t, fakeRelease{archive: buildArchive(t, testBinaryBytes)})
+    fake := startFakeGitHub(t, buildAssetName(testBinary, testNewVersion), fakeRelease{
+        archive: buildArchive(t, hostFormat(), testBinaryBytes),
+    })
 
     Check(testBinary)
 
-    assertNotReplaced(t, out, *recorded, "has no checksums.txt")
+    assertNotReplaced(t, fake, "has no checksums.txt")
 }
 
 func TestCheckRejectsUnreadableChecksumsFile(t *testing.T) {
-    out, recorded := startFakeGitHub(t, fakeRelease{
-        archive:         buildArchive(t, testBinaryBytes),
+    fake := startFakeGitHub(t, buildAssetName(testBinary, testNewVersion), fakeRelease{
+        archive:         buildArchive(t, hostFormat(), testBinaryBytes),
         checksums:       []byte{},
         checksumsStatus: http.StatusNotFound,
     })
 
     Check(testBinary)
 
-    assertNotReplaced(t, out, *recorded, "download checksums.txt returned 404")
+    assertNotReplaced(t, fake, "download checksums.txt returned 404")
+}
+
+// An oversized checksums.txt is rejected whole. Here the correct entry is
+// on line 2 and a conflicting one sits past the size cap; reading only up
+// to the cap would accept the first and never see the second.
+func TestCheckRejectsOversizedChecksumsFile(t *testing.T) {
+    archive := buildArchive(t, hostFormat(), testBinaryBytes)
+    archiveName := buildAssetName(testBinary, testNewVersion)
+    body := checksumsFile(map[string]string{archiveName: sha256Hex(archive)})
+    padding := []byte(strings.Repeat("#\n", maxChecksumsSize/2))
+    body = append(body, padding...)
+    body = append(body, []byte(strings.Repeat("cd", 32)+"  "+archiveName+"\n")...)
+    fake := startFakeGitHub(t, archiveName, fakeRelease{archive: archive, checksums: body})
+
+    Check(testBinary)
+
+    assertNotReplaced(t, fake, "checksums.txt is larger than")
+    if n := fake.archiveRequests.Load(); n != 0 {
+        t.Fatalf("archive was requested %d times; want 0", n)
+    }
 }
 
 // assertNotReplaced checks that Check stopped before the binary swap, said
 // why, and said the current version stays.
-func assertNotReplaced(t *testing.T, out *bytes.Buffer, recorded *replaceCall, reason string) {
+func assertNotReplaced(t *testing.T, fake *fakeGitHub, reason string) {
     t.Helper()
-    if recorded != nil {
-        t.Fatalf("binary was replaced (%d bytes); want no update. Output:\n%s", len(recorded.data), out)
+    if fake.replaced != nil {
+        t.Fatalf("binary was replaced (%d bytes); want no update. Output:\n%s", len(fake.replaced.data), &fake.out)
     }
-    if !strings.Contains(out.String(), reason) {
-        t.Fatalf("output does not contain %q:\n%s", reason, out)
+    if !strings.Contains(fake.out.String(), reason) {
+        t.Fatalf("output does not contain %q:\n%s", reason, &fake.out)
     }
-    if !strings.Contains(out.String(), "keeping v"+testOldVersion) {
-        t.Fatalf("output does not say the current version stays:\n%s", out)
+    if !strings.Contains(fake.out.String(), "keeping v"+testOldVersion) {
+        t.Fatalf("output does not say the current version stays:\n%s", &fake.out)
     }
 }
+
+// --- downloadAndReplace, both archive formats on every platform ---
+
+// runDownload serves archive and a checksums.txt that lists its real
+// digest, then calls downloadAndReplace directly with a name in the given
+// format, so the zip path also runs on Linux CI and tar.gz on Windows.
+func runDownload(t *testing.T, format string, archive []byte, truncate bool) (*fakeGitHub, error) {
+    t.Helper()
+    archiveName := testBinary + "_" + testNewVersion + "_test." + format
+    fake := startFakeGitHub(t, archiveName, fakeRelease{
+        archive:         archive,
+        checksums:       checksumsFile(map[string]string{archiveName: sha256Hex(archive)}),
+        truncateArchive: truncate,
+    })
+    err := downloadAndReplace(testBinary, fake.url+"/download/"+archiveName, archiveName, fake.url+"/download/"+checksumsAssetName)
+    return fake, err
+}
+
+func TestDownloadAndReplaceFormats(t *testing.T) {
+    for _, format := range []string{"zip", "tar.gz"} {
+        t.Run(format+" valid", func(t *testing.T) {
+            tempDir := isolateTempDir(t)
+            fake, err := runDownload(t, format, buildArchive(t, format, testBinaryBytes), false)
+            if err != nil {
+                t.Fatalf("unexpected error: %v", err)
+            }
+            if fake.replaced == nil || string(fake.replaced.data) != testBinaryBytes {
+                t.Fatalf("binary not installed with the archive's contents: %+v", fake.replaced)
+            }
+            assertTempDirEmpty(t, tempDir)
+        })
+
+        // The checksum matches, but the archive itself is broken: the
+        // update still has to fail cleanly at extraction.
+        t.Run(format+" matching checksum, broken archive", func(t *testing.T) {
+            tempDir := isolateTempDir(t)
+            fake, err := runDownload(t, format, []byte("this is not an archive"), false)
+            if err == nil || !strings.Contains(err.Error(), "extract") {
+                t.Fatalf("got %v; want an extract error", err)
+            }
+            if fake.replaced != nil {
+                t.Fatal("binary was replaced")
+            }
+            assertTempDirEmpty(t, tempDir)
+        })
+
+        t.Run(format+" archive without the binary", func(t *testing.T) {
+            tempDir := isolateTempDir(t)
+            var other []byte
+            if format == "zip" {
+                var buf bytes.Buffer
+                zw := zip.NewWriter(&buf)
+                f, _ := zw.Create("README.md")
+                f.Write([]byte("readme"))
+                zw.Close()
+                other = buf.Bytes()
+            } else {
+                var buf bytes.Buffer
+                gz := gzip.NewWriter(&buf)
+                tw := tar.NewWriter(gz)
+                tw.WriteHeader(&tar.Header{Name: "README.md", Mode: 0644, Size: 6})
+                tw.Write([]byte("readme"))
+                tw.Close()
+                gz.Close()
+                other = buf.Bytes()
+            }
+            fake, err := runDownload(t, format, other, false)
+            if err == nil || !strings.Contains(err.Error(), "not found in archive") {
+                t.Fatalf("got %v; want a not-found error", err)
+            }
+            if fake.replaced != nil {
+                t.Fatal("binary was replaced")
+            }
+            assertTempDirEmpty(t, tempDir)
+        })
+
+        t.Run(format+" connection drops mid-download", func(t *testing.T) {
+            tempDir := isolateTempDir(t)
+            fake, err := runDownload(t, format, buildArchive(t, format, testBinaryBytes), true)
+            if err == nil || !strings.Contains(err.Error(), "download") {
+                t.Fatalf("got %v; want a download error", err)
+            }
+            if fake.replaced != nil {
+                t.Fatal("binary was replaced")
+            }
+            assertTempDirEmpty(t, tempDir)
+        })
+    }
+}
+
+// --- checksums.txt parsing ---
 
 func TestParseChecksums(t *testing.T) {
     const name = "mail-send_1.1.0_linux_amd64.tar.gz"

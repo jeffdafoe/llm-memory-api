@@ -256,9 +256,15 @@ func fetchExpectedDigest(client *http.Client, checksumsURL, assetName string) ([
         return nil, fmt.Errorf("download %s returned %d", checksumsAssetName, resp.StatusCode)
     }
 
-    body, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumsSize))
+    // Read one byte past the cap: io.LimitReader just stops at the limit,
+    // so without the extra byte an oversized file would look complete and
+    // a conflicting entry after the cut would go unseen.
+    body, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumsSize+1))
     if err != nil {
         return nil, fmt.Errorf("download %s: %w", checksumsAssetName, err)
+    }
+    if len(body) > maxChecksumsSize {
+        return nil, fmt.Errorf("%s is larger than %d bytes", checksumsAssetName, maxChecksumsSize)
     }
     return parseChecksums(body, assetName)
 }
