@@ -346,10 +346,14 @@ go_mod_build_view() {
     ' | sort
 }
 
-# go/client/go.mod at REV, or nothing when REV has no such file.
+# go/client/go.mod at REV, or nothing when REV has no such file. ls-tree
+# prints nothing for a missing path but fails for a bad revision or a read
+# error, so only a real absence reads as empty.
 client_go_mod_at() {
-    if git -C "$ROOT" cat-file -e "$1:go/client/go.mod" 2>/dev/null; then
-        git -C "$ROOT" show "$1:go/client/go.mod"
+    local entry
+    entry="$(git -C "$ROOT" ls-tree "$1" -- go/client/go.mod)" || return 1
+    if [ -n "$entry" ]; then
+        git -C "$ROOT" show "$1:go/client/go.mod" || return 1
     fi
 }
 
