@@ -313,40 +313,81 @@ check_go_majors() {
 }
 
 # client_release_changes TAG
-# Prints "sha subject" for each commit in TAG..HEAD that changes what the
-# client binaries are built from: non-test Go files under go/client,
-# .goreleaser.yml, or a go.mod line that reaches the build (go, toolchain,
-# replace, exclude, godebug, or a require without "// indirect"). Indirect
-# requires and tool lines are skipped: today every go/client requirement is
-# an indirect dependency of the govulncheck tool, which Dependabot bumps
-# weekly and which is not in the shipped binaries. If a direct dependency is
-# added later, a bump of one of its own indirect dependencies is missed.
-client_release_changes() {
-    local tag="$1" shas
-    shas="$({
-        # In a pathspec, * also matches /, so these cover every package.
-        git -C "$ROOT" log --format=%H "$tag..HEAD" -- \
-            'go/client/*.go' ':(exclude)go/client/*_test.go' .goreleaser.yml
-        git -C "$ROOT" log -p --format='COMMIT %H' "$tag..HEAD" -- go/client/go.mod |
-            awk '
-                /^COMMIT / { commit = $2; next }
-                /^(\+\+\+|---) / { next }
-                /^[+-]/ {
-                    line = substr($0, 2)
-                    sub(/^[ \t]+/, "", line)
-                    if (line ~ /\/\/ indirect/) next
-                    if (line ~ /^(go|toolchain|replace|exclude|godebug)[ \t(]/ ||
-                        line ~ /^(require[ \t]+)?[^ \t]+[ \t]+v[^ \t]+[ \t]*$/) {
-                        print commit
-                    }
-                }
-            '
-    } | sort -u)"
-    if [ -n "$shas" ]; then
-        # Oldest first, in history order.
-        git -C "$ROOT" log --reverse --format='%H %h %s' "$tag..HEAD" |
-            grep -F -f <(printf '%s\n' "$shas") | cut -d' ' -f2-
+# go_mod_build_view: reads a go.mod on stdin and prints, sorted, the
+# directives that reach the build: go, toolchain, replace, exclude, godebug,
+# and requires without "// indirect". An entry inside a "( ... )" block takes
+# the block's directive. Comments and extra spaces are dropped, so a comment
+# edit is not a change. tool, module and retract lines are left out.
+go_mod_build_view() {
+    awk '
+        {
+            line = $0
+            indirect = (line ~ /\/\/[ \t]*indirect([ \t;]|$)/)
+            sub(/\/\/.*/, "", line)
+            gsub(/[ \t]+/, " ", line)
+            sub(/^ /, "", line)
+            sub(/ $/, "", line)
+        }
+        line == "" { next }
+        block != "" && line == ")" { block = ""; next }
+        block == "" && line ~ /^[a-z]+ ?\($/ { block = line; sub(/ ?\($/, "", block); next }
+        {
+            if (block != "") {
+                dir = block
+                rest = line
+            } else {
+                dir = line
+                sub(/ .*/, "", dir)
+                rest = (index(line, " ") ? substr(line, index(line, " ") + 1) : "")
+            }
+            if (dir == "require" && indirect) next
+            if (dir ~ /^(go|toolchain|replace|exclude|godebug|require)$/) print dir " " rest
+        }
+    ' | sort
+}
+
+# go/client/go.mod at REV, or nothing when REV has no such file.
+client_go_mod_at() {
+    if git -C "$ROOT" cat-file -e "$1:go/client/go.mod" 2>/dev/null; then
+        git -C "$ROOT" show "$1:go/client/go.mod"
     fi
+}
+
+# client_release_changes TAG
+# Prints "sha subject", oldest first, for each commit in TAG..HEAD that
+# changes what the client binaries are built from: non-test Go files under
+# go/client, .goreleaser.yml, or the build view of go/client/go.mod (above).
+# Indirect requires and tool lines do not count: today every go/client
+# requirement is an indirect dependency of the govulncheck tool, which
+# Dependabot bumps weekly and which is not in the shipped binaries. If a
+# direct dependency is added later, a bump of one of its own indirect
+# dependencies is missed.
+#
+# The caller runs this in an "if !", which turns set -e off inside it, so
+# every git call checks its own status. A failed git must not read as
+# "no changes".
+client_release_changes() {
+    local tag="$1" code_shas mod_shas sha before after shas="" log
+    # In a pathspec, * also matches /, so these cover every package.
+    code_shas="$(git -C "$ROOT" log --format=%H "$tag..HEAD" -- \
+        'go/client/*.go' ':(exclude)go/client/*_test.go' .goreleaser.yml)" || return 1
+    mod_shas="$(git -C "$ROOT" log --format=%H "$tag..HEAD" -- go/client/go.mod)" || return 1
+    for sha in $mod_shas; do
+        before="$(client_go_mod_at "$sha^" | go_mod_build_view)" || return 1
+        after="$(client_go_mod_at "$sha" | go_mod_build_view)" || return 1
+        if [ "$before" != "$after" ]; then
+            shas+="$sha"$'\n'
+        fi
+    done
+    shas+="$code_shas"
+    if [ -z "$(printf '%s' "$shas" | tr -d '[:space:]')" ]; then
+        return 0
+    fi
+    log="$(git -C "$ROOT" log --reverse --format='%H %h %s' "$tag..HEAD")" || return 1
+    # Keep the log's order; print "short subject" for each wanted SHA.
+    awk 'NR == FNR { if ($1 != "") want[$1] = 1; next }
+         ($1 in want) { sub(/^[^ ]+ /, ""); print }' \
+        <(printf '%s\n' "$shas") <(printf '%s\n' "$log")
 }
 
 # The latest release is the one the tools page (deploy-tools.yml) and the
@@ -370,8 +411,9 @@ check_client_release() {
     if [ "$count" -eq 0 ]; then
         return
     fi
-    # "`sha` subject; `sha` subject", at most 10.
-    list="$(printf '%s\n' "$changes" | head -n 10 | sed 's/^\([^ ]*\) /`\1` /' | paste -sd ';' - | sed 's/;/; /g')"
+    # "`sha` subject; `sha` subject", at most 10. sed, not head: head exits
+    # early, and under pipefail the writer's SIGPIPE would end the script.
+    list="$(printf '%s\n' "$changes" | sed -n '1,10p' | sed 's/^\([^ ]*\) /`\1` /' | paste -sd ';' - | sed 's/;/; /g')"
     if [ "$count" -gt 10 ]; then
         list+="; and $((count - 10)) more"
     fi
