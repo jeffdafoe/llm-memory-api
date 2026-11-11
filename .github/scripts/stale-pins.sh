@@ -13,6 +13,9 @@
 #   - Dependabot PRs that wait for a person (majors are not auto-merged)
 #   - Go dependencies with a newer major module path, which Dependabot never
 #     offers because a new major is a new import path (pgx/v5 -> pgx/v6)
+#   - client tool changes on main that no release ships yet. The server is
+#     rebuilt on every deploy, but the client tools ship only when someone
+#     tags v*, so a toolchain bump can sit unreleased (LLM-979 did)
 #
 # Usage: stale-pins.sh [report|issue]
 #   report  print the report (and write it to the step summary in CI). Default.
@@ -309,6 +312,118 @@ check_go_majors() {
     rm -f "$body"
 }
 
+# client_release_changes TAG
+# go_mod_build_view: reads a go.mod on stdin and prints, sorted, the
+# directives that reach the build: go, toolchain, replace, exclude, godebug,
+# and requires without "// indirect". An entry inside a "( ... )" block takes
+# the block's directive. Comments and extra spaces are dropped, so a comment
+# edit is not a change. tool, module and retract lines are left out.
+go_mod_build_view() {
+    awk '
+        {
+            line = $0
+            indirect = (line ~ /\/\/[ \t]*indirect([ \t;]|$)/)
+            sub(/\/\/.*/, "", line)
+            gsub(/[ \t]+/, " ", line)
+            sub(/^ /, "", line)
+            sub(/ $/, "", line)
+        }
+        line == "" { next }
+        block != "" && line == ")" { block = ""; next }
+        block == "" && line ~ /^[a-z]+ ?\($/ { block = line; sub(/ ?\($/, "", block); next }
+        {
+            if (block != "") {
+                dir = block
+                rest = line
+            } else {
+                dir = line
+                sub(/ .*/, "", dir)
+                rest = (index(line, " ") ? substr(line, index(line, " ") + 1) : "")
+            }
+            if (dir == "require" && indirect) next
+            if (dir ~ /^(go|toolchain|replace|exclude|godebug|require)$/) print dir " " rest
+        }
+    ' | sort
+}
+
+# go/client/go.mod at REV, or nothing when REV has no such file. ls-tree
+# prints nothing for a missing path but fails for a bad revision or a read
+# error, so only a real absence reads as empty.
+client_go_mod_at() {
+    local entry
+    entry="$(git -C "$ROOT" ls-tree "$1" -- go/client/go.mod)" || return 1
+    if [ -n "$entry" ]; then
+        git -C "$ROOT" show "$1:go/client/go.mod" || return 1
+    fi
+}
+
+# client_release_changes TAG
+# Prints "sha subject", oldest first, for each commit in TAG..HEAD that
+# changes what the client binaries are built from: non-test Go files under
+# go/client, .goreleaser.yml, or the build view of go/client/go.mod (above).
+# Indirect requires and tool lines do not count: today every go/client
+# requirement is an indirect dependency of the govulncheck tool, which
+# Dependabot bumps weekly and which is not in the shipped binaries. If a
+# direct dependency is added later, a bump of one of its own indirect
+# dependencies is missed.
+#
+# The caller runs this in an "if !", which turns set -e off inside it, so
+# every git call checks its own status. A failed git must not read as
+# "no changes".
+client_release_changes() {
+    local tag="$1" code_shas mod_shas sha before after shas="" log
+    # In a pathspec, * also matches /, so these cover every package.
+    code_shas="$(git -C "$ROOT" log --format=%H "$tag..HEAD" -- \
+        'go/client/*.go' ':(exclude)go/client/*_test.go' .goreleaser.yml)" || return 1
+    mod_shas="$(git -C "$ROOT" log --format=%H "$tag..HEAD" -- go/client/go.mod)" || return 1
+    for sha in $mod_shas; do
+        before="$(client_go_mod_at "$sha^" | go_mod_build_view)" || return 1
+        after="$(client_go_mod_at "$sha" | go_mod_build_view)" || return 1
+        if [ "$before" != "$after" ]; then
+            shas+="$sha"$'\n'
+        fi
+    done
+    shas+="$code_shas"
+    if [ -z "$(printf '%s' "$shas" | tr -d '[:space:]')" ]; then
+        return 0
+    fi
+    log="$(git -C "$ROOT" log --reverse --format='%H %h %s' "$tag..HEAD")" || return 1
+    # Keep the log's order; print "short subject" for each wanted SHA.
+    awk 'NR == FNR { if ($1 != "") want[$1] = 1; next }
+         ($1 in want) { sub(/^[^ ]+ /, ""); print }' \
+        <(printf '%s\n' "$shas") <(printf '%s\n' "$log")
+}
+
+# The latest release is the one the tools page (deploy-tools.yml) and the
+# clients' self-update hand out, so compare main with that tag, not with the
+# newest v* tag in git.
+check_client_release() {
+    local tag changes count list
+    if ! tag="$(gh api "repos/$REPO/releases/latest" --jq .tag_name)" || [ -z "$tag" ]; then
+        error "Client tools: could not read the latest release from GitHub."
+        return
+    fi
+    if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
+        error "Client tools: the latest release tag \`$tag\` is not in the checkout. The workflow needs the full history (fetch-depth: 0)."
+        return
+    fi
+    if ! changes="$(client_release_changes "$tag")"; then
+        error "Client tools: could not list the commits since \`$tag\`."
+        return
+    fi
+    count="$(printf '%s\n' "$changes" | grep -c . || true)"
+    if [ "$count" -eq 0 ]; then
+        return
+    fi
+    # "`sha` subject; `sha` subject", at most 10. sed, not head: head exits
+    # early, and under pipefail the writer's SIGPIPE would end the script.
+    list="$(printf '%s\n' "$changes" | sed -n '1,10p' | sed 's/^\([^ ]*\) /`\1` /' | paste -sd ';' - | sed 's/;/; /g')"
+    if [ "$count" -gt 10 ]; then
+        list+="; and $((count - 10)) more"
+    fi
+    finding "**Client tools**: $count commit(s) since \`$tag\`, the latest release, change what memory-sync, mail-send and discuss are built from: $list. The tools page and self-update ship only the latest release. Tag a new \`v*\` release."
+}
+
 check_go_toolchain
 check_cosign
 check_postgres
@@ -316,6 +431,7 @@ check_node
 check_dependabot_prs
 check_go_majors go/server/go.mod
 check_go_majors go/client/go.mod
+check_client_release
 
 report="$(mktemp)"
 {
