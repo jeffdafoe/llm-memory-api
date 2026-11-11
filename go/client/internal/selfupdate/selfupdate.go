@@ -5,12 +5,21 @@
 // the current binary to a .old temp file (allowed while running), writes
 // the new binary to the original path, and cleans up the .old file on
 // the next run.
+//
+// Before anything is extracted or replaced, the downloaded archive's
+// SHA-256 must match its entry in the release's checksums.txt (written by
+// GoReleaser, see .goreleaser.yml). A release with no checksums.txt, no
+// entry for the archive, or a different digest is not applied: the error
+// is printed and the current binary keeps running.
 package selfupdate
 
 import (
     "archive/tar"
     "archive/zip"
+    "bytes"
     "compress/gzip"
+    "crypto/sha256"
+    "encoding/hex"
     "encoding/json"
     "fmt"
     "io"
@@ -32,6 +41,24 @@ var Version = "dev"
 const (
     owner = "jeffdafoe"
     repo  = "llm-memory-api"
+
+    // checksumsAssetName is GoReleaser's checksum.name_template. Each line
+    // is "<sha256 hex>  <archive file name>".
+    checksumsAssetName = "checksums.txt"
+
+    // maxChecksumsSize caps how much of checksums.txt is read. The real
+    // file is about 2 KB (one line per archive).
+    maxChecksumsSize = 1 << 20
+)
+
+// These package-level variables are seams for the tests in
+// selfupdate_test.go: the tests point apiBaseURL at a local fake server,
+// swap replaceExecutable for a stub so the test binary is never
+// overwritten, and capture output. Production code never changes them.
+var (
+    apiBaseURL        = "https://api.github.com"
+    replaceExecutable = replaceBinary
+    output            = io.Writer(os.Stderr)
 )
 
 // releaseResponse is the subset of the GitHub Releases API response we need.
@@ -63,7 +90,7 @@ func Check(binaryName string) {
 
     latest, err := fetchLatestRelease(binaryName)
     if err != nil {
-        fmt.Fprintf(os.Stderr, "  Update check failed: %s\n", err)
+        fmt.Fprintf(output, "  Update check failed: %s\n", err)
         return
     }
 
@@ -74,31 +101,44 @@ func Check(binaryName string) {
 
     // Find the right asset for this platform/arch
     assetName := buildAssetName(binaryName, latestVersion)
-    var downloadURL string
-    for _, a := range latest.Assets {
-        if a.Name == assetName {
-            downloadURL = a.BrowserDownloadURL
-            break
+    downloadURL := findAssetURL(latest.Assets, assetName)
+    if downloadURL == "" {
+        fmt.Fprintf(output, "  Update: no asset found for %s/%s (%s)\n", runtime.GOOS, runtime.GOARCH, assetName)
+        return
+    }
+
+    // Without checksums.txt there is nothing to verify the archive
+    // against, so the update is not applied.
+    checksumsURL := findAssetURL(latest.Assets, checksumsAssetName)
+    if checksumsURL == "" {
+        fmt.Fprintf(output, "  Update failed: release v%s has no %s; keeping v%s\n", latestVersion, checksumsAssetName, Version)
+        return
+    }
+
+    fmt.Fprintf(output, "  Updating %s from v%s to v%s...\n", binaryName, Version, latestVersion)
+
+    if err := downloadAndReplace(binaryName, downloadURL, assetName, checksumsURL); err != nil {
+        fmt.Fprintf(output, "  Update failed: %s; keeping v%s\n", err, Version)
+        return
+    }
+
+    fmt.Fprintf(output, "  Updated to v%s\n", latestVersion)
+}
+
+// findAssetURL returns the download URL of the release asset with the
+// given file name, or "" when the release has no such asset.
+func findAssetURL(assets []asset, name string) string {
+    for _, a := range assets {
+        if a.Name == name {
+            return a.BrowserDownloadURL
         }
     }
-    if downloadURL == "" {
-        fmt.Fprintf(os.Stderr, "  Update: no asset found for %s/%s (%s)\n", runtime.GOOS, runtime.GOARCH, assetName)
-        return
-    }
-
-    fmt.Fprintf(os.Stderr, "  Updating %s from v%s to v%s...\n", binaryName, Version, latestVersion)
-
-    if err := downloadAndReplace(binaryName, downloadURL, assetName); err != nil {
-        fmt.Fprintf(os.Stderr, "  Update failed: %s\n", err)
-        return
-    }
-
-    fmt.Fprintf(os.Stderr, "  Updated to v%s\n", latestVersion)
+    return ""
 }
 
 // fetchLatestRelease calls the GitHub Releases API.
 func fetchLatestRelease(binaryName string) (*releaseResponse, error) {
-    url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
+    url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", apiBaseURL, owner, repo)
 
     client := &http.Client{Timeout: 10 * time.Second}
     req, err := http.NewRequest("GET", url, nil)
@@ -135,10 +175,20 @@ func buildAssetName(binaryName, version string) string {
     return fmt.Sprintf("%s_%s_%s_%s.%s", binaryName, version, runtime.GOOS, runtime.GOARCH, ext)
 }
 
-// downloadAndReplace downloads the release archive, extracts the binary,
-// and replaces the currently running executable.
-func downloadAndReplace(binaryName, url, assetName string) error {
+// downloadAndReplace downloads the release archive, checks its SHA-256
+// against the release's checksums.txt, extracts the binary, and replaces
+// the currently running executable. Nothing is extracted or replaced
+// unless the digest matches.
+func downloadAndReplace(binaryName, url, assetName, checksumsURL string) error {
     client := &http.Client{Timeout: 60 * time.Second}
+
+    // Fetch the expected digest first: it is a small file, and a release
+    // without an entry for this archive fails before the big download.
+    want, err := fetchExpectedDigest(client, checksumsURL, assetName)
+    if err != nil {
+        return err
+    }
+
     resp, err := client.Get(url)
     if err != nil {
         return fmt.Errorf("download: %w", err)
@@ -149,19 +199,95 @@ func downloadAndReplace(binaryName, url, assetName string) error {
         return fmt.Errorf("download returned %d", resp.StatusCode)
     }
 
-    // Extract binary bytes from the archive
+    // The archive goes to a temp file so it can be hashed in full before
+    // any of it is unpacked (and zip needs random access anyway).
+    // `defer` runs when this function returns, last-registered first:
+    // the file is closed, then deleted (Windows cannot delete an open file).
+    tmp, err := os.CreateTemp("", binaryName+"-update-*")
+    if err != nil {
+        return fmt.Errorf("create temp file: %w", err)
+    }
+    defer os.Remove(tmp.Name())
+    defer tmp.Close()
+
+    // io.MultiWriter sends every byte read from the response to both the
+    // temp file and the SHA-256 hasher, so the file is read only once.
+    hasher := sha256.New()
+    size, err := io.Copy(io.MultiWriter(tmp, hasher), resp.Body)
+    if err != nil {
+        return fmt.Errorf("download: %w", err)
+    }
+
+    got := hasher.Sum(nil)
+    if !bytes.Equal(got, want) {
+        return fmt.Errorf("checksum mismatch for %s: %s says %s, download is %s",
+            assetName, checksumsAssetName, hex.EncodeToString(want), hex.EncodeToString(got))
+    }
+
+    // Extract binary bytes from the verified archive
     var binaryData []byte
     if strings.HasSuffix(assetName, ".zip") {
-        binaryData, err = extractFromZip(binaryName, resp.Body)
+        binaryData, err = extractFromZip(binaryName, tmp, size)
     } else {
-        binaryData, err = extractFromTarGz(binaryName, resp.Body)
+        // The copy left the file offset at the end; rewind to read it again.
+        if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+            return fmt.Errorf("rewind temp file: %w", err)
+        }
+        binaryData, err = extractFromTarGz(binaryName, tmp)
     }
     if err != nil {
         return fmt.Errorf("extract: %w", err)
     }
 
     // Replace the running binary
-    return replaceBinary(binaryName, binaryData)
+    return replaceExecutable(binaryName, binaryData)
+}
+
+// fetchExpectedDigest downloads checksums.txt and returns the SHA-256
+// listed for assetName.
+func fetchExpectedDigest(client *http.Client, checksumsURL, assetName string) ([]byte, error) {
+    resp, err := client.Get(checksumsURL)
+    if err != nil {
+        return nil, fmt.Errorf("download %s: %w", checksumsAssetName, err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != 200 {
+        return nil, fmt.Errorf("download %s returned %d", checksumsAssetName, resp.StatusCode)
+    }
+
+    body, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumsSize))
+    if err != nil {
+        return nil, fmt.Errorf("download %s: %w", checksumsAssetName, err)
+    }
+    return parseChecksums(body, assetName)
+}
+
+// parseChecksums finds assetName in a checksums.txt body. Each line is
+// "<sha256 hex>  <file name>" (the sha256sum format; a leading "*" on the
+// name marks binary mode and is ignored). It fails when the file has no
+// entry for assetName, when the entry is not a SHA-256, or when two
+// entries for assetName disagree.
+func parseChecksums(body []byte, assetName string) ([]byte, error) {
+    var found []byte
+    for _, line := range strings.Split(string(body), "\n") {
+        fields := strings.Fields(line)
+        if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != assetName {
+            continue
+        }
+        digest, err := hex.DecodeString(fields[0])
+        if err != nil || len(digest) != sha256.Size {
+            return nil, fmt.Errorf("%s has a malformed entry for %s", checksumsAssetName, assetName)
+        }
+        if found != nil && !bytes.Equal(found, digest) {
+            return nil, fmt.Errorf("%s has conflicting entries for %s", checksumsAssetName, assetName)
+        }
+        found = digest
+    }
+    if found == nil {
+        return nil, fmt.Errorf("%s has no entry for %s", checksumsAssetName, assetName)
+    }
+    return found, nil
 }
 
 // extractFromTarGz extracts the named binary from a .tar.gz archive.
@@ -190,21 +316,10 @@ func extractFromTarGz(binaryName string, r io.Reader) ([]byte, error) {
 }
 
 // extractFromZip extracts the named binary from a .zip archive.
-// Since zip needs random access, we buffer the entire response to a temp file.
-func extractFromZip(binaryName string, r io.Reader) ([]byte, error) {
-    tmp, err := os.CreateTemp("", binaryName+"-update-*.zip")
-    if err != nil {
-        return nil, err
-    }
-    defer os.Remove(tmp.Name())
-    defer tmp.Close()
-
-    size, err := io.Copy(tmp, r)
-    if err != nil {
-        return nil, err
-    }
-
-    zr, err := zip.NewReader(tmp, size)
+// Zip needs random access (its index is at the end of the file), so it
+// takes an io.ReaderAt — here the temp file the download was saved to.
+func extractFromZip(binaryName string, r io.ReaderAt, size int64) ([]byte, error) {
+    zr, err := zip.NewReader(r, size)
     if err != nil {
         return nil, err
     }
