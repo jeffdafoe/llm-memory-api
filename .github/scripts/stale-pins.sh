@@ -13,6 +13,9 @@
 #   - Dependabot PRs that wait for a person (majors are not auto-merged)
 #   - Go dependencies with a newer major module path, which Dependabot never
 #     offers because a new major is a new import path (pgx/v5 -> pgx/v6)
+#   - client tool changes on main that no release ships yet. The server is
+#     rebuilt on every deploy, but the client tools ship only when someone
+#     tags v*, so a toolchain bump can sit unreleased (LLM-979 did)
 #
 # Usage: stale-pins.sh [report|issue]
 #   report  print the report (and write it to the step summary in CI). Default.
@@ -309,6 +312,72 @@ check_go_majors() {
     rm -f "$body"
 }
 
+# client_release_changes TAG
+# Prints "sha subject" for each commit in TAG..HEAD that changes what the
+# client binaries are built from: non-test Go files under go/client,
+# .goreleaser.yml, or a go.mod line that reaches the build (go, toolchain,
+# replace, exclude, godebug, or a require without "// indirect"). Indirect
+# requires and tool lines are skipped: today every go/client requirement is
+# an indirect dependency of the govulncheck tool, which Dependabot bumps
+# weekly and which is not in the shipped binaries. If a direct dependency is
+# added later, a bump of one of its own indirect dependencies is missed.
+client_release_changes() {
+    local tag="$1" shas
+    shas="$({
+        # In a pathspec, * also matches /, so these cover every package.
+        git -C "$ROOT" log --format=%H "$tag..HEAD" -- \
+            'go/client/*.go' ':(exclude)go/client/*_test.go' .goreleaser.yml
+        git -C "$ROOT" log -p --format='COMMIT %H' "$tag..HEAD" -- go/client/go.mod |
+            awk '
+                /^COMMIT / { commit = $2; next }
+                /^(\+\+\+|---) / { next }
+                /^[+-]/ {
+                    line = substr($0, 2)
+                    sub(/^[ \t]+/, "", line)
+                    if (line ~ /\/\/ indirect/) next
+                    if (line ~ /^(go|toolchain|replace|exclude|godebug)[ \t(]/ ||
+                        line ~ /^(require[ \t]+)?[^ \t]+[ \t]+v[^ \t]+[ \t]*$/) {
+                        print commit
+                    }
+                }
+            '
+    } | sort -u)"
+    if [ -n "$shas" ]; then
+        # Oldest first, in history order.
+        git -C "$ROOT" log --reverse --format='%H %h %s' "$tag..HEAD" |
+            grep -F -f <(printf '%s\n' "$shas") | cut -d' ' -f2-
+    fi
+}
+
+# The latest release is the one the tools page (deploy-tools.yml) and the
+# clients' self-update hand out, so compare main with that tag, not with the
+# newest v* tag in git.
+check_client_release() {
+    local tag changes count list
+    if ! tag="$(gh api "repos/$REPO/releases/latest" --jq .tag_name)" || [ -z "$tag" ]; then
+        error "Client tools: could not read the latest release from GitHub."
+        return
+    fi
+    if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
+        error "Client tools: the latest release tag \`$tag\` is not in the checkout. The workflow needs the full history (fetch-depth: 0)."
+        return
+    fi
+    if ! changes="$(client_release_changes "$tag")"; then
+        error "Client tools: could not list the commits since \`$tag\`."
+        return
+    fi
+    count="$(printf '%s\n' "$changes" | grep -c . || true)"
+    if [ "$count" -eq 0 ]; then
+        return
+    fi
+    # "`sha` subject; `sha` subject", at most 10.
+    list="$(printf '%s\n' "$changes" | head -n 10 | sed 's/^\([^ ]*\) /`\1` /' | paste -sd ';' - | sed 's/;/; /g')"
+    if [ "$count" -gt 10 ]; then
+        list+="; and $((count - 10)) more"
+    fi
+    finding "**Client tools**: $count commit(s) since \`$tag\`, the latest release, change what memory-sync, mail-send and discuss are built from: $list. The tools page and self-update ship only the latest release. Tag a new \`v*\` release."
+}
+
 check_go_toolchain
 check_cosign
 check_postgres
@@ -316,6 +385,7 @@ check_node
 check_dependabot_prs
 check_go_majors go/server/go.mod
 check_go_majors go/client/go.mod
+check_client_release
 
 report="$(mktemp)"
 {
