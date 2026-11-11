@@ -234,7 +234,7 @@ jobs:
 
       # A full tag: this action publishes no moving major tag (no v4).
       # Dependabot's github-actions updates keep it current.
-      - uses: sigstore/cosign-installer@v4.1.2
+      - uses: sigstore/cosign-installer@v4.1.3
         with:
           cosign-release: 'v3.1.4'
 
