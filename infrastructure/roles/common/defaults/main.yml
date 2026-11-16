@@ -1,0 +1,11 @@
+---
+# Swap file, made by tasks/swap.yml (setup.yml only). 0 means no swap file;
+# the production inventory turns it on. A server that already has swap from
+# elsewhere is left alone.
+#
+# These are role defaults, not group_vars/all.yml, on purpose: the playbooks
+# load group_vars/all.yml through vars_files, which wins over inventory
+# variables, so a value there could not be turned on per inventory.
+swap_file_size_mb: 0
+swap_file_path: /swapfile
+swap_swappiness: 10

@@ -29,13 +29,6 @@ cosign_bin: /usr/local/bin/cosign
 # in local-secrets.yml, e.g. `staleness_check_recipient: myagent`.
 staleness_check_recipient: ""
 
-# Swap file, made by roles/common/tasks/swap.yml (setup.yml only). 0 means no
-# swap file; the production inventory turns it on. A server that already has
-# swap from elsewhere is left alone.
-swap_file_size_mb: 0
-swap_file_path: /swapfile
-swap_swappiness: 10
-
 # Memory API
 memory_api_port: 3100
 memory_api_host: 127.0.0.1

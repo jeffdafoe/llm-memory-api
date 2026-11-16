@@ -76,8 +76,15 @@
     mode: '0644'
     content: |
       vm.swappiness={{ swap_swappiness }}
-  register: swap_swappiness_conf
+
+# The file above takes effect at boot. Compare the running value on every run,
+# not only when the file changed: a run that wrote the file and then stopped
+# would otherwise never apply it.
+- name: Read the running vm.swappiness
+  command: sysctl -n vm.swappiness
+  register: swap_swappiness_current
+  changed_when: false
 
 - name: Apply vm.swappiness
-  command: sysctl -p /etc/sysctl.d/99-swappiness.conf
-  when: swap_swappiness_conf.changed
+  command: "sysctl -w vm.swappiness={{ swap_swappiness | int }}"
+  when: (swap_swappiness_current.stdout | int) != (swap_swappiness | int)
