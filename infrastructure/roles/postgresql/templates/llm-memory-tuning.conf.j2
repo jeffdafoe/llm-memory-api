@@ -3,7 +3,7 @@
 # deploy: shared_buffers and shared_preload_libraries load only at server
 # start, so they wait for a planned PostgreSQL restart.
 
-# Memory: 2 GB box with no swap, shared with the Node API, the salem engine,
+# Memory: 2 GB box with a 2 GB swap file, shared with the Node API, the salem engine,
 # Apache/Interchange and nginx. shared_buffers is about 19% of RAM.
 shared_buffers = 384MB
 effective_cache_size = 1200MB

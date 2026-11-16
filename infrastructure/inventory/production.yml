@@ -9,3 +9,6 @@ all:
     app_user: memory-api
     database_name: memory_api
     database_user: memory_api
+    # A small server needs swap so a memory spike does not stall PostgreSQL
+    # and the API (roles/common/tasks/swap.yml). Set 0 to turn it off.
+    swap_file_size_mb: 2048
