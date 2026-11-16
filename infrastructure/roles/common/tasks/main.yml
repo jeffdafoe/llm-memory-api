@@ -58,6 +58,12 @@
 - name: Turn off LLMNR
   include_tasks: resolved-llmnr.yml
 
+# --- Swap ---
+
+- name: Set up the swap file
+  include_tasks: swap.yml
+  when: swap_file_size_mb | int > 0
+
 # --- SSH hardening ---
 
 - name: Disable SSH password authentication
