@@ -19,10 +19,13 @@ import (
 //
 //   - CIMD (Client ID Metadata Document): the client_id is an HTTPS URL on one
 //     of Anthropic's origins. The document is never fetched: redirect_uri is
-//     checked against the fixed allowlist, so it could add nothing.
+//     checked against the fixed allowlist, so it could add nothing. Claude
+//     Code's client_id may also use its document's loopback callbacks,
+//     which loopback.go fixes.
 //   - DCR (RFC 7591): the client_id carries its own registration, signed:
 //     "dcr." + base64url(JSON {r: redirect_uris, t: issued_at}) + "." + HMAC.
-//     Nothing is stored, and it survives restarts.
+//     Nothing is stored, and it survives restarts. A registration may list
+//     allowlisted callbacks and loopback URIs (loopback.go).
 //
 // Agent-name client_ids never collide with either: agent names are
 // [a-z0-9_-] only.
@@ -98,7 +101,7 @@ func (p *PublicClients) sign(payload string) (string, error) {
 }
 
 // IssueDCRClientID signs a registration. redirectURIs must already be checked
-// against the allowlist and deduplicated.
+// with registrableRedirect and deduplicated.
 func (p *PublicClients) IssueDCRClientID(redirectURIs []string, issuedAt int64) (string, error) {
 	var b strings.Builder
 	b.WriteString(`{"r":[`)
@@ -156,13 +159,13 @@ func (p *PublicClients) VerifyDCRClientID(clientID string) (redirectURIs []strin
 		return nil, false, nil
 	}
 	var uris []json.RawMessage
-	if json.Unmarshal(decoded["r"], &uris) != nil || len(uris) == 0 || len(uris) > len(AllowedRedirectURIs) {
+	if json.Unmarshal(decoded["r"], &uris) != nil || len(uris) == 0 || len(uris) > maxDCRRedirectURIs {
 		return nil, false, nil
 	}
 	seen := map[string]bool{}
 	for _, raw := range uris {
 		var u string
-		if json.Unmarshal(raw, &u) != nil || !allowedRedirect(u) || seen[u] {
+		if json.Unmarshal(raw, &u) != nil || !registrableRedirect(u) || seen[u] {
 			return nil, false, nil
 		}
 		seen[u] = true

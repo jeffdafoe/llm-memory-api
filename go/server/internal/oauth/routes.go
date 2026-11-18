@@ -4,12 +4,13 @@
 //
 //   - client_credentials, for machine-to-machine clients (Claude Code,
 //     scripts): client_id is the agent name, client_secret one of its API keys.
-//   - authorization_code with PKCE, for claude.ai. Its client is either an
-//     agent name with an API key as secret (the connector's Advanced
-//     settings: /authorize shows a connect page, then approves), or a public
-//     client (CIMD or DCR, publicclients.go) with no secret, where the user
-//     logs in on /authorize with agent name and password and the code is
-//     bound to that agent.
+//   - authorization_code with PKCE, for claude.ai and Claude Code. Its
+//     client is either an agent name with an API key as secret (the
+//     connector's Advanced settings: /authorize shows a connect page, then
+//     approves), or a public client (CIMD or DCR, publicclients.go) with no
+//     secret, where the user logs in on /authorize with agent name and
+//     password and the code is bound to that agent. Claude Code's public
+//     clients use loopback redirect URIs (loopback.go).
 //
 // The tokens are deterministic HMACs ("agent:hmac_hex", auth.HMACToken) that
 // never expire server-side.
@@ -200,23 +201,24 @@ func truthy(v any) bool {
 	return jsutil.Truthy(v)
 }
 
-// register is RFC 7591 dynamic client registration, claude.ai's fallback
-// when it does not use CIMD. Only public clients for the allowed callbacks
-// are registered, and nothing is stored: the client_id carries its own
-// signed registration. Not /register, which is the signup page.
+// register is RFC 7591 dynamic client registration, the fallback for
+// claude.ai and Claude Code when they do not use CIMD. Only public clients
+// for the allowed callbacks and loopback URIs are registered, and nothing is
+// stored: the client_id carries its own signed registration. Not /register,
+// which is the signup page.
 func (rt *Routes) register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	body := jsonBody(r)
 	list, isArray := body["redirect_uris"].([]any)
-	if !isArray || len(list) == 0 || len(list) > len(AllowedRedirectURIs) {
-		writeOAuthError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uris must list one or more allowed callback URLs")
+	if !isArray || len(list) == 0 || len(list) > maxDCRRedirectURIs {
+		writeOAuthError(w, http.StatusBadRequest, "invalid_redirect_uri", fmt.Sprintf("redirect_uris must list 1 to %d allowed callback URLs", maxDCRRedirectURIs))
 		return
 	}
 	var uris []string
 	for _, v := range list {
 		s, ok := v.(string)
-		if !ok || !allowedRedirect(s) {
-			writeOAuthError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uris may only contain: "+strings.Join(AllowedRedirectURIs, ", "))
+		if !ok || !registrableRedirect(s) {
+			writeOAuthError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uris may only contain: "+strings.Join(AllowedRedirectURIs, ", ")+", or a loopback URL with a port (http://localhost:PORT/PATH, http://127.0.0.1:PORT/PATH or http://[::1]:PORT/PATH)")
 			return
 		}
 		uris = append(uris, s)
@@ -310,7 +312,8 @@ func (rt *Routes) checkAuthorize(p httpapi.Params) (*oauthError, string, error) 
 	if !ok1 || clientID == "" || !ok2 || redirectURI == "" {
 		return &oauthError{"invalid_request", "client_id and redirect_uri are required"}, "", nil
 	}
-	if !allowedRedirect(redirectURI) {
+	loopback, isLoopback := parseLoopback(redirectURI)
+	if !allowedRedirect(redirectURI) && !isLoopback {
 		return &oauthError{"invalid_request", "redirect_uri is not allowed"}, "", nil
 	}
 	challenge, ok := p.String("code_challenge")
@@ -322,12 +325,19 @@ func (rt *Routes) checkAuthorize(p httpapi.Params) (*oauthError, string, error) 
 	if err != nil {
 		return nil, "", err
 	}
-	// A DCR client may only use the callbacks it registered.
+	// A loopback redirect_uri is for a DCR client that registered it (checked
+	// below) or for Claude Code's CIMD client_id. Agent-name clients and
+	// other CIMD client_ids keep the claude.ai callbacks.
+	if isLoopback && (kind == "" || (kind == "cimd" && !isClaudeCodeCallback(clientID, loopback))) {
+		return &oauthError{"invalid_request", "redirect_uri is not allowed"}, "", nil
+	}
+	// A DCR client may only use the callbacks it registered, a loopback one
+	// on any port.
 	if kind == "dcr" {
 		uris, _, _ := rt.public.VerifyDCRClientID(clientID)
 		registered := false
 		for _, u := range uris {
-			if u == redirectURI {
+			if redirectMatches(u, redirectURI) {
 				registered = true
 			}
 		}
@@ -353,7 +363,8 @@ func oauthFields(p httpapi.Params) []oauthField {
 	return out
 }
 
-// redirectHost is new URL(redirect_uri).host for an allowed redirect URI.
+// redirectHost is new URL(redirect_uri).host for an allowlisted redirect URI
+// (loginPage sends loopback URIs elsewhere).
 func redirectHost(uri string) string {
 	rest := strings.TrimPrefix(uri, "https://")
 	host, _, _ := strings.Cut(rest, "/")
@@ -378,10 +389,10 @@ func writeHTML(w http.ResponseWriter, status int, page string) {
 // mintAndRedirect stores a code and sends the browser back to redirectURI
 // with it (and the state, when it is a non-empty string).
 func (rt *Routes) mintAndRedirect(w http.ResponseWriter, r *http.Request, status int, c authCode, state any) {
-	// The Location is built from the allowlist's own string, never the
-	// request's, so it cannot point anywhere else even if a caller skipped
-	// checkAuthorize.
-	target, ok := allowedRedirectTarget(c.redirectURI)
+	// The Location is the allowlist's own string or a loopback URI rebuilt
+	// from its parsed parts, never the request's text, so it cannot point
+	// anywhere else even if a caller skipped checkAuthorize.
+	target, ok := redirectTarget(c.redirectURI)
 	if !ok {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "redirect_uri is not allowed")
 		return
@@ -413,7 +424,7 @@ func (rt *Routes) authorizeGet(w http.ResponseWriter, r *http.Request) {
 	redirectURI, _ := q.String("redirect_uri")
 	if kind != "" {
 		setPageHeaders(w)
-		writeHTML(w, http.StatusOK, renderLoginPage(redirectHost(redirectURI), oauthFields(q), "", ""))
+		writeHTML(w, http.StatusOK, loginPage(redirectURI, oauthFields(q), "", ""))
 		return
 	}
 
@@ -493,7 +504,7 @@ func (rt *Routes) authorizePost(w http.ResponseWriter, r *http.Request) {
 	redirectURI, _ := body.String("redirect_uri")
 	showForm := func(status int, message string) {
 		setPageHeaders(w)
-		writeHTML(w, status, renderLoginPage(redirectHost(redirectURI), oauthFields(body), sliceUTF16(agentInput, 64), message))
+		writeHTML(w, status, loginPage(redirectURI, oauthFields(body), sliceUTF16(agentInput, 64), message))
 	}
 
 	if agent == "" || password == "" {
@@ -537,10 +548,11 @@ func (rt *Routes) authorizePost(w http.ResponseWriter, r *http.Request) {
 	}, body["state"])
 }
 
+// tokenResponse omits expires_in only when it is 0, for a loopback client.
 type tokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
+	ExpiresIn   int    `json:"expires_in,omitempty"`
 }
 
 // issueToken is the deterministic bearer token for an agent.
@@ -679,6 +691,12 @@ func (rt *Routes) authorizationCode(w http.ResponseWriter, r *http.Request, body
 			rt.Log.LogError("oauth", "authorization-code", logger.ErrorOpts{Agent: data.agent, Message: err.Error(), Detail: fmt.Sprintf("%+v", err), StatusCode: 500})
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "Token generation failed")
 			return
+		}
+		// Claude Code drops a token past expires_in when it has no refresh
+		// token and makes the user log in again. The token never expires,
+		// so a loopback client is told no lifetime at all.
+		if _, ok := parseLoopback(data.redirectURI); ok {
+			tok.ExpiresIn = 0
 		}
 		httpapi.WriteJSON(w, http.StatusOK, tok)
 		return
