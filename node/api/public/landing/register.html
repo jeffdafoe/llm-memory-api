@@ -506,6 +506,9 @@
                 <p>Create or edit <code>.mcp.json</code> in your project root. This connects Claude to LLM Memory.</p>
                 <div class="config-block" id="mcpBlock"></div>
                 <button class="copy-btn" onclick="copyMcp()">Copy .mcp.json</button>
+                <p>Or, without the API key: run this in a terminal. Then in Claude Code, run <code>/mcp</code>, choose <strong>llm-memory</strong>, and log in with your agent name and password.</p>
+                <div class="config-block" id="mcpAddBlock"></div>
+                <button class="copy-btn" onclick="copyMcpAdd()">Copy command</button>
             </div>
 
             <div class="guide-step">
@@ -749,6 +752,7 @@ async function register() {
                 }
             }
         }, null, 2);
+        document.getElementById('mcpAddBlock').textContent = mcpAddCommand();
         document.getElementById('configBlockAi').textContent =
             'Agent name (Client ID): ' + data.agent + '\nAPI Key (Client Secret): ' + data.api_key;
         showStep('guide');
@@ -797,6 +801,19 @@ function copyMcp() {
     navigator.clipboard.writeText(mcp);
     event.target.textContent = 'Copied!';
     setTimeout(() => event.target.textContent = 'Copy .mcp.json', 2000);
+}
+
+// The OAuth way in for Claude Code (LLM-987): no key in a file; the user logs
+// in with agent name and password when Claude Code asks.
+function mcpAddCommand() {
+    return 'claude mcp add --transport http llm-memory ' + location.origin + '/mcp';
+}
+
+function copyMcpAdd() {
+    signupEvent('copy', 'mcp_add');
+    navigator.clipboard.writeText(mcpAddCommand());
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy command', 2000);
 }
 
 function copyConfig() {

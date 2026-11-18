@@ -19,10 +19,16 @@ func instructionsBlock() string {
     <button class="copy-btn" type="button" id="copyButton">Copy instructions</button>`
 }
 
-// renderPage is the shared document shell; body is trusted HTML whose
-// values the callers escaped.
+// renderPage is the shared document shell with the copy button's script;
+// body is trusted HTML whose values the callers escaped.
 func renderPage(title, body string) string {
-	return pageHead + escapeHTML(title) + pageBodyOpen + body + pageBodyClose + copyScript + pageEnd
+	return renderShell(title, body, copyScript)
+}
+
+// renderShell is the document shell with the given script, which may be
+// empty for a page without the copy button.
+func renderShell(title, body, script string) string {
+	return pageHead + escapeHTML(title) + pageBodyOpen + body + pageBodyClose + script + pageEnd
 }
 
 // renderConnectPage is the page for an agent-name client_id. continueURL is
@@ -42,10 +48,39 @@ type oauthField struct {
 	value any
 }
 
-// renderLoginPage is the login for a public client. Only string, non-empty
-// fields become hidden inputs. agentValue and errText refill the form after
-// a failed try; the password is never echoed.
+// loginPage is the login page for a public client's redirect_uri. A loopback
+// redirect_uri belongs to an app on this computer, such as Claude Code, which
+// reads the server's instructions itself, so its page has no paste step.
+func loginPage(redirectURI string, fields []oauthField, agentValue, errText string) string {
+	if _, ok := parseLoopback(redirectURI); ok {
+		return renderLocalLoginPage(fields, agentValue, errText)
+	}
+	return renderLoginPage(redirectHost(redirectURI), fields, agentValue, errText)
+}
+
+// renderLoginPage is the login for a claude.ai public client.
 func renderLoginPage(clientHost string, fields []oauthField, agentValue, errText string) string {
+	return renderPage("Log in — LLM Memory", `    <h2>Connect `+escapeHTML(clientHost)+`</h2>
+    <div class="subtitle">to your LLM Memory agent</div>
+    <p><strong>First, so Claude uses your memory in every chat:</strong> claude.ai does not tell Claude to load your memory. Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>. You only need to do this once.</p>
+    `+instructionsBlock()+`
+    <div class="divider"></div>
+    <p><strong>Then log in</strong> with your agent name and the password you chose at signup.</p>
+`+loginForm(fields, agentValue, errText))
+}
+
+// renderLocalLoginPage is the login for a client on a loopback redirect_uri.
+func renderLocalLoginPage(fields []oauthField, agentValue, errText string) string {
+	return renderShell("Log in — LLM Memory", `    <h2>Connect an app on this computer</h2>
+    <div class="subtitle">to your LLM Memory agent</div>
+    <p>Log in only if you just added LLM Memory to an app on this computer, such as Claude Code. Use your agent name and the password you chose at signup.</p>
+`+loginForm(fields, agentValue, errText), "")
+}
+
+// loginForm is the login form. Only string, non-empty fields become hidden
+// inputs. agentValue and errText refill the form after a failed try; the
+// password is never echoed.
+func loginForm(fields []oauthField, agentValue, errText string) string {
 	var hidden []string
 	for _, f := range fields {
 		s, ok := f.value.(string)
@@ -58,18 +93,12 @@ func renderLoginPage(clientHost string, fields []oauthField, agentValue, errText
 	if errText != "" {
 		errorHTML = "\n        <div class=\"error\" role=\"alert\">" + escapeHTML(errText) + "</div>"
 	}
-	return renderPage("Log in — LLM Memory", `    <h2>Connect `+escapeHTML(clientHost)+`</h2>
-    <div class="subtitle">to your LLM Memory agent</div>
-    <p><strong>First, so Claude uses your memory in every chat:</strong> claude.ai does not tell Claude to load your memory. Paste this into <strong>Settings</strong> → <strong>Account</strong> → <strong>Instructions for Claude</strong>. You only need to do this once.</p>
-    `+instructionsBlock()+`
-    <div class="divider"></div>
-    <p><strong>Then log in</strong> with your agent name and the password you chose at signup.</p>
-    <form method="post" action="/authorize">
-`+strings.Join(hidden, "\n")+`
+	return `    <form method="post" action="/authorize">
+` + strings.Join(hidden, "\n") + `
         <label for="agent">Agent name</label>
-        <input type="text" id="agent" name="agent" value="`+escapeHTML(agentValue)+`" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        <input type="text" id="agent" name="agent" value="` + escapeHTML(agentValue) + `" autocomplete="username" autocapitalize="none" spellcheck="false" required>
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" autocomplete="current-password" required>`+errorHTML+`
+        <input type="password" id="password" name="password" autocomplete="current-password" required>` + errorHTML + `
         <button class="btn" type="submit">Log in and connect</button>
-    </form>`)
+    </form>`
 }
