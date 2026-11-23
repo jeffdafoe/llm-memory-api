@@ -11,8 +11,8 @@ import (
 // OpenAI: gpt-5.x and gpt-6.x go through /v1/responses (function tools are
 // refused on /v1/chat/completions for them); any other model id through
 // /v1/chat/completions. Cost is computed here because it depends on the
-// service tier OpenAI applied (flex is half price), cached input, and the
-// gpt-6.x long-context surcharge.
+// service tier OpenAI applied (flex is half price), cache reads, cache
+// writes (gpt-5.6 and later) and the long-context surcharge.
 
 func openaiTemperature() Capability {
 	c := stepCap("temperature", "Temperature", "Controls randomness. Lower values are more focused and deterministic, higher values are more creative.", 1.0, 0, 2.0, 0.1)
@@ -44,17 +44,23 @@ var (
 	gpt6ReasoningNoNone = []string{"low", "medium", "high", "xhigh", "max"}
 )
 
-func gpt6Capabilities(levels []string) Capabilities {
-	return Capabilities{
+// flex is false for models released after OpenAI stopped adding Flex
+// ("We won't be adding Flex to new models"), so the control is not offered.
+func gpt6Capabilities(levels []string, flex bool) Capabilities {
+	caps := Capabilities{
 		selectCap("reasoning_effort", "Reasoning Effort", "Controls how much time the model spends thinking. Supports "+strings.Join(levels, ", ")+". OpenAI default is medium.", "medium", append([]string(nil), levels...)...),
 		openaiMaxTokens(),
-		openaiServiceTier(),
 	}
+	if flex {
+		caps = append(caps, openaiServiceTier())
+	}
+	return caps
 }
 
-// gpt6LongContext: above 272,000 prompt tokens the whole request bills
-// input and cached input at 2x, output at 1.5x.
-func gpt6LongContext() *LongContext {
+// openaiLongContext: above 272,000 prompt tokens the whole request bills
+// input, cache reads and cache writes at 2x, output at 1.5x. Cache writes
+// take the input multiplier (openaiComputeCost).
+func openaiLongContext() *LongContext {
 	return &LongContext{Threshold: 272000, Input: 2, CacheRead: 2, Output: 1.5}
 }
 
@@ -62,19 +68,38 @@ func openaiPricing(input, output, cacheRead float64) *Pricing {
 	return &Pricing{Input: num(input), Output: num(output), CacheRead: num(cacheRead)}
 }
 
+// openaiNoCachePricing: the Pro models list no cached-input price.
+// openaiComputeCost bills any cached tokens they report at the input rate.
+func openaiNoCachePricing(input, output float64) *Pricing {
+	return &Pricing{Input: num(input), Output: num(output)}
+}
+
+// openaiWritePricing: gpt-5.6 and later bill a 30-minute cache write at
+// 1.25x input (cacheWrite here). Earlier models have no write charge.
+func openaiWritePricing(input, output, cacheRead, cacheWrite float64) *Pricing {
+	p := openaiPricing(input, output, cacheRead)
+	p.CacheWrite = num(cacheWrite)
+	return p
+}
+
+// A 12-hour cache write (prompt_cache_options.ttl "12h", which no agent
+// sends today) bills at 2.5x input, twice the 30-minute write rate.
+const openai12hWriteFactor = 2.0
+
 var openaiModels = Models{
-	{ID: "gpt-6.1-sol", Label: "GPT-6.1 Sol", ConfigVersion: 3, Pricing: openaiPricing(2.00, 10, 0.10), LongContext: gpt6LongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningNoNone)},
-	{ID: "gpt-6.1-terra", Label: "GPT-6.1 Terra", ConfigVersion: 3, Pricing: openaiPricing(1.00, 5, 0.05), LongContext: gpt6LongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll)},
-	{ID: "gpt-6-luna", Label: "GPT-6 Luna", ConfigVersion: 3, Pricing: openaiPricing(0.10, 0.50, 0.01), LongContext: gpt6LongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll)},
-	{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", ConfigVersion: 2, Pricing: openaiPricing(5.00, 30, 0.50), Capabilities: gpt5Capabilities()},
-	{ID: "gpt-5.6-terra", Label: "GPT-5.6 Terra", ConfigVersion: 2, Pricing: openaiPricing(2.50, 15, 0.25), Capabilities: gpt5Capabilities()},
-	{ID: "gpt-5.6-luna", Label: "GPT-5.6 Luna", ConfigVersion: 2, Pricing: openaiPricing(1.00, 6, 0.10), Capabilities: gpt5Capabilities()},
-	{ID: "gpt-5.5", Label: "GPT-5.5", ConfigVersion: 2, Pricing: openaiPricing(5.00, 30, 0.50), Capabilities: gpt5Capabilities()},
-	{ID: "gpt-5.5-pro", Label: "GPT-5.5 Pro", ConfigVersion: 2, Pricing: openaiPricing(30, 180, 3), Capabilities: gpt5Capabilities()},
-	{ID: "gpt-5.4", Label: "GPT-5.4", ConfigVersion: 2, Pricing: openaiPricing(2.50, 15, 0.25), Capabilities: gpt5Capabilities()},
+	{ID: "gpt-6.2-sol", Label: "GPT-6.2 Sol", ConfigVersion: 3, Pricing: openaiWritePricing(2.00, 10, 0.10, 2.50), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningNoNone, false)},
+	{ID: "gpt-6.1-sol", Label: "GPT-6.1 Sol", ConfigVersion: 3, Pricing: openaiWritePricing(2.00, 10, 0.10, 2.50), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningNoNone, true)},
+	{ID: "gpt-6.1-terra", Label: "GPT-6.1 Terra", ConfigVersion: 3, Pricing: openaiWritePricing(1.00, 5, 0.05, 1.25), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll, true)},
+	{ID: "gpt-6-luna", Label: "GPT-6 Luna", ConfigVersion: 3, Pricing: openaiWritePricing(0.10, 0.50, 0.01, 0.125), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll, true)},
+	{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", ConfigVersion: 2, Pricing: openaiWritePricing(4.00, 20, 0.40, 5.00), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
+	{ID: "gpt-5.6-terra", Label: "GPT-5.6 Terra", ConfigVersion: 2, Pricing: openaiWritePricing(2.00, 12, 0.20, 2.50), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
+	{ID: "gpt-5.6-luna", Label: "GPT-5.6 Luna", ConfigVersion: 2, Pricing: openaiWritePricing(0.20, 1.20, 0.02, 0.25), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
+	{ID: "gpt-5.5", Label: "GPT-5.5", ConfigVersion: 2, Pricing: openaiPricing(5.00, 30, 0.50), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
+	{ID: "gpt-5.5-pro", Label: "GPT-5.5 Pro", ConfigVersion: 2, Pricing: openaiNoCachePricing(30, 180), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
+	{ID: "gpt-5.4", Label: "GPT-5.4", ConfigVersion: 2, Pricing: openaiPricing(2.50, 15, 0.25), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
 	{ID: "gpt-5.4-mini", Label: "GPT-5.4 Mini", ConfigVersion: 2, Pricing: openaiPricing(0.75, 4.50, 0.075), Capabilities: gpt5Capabilities()},
 	{ID: "gpt-5.4-nano", Label: "GPT-5.4 Nano", ConfigVersion: 2, Pricing: openaiPricing(0.20, 1.25, 0.02), Capabilities: gpt5Capabilities()},
-	{ID: "gpt-5.4-pro", Label: "GPT-5.4 Pro", ConfigVersion: 2, Pricing: openaiPricing(30, 180, 3), Capabilities: gpt5Capabilities()},
+	{ID: "gpt-5.4-pro", Label: "GPT-5.4 Pro", ConfigVersion: 2, Pricing: openaiNoCachePricing(30, 180), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
 }
 
 var openaiAdapter = &adapter{
@@ -174,10 +199,11 @@ func messagesToResponsesInput(messages []*object) ([]any, error) {
 	return input, nil
 }
 
-// openaiComputeCost: uncached input, cached input and output at the
-// model's rates, halved for flex, multiplied above the long-context
-// threshold. Nil when the model has no pricing.
-func openaiComputeCost(model string, serviceTier any, promptTokens, cachedTokens, completionTokens any) (*float64, error) {
+// openaiComputeCost: ordinary input, cache reads, cache writes and output
+// at the model's rates, halved for flex, multiplied above the long-context
+// threshold. A model without a write price bills written tokens as
+// ordinary input. Nil when the model has no pricing.
+func openaiComputeCost(model string, serviceTier any, promptTokens any, split inputSplit, completionTokens any) (*float64, error) {
 	entry := openaiModels.Get(model)
 	if entry == nil || entry.Pricing == nil {
 		return nil, nil
@@ -193,15 +219,23 @@ func openaiComputeCost(model string, serviceTier any, promptTokens, cachedTokens
 	if lc := entry.LongContext; lc != nil && prompt > lc.Threshold {
 		inputMul, cacheMul, outputMul = lc.Input, lc.CacheRead, lc.Output
 	}
-	cached := n.of(cachedTokens)
-	uncached := prompt - cached
 	inputRate := pricing.rate(pricing.Input) * flex * inputMul
 	cacheRate := pricing.rate(pricing.CacheRead) * flex * cacheMul
+	if pricing.CacheRead == nil {
+		cacheRate = inputRate
+	}
 	outputRate := pricing.rate(pricing.Output) * flex * outputMul
 
 	cost := 0.0
-	cost += uncached * inputRate / 1_000_000
-	cost += cached * cacheRate / 1_000_000
+	cost += split.ordinary * inputRate / 1_000_000
+	cost += split.cached * cacheRate / 1_000_000
+	if pricing.CacheWrite != nil {
+		writeRate := *pricing.CacheWrite * flex * inputMul
+		cost += (split.written - split.written12h) * writeRate / 1_000_000
+		cost += split.written12h * writeRate * openai12hWriteFactor / 1_000_000
+	} else {
+		cost += split.written * inputRate / 1_000_000
+	}
 	cost += n.of(completionTokens) * outputRate / 1_000_000
 	if n.err != nil {
 		return nil, n.err
@@ -235,15 +269,24 @@ func costLog(cost *float64, digits int) string {
 	return jsutil.ToFixed(*cost, digits)
 }
 
-// tokenPair is Math.max(0, Math.min(raw, prompt)) and Math.max(0, prompt -
-// cached): cached input clamped to the prompt, and the uncached rest.
-func tokenPair(prompt, rawCached any) (cached, uncached float64, err error) {
+// inputSplit divides the prompt tokens OpenAI reports. The prompt count
+// includes cache reads and cache writes; ordinary is what is left.
+// written12h is the 12-hour part of written.
+type inputSplit struct {
+	cached, written, written12h, ordinary float64
+}
+
+// splitInput clamps each part to what remains of the prompt, so a bad
+// count can never make a part negative or the parts exceed the prompt.
+func splitInput(prompt, rawCached, rawWritten, rawWritten12h any) (inputSplit, error) {
 	n := &numbers{}
-	raw := n.of(rawCached)
-	p := n.of(prompt)
-	cached = maxNum(0, minNum(raw, p))
-	uncached = maxNum(0, p-cached)
-	return cached, uncached, n.err
+	p := maxNum(0, n.of(prompt))
+	var s inputSplit
+	s.cached = maxNum(0, minNum(n.of(rawCached), p))
+	s.written = maxNum(0, minNum(n.of(rawWritten), p-s.cached))
+	s.written12h = maxNum(0, minNum(n.of(rawWritten12h), s.written))
+	s.ordinary = p - s.cached - s.written
+	return s, n.err
 }
 
 func openaiCreateCall(p *Providers, model, apiKey string, configuration any) callFunc {
@@ -338,15 +381,16 @@ func openaiCreateCall(p *Providers, model, apiKey string, configuration any) cal
 		promptTokens := coalesce(optional(usageData, "prompt_tokens"), 0.0)
 		completionTokens := coalesce(optional(usageData, "completion_tokens"), 0.0)
 		rawCached := coalesce(optional(optional(usageData, "prompt_tokens_details"), "cached_tokens"), 0.0)
-		cached, uncached, err := tokenPair(promptTokens, rawCached)
+		split, err := splitInput(promptTokens, rawCached, 0.0, 0.0)
 		if err != nil {
 			return nil, err
 		}
+		cached, uncached := split.cached, split.ordinary
 
 		serviceTier, _ := get(data, "service_tier")
 		appliedTier := coalesce(serviceTier, requestedTier)
 		usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
-		cost, err := openaiComputeCost(model, appliedTier, promptTokens, cached, completionTokens)
+		cost, err := openaiComputeCost(model, appliedTier, promptTokens, split, completionTokens)
 		if err != nil {
 			return nil, err
 		}
@@ -576,16 +620,25 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 	usageData := optional(data, "usage")
 	promptTokens := coalesce(optional(usageData, "input_tokens"), 0.0)
 	completionTokens := coalesce(optional(usageData, "output_tokens"), 0.0)
-	rawCached := coalesce(optional(optional(usageData, "input_tokens_details"), "cached_tokens"), 0.0)
-	cached, uncached, err := tokenPair(promptTokens, rawCached)
+	// gpt-5.6 and later report cache writes next to cache reads; both are
+	// inside input_tokens.
+	details := optional(usageData, "input_tokens_details")
+	rawCached := coalesce(optional(details, "cached_tokens"), 0.0)
+	rawWritten := coalesce(optional(details, "cache_write_tokens"), 0.0)
+	rawWritten12h := coalesce(optional(optional(details, "cache_write_tokens_details"), "ttl_12h_tokens"), 0.0)
+	split, err := splitInput(promptTokens, rawCached, rawWritten, rawWritten12h)
 	if err != nil {
 		return nil, err
 	}
+	cached, uncached := split.cached, split.ordinary
 
 	serviceTier, _ := get(data, "service_tier")
 	appliedTier := coalesce(serviceTier, requestedTier)
 	usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
-	cost, err := openaiComputeCost(model, appliedTier, promptTokens, cached, completionTokens)
+	if split.written > 0 {
+		usage.CacheCreationInputTokens = split.written
+	}
+	cost, err := openaiComputeCost(model, appliedTier, promptTokens, split, completionTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -626,6 +679,7 @@ func openaiFormatPricing(p *Providers, modelID string, conf any) string {
 	add(entry.Pricing.Input, " in")
 	add(entry.Pricing.Output, " out")
 	add(entry.Pricing.CacheRead, " cached")
+	add(entry.Pricing.CacheWrite, " cache write")
 	result := strings.Join(parts, " / ") + " per 1M tokens"
 	if isFlex {
 		result += " (flex tier)"
