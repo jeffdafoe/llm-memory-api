@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.27.4
 
 require (
-	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
+	github.com/coder/websocket v1.8.15
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/pashagolub/pgxmock/v6 v6.0.0-beta2
 	github.com/pgvector/pgvector-go/pgx v0.4.1
@@ -19,7 +19,6 @@ require (
 	github.com/pgvector/pgvector-go v0.4.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/mod v0.42.0 // indirect
-	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/telemetry v0.0.0-20261010193011-f71dc92da45e // indirect

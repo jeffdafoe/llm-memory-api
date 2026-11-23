@@ -1,15 +1,19 @@
 package events
 
 import (
+	"bufio"
 	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
 
 // newTestHub serves IsUpgrade requests with a hub that accepts the token
@@ -43,26 +47,45 @@ func newTestHub(t *testing.T, every time.Duration) (*Hub, *httptest.Server, *[]s
 	return h, srv, &logged
 }
 
+func wsURL(srv *httptest.Server) string {
+	return "ws" + strings.TrimPrefix(srv.URL, "http") + Path
+}
+
 func dial(t *testing.T, srv *httptest.Server, protocols ...string) *websocket.Conn {
 	t.Helper()
-	d := websocket.Dialer{Subprotocols: protocols}
-	conn, resp, err := d.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+Path, nil)
+	return dialWith(t, srv, &websocket.DialOptions{Subprotocols: protocols})
+}
+
+func dialWith(t *testing.T, srv *httptest.Server, opts *websocket.DialOptions) *websocket.Conn {
+	t.Helper()
+	// The context bounds the handshake only, not the connection.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, resp, err := websocket.Dial(ctx, wsURL(srv), opts)
 	if err != nil {
 		t.Fatalf("dial: %v (%v)", err, resp)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { conn.CloseNow() })
 	return conn
+}
+
+// read reads one message within 5 seconds. A read that runs out of time
+// closes the connection, so a test uses it only where the message must come
+// or the connection must end.
+func read(conn *websocket.Conn) (websocket.MessageType, []byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return conn.Read(ctx)
 }
 
 func readText(t *testing.T, conn *websocket.Conn) string {
 	t.Helper()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	kind, msg, err := conn.ReadMessage()
+	kind, msg, err := read(conn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if kind != websocket.TextMessage {
-		t.Fatalf("message type %d", kind)
+	if kind != websocket.MessageText {
+		t.Fatalf("message type %v", kind)
 	}
 	return string(msg)
 }
@@ -117,7 +140,10 @@ func TestEveryClientGetsEachEvent(t *testing.T) {
 	if readText(t, a) != `{"event":"e","data":1}` || readText(t, b) != `{"event":"e","data":1}` {
 		t.Error("a client missed the event")
 	}
-	a.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
+	// Close sends the close frame and waits for the server's echo.
+	if err := a.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Errorf("close handshake: %v", err)
+	}
 	waitFor(t, "close to unregister", func() bool { return h.Clients() == 1 })
 }
 
@@ -152,30 +178,25 @@ func TestSilentClientIsDropped(t *testing.T) {
 	waitFor(t, "the silent client to be dropped", func() bool { return h.Clients() == 0 })
 }
 
-// A client that reads answers pings (gorilla's default handler) and stays.
+// A client that reads answers pings (the reader's automatic pong) and stays.
 func TestAnsweringClientStays(t *testing.T) {
 	h, srv, _ := newTestHub(t, 20*time.Millisecond)
-	conn := dial(t, srv, "bearer", "good")
-	var pings int
-	var mu sync.Mutex
-	conn.SetPingHandler(func(data string) error {
-		mu.Lock()
-		pings++
-		mu.Unlock()
-		return conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(time.Second))
+	var pings atomic.Int32
+	conn := dialWith(t, srv, &websocket.DialOptions{
+		Subprotocols: []string{"bearer", "good"},
+		OnPingReceived: func(context.Context, []byte) bool {
+			pings.Add(1)
+			return true
+		},
 	})
 	go func() {
 		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
+			if _, _, err := conn.Read(context.Background()); err != nil {
 				return
 			}
 		}
 	}()
-	waitFor(t, "five pings", func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return pings >= 5
-	})
+	waitFor(t, "five pings", func() bool { return pings.Load() >= 5 })
 	if h.Clients() != 1 {
 		t.Errorf("clients = %d after answering every ping", h.Clients())
 	}
@@ -187,18 +208,11 @@ func TestCloseDropsClientsAndRefusesNew(t *testing.T) {
 	readText(t, conn)
 	waitFor(t, "registration", func() bool { return h.Clients() == 1 })
 	h.Close()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if _, _, err := conn.ReadMessage(); err == nil {
+	if _, _, err := read(conn); err == nil {
 		t.Error("connection still open after Close")
 	}
-	d := websocket.Dialer{Subprotocols: []string{"bearer", "good"}}
-	late, _, err := d.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+Path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer late.Close()
-	late.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if _, _, err := late.ReadMessage(); err == nil {
+	late := dial(t, srv, "bearer", "good")
+	if _, _, err := read(late); err == nil {
 		t.Error("a connection after Close got a message")
 	}
 	if h.Clients() != 0 {
@@ -208,11 +222,166 @@ func TestCloseDropsClientsAndRefusesNew(t *testing.T) {
 
 func TestRefusedTokenIs401(t *testing.T) {
 	_, srv, _ := newTestHub(t, time.Hour)
-	d := websocket.Dialer{Subprotocols: []string{"bearer", "bad"}}
-	_, resp, err := d.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+Path, nil)
+	_, resp, err := websocket.Dial(context.Background(), wsURL(srv), &websocket.DialOptions{Subprotocols: []string{"bearer", "bad"}})
 	if err == nil || resp == nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("err %v, resp %v", err, resp)
 	}
+}
+
+// rawUpgrade sends a handshake with the given Sec-WebSocket-Version, then
+// after (in the same write), and returns the 101 response, the reader that
+// holds the frames after it, and the connection for later writes.
+func rawUpgrade(t *testing.T, srv *httptest.Server, version string, after []byte) (*http.Response, *bufio.Reader, net.Conn) {
+	t.Helper()
+	conn, err := net.Dial("tcp", strings.TrimPrefix(srv.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	req := "GET " + Path + " HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: " + version + "\r\n" +
+		"Sec-WebSocket-Protocol: bearer, good\r\n\r\n"
+	if _, err := conn.Write(append([]byte(req), after...)); err != nil {
+		t.Fatal(err)
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	return resp, br, conn
+}
+
+// readServerFrame reads one unmasked, unfragmented server frame shorter than
+// 126 bytes and returns its opcode and payload.
+func readServerFrame(t *testing.T, br *bufio.Reader) (byte, string) {
+	t.Helper()
+	var head [2]byte
+	if _, err := io.ReadFull(br, head[:]); err != nil {
+		t.Fatal(err)
+	}
+	if head[0]&0x80 == 0 || head[1] >= 126 {
+		t.Fatalf("frame header % x", head)
+	}
+	payload := make([]byte, head[1])
+	if _, err := io.ReadFull(br, payload); err != nil {
+		t.Fatal(err)
+	}
+	return head[0] & 0x0f, string(payload)
+}
+
+func readServerText(t *testing.T, br *bufio.Reader) string {
+	t.Helper()
+	op, payload := readServerFrame(t, br)
+	if op != 0x1 {
+		t.Fatalf("opcode %#x", op)
+	}
+	return payload
+}
+
+// maskedFrame is a client frame (FIN set) with the mask key 1 2 3 4.
+func maskedFrame(opcode byte, payload string) []byte {
+	key := [4]byte{1, 2, 3, 4}
+	b := []byte{0x80 | opcode, 0x80 | byte(len(payload)), key[0], key[1], key[2], key[3]}
+	for i := 0; i < len(payload); i++ {
+		b = append(b, payload[i]^key[i%4])
+	}
+	return b
+}
+
+// ws takes version 8 (the hybi-10 draft); the handshake rewrites it to 13.
+func TestVersion8Handshake(t *testing.T) {
+	_, srv, _ := newTestHub(t, time.Hour)
+	resp, br, _ := rawUpgrade(t, srv, "8", nil)
+	if got := resp.Header.Get("Sec-WebSocket-Protocol"); got != "bearer" {
+		t.Errorf("subprotocol %q", got)
+	}
+	if got := readServerText(t, br); got != `{"event":"connected","data":{"user":"admin"}}` {
+		t.Errorf("welcome %s", got)
+	}
+}
+
+// Frames sent with the handshake, before the 101, are kept and read, as ws
+// does: the text frame is dropped, the ping after it gets its pong, and the
+// client stays.
+func TestFramesBeforeHandshakeResponse(t *testing.T) {
+	h, srv, _ := newTestHub(t, time.Hour)
+	early := append(maskedFrame(0x1, "hi"), maskedFrame(0x9, "p1")...)
+	_, br, _ := rawUpgrade(t, srv, "13", early)
+	// The welcome (writer goroutine) and the pong (reader) may come in
+	// either order.
+	gotWelcome, gotPong := false, false
+	for !gotWelcome || !gotPong {
+		op, payload := readServerFrame(t, br)
+		switch {
+		case op == 0x1 && payload == `{"event":"connected","data":{"user":"admin"}}`:
+			gotWelcome = true
+		case op == 0xa && payload == "p1":
+			gotPong = true
+		default:
+			t.Fatalf("frame %#x %q", op, payload)
+		}
+	}
+	if h.Clients() != 1 {
+		t.Errorf("clients = %d", h.Clients())
+	}
+}
+
+// The reader handles a pong inside coder/websocket's read lock, and CloseNow
+// waits for that lock; if the pong waited for h.mu, a drop made under h.mu
+// would deadlock. With h.mu held, the reader must still take a pong and
+// answer the ping after it, and the hub must then close.
+func TestPongDoesNotWaitForHubLock(t *testing.T) {
+	h, srv, _ := newTestHub(t, time.Hour)
+	_, br, conn := rawUpgrade(t, srv, "13", nil)
+	if got := readServerText(t, br); got != `{"event":"connected","data":{"user":"admin"}}` {
+		t.Fatalf("welcome %s", got)
+	}
+	func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if _, err := conn.Write(append(maskedFrame(0xa, "p1"), maskedFrame(0x9, "p2")...)); err != nil {
+			t.Fatal(err)
+		}
+		if op, payload := readServerFrame(t, br); op != 0xa || payload != "p2" {
+			t.Fatalf("frame %#x %q, want the pong for p2", op, payload)
+		}
+	}()
+	done := make(chan struct{})
+	go func() {
+		h.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Hub.Close did not return")
+	}
+}
+
+// Any pong marks the client alive, as in ws: a raw client that never answers
+// the hub's pings but sends unsolicited pongs stays, and is dropped once the
+// pongs stop.
+func TestUnsolicitedPongKeepsClient(t *testing.T) {
+	h, srv, _ := newTestHub(t, 100*time.Millisecond)
+	_, _, conn := rawUpgrade(t, srv, "13", nil)
+	waitFor(t, "registration", func() bool { return h.Clients() == 1 })
+	conn.SetDeadline(time.Time{})
+	stop := time.Now().Add(600 * time.Millisecond)
+	for time.Now().Before(stop) {
+		if _, err := conn.Write(maskedFrame(0xa, "u")); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if h.Clients() != 1 {
+		t.Fatalf("clients = %d while sending pongs", h.Clients())
+	}
+	waitFor(t, "the client to be dropped after the pongs stop", func() bool { return h.Clients() == 0 })
 }
 
 func header(pairs ...string) http.Header {

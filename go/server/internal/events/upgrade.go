@@ -2,6 +2,7 @@ package events
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -9,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsonutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
@@ -103,33 +104,42 @@ func (h *Hub) ServeUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ws accepts version 8 (the hybi-10 draft, the same frame format) and
-	// 13; gorilla only 13, after the checks above have passed.
+	// 13; coder/websocket only 13, after the checks above have passed.
 	r.Header.Set("Sec-Websocket-Version", "13")
-	var header http.Header
+	// Accept picks the first client protocol that is in this list, so a
+	// one-entry list echoes exactly the protocol checkHandshake chose.
+	var subprotocols []string
 	if protocol != "" {
-		header = http.Header{"Sec-Websocket-Protocol": {protocol}}
+		subprotocols = []string{protocol}
 	}
-	upgrader := websocket.Upgrader{
+	c := &client{send: make(chan []byte, sendQueue), done: make(chan struct{})}
+	c.alive.Store(true)
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		Subprotocols: subprotocols,
 		// ws has no origin check (no verifyClient), and the token is the
-		// credential.
-		CheckOrigin: func(*http.Request) bool { return true },
-	}
-	conn, err := upgrader.Upgrade(w, r, header)
+		// credential. A page on another site cannot send it: the browser
+		// only sends the subprotocols the page itself passes to WebSocket().
+		InsecureSkipVerify: true,
+		// Any pong marks the client alive, solicited or not, as in ws. The
+		// callback runs on the reader goroutine (serve), which starts after
+		// c.conn is set below.
+		OnPongReceived: func(context.Context, []byte) { h.pong(c) },
+	})
 	if err != nil {
-		// Upgrade has answered or closed the connection; the one case the
-		// checks above do not exclude is a client that sent frames before
-		// the 101.
+		// Accept has answered the request. The checks above leave only an
+		// HTTP/1.0 request (ws takes it; coder/websocket answers 426) and
+		// a failed hijack.
 		return
 	}
+	c.conn = conn
 
 	welcome, err := jsonutil.Marshal(envelope{Event: "connected", Data: welcomeData{User: username}})
 	if err != nil {
-		conn.Close()
+		conn.CloseNow()
 		return
 	}
-	c := &client{conn: conn, send: make(chan []byte, sendQueue), alive: true, done: make(chan struct{})}
 	if !h.add(c, welcome) {
-		conn.Close()
+		conn.CloseNow()
 		return
 	}
 	h.serve(c)
