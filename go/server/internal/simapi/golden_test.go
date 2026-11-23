@@ -249,6 +249,15 @@ func (r *rows) Scan(dest ...any) error {
 				b := v.(bool)
 				*d = &b
 			}
+		case *[]string:
+			if v != nil {
+				list := v.([]any)
+				names := make([]string, len(list))
+				for j, name := range list {
+					names[j] = name.(string)
+				}
+				*d = names
+			}
 		case *time.Time:
 			ts, err := time.Parse("2006-01-02 15:04:05.999999999-07", v.(string))
 			if err != nil {

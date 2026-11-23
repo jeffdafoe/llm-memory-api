@@ -35,6 +35,11 @@ type Turn struct {
 	Cost             *string `json:"cost"`
 	DurationMs       *int    `json:"duration_ms"`
 	CreatedAt        string  `json:"created_at"`
+	// ToolNames are the names of the tools offered on the call, in the order
+	// the caller sent them; null when none were offered or the row predates
+	// the column (LLM-948). The tool list leads the rendered prompt, so a
+	// change in it costs the whole provider prompt cache (LLM-991).
+	ToolNames []string `json:"tool_names"`
 }
 
 // RawTurns runs the raw-turns query: where is the WHERE clause over
@@ -45,7 +50,7 @@ func (s *Service) RawTurns(ctx context.Context, where string, limitParam int, pa
                 c.system_prompt, c.user_message, c.response,
                 c.status, c.status_code, c.error_message,
                 c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens,
-                c.cost::text, c.duration_ms, c.created_at
+                c.cost::text, c.duration_ms, c.created_at, c.tool_names
          FROM virtual_agent_calls c
          JOIN actors ac ON ac.id = c.actor_id
          `+where+`
@@ -63,7 +68,7 @@ func (s *Service) RawTurns(ctx context.Context, where string, limitParam int, pa
 			&t.SimActorID, &t.SimActorName, &t.SystemPrompt, &t.UserMessage, &t.Response,
 			&t.Status, &t.StatusCode, &t.ErrorMessage,
 			&t.InputTokens, &t.OutputTokens, &t.CacheReadTokens, &t.CacheWriteTokens,
-			&t.Cost, &t.DurationMs, &created); err != nil {
+			&t.Cost, &t.DurationMs, &created, &t.ToolNames); err != nil {
 			return nil, err
 		}
 		t.CreatedAt = jsutil.DateISO(created)

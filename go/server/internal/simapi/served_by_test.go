@@ -16,7 +16,7 @@ func TestRawTurnsReturnServedBy(t *testing.T) {
 	row := func(id string, servedBy any) []any {
 		return []any{id, "zbbs-john-ellis", nil, "chat", nil, "openrouter", "m", servedBy,
 			nil, nil, "sys", "user", "resp", "success", nil, nil,
-			float64(10), float64(5), float64(0), float64(0), "0.000035", float64(120), "2026-11-05 10:00:00.123456+00"}
+			float64(10), float64(5), float64(0), float64(0), "0.000035", float64(120), "2026-11-05 10:00:00.123456+00", nil}
 	}
 	db := &scriptDB{s: &stream{}, script: []scriptStep{{
 		Match: "c.provider, c.model, c.served_by,",
