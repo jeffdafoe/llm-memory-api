@@ -82,6 +82,9 @@ func TestNarrateEvent(t *testing.T) {
 		{`{"kind":"noticed_omen","payload":{"kind":"sour_milk"}}`, ""},
 		{`{"kind":"placed_ward","payload":{"item":"horseshoe","text":"nailed a horseshoe over the door at home"}}`, "(nailed a horseshoe over the door at home)"},
 		{`{"kind":"placed_ward","payload":{"item":"horseshoe"}}`, ""},
+		{`{"kind":"order_lapsed","payload":{"order_id":7,"amount":20,"text":"Elizabeth Ellis's order for 5 shovels ran out of time before you handed it over, so their 20-coin deposit went back to them out of your purse."}}`,
+			"(Elizabeth Ellis's order for 5 shovels ran out of time before you handed it over, so their 20-coin deposit went back to them out of your purse.)"},
+		{`{"kind":"order_lapsed","payload":{"order_id":7}}`, ""},
 	}
 	for _, c := range cases {
 		if got := narrate(t, c.event); got != c.want {
