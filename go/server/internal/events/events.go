@@ -7,9 +7,10 @@ package events
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsonutil"
 )
@@ -37,7 +38,11 @@ const maxPayload = 100 * 1024 * 1024
 // differences in the go-server note).
 const sendQueue = 1024
 
-// pingWait bounds one ping write.
+// pingWait bounds one ping: the write, then the wait for its pong. A pong
+// that does not come in time only ends the ping's goroutine, and the alive
+// flag decides the drop at the next tick. A write that does not finish in
+// time closes the connection, as the gorilla port did (Known differences in
+// the go-server note).
 const pingWait = 10 * time.Second
 
 // TokenValidator is validateAdminToken: the admin user name for a web
@@ -67,18 +72,21 @@ type client struct {
 	conn *websocket.Conn
 	send chan []byte
 	// alive is the WeakMap of events.js: set on connect and on each pong,
-	// cleared when a ping goes out.
-	alive bool
+	// cleared when a ping goes out. It is atomic so the reader, which sets
+	// it from inside coder/websocket's read lock, never waits for h.mu.
+	alive atomic.Bool
 	done  chan struct{}
 	once  sync.Once
 }
 
 // stop closes the connection once; the writer and reader goroutines end.
-// Closing the socket without a close frame is ws.terminate().
+// CloseNow closes the socket without a close frame, as ws.terminate().
+// CloseNow waits for the connection's read lock, so it is never called
+// with h.mu held.
 func (c *client) stop() {
 	c.once.Do(func() {
 		close(c.done)
-		c.conn.Close()
+		c.conn.CloseNow()
 	})
 }
 
@@ -92,30 +100,35 @@ type envelope struct {
 // Node. data must keep JavaScript's key order: a struct, logger.Fields or
 // another ordered type, never a Go map.
 func (h *Hub) Broadcast(event string, data any) {
+	for _, c := range h.broadcast(event, data) {
+		c.stop()
+	}
+}
+
+// broadcast queues the message for every client under h.mu and returns the
+// clients whose queue was full, removed from the set, for the caller to stop
+// after the lock is released.
+func (h *Hub) broadcast(event string, data any) (dropped []*client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if len(h.clients) == 0 {
-		return
+		return nil
 	}
 	msg, err := jsonutil.Marshal(envelope{Event: event, Data: data})
 	if err != nil {
 		h.errorf("Broadcast %s: %s", event, err)
-		return
+		return nil
 	}
 	for c := range h.clients {
-		h.enqueue(c, msg)
+		// The send never blocks; a client whose queue is full is dropped.
+		select {
+		case c.send <- msg:
+		default:
+			delete(h.clients, c)
+			dropped = append(dropped, c)
+		}
 	}
-}
-
-// enqueue hands msg to c's writer without blocking; a client whose queue is
-// full is dropped. The caller holds h.mu.
-func (h *Hub) enqueue(c *client, msg []byte) {
-	select {
-	case c.send <- msg:
-	default:
-		delete(h.clients, c)
-		c.stop()
-	}
+	return dropped
 }
 
 func (h *Hub) errorf(format string, args ...any) {
@@ -177,32 +190,39 @@ func (h *Hub) Run(ctx context.Context) {
 
 func (h *Hub) pingAll() {
 	h.mu.Lock()
-	var ping []*client
+	var ping, dead []*client
 	for c := range h.clients {
-		if !c.alive {
+		// Swap clears the flag and reports whether a pong came since the
+		// last tick, in one step, so a pong that lands now is not lost.
+		if !c.alive.Swap(false) {
 			delete(h.clients, c)
-			c.stop()
+			dead = append(dead, c)
 			continue
 		}
-		c.alive = false
 		ping = append(ping, c)
 	}
 	h.mu.Unlock()
-	// WriteControl may run beside the client's writer; each ping gets its
-	// own goroutine so one stalled peer does not hold up the rest.
+	for _, c := range dead {
+		c.stop()
+	}
+	// Ping is safe beside the client's writer and blocks until the pong, so
+	// each ping gets its own goroutine and one stalled peer does not hold up
+	// the rest. Its error is dropped, as events.js drops ws.ping()'s: a pong
+	// that never comes leaves alive false for the next tick, and a write
+	// that runs out of time closes the connection, which ends the reader.
 	for _, c := range ping {
 		go func(c *client) {
-			if c.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(pingWait)) != nil {
-				h.remove(c)
-			}
+			ctx, cancel := context.WithTimeout(context.Background(), pingWait)
+			defer cancel()
+			c.conn.Ping(ctx)
 		}(c)
 	}
 }
 
+// pong runs on the reader goroutine, inside coder/websocket's read lock, and
+// takes no hub lock (see client.alive).
 func (h *Hub) pong(c *client) {
-	h.mu.Lock()
-	c.alive = true
-	h.mu.Unlock()
+	c.alive.Store(true)
 }
 
 // Close drops every client and refuses new ones. The server calls it at
@@ -226,7 +246,9 @@ func (h *Hub) serve(c *client) {
 			case <-c.done:
 				return
 			case msg := <-c.send:
-				if c.conn.WriteMessage(websocket.TextMessage, msg) != nil {
+				// No deadline, as before: a stalled peer blocks here
+				// until stop closes the socket.
+				if c.conn.Write(context.Background(), websocket.MessageText, msg) != nil {
 					h.remove(c)
 					return
 				}
@@ -235,26 +257,13 @@ func (h *Hub) serve(c *client) {
 	}()
 
 	c.conn.SetReadLimit(maxPayload)
-	c.conn.SetPongHandler(func(string) error {
-		h.pong(c)
-		return nil
-	})
-	// ws answers a close frame with the same code and reason (an empty
-	// payload for 1005, no status); gorilla's default handler drops the
-	// reason.
-	c.conn.SetCloseHandler(func(code int, text string) error {
-		var payload []byte
-		if code != websocket.CloseNoStatusReceived {
-			payload = websocket.FormatCloseMessage(code, text)
-		}
-		c.conn.WriteControl(websocket.CloseMessage, payload, time.Now().Add(pingWait))
-		return nil
-	})
 	// Node registers no message handler: data frames are read and dropped.
-	// Reading also answers pings (gorilla's default handler, as ws's
-	// autoPong) and close frames (the handler above).
+	// Reading also handles the control frames: it answers a ping (ws's
+	// autoPong), calls OnPongReceived for a pong, and answers a close frame
+	// with the same code and reason (an empty payload for 1005, no status),
+	// as ws does.
 	for {
-		_, r, err := c.conn.NextReader()
+		_, r, err := c.conn.Reader(context.Background())
 		if err != nil {
 			h.remove(c)
 			return
