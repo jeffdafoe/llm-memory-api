@@ -504,12 +504,16 @@ func pricingText(p *Pricing) string {
 
 func TestOpenAIRegistry(t *testing.T) {
 	for id, want := range map[string]string{
-		"gpt-5.6-sol":   `{"input":5,"output":30,"cache_read":0.5}`,
-		"gpt-5.6-terra": `{"input":2.5,"output":15,"cache_read":0.25}`,
-		"gpt-5.6-luna":  `{"input":1,"output":6,"cache_read":0.1}`,
-		"gpt-6.1-sol":   `{"input":2,"output":10,"cache_read":0.1}`,
-		"gpt-6.1-terra": `{"input":1,"output":5,"cache_read":0.05}`,
-		"gpt-6-luna":    `{"input":0.1,"output":0.5,"cache_read":0.01}`,
+		"gpt-5.6-sol":   `{"input":4,"output":20,"cache_write":5,"cache_read":0.4}`,
+		"gpt-5.6-terra": `{"input":2,"output":12,"cache_write":2.5,"cache_read":0.2}`,
+		"gpt-5.6-luna":  `{"input":0.2,"output":1.2,"cache_write":0.25,"cache_read":0.02}`,
+		"gpt-6.2-sol":   `{"input":2,"output":10,"cache_write":2.5,"cache_read":0.1}`,
+		"gpt-6.1-sol":   `{"input":2,"output":10,"cache_write":2.5,"cache_read":0.1}`,
+		"gpt-6.1-terra": `{"input":1,"output":5,"cache_write":1.25,"cache_read":0.05}`,
+		"gpt-6-luna":    `{"input":0.1,"output":0.5,"cache_write":0.125,"cache_read":0.01}`,
+		"gpt-5.5":       `{"input":5,"output":30,"cache_read":0.5}`,
+		"gpt-5.5-pro":   `{"input":30,"output":180}`,
+		"gpt-5.4-pro":   `{"input":30,"output":180}`,
 	} {
 		if got := pricingText(openaiModels.Get(id).Pricing); got != want {
 			t.Errorf("%s pricing %s", id, got)
@@ -525,11 +529,26 @@ func TestOpenAIRegistry(t *testing.T) {
 		}
 	}
 	all := "none,low,medium,high,xhigh,max"
-	for id, options := range map[string]string{"gpt-6.1-sol": "low,medium,high,xhigh,max", "gpt-6.1-terra": all, "gpt-6-luna": all} {
+	for id, options := range map[string]string{"gpt-6.2-sol": "low,medium,high,xhigh,max", "gpt-6.1-sol": "low,medium,high,xhigh,max", "gpt-6.1-terra": all, "gpt-6-luna": all} {
 		m := openaiModels.Get(id)
 		effort := capability(m.Capabilities, "reasoning_effort")
-		if m.ConfigVersion != 3 || effort.Default != "medium" || strings.Join(effort.Options, ",") != options || capability(m.Capabilities, "temperature") != nil || capability(m.Capabilities, "service_tier") == nil {
+		if m.ConfigVersion != 3 || effort.Default != "medium" || strings.Join(effort.Options, ",") != options || capability(m.Capabilities, "temperature") != nil {
 			t.Errorf("%s capabilities", id)
+		}
+		// OpenAI adds no Flex to models after gpt-6.1.
+		hasFlex := capability(m.Capabilities, "service_tier") != nil
+		if hasFlex == (id == "gpt-6.2-sol") {
+			t.Errorf("%s service_tier offered: %v", id, hasFlex)
+		}
+	}
+	for _, id := range []string{"gpt-6.2-sol", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4-pro"} {
+		if lc := openaiModels.Get(id).LongContext; lc == nil || lc.Threshold != 272000 {
+			t.Errorf("%s long context %v", id, lc)
+		}
+	}
+	for _, id := range []string{"gpt-5.4-mini", "gpt-5.4-nano"} {
+		if lc := openaiModels.Get(id).LongContext; lc != nil {
+			t.Errorf("%s has no long-context price: %v", id, lc)
 		}
 	}
 	// Per-model copies: changing one model's options does not leak.
@@ -552,7 +571,7 @@ func responsesCall(t *testing.T, model, conf, usage string) captured {
 
 func TestOpenAIResponsesEndpoint(t *testing.T) {
 	t.Setenv("OPENAI_API_BASE", "")
-	for _, id := range []string{"gpt-5.6-sol", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna"} {
+	for _, id := range []string{"gpt-5.6-sol", "gpt-6.2-sol", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna"} {
 		c := responsesCall(t, id, `{}`, "")
 		if c.err != nil || c.requests[0].URL != "https://api.openai.com/v1/responses" || c.result.Text != "ok" {
 			t.Errorf("%s: %v %v", id, c.err, c.requests)
@@ -586,7 +605,7 @@ func TestOpenAIResponsesServiceTier(t *testing.T) {
 		}
 	}
 	usage := `{"input_tokens":1000,"output_tokens":100}`
-	standard := (1000*1.00 + 100*6) / 1_000_000
+	standard := (1000*0.20 + 100*1.20) / 1_000_000
 	if c := responsesCall(t, "gpt-5.6-luna", `{"service_tier":"flex"}`, usage); c.err != nil || math.Abs(*c.result.Usage.Cost-standard/2) >= 1e-12 {
 		t.Errorf("requested flex: cost %v (%v)", c.result.Usage.Cost, c.err)
 	}
@@ -647,7 +666,47 @@ func TestOpenAILongContextCost(t *testing.T) {
 	}
 	check("gpt-6.1-sol", `{"input_tokens":272000,"input_tokens_details":{"cached_tokens":200000},"output_tokens":10000}`, (72000*2.00+200000*0.10+10000*10)/1_000_000)
 	check("gpt-6.1-terra", `{"input_tokens":300000,"input_tokens_details":{"cached_tokens":100000},"output_tokens":10000}`, (200000*1.00*2+100000*0.05*2+10000*5*1.5)/1_000_000)
-	check("gpt-5.6-luna", `{"input_tokens":300000,"output_tokens":10000}`, (300000*1.00+10000*6)/1_000_000)
+	check("gpt-5.6-luna", `{"input_tokens":300000,"output_tokens":10000}`, (300000*0.20*2+10000*1.20*1.5)/1_000_000)
+	check("gpt-5.4-mini", `{"input_tokens":300000,"output_tokens":10000}`, (300000*0.75+10000*4.50)/1_000_000)
+}
+
+// LLM-1000: gpt-5.6 and later bill cache writes at 1.25x input (30m) and
+// 2.5x (12h). input_tokens includes reads and writes.
+func TestOpenAICacheWriteCost(t *testing.T) {
+	check := func(model, usage string, want float64, wantInput, wantWritten any) {
+		t.Helper()
+		c := responsesCall(t, model, `{}`, usage)
+		if c.err != nil || math.Abs(*c.result.Usage.Cost-want) >= 1e-12 {
+			t.Errorf("%s %s: cost %v, want %v (%v)", model, usage, c.result.Usage.Cost, want, c.err)
+			return
+		}
+		if c.result.Usage.InputTokens != wantInput || c.result.Usage.CacheCreationInputTokens != wantWritten {
+			t.Errorf("%s %s: input %v written %v", model, usage, c.result.Usage.InputTokens, c.result.Usage.CacheCreationInputTokens)
+		}
+	}
+	// The guide's example: 12000 in, 4000 read, 7000 written (3000 30m, 4000 12h), 1000 ordinary.
+	example := `{"input_tokens":12000,"input_tokens_details":{"cached_tokens":4000,"cache_write_tokens":7000,"cache_write_tokens_details":{"ttl_30m_tokens":3000,"ttl_12h_tokens":4000}},"output_tokens":100}`
+	check("gpt-6.2-sol", example, (1000*2.00+4000*0.10+3000*2.50+4000*5.00+100*10)/1_000_000, 1000.0, 7000.0)
+	// Long context doubles the write rate.
+	check("gpt-6.1-terra", `{"input_tokens":300000,"input_tokens_details":{"cached_tokens":100000,"cache_write_tokens":150000},"output_tokens":1000}`,
+		(50000*1.00*2+100000*0.05*2+150000*1.25*2+1000*5*1.5)/1_000_000, 50000.0, 150000.0)
+	// gpt-5.5 has no write charge: written tokens bill as ordinary input.
+	check("gpt-5.5", `{"input_tokens":1000,"input_tokens_details":{"cache_write_tokens":600},"output_tokens":10}`, (1000*5.00+10*30)/1_000_000, 400.0, 600.0)
+	// Counts larger than the prompt are clamped.
+	check("gpt-6-luna", `{"input_tokens":1000,"input_tokens_details":{"cached_tokens":800,"cache_write_tokens":900,"cache_write_tokens_details":{"ttl_12h_tokens":5000}},"output_tokens":0}`,
+		(800*0.01+200*0.125*2)/1_000_000, 0.0, 200.0)
+	// Flex halves the write rates too.
+	c := responsesCall(t, "gpt-6.1-sol", `{"service_tier":"flex"}`, example)
+	if want := (1000*2.00 + 4000*0.10 + 3000*2.50 + 4000*5.00 + 100*10) / 2 / 1_000_000; c.err != nil || math.Abs(*c.result.Usage.Cost-want) >= 1e-12 {
+		t.Errorf("flex writes: cost %v, want %v (%v)", c.result.Usage.Cost, want, c.err)
+	}
+	// Long context doubles the 12h write rate as well.
+	check("gpt-5.6-sol", `{"input_tokens":400000,"input_tokens_details":{"cached_tokens":100000,"cache_write_tokens":200000,"cache_write_tokens_details":{"ttl_30m_tokens":50000,"ttl_12h_tokens":150000}},"output_tokens":1000}`,
+		(100000*8.00+100000*0.80+50000*10.00+150000*20.00+1000*30)/1_000_000, 100000.0, 200000.0)
+	// The Pro models have no cached price: reads bill at the input rate.
+	check("gpt-5.4-pro", `{"input_tokens":1000,"input_tokens_details":{"cached_tokens":400},"output_tokens":10}`, (1000*30.0+10*180)/1_000_000, 600.0, nil)
+	// No writes: CacheCreationInputTokens stays unset.
+	check("gpt-6.2-sol", `{"input_tokens":1000,"output_tokens":10}`, (1000*2.00+10*10)/1_000_000, 1000.0, nil)
 }
 
 // ── openrouter.test.js ─────────────────────────────────────────────────────
