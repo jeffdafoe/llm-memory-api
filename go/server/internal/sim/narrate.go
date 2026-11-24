@@ -428,7 +428,10 @@ func NarrateEvent(event *jsutil.Object, unmapped *UnmappedKinds) (string, error)
 	// pre-rendered per party by the engine.
 	// farm_tools_worn (salem LLM-1005): the shovels the daily farm-upkeep
 	// assessment wore out of the owner's pack, pre-rendered by the engine.
-	case "ruled", "placed_ward", "order_lapsed", "farm_tools_worn":
+	// settled (salem LLM-1018): the passive party's side of a settlement the
+	// engine made outside its turn (a carter buy, a wage, a night's rent),
+	// pre-rendered from that party's view by the engine.
+	case "ruled", "placed_ward", "order_lapsed", "farm_tools_worn", "settled":
 		s, err := sanitizeNarration(or(prop(p, "text"), ""))
 		if err != nil || s == "" {
 			return "", err
