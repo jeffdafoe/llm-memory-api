@@ -426,7 +426,9 @@ func NarrateEvent(event *jsutil.Object, unmapped *UnmappedKinds) (string, error)
 		return "(brought a matter before the magistrates in Salem Town" + concerning + complaint + ")", nil
 	// order_lapsed (salem LLM-993): a lapsed order's refund or forfeited deposit,
 	// pre-rendered per party by the engine.
-	case "ruled", "placed_ward", "order_lapsed":
+	// farm_tools_worn (salem LLM-1005): the shovels the daily farm-upkeep
+	// assessment wore out of the owner's pack, pre-rendered by the engine.
+	case "ruled", "placed_ward", "order_lapsed", "farm_tools_worn":
 		s, err := sanitizeNarration(or(prop(p, "text"), ""))
 		if err != nil || s == "" {
 			return "", err
