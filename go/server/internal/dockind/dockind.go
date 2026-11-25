@@ -6,24 +6,6 @@ package dockind
 
 import "strings"
 
-// IsConversation reports whether a slug is a conversation log. An agent's
-// session logs live at conversations/...; a sim-shared virtual agent keeps
-// one folder per villager, so its sim-day logs live at
-// <villager>/conversations/<day>-sim-day (simapi/distill.go), where the
-// villager prefix is a single kebab segment (sim.NormalizeSlugPrefix).
-//
-// Only that one-segment shape is matched. A conversation log falls under
-// conversation retention and is deleted after conversation_retention_days,
-// so an ordinary note in a deeper folder that happens to be named
-// "conversations" (projects/acme/conversations/kickoff) must stay a note.
-func IsConversation(slug string) bool {
-	if strings.HasPrefix(slug, "conversations/") {
-		return true
-	}
-	i := strings.IndexByte(slug, '/')
-	return i > 0 && strings.HasPrefix(slug[i+1:], "conversations/")
-}
-
 // Of is the kind a slug's folder implies. Matching is case-sensitive.
 func Of(slug string) string {
 	switch {
@@ -31,7 +13,7 @@ func Of(slug string) string {
 		return "instruction"
 	case strings.HasPrefix(slug, "notes/codebase/"):
 		return "reference"
-	case IsConversation(slug):
+	case strings.HasPrefix(slug, "conversations/"):
 		return "conversation"
 	case strings.HasPrefix(slug, "context/"):
 		return "context"
@@ -41,6 +23,30 @@ func Of(slug string) string {
 		return "task"
 	case strings.HasPrefix(slug, "learnings/"):
 		return "learning"
+	case isPrefixedConversation(slug):
+		return "conversation"
 	}
 	return "note"
+}
+
+// IsConversation reports whether a slug is a conversation log.
+func IsConversation(slug string) bool {
+	return Of(slug) == "conversation"
+}
+
+// isPrefixedConversation matches <prefix>/conversations/..., where the
+// prefix is one segment. A sim-shared virtual agent keeps one folder per
+// villager, so its sim-day logs live at
+// <villager>/conversations/<day>-sim-day (simapi/distill.go), and the
+// villager prefix is a single kebab segment (sim.NormalizeSlugPrefix).
+//
+// Of checks it after every top-level folder, so a reserved folder keeps its
+// kind (context/conversations/x stays context). Only the one-segment shape
+// is matched: a conversation log falls under conversation retention and is
+// deleted after conversation_retention_days, so an ordinary note in a
+// deeper folder that happens to be named "conversations"
+// (projects/acme/conversations/kickoff) must stay a note.
+func isPrefixedConversation(slug string) bool {
+	i := strings.IndexByte(slug, '/')
+	return i > 0 && strings.HasPrefix(slug[i+1:], "conversations/")
 }

@@ -33,8 +33,16 @@ func TestOf(t *testing.T) {
 		{"/conversations/x", "note"},
 		{"Conversations/x", "note"},
 		{"x/Conversations/y", "note"},
-		// A top-level rule still wins over the nested one.
+		// Every top-level folder wins over the prefixed rule.
 		{"instructions/conversations/x", "instruction"},
+		{"context/conversations/x", "context"},
+		{"dreams/conversations/x", "dream"},
+		{"tasks/conversations/x", "task"},
+		{"learnings/conversations/x", "learning"},
+		{"conversations/conversations/x", "conversation"},
+		// notes/ is not a reserved folder; notes/codebase/ is two segments.
+		{"notes/conversations/x", "conversation"},
+		{"notes/codebase/conversations/x", "reference"},
 	}
 	for _, c := range cases {
 		if got := Of(c.in); got != c.out {
@@ -45,7 +53,8 @@ func TestOf(t *testing.T) {
 
 func TestIsConversation(t *testing.T) {
 	yes := []string{"conversations/2026-11-25-abc", "conversations/", "silence-walker/conversations/2026-11-25-sim-day", "a/conversations/"}
-	no := []string{"", "conversations", "notes/x", "a/b/conversations/x", "/conversations/x", "a//conversations/x", "dreams/x"}
+	no := []string{"", "conversations", "notes/x", "a/b/conversations/x", "/conversations/x", "a//conversations/x", "dreams/x",
+		"instructions/conversations/x", "context/conversations/x", "dreams/conversations/x", "tasks/conversations/x", "learnings/conversations/x"}
 	for _, s := range yes {
 		if !IsConversation(s) {
 			t.Errorf("IsConversation(%q) = false, want true", s)
