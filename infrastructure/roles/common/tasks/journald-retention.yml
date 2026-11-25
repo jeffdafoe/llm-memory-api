@@ -29,19 +29,21 @@
       MaxFileSec=1day
 
 # journald reads its configuration only at start, so restart it when it is
-# running and started before the drop-in was last written. The check reads
-# the live state each deploy rather than "did the copy change", so a restart
-# that failed on one deploy runs again on the next. A journald that is not
-# running (or not installed) has no start time and is left alone; try-restart
-# also never starts a stopped unit. Restarting does not cut the log streams of
+# running and did not start after the drop-in was last written. The check
+# reads the live state each deploy rather than "did the copy change", so a
+# restart that failed on one deploy runs again on the next. Both times are
+# whole seconds, so a start in the same second as the write counts as "not
+# after": at worst that costs one extra restart on the next deploy. A journald
+# that is not running (or not installed) is left alone; try-restart also
+# never starts a stopped unit. Restarting does not cut the log streams of
 # running services: the unit keeps them in its file descriptor store
 # (FileDescriptorStoreMax) and gets them back on restart.
 - name: Restart systemd-journald if it predates the retention drop-in
   shell: |
       set -e
+      systemctl is-active --quiet systemd-journald.service || exit 0
       started=$(systemctl show systemd-journald.service -p ActiveEnterTimestamp --value)
-      [ -n "$started" ] || exit 0
-      if [ "$(date -d "$started" +%s)" -lt "$(stat -c %Y /etc/systemd/journald.conf.d/retention.conf)" ]; then
+      if [ "$(date -d "$started" +%s)" -le "$(stat -c %Y /etc/systemd/journald.conf.d/retention.conf)" ]; then
           systemctl try-restart systemd-journald.service
           echo restarted
       fi
