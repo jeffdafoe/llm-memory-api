@@ -524,7 +524,7 @@ func TestOpenAIRegistry(t *testing.T) {
 	}
 	for _, id := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
 		m := openaiModels.Get(id)
-		if m.ConfigVersion != 2 || strings.Join(capability(m.Capabilities, "reasoning_effort").Options, ",") != "none,low,medium,high,xhigh" || capability(m.Capabilities, "service_tier") == nil {
+		if m.ConfigVersion != 2 || strings.Join(capability(m.Capabilities, "reasoning_effort").Options, ",") != "none,low,medium,high,xhigh" || capability(m.Capabilities, "service_tier") != nil {
 			t.Errorf("%s capabilities", id)
 		}
 	}
@@ -532,13 +532,8 @@ func TestOpenAIRegistry(t *testing.T) {
 	for id, options := range map[string]string{"gpt-6.2-sol": "low,medium,high,xhigh,max", "gpt-6.1-sol": "low,medium,high,xhigh,max", "gpt-6.1-terra": all, "gpt-6-luna": all} {
 		m := openaiModels.Get(id)
 		effort := capability(m.Capabilities, "reasoning_effort")
-		if m.ConfigVersion != 3 || effort.Default != "medium" || strings.Join(effort.Options, ",") != options || capability(m.Capabilities, "temperature") != nil {
+		if m.ConfigVersion != 3 || effort.Default != "medium" || strings.Join(effort.Options, ",") != options || capability(m.Capabilities, "temperature") != nil || capability(m.Capabilities, "service_tier") != nil {
 			t.Errorf("%s capabilities", id)
-		}
-		// OpenAI adds no Flex to models after gpt-6.1.
-		hasFlex := capability(m.Capabilities, "service_tier") != nil
-		if hasFlex == (id == "gpt-6.2-sol") {
-			t.Errorf("%s service_tier offered: %v", id, hasFlex)
 		}
 	}
 	for _, id := range []string{"gpt-6.2-sol", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4-pro"} {
@@ -591,26 +586,27 @@ func TestOpenAIResponsesEndpoint(t *testing.T) {
 	}
 }
 
-// LLM-930: the Service Tier control reaches /v1/responses, as on the
-// chat-completions path.
-func TestOpenAIResponsesServiceTier(t *testing.T) {
+// LLM-1027: OpenAI dropped Flex. A service_tier left in a stored config
+// is not sent, and a reported tier does not change the cost.
+func TestOpenAIServiceTierIgnored(t *testing.T) {
 	for _, id := range []string{"gpt-5.4-mini", "gpt-5.6-luna", "gpt-6-luna"} {
-		if b := responsesCall(t, id, `{"service_tier":"flex"}`, "").body(t, 0); b["service_tier"] != "flex" {
-			t.Errorf("%s flex: %v", id, b["service_tier"])
-		}
-		for _, conf := range []string{`{"service_tier":"auto"}`, `{}`} {
-			if b := responsesCall(t, id, conf, "").body(t, 0); b["service_tier"] != nil {
-				t.Errorf("%s %s: %v", id, conf, b["service_tier"])
+		for _, conf := range []string{`{"service_tier":"flex"}`, `{"service_tier":"priority"}`, `{"service_tier":"auto"}`, `{"service_tier":7}`, `{}`} {
+			if v, present := responsesCall(t, id, conf, "").body(t, 0)["service_tier"]; present {
+				t.Errorf("%s %s: service_tier sent as %v", id, conf, v)
 			}
 		}
 	}
-	usage := `{"input_tokens":1000,"output_tokens":100}`
 	standard := (1000*0.20 + 100*1.20) / 1_000_000
-	if c := responsesCall(t, "gpt-5.6-luna", `{"service_tier":"flex"}`, usage); c.err != nil || math.Abs(*c.result.Usage.Cost-standard/2) >= 1e-12 {
-		t.Errorf("requested flex: cost %v (%v)", c.result.Usage.Cost, c.err)
+	c := run(t, newProviders(), "openai", "gpt-5.6-luna", `{"service_tier":"flex"}`, TextPrompt("sys"), "hi", &RawOpts{},
+		reply(`{"status":"completed","output":[],"usage":{"input_tokens":1000,"output_tokens":100},"service_tier":"flex"}`))
+	if c.err != nil {
+		t.Fatalf("reported flex: %v", c.err)
 	}
-	if c := responsesCall(t, "gpt-5.6-luna", `{}`, usage); c.err != nil || math.Abs(*c.result.Usage.Cost-standard) >= 1e-12 {
-		t.Errorf("unset: cost %v (%v)", c.result.Usage.Cost, c.err)
+	if c.result == nil || c.result.Usage.Cost == nil {
+		t.Fatal("reported flex: no cost")
+	}
+	if math.Abs(*c.result.Usage.Cost-standard) >= 1e-12 {
+		t.Errorf("reported flex: cost %v, want %v", *c.result.Usage.Cost, standard)
 	}
 }
 
@@ -695,11 +691,6 @@ func TestOpenAICacheWriteCost(t *testing.T) {
 	// Counts larger than the prompt are clamped.
 	check("gpt-6-luna", `{"input_tokens":1000,"input_tokens_details":{"cached_tokens":800,"cache_write_tokens":900,"cache_write_tokens_details":{"ttl_12h_tokens":5000}},"output_tokens":0}`,
 		(800*0.01+200*0.125*2)/1_000_000, 0.0, 200.0)
-	// Flex halves the write rates too.
-	c := responsesCall(t, "gpt-6.1-sol", `{"service_tier":"flex"}`, example)
-	if want := (1000*2.00 + 4000*0.10 + 3000*2.50 + 4000*5.00 + 100*10) / 2 / 1_000_000; c.err != nil || math.Abs(*c.result.Usage.Cost-want) >= 1e-12 {
-		t.Errorf("flex writes: cost %v, want %v (%v)", c.result.Usage.Cost, want, c.err)
-	}
 	// Long context doubles the 12h write rate as well.
 	check("gpt-5.6-sol", `{"input_tokens":400000,"input_tokens_details":{"cached_tokens":100000,"cache_write_tokens":200000,"cache_write_tokens_details":{"ttl_30m_tokens":50000,"ttl_12h_tokens":150000}},"output_tokens":1000}`,
 		(100000*8.00+100000*0.80+50000*10.00+150000*20.00+1000*30)/1_000_000, 100000.0, 200000.0)
