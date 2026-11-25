@@ -407,3 +407,116 @@ func TestMovePrefixFollowsTheDatabaseCollation(t *testing.T) {
 		t.Fatalf("live %v", got)
 	}
 }
+
+// chunkTextsByFile maps each chunk file in the namespace to its chunk texts.
+func chunkTextsByFile(t *testing.T, pool *pgxpool.Pool, namespace string) map[string][]string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(),
+		"SELECT source_file, chunk_text FROM memory_chunks WHERE namespace = $1", namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var file, text string
+		if err := rows.Scan(&file, &text); err != nil {
+			t.Fatal(err)
+		}
+		out[file] = append(out[file], text)
+	}
+	for _, texts := range out {
+		sort.Strings(texts)
+	}
+	return out
+}
+
+// Which chunks are raw (no live note) is decided before any note moves. A
+// move of "a/" to the root takes the note "a/a/x" to "a/x", where a raw
+// chunk sits. Decided after the move, the raw chunk passed for the note's
+// and stayed at "a/x"; it belongs at "x".
+func TestMovePrefixDecidesRawChunksBeforeTheNotesMove(t *testing.T) {
+	pool := testutil.ScratchDB(t, slugCaseSchema)
+	s := newDeletedCopiesService(pool)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+        INSERT INTO documents (namespace, slug, content) VALUES ('ns', 'a/a/x', 'note');
+        INSERT INTO memory_chunks (namespace, source_file, chunk_text) VALUES ('ns', 'a/a/x', 'note'), ('ns', 'a/x', 'raw');
+    `); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := s.MovePrefix(ctx, MovePrefixInput{Namespace: "ns", OldPrefix: "a/", NewPrefix: ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved != (PrefixMoved{Moved: 1}) {
+		t.Fatalf("moved %+v", moved)
+	}
+	if got := liveSlugs(t, pool, "ns"); !reflect.DeepEqual(got, []string{"a/x"}) {
+		t.Fatalf("live %v", got)
+	}
+	want := map[string][]string{"a/x": {"note"}, "x": {"raw"}}
+	if got := chunkTextsByFile(t, pool, "ns"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("chunks %v, want %v", got, want)
+	}
+}
+
+// A rename inside the folder commits while move_folder waits for the note.
+// move_folder must move the note from its renamed slug, and take the
+// chunks and sync mapping at that slug along. A slug read before the wait
+// (a self-join's snapshot) still said "a/x", so the follow-up writes looked
+// there.
+func TestMovePrefixUsesTheSlugAfterAConcurrentRename(t *testing.T) {
+	pool := testutil.ScratchDB(t, slugCaseSchema)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+        INSERT INTO documents (namespace, slug, content) VALUES ('ns', 'a/x', 'body');
+        INSERT INTO memory_chunks (namespace, source_file, chunk_text) VALUES ('ns', 'a/x', 'body');
+        INSERT INTO note_synchronization (actor_id, namespace, slug) VALUES (1, 'ns', 'a/y');
+    `); err != nil {
+		t.Fatal(err)
+	}
+
+	// The rename a/x → a/y holds the note's row lock, paused before it
+	// moves the chunks.
+	renamer := newDeletedCopiesService(pool)
+	paused := newPausingDB(pool, "UPDATE memory_chunks SET source_file = $1")
+	renamer.DB = paused
+	defer paused.Release()
+	renameDone := make(chan struct{})
+	var renameErr error
+	go func() {
+		defer close(renameDone)
+		_, renameErr = renamer.Move(ctx, MoveInput{Namespace: "ns", Slug: "a/x", NewSlug: "a/y"})
+	}()
+	waitClosed(t, paused.reached, "the rename reaching its chunk move")
+
+	mover := newDeletedCopiesService(pool)
+	moveDone := make(chan struct{})
+	var moved PrefixMoved
+	var moveErr error
+	go func() {
+		defer close(moveDone)
+		moved, moveErr = mover.MovePrefix(ctx, MovePrefixInput{Namespace: "ns", OldPrefix: "a/", NewPrefix: "b/"})
+	}()
+	testutil.WaitBlocked(t, pool, moveDone, "move_folder")
+
+	paused.Release()
+	waitClosed(t, renameDone, "the rename")
+	waitClosed(t, moveDone, "move_folder")
+	if renameErr != nil || moveErr != nil {
+		t.Fatalf("rename %v, move_folder %v", renameErr, moveErr)
+	}
+	if moved != (PrefixMoved{Moved: 1}) {
+		t.Fatalf("moved %+v", moved)
+	}
+	if got := liveSlugs(t, pool, "ns"); !reflect.DeepEqual(got, []string{"b/y"}) {
+		t.Fatalf("live %v", got)
+	}
+	if got := chunkTextsByFile(t, pool, "ns"); !reflect.DeepEqual(got, map[string][]string{"b/y": {"body"}}) {
+		t.Fatalf("chunks %v", got)
+	}
+	if got := syncSlugs(t, pool, 1, "ns"); !reflect.DeepEqual(got, []string{"b/y"}) {
+		t.Fatalf("sync mappings %v", got)
+	}
+}

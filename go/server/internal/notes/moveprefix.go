@@ -102,30 +102,31 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
 		}
 	}
 
-	// The notes move first. The self-join keeps each row's old slug for
-	// RETURNING (old is the row as read, d the row as written), so the chunks
-	// and sync mappings below follow the note to its exact new slug, whatever
-	// case they themselves are stored in. skipSlugs (possibly empty: != ALL
-	// of an empty array is true) are the skipped conflicts' sources.
+	// Lock the notes that move and read their slugs. FOR UPDATE waits for a
+	// concurrent rename or delete of one of them to commit, then re-reads the
+	// row and re-checks the WHERE, so the slugs are current, and they stay
+	// so until this transaction ends. Each destination is computed from the
+	// locked slug. skipSlugs (possibly empty: != ALL of an empty array is
+	// true) are the skipped conflicts' sources.
 	rows, err := tx.Query(ctx, `
-            UPDATE documents d
-            SET slug = $3 || substring(d.slug FROM length($2) + 1), updated_at = NOW()
-            FROM documents old
-            WHERE old.id = d.id
-              AND d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4) || '%' AND d.deleted_at IS NULL
-              AND d.slug != ALL($5)
-            RETURNING old.slug, d.slug
+            SELECT id, slug, $3 || substring(slug FROM length($2) + 1)
+            FROM documents
+            WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($4) || '%' AND deleted_at IS NULL
+              AND slug != ALL($5)
+            FOR UPDATE
         `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs)
 	if err != nil {
 		return PrefixMoved{}, err
 	}
-	oldSlugs, newSlugs := []string{}, []string{}
+	ids, oldSlugs, newSlugs := []int{}, []string{}, []string{}
 	for rows.Next() {
+		var id int
 		var oldSlug, newSlug string
-		if err := rows.Scan(&oldSlug, &newSlug); err != nil {
+		if err := rows.Scan(&id, &oldSlug, &newSlug); err != nil {
 			rows.Close()
 			return PrefixMoved{}, err
 		}
+		ids = append(ids, id)
 		oldSlugs = append(oldSlugs, oldSlug)
 		newSlugs = append(newSlugs, newSlug)
 	}
@@ -134,29 +135,46 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
 		return PrefixMoved{}, err
 	}
 
-	// A moved note's chunks take its new slug. unnest of two arrays pairs
-	// them up row by row: (old_slug, new_slug).
+	// The chunks move by id, with every destination computed in this one
+	// statement, before any note's slug changes. A moved note's chunks
+	// (matched without case) take its exact new slug; chunks under the old
+	// prefix with no live note (raw ingests) move by the prefix. Decided
+	// after the notes moved, a raw chunk could pass for a moved note's chunk
+	// at that note's new slug, or the other way round. A skipped note's
+	// chunks have their live note and stay. unnest of two arrays pairs them
+	// up row by row: (old_slug, new_slug).
 	if _, err := tx.Exec(ctx, `
             UPDATE memory_chunks mc
-            SET source_file = m.new_slug
-            FROM unnest($2::text[], $3::text[]) AS m(old_slug, new_slug)
-            WHERE mc.namespace = $1 AND LOWER(mc.source_file) = LOWER(m.old_slug)
-        `, in.Namespace, oldSlugs, newSlugs); err != nil {
+            SET source_file = x.dest
+            FROM (
+                SELECT c.id, m.new_slug AS dest
+                FROM memory_chunks c
+                JOIN unnest($5::text[], $6::text[]) AS m(old_slug, new_slug)
+                  ON LOWER(c.source_file) = LOWER(m.old_slug)
+                WHERE c.namespace = $1
+                UNION ALL
+                SELECT c.id, $3 || substring(c.source_file FROM length($2) + 1)
+                FROM memory_chunks c
+                WHERE c.namespace = $1 AND LOWER(c.source_file) LIKE LOWER($4) || '%'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM documents d
+                      WHERE d.namespace = c.namespace
+                        AND LOWER(d.slug) = LOWER(c.source_file)
+                        AND d.deleted_at IS NULL
+                  )
+            ) x
+            WHERE mc.id = x.id
+        `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, oldSlugs, newSlugs); err != nil {
 		return PrefixMoved{}, err
 	}
-	// Chunks under the old prefix with no live note (raw ingests) keep the
-	// prefix rule. A skipped note's chunks have their live note and stay.
+
+	// The notes move by id, to the destinations read under the lock.
 	if _, err := tx.Exec(ctx, `
-            UPDATE memory_chunks mc
-            SET source_file = $3 || substring(mc.source_file FROM length($2) + 1)
-            WHERE mc.namespace = $1 AND LOWER(mc.source_file) LIKE LOWER($4) || '%'
-              AND NOT EXISTS (
-                  SELECT 1 FROM documents d
-                  WHERE d.namespace = mc.namespace
-                    AND LOWER(d.slug) = LOWER(mc.source_file)
-                    AND d.deleted_at IS NULL
-              )
-        `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike); err != nil {
+            UPDATE documents d
+            SET slug = m.new_slug, updated_at = NOW()
+            FROM unnest($1::int[], $2::text[]) AS m(id, new_slug)
+            WHERE d.id = m.id
+        `, ids, newSlugs); err != nil {
 		return PrefixMoved{}, err
 	}
 
