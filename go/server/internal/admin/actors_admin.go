@@ -277,38 +277,83 @@ var actorNamespaceDeleteSteps = []string{
 	"DELETE FROM namespace_usage WHERE namespace = $1",
 }
 
-// signupRequestIDsSQL finds the access requests that belong to an account:
-// the one behind the invite it registered with, and any others made with its
-// email address (case-insensitive, as an address is). A request whose invite
-// another account used is left alone: the same address on two accounts
-// (an operator's own, say) must not let one delete take the other's record.
-const signupRequestIDsSQL = `
-        SELECT access_request_id FROM invite_codes
-         WHERE used_by = $1 AND access_request_id IS NOT NULL
-        UNION
-        SELECT ar.id FROM access_requests ar
-         WHERE $2::text <> '' AND LOWER(ar.email) = LOWER($2::text)
-           AND NOT EXISTS (
-               SELECT 1 FROM invite_codes ic
-                WHERE ic.access_request_id = ar.id
-                  AND ic.used_by IS NOT NULL AND ic.used_by <> $1)`
+// signupInvitesSQL locks the invites that tie an account to its signup: the
+// ones it registered with, and every invite on the access requests behind
+// them. Only that provenance counts; a request is not the account's just
+// because it carries the same email address, and other requests from that
+// address age out under the LLM-1024 retention rules. FOR UPDATE is the lock
+// registration takes on an invite before it marks it used, so a redemption
+// running alongside either finishes first (and the delete then sees it) or
+// waits and finds the invite gone.
+const signupInvitesSQL = `
+        SELECT id, access_request_id, used_by FROM invite_codes
+         WHERE used_by = $1
+            OR access_request_id IN (
+               SELECT access_request_id FROM invite_codes
+                WHERE used_by = $1 AND access_request_id IS NOT NULL)
+           FOR UPDATE`
 
 // deleteSignupRecords removes an account's invites and access requests
-// inside the delete's transaction. invite_codes.access_request_id is a NO
-// ACTION foreign key, so the invites go first.
-func deleteSignupRecords(ctx context.Context, tx pgx.Tx, name, email string) error {
-	rows, err := tx.Query(ctx, signupRequestIDsSQL, name, email)
+// inside the delete's transaction (GDPR Art. 17, LLM-1022).
+//
+// A request goes only when no OTHER account registered with one of its
+// invites: an admin can issue more than one invite per request, and the
+// other account's record must survive. The account's own invites always go;
+// an unused invite goes with its request. invite_codes.access_request_id is a
+// NO ACTION foreign key, so the invites are deleted first. An invite the
+// account issued (created_by, an admin's name) stays, with the name cleared.
+func deleteSignupRecords(ctx context.Context, tx pgx.Tx, name string) error {
+	type invite struct {
+		id        int
+		requestID *int
+		usedBy    *string
+	}
+	rows, err := tx.Query(ctx, signupInvitesSQL, name)
 	if err != nil {
 		return err
 	}
-	requestIDs, err := pgx.CollectRows(rows, pgx.RowTo[int])
+	invites, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (invite, error) {
+		var inv invite
+		err := row.Scan(&inv.id, &inv.requestID, &inv.usedBy)
+		return inv, err
+	})
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "DELETE FROM invite_codes WHERE used_by = $1 OR access_request_id = ANY($2::int[])", name, requestIDs); err != nil {
+	// A request is the account's alone unless another name redeemed one of
+	// its invites.
+	shared := map[int]bool{}
+	requests := map[int]bool{}
+	for _, inv := range invites {
+		if inv.requestID == nil {
+			continue
+		}
+		requests[*inv.requestID] = true
+		if inv.usedBy != nil && *inv.usedBy != name {
+			shared[*inv.requestID] = true
+		}
+	}
+	inviteIDs := []int{}
+	for _, inv := range invites {
+		mine := inv.usedBy != nil && *inv.usedBy == name
+		unusedOnMyRequest := inv.usedBy == nil && inv.requestID != nil && !shared[*inv.requestID]
+		if mine || unusedOnMyRequest {
+			inviteIDs = append(inviteIDs, inv.id)
+		}
+	}
+	requestIDs := []int{}
+	for id := range requests {
+		if !shared[id] {
+			requestIDs = append(requestIDs, id)
+		}
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM invite_codes WHERE id = ANY($1::int[])", inviteIDs); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, "DELETE FROM access_requests WHERE id = ANY($1::int[])", requestIDs); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "UPDATE invite_codes SET created_by = NULL WHERE created_by = $1", name); err != nil {
 		return err
 	}
 	return nil
@@ -330,8 +375,7 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 		return httpapi.BadRequest(w, "Cannot delete your own account")
 	}
 	var name string
-	var email *string
-	err := rt.DB.QueryRow(r.Context(), "SELECT id, name, email FROM actors WHERE id = $1", actorID).Scan(new(int), &name, &email)
+	err := rt.DB.QueryRow(r.Context(), "SELECT id, name FROM actors WHERE id = $1", actorID).Scan(new(int), &name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpapi.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Actor not found")
 		return nil
@@ -343,10 +387,31 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	rows, err := rt.DB.Query(r.Context(),
+	ctx := r.Context()
+	tx, err := rt.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// Re-read and lock the actor inside the transaction. Several steps below
+	// delete by name, and names are unique only among live actors: if a
+	// second delete of the same id committed after the read above and the
+	// name was then registered again, those steps would hit the new account.
+	// While this row is locked and still has its name, no other actor can.
+	err = tx.QueryRow(ctx, "SELECT name FROM actors WHERE id = $1 FOR UPDATE", actorID).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpapi.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Actor not found")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(ctx,
 		`SELECT a.id, a.name FROM actors a
          JOIN agent_configuration ac ON ac.actor_id = a.id
-         WHERE a.created_by = $1 AND ac.virtual = true`, actorID)
+         WHERE a.created_by = $1 AND ac.virtual = true
+           FOR UPDATE OF a`, actorID)
 	if err != nil {
 		return err
 	}
@@ -371,12 +436,6 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 	ids = append(ids, vaIDs...)
 	names = append(names, vaNames...)
 
-	ctx := r.Context()
-	tx, err := rt.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
 	for _, id := range ids {
 		for _, sql := range actorDeleteSteps {
 			if _, err := tx.Exec(ctx, sql, id); err != nil {
@@ -404,19 +463,10 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 	}
-	// Signup records. Only the account itself has an email address; its
-	// virtual agents never register by invite, but a match on their names
-	// costs nothing.
-	accountEmail := ""
-	if email != nil {
-		accountEmail = *email
-	}
-	for i, n := range names {
-		e := ""
-		if i == 0 {
-			e = accountEmail
-		}
-		if err := deleteSignupRecords(ctx, tx, n, e); err != nil {
+	// Signup records. Virtual agents never register by invite, but a match
+	// on their names costs nothing.
+	for _, n := range names {
+		if err := deleteSignupRecords(ctx, tx, n); err != nil {
 			return err
 		}
 	}

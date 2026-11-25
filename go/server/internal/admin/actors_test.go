@@ -149,16 +149,19 @@ func TestDeleteRefusals(t *testing.T) {
 	}
 }
 
+func ptrInt(n int) *int { return &n }
+
 // A deleted actor's cached tokens are dropped along with its owned
 // virtual agents'.
 func TestDeleteForgetsTokens(t *testing.T) {
 	rt, mock, tokens := newRoutes(t, nil)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, name, email FROM actors WHERE id = $1")).WithArgs(5).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "name", "email"}).AddRow(5, "agent-x", ptr("x@example.com")))
+	actorRow(mock, 5, "agent-x")
 	grants(mock, 2, "*", "*")
-	mock.ExpectQuery("WHERE a.created_by = \\$1 AND ac.virtual = true").WithArgs(5).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(6, "x-va"))
 	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT name FROM actors WHERE id = $1 FOR UPDATE")).WithArgs(5).
+		WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("agent-x"))
+	mock.ExpectQuery("WHERE a.created_by = \\$1 AND ac.virtual = true\\s+FOR UPDATE OF a").WithArgs(5).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(6, "x-va"))
 	for _, id := range []int{5, 6} {
 		for _, sql := range actorDeleteSteps {
 			mock.ExpectExec(regexp.QuoteMeta(sql)).WithArgs(id).WillReturnResult(pgxmock.NewResult("DELETE", 0))
@@ -174,19 +177,24 @@ func TestDeleteForgetsTokens(t *testing.T) {
 			mock.ExpectExec(regexp.QuoteMeta(sql)).WithArgs(n).WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		}
 	}
-	// Signup records: the account's own email, none for its virtual agent.
-	mock.ExpectQuery(regexp.QuoteMeta(signupRequestIDsSQL)).WithArgs("agent-x", "x@example.com").
-		WillReturnRows(pgxmock.NewRows([]string{"access_request_id"}).AddRow(41).AddRow(42))
-	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM invite_codes WHERE used_by = $1 OR access_request_id = ANY($2::int[])")).WithArgs("agent-x", []int{41, 42}).
-		WillReturnResult(pgxmock.NewResult("DELETE", 2))
-	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM access_requests WHERE id = ANY($1::int[])")).WithArgs([]int{41, 42}).
-		WillReturnResult(pgxmock.NewResult("DELETE", 2))
-	mock.ExpectQuery(regexp.QuoteMeta(signupRequestIDsSQL)).WithArgs("x-va", "").
-		WillReturnRows(pgxmock.NewRows([]string{"access_request_id"}))
-	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM invite_codes WHERE used_by = $1 OR access_request_id = ANY($2::int[])")).WithArgs("x-va", []int{}).
+	// Signup records: the account's invite 31 on request 41 goes with the
+	// request; for its virtual agent there is nothing.
+	mock.ExpectQuery(regexp.QuoteMeta(signupInvitesSQL)).WithArgs("agent-x").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "access_request_id", "used_by"}).AddRow(31, ptrInt(41), ptr("agent-x")))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM invite_codes WHERE id = ANY($1::int[])")).WithArgs([]int{31}).
+		WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM access_requests WHERE id = ANY($1::int[])")).WithArgs([]int{41}).
+		WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE invite_codes SET created_by = NULL WHERE created_by = $1")).WithArgs("agent-x").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+	mock.ExpectQuery(regexp.QuoteMeta(signupInvitesSQL)).WithArgs("x-va").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "access_request_id", "used_by"}))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM invite_codes WHERE id = ANY($1::int[])")).WithArgs([]int{}).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM access_requests WHERE id = ANY($1::int[])")).WithArgs([]int{}).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE invite_codes SET created_by = NULL WHERE created_by = $1")).WithArgs("x-va").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE actors SET created_by = NULL WHERE created_by = ANY($1::int[])")).WithArgs([]int{5, 6}).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 	mock.ExpectCommit()

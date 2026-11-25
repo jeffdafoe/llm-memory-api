@@ -18,12 +18,13 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/visibility"
 )
 
-// The GDPR delete check (LLM-1022) runs against the real schema: what it
-// proves is that after an account is deleted, no row in ANY table still
-// holds its id, name or email. A mock can only show the statements a test
-// author thought of; walking information_schema also catches a table added
-// later that the delete does not know about. testutil.ScratchDB says when
-// it runs.
+// The GDPR delete check (LLM-1022) runs against the real schema. It seeds an
+// account into every place it is known to leave a trace, deletes it, and
+// then checks two things: each seeded row is gone or survives as intended
+// (asserted row by row), and, as a backstop, no text column of any table
+// still equals the account's name and no actor-id column holds its id. The
+// backstop only sees what the fixture put in; a table this test does not
+// seed is not covered. testutil.ScratchDB says when it runs.
 
 // fullSchema is migrations/schema.sql made loadable on any Postgres 17: the
 // psql-only \restrict lines go, the search_path reset goes (it would stick
@@ -74,29 +75,47 @@ func TestDeleteLeavesNoTraceDB(t *testing.T) {
 			t.Fatalf("%s: %v", sql, err)
 		}
 	}
+	count := func(sql string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+		return n
+	}
 
 	// 2 admin (superadmin, does the delete); 5 victim, the account to delete,
 	// registered by invite; 6 its virtual agent; 7 friend, linked to the
-	// victim; 8 twin, another account on the same email address, whose
-	// signup record must survive.
+	// victim; 8 twin, another account on the same email address.
 	exec(`INSERT INTO actors (id, name, email, created_by) VALUES
 	        (2, 'admin', NULL, NULL), (5, 'victim', 'Victim@Example.com', NULL),
 	        (6, 'victim-va', NULL, 5), (7, 'friend', NULL, NULL), (8, 'twin', 'victim@example.com', NULL)`)
 	exec(`INSERT INTO admin_permissions (actor_id, resource, action) VALUES (2, '*', '*')`)
 	exec(`INSERT INTO agent_configuration (actor_id, virtual) VALUES (5, false), (6, true), (7, false), (8, false)`)
 
-	// Signup: the victim's used invite and its request, a second request
-	// from the same address that was never reviewed, and the twin's.
+	// Signup records:
+	//   11  the victim's request: its used invite and a spare unused one (both go, then the request)
+	//   12  a request from the victim's address with no invite (not provably the victim's: stays)
+	//   13  the twin's request, same address (stays, with its invite)
+	//   14  one request whose two invites the victim and friend each used (the request and
+	//       friend's invite stay; the victim's invite goes)
+	//   15  an unrelated request with an unused invite the victim issued (stays, creator cleared)
 	exec(`INSERT INTO access_requests (id, email, usage_description, status) VALUES
 	        (11, 'victim@example.com', 'notes', 'approved'),
 	        (12, 'VICTIM@example.com', 'again', 'pending'),
-	        (13, 'victim@example.com', 'twin', 'approved')`)
-	exec(`INSERT INTO invite_codes (code, created_by, access_request_id, used_by, used_at) VALUES
-	        ('c-victim', 'admin', 11, 'victim', now()),
-	        ('c-twin', 'admin', 13, 'twin', now())`)
+	        (13, 'victim@example.com', 'twin', 'approved'),
+	        (14, 'shared@example.com', 'shared', 'approved'),
+	        (15, 'someone@example.com', 'other', 'approved')`)
+	exec(`INSERT INTO invite_codes (id, code, created_by, access_request_id, used_by, used_at) VALUES
+	        (21, 'c-victim', 'admin', 11, 'victim', now()),
+	        (22, 'c-spare', 'admin', 11, NULL, NULL),
+	        (23, 'c-twin', 'admin', 13, 'twin', now()),
+	        (24, 'c-victim-2', 'admin', 14, 'victim', now()),
+	        (25, 'c-friend', 'admin', 14, 'friend', now()),
+	        (26, 'c-issued', 'victim', 15, NULL, NULL)`)
 
-	// Notes in the victim's namespace, grants and shares on it held by
-	// others, another account's sync state for it, and its usage row.
+	// Notes in the victim's namespaces, grants and shares on them held by
+	// others, another account's sync state, and the usage rows.
 	exec(`INSERT INTO documents (namespace, slug, content, created_by_actor_id) VALUES
 	        ('victim', 'notes/a', 'x', 5), ('victim-va', 'notes/b', 'y', 6), ('friend', 'notes/c', 'z', 5)`)
 	exec(`INSERT INTO namespace_permissions (actor_id, namespace, can_read) VALUES (7, 'victim', true), (7, 'victim-va', true)`)
@@ -117,13 +136,44 @@ func TestDeleteLeavesNoTraceDB(t *testing.T) {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// Walk every column of every table. Text columns must not hold either
-	// name or the email (case-insensitive); id-like integer columns must
-	// not hold either id.
+	// Row by row.
+	checks := []struct {
+		what string
+		sql  string
+		want int
+	}{
+		{"victim and its virtual agent", `SELECT count(*) FROM actors WHERE id IN (5, 6)`, 0},
+		{"friend and twin", `SELECT count(*) FROM actors WHERE id IN (7, 8)`, 2},
+		{"victim's request 11", `SELECT count(*) FROM access_requests WHERE id = 11`, 0},
+		{"victim's invite and the spare", `SELECT count(*) FROM invite_codes WHERE id IN (21, 22)`, 0},
+		{"address-only request 12", `SELECT count(*) FROM access_requests WHERE id = 12`, 1},
+		{"twin's request 13", `SELECT count(*) FROM access_requests WHERE id = 13`, 1},
+		{"twin's invite on 13", `SELECT count(*) FROM invite_codes WHERE id = 23 AND access_request_id = 13 AND used_by = 'twin'`, 1},
+		{"shared request 14", `SELECT count(*) FROM access_requests WHERE id = 14`, 1},
+		{"victim's invite on 14", `SELECT count(*) FROM invite_codes WHERE id = 24`, 0},
+		{"friend's invite on 14", `SELECT count(*) FROM invite_codes WHERE id = 25 AND access_request_id = 14 AND used_by = 'friend'`, 1},
+		{"issued invite 26, creator cleared", `SELECT count(*) FROM invite_codes WHERE id = 26 AND access_request_id = 15 AND created_by IS NULL`, 1},
+		{"request 15", `SELECT count(*) FROM access_requests WHERE id = 15`, 1},
+		{"note in friend's namespace, creator cleared", `SELECT count(*) FROM documents WHERE namespace = 'friend' AND created_by_actor_id IS NULL`, 1},
+		{"victim's documents", `SELECT count(*) FROM documents WHERE namespace IN ('victim', 'victim-va')`, 0},
+		{"grants on the namespaces", `SELECT count(*) FROM namespace_permissions WHERE namespace IN ('victim', 'victim-va')`, 0},
+		{"shares out of the namespace", `SELECT count(*) FROM note_permissions WHERE owner_namespace = 'victim'`, 0},
+		{"sync state", `SELECT count(*) FROM note_synchronization WHERE namespace = 'victim'`, 0},
+		{"usage rows", `SELECT count(*) FROM namespace_usage WHERE namespace IN ('victim', 'victim-va')`, 0},
+		{"link rows", `SELECT count(*) FROM actor_visibility_configuration WHERE actor_id = 5 OR target_actor_id = 5`, 0},
+	}
+	for _, c := range checks {
+		if got := count(c.sql); got != c.want {
+			t.Errorf("%s: %d rows, want %d", c.what, got, c.want)
+		}
+	}
+
+	// Backstop over every table: no text column equal to either name, no
+	// actor-id-like integer column holding either id.
 	rows, err := pool.Query(ctx, `
-	    SELECT table_name, column_name, data_type FROM information_schema.columns
-	     WHERE table_schema = 'public' AND table_name IN
-	           (SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE')`)
+	    SELECT c.table_name, c.column_name, c.data_type FROM information_schema.columns c
+	      JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+	     WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,50 +187,25 @@ func TestDeleteLeavesNoTraceDB(t *testing.T) {
 		cols = append(cols, c)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(cols) == 0 {
+		t.Fatal("schema scan found no columns")
+	}
 	idColumn := regexp.MustCompile(`actor_id$|_by$|^virtual_agent_id$`)
 	for _, c := range cols {
 		var sql string
-		var args []any
 		switch {
 		case c.typ == "text" || c.typ == "character varying":
-			sql = `SELECT count(*) FROM public.` + c.table + ` WHERE "` + c.name + `" IN ($1, $2) OR LOWER("` + c.name + `") = LOWER($3)`
-			args = []any{"victim", "victim-va", "victim@example.com"}
+			sql = `SELECT count(*) FROM public.` + c.table + ` WHERE "` + c.name + `" IN ('victim', 'victim-va')`
 		case c.typ == "integer" && idColumn.MatchString(c.name):
 			sql = `SELECT count(*) FROM public.` + c.table + ` WHERE "` + c.name + `" IN (5, 6)`
-		case c.typ == "integer" && c.name == "id" && c.table == "actors":
-			sql = `SELECT count(*) FROM public.actors WHERE id IN (5, 6)`
 		default:
 			continue
 		}
-		var n int
-		if err := pool.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
-			t.Fatalf("%s.%s: %v", c.table, c.name, err)
-		}
-		// The twin's own email is the one deliberate survivor: it is another
-		// account's data.
-		if c.table == "actors" && c.name == "email" && n == 1 {
-			continue
-		}
-		if c.table == "access_requests" && c.name == "email" && n == 1 {
-			continue
-		}
-		if n != 0 {
+		if n := count(sql); n != 0 {
 			t.Errorf("%s.%s still holds the deleted account (%d rows)", c.table, c.name, n)
 		}
-	}
-
-	// What must survive: the twin's signup record and account, the linked
-	// account, and the note the victim wrote in friend's namespace (without
-	// its creator).
-	var survivors int
-	if err := pool.QueryRow(ctx, `SELECT
-	        (SELECT count(*) FROM access_requests WHERE id = 13) +
-	        (SELECT count(*) FROM invite_codes WHERE used_by = 'twin') +
-	        (SELECT count(*) FROM actors WHERE id IN (7, 8)) +
-	        (SELECT count(*) FROM documents WHERE namespace = 'friend' AND created_by_actor_id IS NULL)`).Scan(&survivors); err != nil {
-		t.Fatal(err)
-	}
-	if survivors != 5 {
-		t.Fatalf("survivors: %d, want 5", survivors)
 	}
 }
