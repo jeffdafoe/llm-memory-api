@@ -1,0 +1,51 @@
+---
+# Keep the systemd journal for 30 days. The journal holds client IP addresses
+# (the Go server's "[mcp] connect" lines go to stdout, and so to journald), and
+# the privacy policy at /privacy states this period. Without a limit journald
+# keeps entries until the size cap pushes them out, which on this server was
+# months. Runs from the role (setup.yml) and from deploy.yml.
+
+- name: Create the systemd-journald drop-in directory
+  file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: '0755'
+
+# journald deletes whole archived journal files, judged by the time of each
+# file's FIRST entry: a file that began more than MaxRetentionSec ago goes.
+# MaxFileSec=1day starts a new file every day, so each file spans one day and
+# 30 days is the cleanup threshold to within a day. journald does this cleanup
+# itself when it starts and after every rotation, so with daily files it runs
+# at least daily and needs no cron job or vacuum command here.
+- name: Set the journal retention period
+  copy:
+    dest: /etc/systemd/journald.conf.d/retention.conf
+    mode: '0644'
+    content: |
+      # Managed by Ansible (roles/common/tasks/journald-retention.yml).
+      # The privacy policy (/privacy) states this period; change both together.
+      [Journal]
+      MaxRetentionSec=30day
+      MaxFileSec=1day
+
+# journald reads its configuration only at start, so restart it when it is
+# running and did not start after the drop-in was last written. The check
+# reads the live state each deploy rather than "did the copy change", so a
+# restart that failed on one deploy runs again on the next. Both times are
+# whole seconds, so a start in the same second as the write counts as "not
+# after": at worst that costs one extra restart on the next deploy. A journald
+# that is not running (or not installed) is left alone; try-restart also
+# never starts a stopped unit. Restarting does not cut the log streams of
+# running services: the unit keeps them in its file descriptor store
+# (FileDescriptorStoreMax) and gets them back on restart.
+- name: Restart systemd-journald if it predates the retention drop-in
+  shell: |
+      set -e
+      systemctl is-active --quiet systemd-journald.service || exit 0
+      started=$(systemctl show systemd-journald.service -p ActiveEnterTimestamp --value)
+      if [ "$(date -d "$started" +%s)" -le "$(stat -c %Y /etc/systemd/journald.conf.d/retention.conf)" ]; then
+          systemctl try-restart systemd-journald.service
+          echo restarted
+      fi
+  register: journald_restart
+  changed_when: "'restarted' in journald_restart.stdout"
