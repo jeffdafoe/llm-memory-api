@@ -18,6 +18,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/dockind"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/syserrors"
 )
@@ -230,9 +231,11 @@ func (s *Service) ingestOnce(ctx context.Context, namespace, sourceFile, content
 
 // isConversationSource reports a conversation log, chunked by message window:
 // a session log at conversations/..., or a log under an agent folder such as
-// salem-vendor's <npc>/conversations/<day>-sim-day.
+// salem-vendor's <npc>/conversations/<day>-sim-day. It is the same rule that
+// sets documents.kind (dockind), so a log is chunked as a conversation
+// exactly when it is stored as one.
 func isConversationSource(sourceFile string) bool {
-	return strings.HasPrefix(sourceFile, "conversations/") || strings.Contains(sourceFile, "/conversations/")
+	return dockind.IsConversation(sourceFile)
 }
 
 // The embeddings endpoint takes at most 300,000 tokens and 2048 inputs per
