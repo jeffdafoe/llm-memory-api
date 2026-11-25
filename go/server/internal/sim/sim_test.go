@@ -88,6 +88,9 @@ func TestNarrateEvent(t *testing.T) {
 		{`{"kind":"farm_tools_worn","payload":{"item":"shovel","qty":3,"text":"The 3 shovels you held were worn out in the farm's upkeep — that is the way of farm tools."}}`,
 			"(The 3 shovels you held were worn out in the farm's upkeep — that is the way of farm tools.)"},
 		{`{"kind":"farm_tools_worn","payload":{"item":"shovel","qty":3}}`, ""},
+		{`{"kind":"settled","payload":{"settlement":"carter_buy","counterparty":"Isaac Reed","amount":6,"text":"Sold 3 salt to the carter Isaac Reed for 6 coins."}}`,
+			"(Sold 3 salt to the carter Isaac Reed for 6 coins.)"},
+		{`{"kind":"settled","payload":{"settlement":"wage","amount":4}}`, ""},
 	}
 	for _, c := range cases {
 		if got := narrate(t, c.event); got != c.want {
