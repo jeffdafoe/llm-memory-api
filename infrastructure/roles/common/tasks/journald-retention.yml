@@ -11,10 +11,12 @@
     state: directory
     mode: '0755'
 
-# MaxRetentionSec deletes only whole archived journal files whose entries are
-# all older than the limit. MaxFileSec=1day closes a file every day, so no
-# entry outlives the 30 days by more than a day. The default (one month per
-# file) would let entries live about 60 days.
+# journald deletes whole archived journal files, judged by the time of each
+# file's FIRST entry: a file that began more than MaxRetentionSec ago goes.
+# MaxFileSec=1day starts a new file every day, so each file spans one day and
+# 30 days is the cleanup threshold to within a day. journald does this cleanup
+# itself when it starts and after every rotation, so with daily files it runs
+# at least daily and needs no cron job or vacuum command here.
 - name: Set the journal retention period
   copy:
     dest: /etc/systemd/journald.conf.d/retention.conf
@@ -25,19 +27,23 @@
       [Journal]
       MaxRetentionSec=30day
       MaxFileSec=1day
-  register: journald_retention_conf
 
-# journald reads its configuration only at start. Restarting it does not cut
-# the log streams of running services: the unit keeps them in its file
-# descriptor store (FileDescriptorStoreMax) and gets them back on restart.
-- name: Restart systemd-journald to load the retention period
-  command: systemctl try-restart systemd-journald.service
+# journald reads its configuration only at start, so restart it when it is
+# running and started before the drop-in was last written. The check reads
+# the live state each deploy rather than "did the copy change", so a restart
+# that failed on one deploy runs again on the next. A journald that is not
+# running (or not installed) has no start time and is left alone; try-restart
+# also never starts a stopped unit. Restarting does not cut the log streams of
+# running services: the unit keeps them in its file descriptor store
+# (FileDescriptorStoreMax) and gets them back on restart.
+- name: Restart systemd-journald if it predates the retention drop-in
+  shell: |
+      set -e
+      started=$(systemctl show systemd-journald.service -p ActiveEnterTimestamp --value)
+      [ -n "$started" ] || exit 0
+      if [ "$(date -d "$started" +%s)" -lt "$(stat -c %Y /etc/systemd/journald.conf.d/retention.conf)" ]; then
+          systemctl try-restart systemd-journald.service
+          echo restarted
+      fi
   register: journald_restart
-  failed_when: journald_restart.rc not in [0, 5]
-  when: journald_retention_conf.changed
-
-# The restart loads the limit but deletes nothing by itself until the next
-# rotation; vacuum removes the files that are already older now.
-- name: Delete journal files older than the retention period
-  command: journalctl --vacuum-time=30d
-  when: journald_retention_conf.changed
+  changed_when: "'restarted' in journald_restart.stdout"
