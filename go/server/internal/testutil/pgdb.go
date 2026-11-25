@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"testing"
 	"time"
@@ -35,9 +36,11 @@ func ScratchDB(t *testing.T, schema string) *pgxpool.Pool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The nanosecond clock keeps parallel tests and packages apart: go test
-	// runs packages as separate processes on the same server.
-	name := fmt.Sprintf("scratch_%d", time.Now().UnixNano())
+	// The name keeps parallel tests and packages apart: go test runs
+	// packages as separate processes on the same server. The clock alone
+	// collides on Windows, whose clock ticks far coarser than a
+	// nanosecond, so a random part is added.
+	name := fmt.Sprintf("scratch_%d_%d", time.Now().UnixNano(), rand.Uint32())
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		admin.Close(ctx)
 		t.Fatal(err)
