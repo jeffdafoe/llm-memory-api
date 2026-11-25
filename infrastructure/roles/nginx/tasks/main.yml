@@ -51,6 +51,44 @@
     state: started
     enabled: yes
 
+# Keep nginx logs (they hold client IP addresses) for at most 15 days; the
+# privacy policy at /privacy states the period. This replaces the file the
+# nginx-common package installs, with two changes. Debian's "notifempty"
+# skips rotating an empty log, so a quiet log's old files never move down
+# the "rotate 14" chain and stay for months: "ifempty" rotates every log
+# every day. "maxage 15" also deletes any rotated file older than 15 days
+# whenever its log rotates, which clears files left from before this change
+# on the first run instead of 14 days later. The rest is Debian's file as
+# shipped. Because the file is a package conffile, an nginx-common upgrade
+# asks whether to keep this version; keep it (the next deploy writes it back
+# either way).
+- name: Set the nginx log rotation
+  copy:
+    dest: /etc/logrotate.d/nginx
+    mode: '0644'
+    content: |
+      # Managed by Ansible (roles/nginx/tasks/main.yml).
+      # The privacy policy (/privacy) states this period; change both together.
+      /var/log/nginx/*.log {
+      	daily
+      	missingok
+      	rotate 14
+      	maxage 15
+      	compress
+      	delaycompress
+      	ifempty
+      	create 0640 www-data adm
+      	sharedscripts
+      	prerotate
+      		if [ -d /etc/logrotate.d/httpd-prerotate ]; then \
+      			run-parts /etc/logrotate.d/httpd-prerotate; \
+      		fi \
+      	endscript
+      	postrotate
+      		invoke-rc.d nginx rotate >/dev/null 2>&1
+      	endscript
+      }
+
 # ── fail2ban for WordPress/CMS scanning bots ──
 
 - name: Install fail2ban
