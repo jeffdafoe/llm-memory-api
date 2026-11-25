@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -63,6 +64,92 @@ func dbRoutes(pool *pgxpool.Pool) *Routes {
 			Visibility: &visibility.Visibility{DB: pool, Admin: adm},
 		},
 		SessionAuth: &fakeCache{},
+	}
+}
+
+// A registration redeeming a spare invite on the account's own request while
+// the delete runs: the delete waits on the invite lock registration holds,
+// then sees the invite as another account's, so that invite and its request
+// survive. Only the account's own invite goes.
+func TestDeleteWaitsForRedemptionDB(t *testing.T) {
+	pool := testutil.ScratchDB(t, fullSchema(t))
+	ctx := context.Background()
+	for _, sql := range []string{
+		`INSERT INTO actors (id, name) VALUES (2, 'admin'), (5, 'victim')`,
+		`INSERT INTO admin_permissions (actor_id, resource, action) VALUES (2, '*', '*')`,
+		`INSERT INTO agent_configuration (actor_id, virtual) VALUES (5, false)`,
+		`INSERT INTO access_requests (id, email, usage_description, status) VALUES (11, 'v@example.com', 'notes', 'approved')`,
+		`INSERT INTO invite_codes (id, code, access_request_id, used_by, used_at) VALUES
+		    (21, 'c-victim', 11, 'victim', now()), (22, 'c-spare', 11, NULL, NULL)`,
+	} {
+		if _, err := pool.Exec(ctx, sql); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+
+	// Registration's first step: lock the invite it is about to redeem.
+	reg, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Rollback(ctx)
+	if _, err := reg.Exec(ctx, `SELECT id FROM invite_codes WHERE id = 22 FOR UPDATE`); err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		code int
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		rec := httptest.NewRecorder()
+		err := dbRoutes(pool).actorsDelete(rec, request(`{"actor_id":5}`))
+		done <- result{rec.Code, err}
+	}()
+
+	// Wait until the delete is blocked on that lock, then let the
+	// redemption commit.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+		        WHERE wait_event_type = 'Lock' AND query LIKE '%FROM invite_codes%FOR UPDATE%'`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		select {
+		case r := <-done:
+			t.Fatalf("delete finished without waiting for the invite lock: %d %v", r.code, r.err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the delete never waited on the invite lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := reg.Exec(ctx, `UPDATE invite_codes SET used_by = 'newbie', used_at = now() WHERE id = 22`); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	r := <-done
+	if r.err != nil || r.code != 200 {
+		t.Fatalf("delete: %d %v", r.code, r.err)
+	}
+	var own, redeemed, request int
+	if err := pool.QueryRow(ctx, `SELECT
+	        (SELECT count(*) FROM invite_codes WHERE id = 21),
+	        (SELECT count(*) FROM invite_codes WHERE id = 22 AND used_by = 'newbie' AND access_request_id = 11),
+	        (SELECT count(*) FROM access_requests WHERE id = 11)`).Scan(&own, &redeemed, &request); err != nil {
+		t.Fatal(err)
+	}
+	if own != 0 || redeemed != 1 || request != 1 {
+		t.Fatalf("own invite %d (want 0), redeemed invite %d (want 1), request %d (want 1)", own, redeemed, request)
 	}
 }
 

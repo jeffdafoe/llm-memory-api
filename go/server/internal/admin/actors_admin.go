@@ -398,6 +398,8 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 	// second delete of the same id committed after the read above and the
 	// name was then registered again, those steps would hit the new account.
 	// While this row is locked and still has its name, no other actor can.
+	// The ownership check above is by id, and no route renames an actor, so
+	// the locked row is the one that was authorized.
 	err = tx.QueryRow(ctx, "SELECT name FROM actors WHERE id = $1 FOR UPDATE", actorID).Scan(&name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpapi.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Actor not found")
