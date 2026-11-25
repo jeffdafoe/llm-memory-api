@@ -75,18 +75,23 @@ func chunkFiles(t *testing.T, pool *pgxpool.Pool, namespace string) []string {
 
 // waitChunks waits for the background re-index to leave exactly the chunk
 // files want, all holding text. The text tells a finished re-index from the
-// chunks it replaces, which may already sit under the same file name.
+// chunks it replaces, which may already sit under the same file name. One
+// query reads both, so a poll cannot pair file names from before a re-index
+// with content from after it.
 func waitChunks(t *testing.T, pool *pgxpool.Pool, namespace string, want []string, text string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		got := chunkFiles(t, pool, namespace)
+		var got []string
 		var stale int
-		if err := pool.QueryRow(context.Background(),
-			"SELECT COUNT(*) FROM memory_chunks WHERE namespace = $1 AND chunk_text NOT LIKE '%' || $2 || '%'",
-			namespace, text).Scan(&stale); err != nil {
+		if err := pool.QueryRow(context.Background(), `
+            SELECT COALESCE(array_agg(DISTINCT source_file), '{}'),
+                   COUNT(*) FILTER (WHERE chunk_text NOT LIKE '%' || $2 || '%')
+            FROM memory_chunks WHERE namespace = $1`,
+			namespace, text).Scan(&got, &stale); err != nil {
 			t.Fatal(err)
 		}
+		sort.Strings(got)
 		if reflect.DeepEqual(got, want) && stale == 0 {
 			return
 		}
@@ -322,17 +327,24 @@ func TestMovePrefixCanChangeOnlyTheCase(t *testing.T) {
 	wantStatus(t, err, http.StatusBadRequest)
 }
 
-// The sync mappings of a move_folder: a skipped note keeps its mapping even
-// when the mapping spells the slug in another case, and of two mappings of
-// one actor that differ only in case (a case-only rename leaves them) only
-// the older one moves, so they do not collide at the destination.
-func TestMovePrefixSyncMappingsIgnoreCase(t *testing.T) {
+// The chunks and sync mappings of a move_folder follow each moved note to
+// its exact new slug, whatever case they are stored in. A skipped note keeps
+// its mapping even when the mapping spells it in another case. Of two
+// mappings of one actor that differ only in case (a case-only rename leaves
+// them), the one spelled like the note moves, whichever is older; the other
+// stays, so they cannot collide on the exact-case key. Chunks with no note
+// (raw ingests) move by the prefix.
+func TestMovePrefixChunksAndSyncMappingsFollowTheNote(t *testing.T) {
 	pool := testutil.ScratchDB(t, slugCaseSchema)
 	s := newDeletedCopiesService(pool)
 	ctx := context.Background()
 	if _, err := pool.Exec(ctx, `
         INSERT INTO documents (namespace, slug, content) VALUES ('ns', 'a/x', 'x'), ('ns', 'a/y', 'y'), ('ns', 'B/x', 'bx');
-        INSERT INTO note_synchronization (actor_id, namespace, slug) VALUES (1, 'ns', 'A/x'), (1, 'ns', 'a/y'), (1, 'ns', 'A/Y');
+        INSERT INTO memory_chunks (namespace, source_file, chunk_text) VALUES ('ns', 'a/x', 'x'), ('ns', 'A/Y', 'y'), ('ns', 'a/raw', 'raw');
+        INSERT INTO note_synchronization (actor_id, namespace, slug) VALUES
+            (1, 'ns', 'A/x'), (1, 'ns', 'a/y'), (1, 'ns', 'A/Y'),
+            (2, 'ns', 'A/Y'), (2, 'ns', 'a/y'),
+            (3, 'ns', 'A/Y');
     `); err != nil {
 		t.Fatal(err)
 	}
@@ -346,8 +358,17 @@ func TestMovePrefixSyncMappingsIgnoreCase(t *testing.T) {
 	if got := liveSlugs(t, pool, "ns"); !reflect.DeepEqual(got, []string{"B/x", "a/x", "b/y"}) {
 		t.Fatalf("live %v", got)
 	}
-	if got := syncSlugs(t, pool, 1, "ns"); !reflect.DeepEqual(got, []string{"A/Y", "A/x", "b/y"}) {
-		t.Fatalf("sync mappings %v", got)
+	if got := chunkFiles(t, pool, "ns"); !reflect.DeepEqual(got, []string{"a/x", "b/raw", "b/y"}) {
+		t.Fatalf("chunks %v", got)
+	}
+	for actor, want := range map[int][]string{
+		1: {"A/Y", "A/x", "b/y"},
+		2: {"A/Y", "b/y"},
+		3: {"b/y"},
+	} {
+		if got := syncSlugs(t, pool, actor, "ns"); !reflect.DeepEqual(got, want) {
+			t.Fatalf("actor %d sync mappings %v, want %v", actor, got, want)
+		}
 	}
 }
 

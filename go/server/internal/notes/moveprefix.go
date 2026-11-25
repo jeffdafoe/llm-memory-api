@@ -51,7 +51,8 @@ func (s *Service) PreviewMovePrefix(ctx context.Context, in MovePrefixInput) (Pr
 
 // MovePrefix rewrites OldPrefix to NewPrefix on every live note under it in
 // the namespace, with its chunks and sync mappings, in one transaction (the
-// three must move together). A destination slug that already holds a live
+// three must move together). The chunks and mappings take the note's exact
+// new slug. A destination slug that already holds a live
 // note is soft-deleted first when it is in OverwriteSlugs; otherwise the
 // source note that collides with it stays where it is.
 func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMoved, error) {
@@ -101,103 +102,100 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
 		}
 	}
 
-	var moved int64
-	if len(skipSlugs) > 0 {
-		tag, err := tx.Exec(ctx, `
-                UPDATE documents
-                SET slug = $3 || substring(slug FROM length($2) + 1), updated_at = NOW()
-                WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($4) || '%' AND deleted_at IS NULL
-                  AND slug != ALL($5)
-                RETURNING id
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs)
-		if err != nil {
+	// The notes move first. The self-join keeps each row's old slug for
+	// RETURNING (old is the row as read, d the row as written), so the chunks
+	// and sync mappings below follow the note to its exact new slug, whatever
+	// case they themselves are stored in. skipSlugs (possibly empty: != ALL
+	// of an empty array is true) are the skipped conflicts' sources.
+	rows, err := tx.Query(ctx, `
+            UPDATE documents d
+            SET slug = $3 || substring(d.slug FROM length($2) + 1), updated_at = NOW()
+            FROM documents old
+            WHERE old.id = d.id
+              AND d.namespace = $1 AND LOWER(d.slug) LIKE LOWER($4) || '%' AND d.deleted_at IS NULL
+              AND d.slug != ALL($5)
+            RETURNING old.slug, d.slug
+        `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs)
+	if err != nil {
+		return PrefixMoved{}, err
+	}
+	oldSlugs, newSlugs := []string{}, []string{}
+	for rows.Next() {
+		var oldSlug, newSlug string
+		if err := rows.Scan(&oldSlug, &newSlug); err != nil {
+			rows.Close()
 			return PrefixMoved{}, err
 		}
-		moved = tag.RowsAffected()
-		if _, err := tx.Exec(ctx, `
-                UPDATE memory_chunks
-                SET source_file = $3 || substring(source_file FROM length($2) + 1)
-                WHERE namespace = $1 AND LOWER(source_file) LIKE LOWER($4) || '%'
-                  AND LOWER(source_file) NOT IN (SELECT LOWER(t) FROM unnest($5::text[]) t)
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs); err != nil {
-			return PrefixMoved{}, err
-		}
-	} else {
-		tag, err := tx.Exec(ctx, `
-                UPDATE documents
-                SET slug = $3 || substring(slug FROM length($2) + 1), updated_at = NOW()
-                WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($4) || '%' AND deleted_at IS NULL
-                RETURNING id
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike)
-		if err != nil {
-			return PrefixMoved{}, err
-		}
-		moved = tag.RowsAffected()
-		if _, err := tx.Exec(ctx, `
-                UPDATE memory_chunks
-                SET source_file = $3 || substring(source_file FROM length($2) + 1)
-                WHERE namespace = $1 AND LOWER(source_file) LIKE LOWER($4) || '%'
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike); err != nil {
-			return PrefixMoved{}, err
-		}
+		oldSlugs = append(oldSlugs, oldSlug)
+		newSlugs = append(newSlugs, newSlug)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return PrefixMoved{}, err
 	}
 
-	// Sync mappings follow the notes, except a skipped note's (its document
-	// stays at the old slug) and one whose actor already maps the
-	// destination slug (note_synchronization is unique per actor, namespace
-	// and slug, by exact case; that row stays, and the next sync drops the
-	// old file). Two mappings of one actor that differ only in case (left by
-	// a case-only rename) would both move to the same destination and break
-	// that key, so only the older one (lower id) moves.
-	if len(skipSlugs) > 0 {
-		if _, err := tx.Exec(ctx, `
-                UPDATE note_synchronization src
-                SET slug = $3 || substring(src.slug FROM length($2) + 1)
-                WHERE src.namespace = $1 AND LOWER(src.slug) LIKE LOWER($4) || '%'
-                  AND LOWER(src.slug) NOT IN (SELECT LOWER(t) FROM unnest($5::text[]) t)
-                  AND NOT EXISTS (
-                      SELECT 1 FROM note_synchronization twin
-                      WHERE twin.actor_id = src.actor_id
-                        AND twin.namespace = src.namespace
-                        AND LOWER(twin.slug) = LOWER(src.slug)
-                        AND twin.id < src.id
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM note_synchronization dst
-                      WHERE dst.actor_id = src.actor_id
-                        AND dst.namespace = src.namespace
-                        AND dst.slug = $3 || substring(src.slug FROM length($2) + 1)
-                  )
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs); err != nil {
-			return PrefixMoved{}, err
-		}
-	} else {
-		if _, err := tx.Exec(ctx, `
-                UPDATE note_synchronization src
-                SET slug = $3 || substring(src.slug FROM length($2) + 1)
-                WHERE src.namespace = $1 AND LOWER(src.slug) LIKE LOWER($4) || '%'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM note_synchronization twin
-                      WHERE twin.actor_id = src.actor_id
-                        AND twin.namespace = src.namespace
-                        AND LOWER(twin.slug) = LOWER(src.slug)
-                        AND twin.id < src.id
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM note_synchronization dst
-                      WHERE dst.actor_id = src.actor_id
-                        AND dst.namespace = src.namespace
-                        AND dst.slug = $3 || substring(src.slug FROM length($2) + 1)
-                  )
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike); err != nil {
-			return PrefixMoved{}, err
-		}
+	// A moved note's chunks take its new slug. unnest of two arrays pairs
+	// them up row by row: (old_slug, new_slug).
+	if _, err := tx.Exec(ctx, `
+            UPDATE memory_chunks mc
+            SET source_file = m.new_slug
+            FROM unnest($2::text[], $3::text[]) AS m(old_slug, new_slug)
+            WHERE mc.namespace = $1 AND LOWER(mc.source_file) = LOWER(m.old_slug)
+        `, in.Namespace, oldSlugs, newSlugs); err != nil {
+		return PrefixMoved{}, err
+	}
+	// Chunks under the old prefix with no live note (raw ingests) keep the
+	// prefix rule. A skipped note's chunks have their live note and stay.
+	if _, err := tx.Exec(ctx, `
+            UPDATE memory_chunks mc
+            SET source_file = $3 || substring(mc.source_file FROM length($2) + 1)
+            WHERE mc.namespace = $1 AND LOWER(mc.source_file) LIKE LOWER($4) || '%'
+              AND NOT EXISTS (
+                  SELECT 1 FROM documents d
+                  WHERE d.namespace = mc.namespace
+                    AND LOWER(d.slug) = LOWER(mc.source_file)
+                    AND d.deleted_at IS NULL
+              )
+        `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike); err != nil {
+		return PrefixMoved{}, err
+	}
+
+	// Sync mappings follow the moved notes to their exact new slug.
+	// note_synchronization is unique per actor, namespace and slug by exact
+	// case, so per actor at most one mapping of a note moves: the one spelled
+	// like the note, else the oldest (lowest id). The others, and a mapping
+	// whose actor already maps the new slug, stay; the next sync drops the
+	// old file.
+	if _, err := tx.Exec(ctx, `
+            UPDATE note_synchronization src
+            SET slug = m.new_slug
+            FROM unnest($2::text[], $3::text[]) AS m(old_slug, new_slug)
+            WHERE src.namespace = $1 AND LOWER(src.slug) = LOWER(m.old_slug)
+              AND NOT EXISTS (
+                  SELECT 1 FROM note_synchronization twin
+                  WHERE twin.actor_id = src.actor_id
+                    AND twin.namespace = src.namespace
+                    AND LOWER(twin.slug) = LOWER(src.slug)
+                    AND twin.id <> src.id
+                    AND (
+                        (twin.slug = m.old_slug AND src.slug <> m.old_slug)
+                        OR ((twin.slug = m.old_slug) = (src.slug = m.old_slug) AND twin.id < src.id)
+                    )
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM note_synchronization dst
+                  WHERE dst.actor_id = src.actor_id
+                    AND dst.namespace = src.namespace
+                    AND dst.slug = m.new_slug
+              )
+        `, in.Namespace, oldSlugs, newSlugs); err != nil {
+		return PrefixMoved{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return PrefixMoved{}, err
 	}
-	return PrefixMoved{Moved: int(moved), Skipped: len(toSkip), Overwritten: len(toOverwrite)}, nil
+	return PrefixMoved{Moved: len(newSlugs), Skipped: len(toSkip), Overwritten: len(toOverwrite)}, nil
 }
 
 // prefixScan validates the prefixes, then counts the live notes under the

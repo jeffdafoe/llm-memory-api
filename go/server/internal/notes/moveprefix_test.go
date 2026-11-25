@@ -44,9 +44,11 @@ func TestMovePrefixMovesEverythingInOneTransaction(t *testing.T) {
 	mock.MatchExpectationsInOrder(true)
 	expectPrefixScan(mock, "ns", "a_b/", "c/", `a\_b/`, 2, nil)
 	mock.ExpectBegin()
-	mock.ExpectExec(`UPDATE documents\s+SET slug = \$3`).WithArgs("ns", "a_b/", "c/", `a\_b/`).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
-	mock.ExpectExec(`UPDATE memory_chunks`).WithArgs("ns", "a_b/", "c/", `a\_b/`).WillReturnResult(pgxmock.NewResult("UPDATE", 5))
-	mock.ExpectExec(`UPDATE note_synchronization src`).WithArgs("ns", "a_b/", "c/", `a\_b/`).WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+	mock.ExpectQuery(`UPDATE documents d\s+SET slug = \$3`).WithArgs("ns", "a_b/", "c/", `a\_b/`, []string{}).
+		WillReturnRows(pgxmock.NewRows([]string{"old", "new"}).AddRow("a_b/x", "c/x").AddRow("A_B/Y", "c/Y"))
+	mock.ExpectExec(`SET source_file = m.new_slug`).WithArgs("ns", []string{"a_b/x", "A_B/Y"}, []string{"c/x", "c/Y"}).WillReturnResult(pgxmock.NewResult("UPDATE", 5))
+	mock.ExpectExec(`SET source_file = \$3 \|\|`).WithArgs("ns", "a_b/", "c/", `a\_b/`).WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+	mock.ExpectExec(`UPDATE note_synchronization src`).WithArgs("ns", []string{"a_b/x", "A_B/Y"}, []string{"c/x", "c/Y"}).WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 	mock.ExpectCommit()
 
 	s := &Service{DB: mock}
@@ -69,9 +71,11 @@ func TestMovePrefixOverwritesListedConflictsAndSkipsTheRest(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE documents SET deleted_at = NOW\(\)`).WithArgs("ns", []string{"b/over"}).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectExec(`DELETE FROM memory_chunks`).WithArgs("ns", []string{"b/over"}).WillReturnResult(pgxmock.NewResult("DELETE", 1))
-	mock.ExpectExec(`slug != ALL\(\$5\)`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
-	mock.ExpectExec(`LOWER\(source_file\) NOT IN`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
-	mock.ExpectExec(`LOWER\(src.slug\) NOT IN`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(`d.slug != ALL\(\$5\)`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).
+		WillReturnRows(pgxmock.NewRows([]string{"old", "new"}).AddRow("a/over", "b/over").AddRow("a/z", "b/z"))
+	mock.ExpectExec(`SET source_file = m.new_slug`).WithArgs("ns", []string{"a/over", "a/z"}, []string{"b/over", "b/z"}).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
+	mock.ExpectExec(`SET source_file = \$3 \|\|`).WithArgs("ns", "a/", "b/", "a/").WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+	mock.ExpectExec(`UPDATE note_synchronization src`).WithArgs("ns", []string{"a/over", "a/z"}, []string{"b/over", "b/z"}).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectCommit()
 
 	s := &Service{DB: mock}
@@ -93,8 +97,9 @@ func TestMovePrefixFailedWriteRollsBack(t *testing.T) {
 	mock.MatchExpectationsInOrder(true)
 	expectPrefixScan(mock, "ns", "a/", "", "a/", 1, nil)
 	mock.ExpectBegin()
-	mock.ExpectExec(`UPDATE documents\s+SET slug = \$3`).WithArgs("ns", "a/", "", "a/").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	mock.ExpectExec(`UPDATE memory_chunks`).WithArgs("ns", "a/", "", "a/").WillReturnError(errors.New("connection reset"))
+	mock.ExpectQuery(`UPDATE documents d\s+SET slug = \$3`).WithArgs("ns", "a/", "", "a/", []string{}).
+		WillReturnRows(pgxmock.NewRows([]string{"old", "new"}).AddRow("a/x", "x"))
+	mock.ExpectExec(`SET source_file = m.new_slug`).WithArgs("ns", []string{"a/x"}, []string{"x"}).WillReturnError(errors.New("connection reset"))
 	mock.ExpectRollback()
 
 	s := &Service{DB: mock}
