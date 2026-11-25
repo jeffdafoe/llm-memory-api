@@ -27,6 +27,7 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/notes"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/oauth"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/privacy"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/providers"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/registration"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/simapi"
@@ -250,6 +251,8 @@ func Handler(s *Services) http.Handler {
 		DB: s.DB, Config: s.Config, Actors: s.Actors, Log: s.Log, Mail: s.Mail, Notes: s.Notes,
 		Moderator: virtualagent.Moderator{DB: s.DB, Log: s.Log},
 	}).Register(top)
+	// GET /privacy, the operator's privacy policy from config (LLM-1021).
+	(&privacy.Routes{Config: s.Config, Log: s.Log}).Register(top)
 
 	// The top level is decided on the raw path, as Express matches app.get
 	// and app.use mounts: "/%76%31/x" is not under /v1 and "/%68ealth" is

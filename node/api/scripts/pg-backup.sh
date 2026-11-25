@@ -2,7 +2,8 @@
 # pg-backup.sh — Daily PostgreSQL backup for all databases
 #
 # Dumps each database individually (compressed) to /var/backups/postgresql/.
-# Retains 7 days of backups, older files are pruned automatically.
+# Retains backup_retention_days (memory-api config, default 7) days of
+# backups, for every database on this server; older files are pruned.
 #
 # Must run as a user that can sudo to postgres (or as root).
 # Cron entry (deployed by Ansible):
@@ -11,7 +12,46 @@
 set -e
 
 BACKUP_DIR="/var/backups/postgresql"
+
+# The retention period is the backup_retention_days row of the memory-api
+# config table, read with the app's own DATABASE_URL. A missing env file or
+# a failed read falls back to 7 and never stops the backup.
+ENV_FILE="/etc/memory-api/env"
+DATABASE_URL=""
+if [ -f "$ENV_FILE" ]; then
+    DATABASE_URL=$(grep '^DATABASE_URL=' "$ENV_FILE" | cut -d= -f2-) || DATABASE_URL=""
+fi
+export PGCONNECT_TIMEOUT=10
+
+# read_days KEY: the KEY row of the config table if it is a whole number of
+# days from 1 to 999999; else 7. The read is optional: it is bounded by a
+# 15-second wall clock, with a KILL 2 seconds later if psql ignores the TERM
+# (a stalled connection or a lock must not hold up the job), never prompts for a password, and any failure gives 7. The privacy
+# page (LLM-1021) states the same period by the same rule.
+read_days() {
+    local value
+    if value=$(timeout --kill-after=2s 15s psql "$DATABASE_URL" --no-psqlrc -tAq -w -c "SELECT value FROM config WHERE key = '$1'" 2>/dev/null); then
+        # Trim leading and trailing ASCII whitespace only (a fixed set, not
+        # the locale's [:space:], to match the privacy page); inner spaces
+        # stay and make the value invalid.
+        local ws=$' \t\n\r\v\f'
+        value="${value#"${value%%[!$ws]*}"}"
+        value="${value%"${value##*[!$ws]}"}"
+    else
+        value=""
+    fi
+    # 10# reads the digits as decimal, so "08" is 8 and not a bad octal.
+    if [[ "$value" =~ ^[0-9]{1,6}$ ]] && [ "$((10#$value))" -ge 1 ]; then
+        echo "$((10#$value))"
+    else
+        echo 7
+    fi
+}
+
 RETENTION_DAYS=7
+if [ -n "$DATABASE_URL" ]; then
+    RETENTION_DAYS=$(read_days backup_retention_days)
+fi
 DATE=$(date +%Y%m%d)
 
 # Ensure backup directory exists

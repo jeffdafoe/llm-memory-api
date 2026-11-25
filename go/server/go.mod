@@ -7,8 +7,9 @@ toolchain go1.27.4
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/jackc/pgx/v5 v5.13.0
-	github.com/pashagolub/pgxmock/v6 v6.0.0-beta2
+	github.com/pashagolub/pgxmock/v6 v6.0.0
 	github.com/pgvector/pgvector-go/pgx v0.4.1
+	github.com/yuin/goldmark v1.8.7
 	golang.org/x/text v0.44.0
 )
 

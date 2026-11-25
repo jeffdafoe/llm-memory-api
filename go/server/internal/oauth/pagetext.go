@@ -1,7 +1,9 @@
 package oauth
 
 // Generated from node/api/src/routes/oauth-connect-page.js (renderPage and
-// COPY_SCRIPT); the text must stay byte-identical to Node's.
+// COPY_SCRIPT); the text must stay byte-identical to Node's, with one
+// deliberate difference: pageBodyClose links the privacy policy (LLM-1021).
+// testdata/goldens.json carries the same line.
 
 const pageHead = `<!DOCTYPE html>
 <html lang="en">
@@ -127,6 +129,7 @@ const pageBodyOpen = `</title>
 `
 
 const pageBodyClose = `
+    <div class="subtitle" style="margin: 24px 0 0;"><a href="/privacy" target="_blank" rel="noopener">Privacy policy</a></div>
 </div>
 `
 
