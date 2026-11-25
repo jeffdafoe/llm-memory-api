@@ -51,21 +51,25 @@
     state: started
     enabled: yes
 
-# Keep nginx logs (they hold client IP addresses) for at most 15 days; the
-# privacy policy at /privacy states the period. This replaces the file the
-# nginx-common package installs, with two changes. Debian's "notifempty"
-# skips rotating an empty log, so a quiet log's old files never move down
-# the "rotate 14" chain and stay for months: "ifempty" rotates every log
-# every day. "maxage 15" also deletes any rotated file older than 15 days
-# whenever its log rotates, which clears files left from before this change
-# on the first run instead of 14 days later. The rest is Debian's file as
-# shipped. Because the file is a package conffile, an nginx-common upgrade
-# asks whether to keep this version; keep it (the next deploy writes it back
-# either way).
+# nginx logs hold client IP addresses, and the privacy policy at /privacy
+# states how long they are kept. This replaces the file the nginx-common
+# package installs, with two changes. Debian's "notifempty" skips rotating an
+# empty log, so a quiet log's old files never move down the "rotate 14" chain
+# and stay for months: "ifempty" makes every log rotate every day. "maxage 15"
+# deletes rotated files older than 15 days each time their log rotates, which
+# also clears files left from before this change at the first rotation after
+# the deploy. So 15 days is the cleanup threshold, applied at each daily
+# rotation; a missed or failed rotation leaves files until the next one. The
+# rest is Debian's file as shipped. The file is a package conffile: if an
+# nginx-common upgrade also changes it, dpkg may ask which version to keep.
+# Keep this one, then check the package's version for changed hooks.
 - name: Set the nginx log rotation
   copy:
     dest: /etc/logrotate.d/nginx
     mode: '0644'
+    # Debug mode checks the syntax and rotates nothing, so a bad file never
+    # replaces the live one.
+    validate: '/usr/sbin/logrotate -d -s /dev/null %s'
     content: |
       # Managed by Ansible (roles/nginx/tasks/main.yml).
       # The privacy policy (/privacy) states this period; change both together.
