@@ -55,6 +55,26 @@ func TestUnknownRouteIsExpress404AndLogged(t *testing.T) {
 	testutil.WaitMet(t, mock)
 }
 
+// /privacy is wired into the assembled handler: no auth, served from the
+// privacy_policy config value, and logged like any other request.
+func TestPrivacyPageIsPublic(t *testing.T) {
+	mock := testutil.NewMock(t)
+	store := config.NewStore()
+	store.Set("privacy_policy", "# Operator policy\n\nKept {{request_log_retention_days}} days.")
+	store.Set("request_log_retention_days", "7")
+	h := Handler(NewServices(mock, store, ""))
+	mock.ExpectExec("INSERT INTO request_log").WithArgs(
+		"GET", "/privacy", 200, pgxmock.AnyArg(), (*int)(nil), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+	).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/privacy", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<h1>Operator policy</h1>") || !strings.Contains(rec.Body.String(), "Kept 7 days.") {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	testutil.WaitMet(t, mock)
+}
+
 func TestV1RequiresAuth(t *testing.T) {
 	h, mock := newHandler(t)
 	mock.ExpectExec("INSERT INTO request_log").WithArgs(

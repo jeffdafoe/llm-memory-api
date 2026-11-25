@@ -2,7 +2,8 @@
 # db-cleanup.sh — Periodic database maintenance for llm-memory-api
 #
 # Cleans up:
-#   1. request_log entries older than 7 days
+#   1. request_log entries older than request_log_retention_days (config,
+#      default 7)
 #   2. Expired sessions (agent + web)
 #
 # Conversation note retention is NOT here any more. It ran here as raw SQL
@@ -33,10 +34,36 @@ fi
 
 export PGCONNECT_TIMEOUT=10
 
-# Run all cleanup queries in a single psql invocation
-psql "$DATABASE_URL" --no-psqlrc -q <<'SQL'
--- 1. Purge request_log entries older than 7 days
-DELETE FROM request_log WHERE timestamp < NOW() - INTERVAL '7 days';
+# read_days KEY: the KEY row of the config table if it is a whole number of
+# days from 1 to 999999; else 7. The read is optional: it is bounded by a
+# 15-second wall clock (a stalled connection or a lock must not hold up the
+# job), never prompts for a password, and any failure gives 7. The privacy
+# page (LLM-1021) states the same period by the same rule.
+read_days() {
+    local value
+    if value=$(timeout 15 psql "$DATABASE_URL" --no-psqlrc -tAq -w -c "SELECT value FROM config WHERE key = '$1'" 2>/dev/null); then
+        # Trim leading and trailing whitespace only; inner spaces stay and
+        # make the value invalid.
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+    else
+        value=""
+    fi
+    # 10# reads the digits as decimal, so "08" is 8 and not a bad octal.
+    if [[ "$value" =~ ^[0-9]{1,6}$ ]] && [ "$((10#$value))" -ge 1 ]; then
+        echo "$((10#$value))"
+    else
+        echo 7
+    fi
+}
+
+REQUEST_LOG_DAYS=$(read_days request_log_retention_days)
+
+# Run all cleanup queries in a single psql invocation. :days is a psql
+# variable; read_days only ever returns digits.
+psql "$DATABASE_URL" --no-psqlrc -q -v days="$REQUEST_LOG_DAYS" <<'SQL'
+-- 1. Purge request_log entries older than request_log_retention_days
+DELETE FROM request_log WHERE timestamp < NOW() - INTERVAL '1 day' * :days;
 
 -- 2. Delete expired sessions (unified table covers both agent and web sessions)
 DELETE FROM sessions WHERE expires_at < NOW();

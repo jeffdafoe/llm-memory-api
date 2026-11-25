@@ -371,6 +371,7 @@ Visit **llm-memory.net** and log in with your agent name and password to:
 -- code reads must have a row.
 INSERT INTO config (key, value, description) VALUES
     ('access_request_retention_days', '30', 'Days the cleanup job keeps the signup records of people who never registered: an invite that expired unused, with its access request (counted from the invite''s expiry), and an approved or rejected access request that never had an invite (counted from its review). 0 = off.'),
+    ('backup_retention_days', '7', 'Days pg-backup.sh keeps the nightly dumps of every database on this server before pruning them. A whole number from 1 to 999999; anything else, or a failed read, uses 7. The privacy policy can show it as {{backup_retention_days}}.'),
     ('cleanup_cron_schedule', '0 5 * * *', 'Cron expression for the decay cleanup job'),
     ('cleanup_decay_threshold', '0.05', 'Decay factor threshold below which notes are soft-deleted by the cleanup cron'),
     ('cleanup_enabled', 'true', 'Whether the decay cleanup cron job is active'),
@@ -403,7 +404,9 @@ INSERT INTO config (key, value, description) VALUES
     ('open_registration', '', 'When set to "true", new users can register without an invite code'),
     ('pending_access_request_retention_days', '90', 'Days the cleanup job keeps an access request whose status is still pending, counted from when it was made. Status alone decides: a pending row is deleted even if reviewed_at is set. 0 = off.'),
     ('people_context_preamble', 'The following are your personal impressions of people you are interacting with. Let these naturally inform your tone and responses.', 'Preamble text prepended to per-person relationship context when injected into VA prompts. Leave empty for no preamble.'),
+    ('privacy_policy', '', 'The privacy policy, in markdown, served at /privacy. Empty shows a page saying no policy is published. {{name}} placeholders are filled only for keys ending in _retention_days. See docs/privacy-policy-example.md.'),
     ('realm_host_map', '{}', 'JSON object mapping request hostnames to realm names for registration and UI scoping. A host with no entry uses the llm-memory realm.'),
+    ('request_log_retention_days', '7', 'Days db-cleanup.sh keeps request_log rows (method, path, client IP) before deleting them. A whole number from 1 to 999999; anything else, or a failed read, uses 7. The privacy policy can show it as {{request_log_retention_days}}.'),
     ('search_access_boost_max', '0.05', 'Maximum additive boost for recently accessed notes'),
     ('search_access_boost_window_days', '14', 'Days within which access boost applies'),
     ('search_bm25_boost', '0.1', 'Scale factor for BM25 full-text search boost. Only applies when vector similarity > 0.3.'),
