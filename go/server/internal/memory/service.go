@@ -52,52 +52,112 @@ type IngestResult struct {
 // transaction. Conversation logs are chunked by message window, everything
 // else by heading.
 func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content string) (IngestResult, error) {
-	return s.ingest(ctx, namespace, sourceFile, content, 0)
+	res, _, err := s.ingestOnce(ctx, namespace, sourceFile, content, 0)
+	return res, err
 }
 
 // IngestDocument is Ingest for the note in documents row documentID, as the
 // notes service runs it in the background after a save or an edit. The
-// background job can run after a later delete, move or edit of the note, so
-// the transaction that writes the chunks first locks the row and checks it
-// is still live and still holds content. If not, it writes nothing (the
-// result is Skipped): a deleted note gets no chunks back, and a newer edit
-// has its own re-index on the way. A note that moved meanwhile gets its
-// chunks at its current slug. The check must sit in the writing
-// transaction; a check before the (slow) embedding call would leave the
-// window open.
+// background job can run after a later delete, move or edit of the note:
+//   - It first reads the note's live location and prepares (chunks and
+//     embeds) for that slug, since the slug decides how a note is indexed.
+//   - The transaction that writes the chunks then locks the row and checks
+//     it is still live and still holds content. If not, nothing is written
+//     (the result is Skipped): a deleted note gets no chunks back, and a
+//     newer edit has its own re-index on the way. The check must sit in the
+//     writing transaction; one before the slow embedding call would leave
+//     the window open.
+//   - A note that moved during the embedding gets its chunks at its current
+//     slug, or is prepared again there when the move changed how it is
+//     indexed (into or out of a conversations/ path, or into context/,
+//     where nothing is written).
 func (s *Service) IngestDocument(ctx context.Context, documentID int, namespace, slug, content string) (IngestResult, error) {
-	return s.ingest(ctx, namespace, slug, content, documentID)
+	for attempt := 1; ; attempt++ {
+		res, retry, err := s.ingestOnce(ctx, namespace, slug, content, documentID)
+		if err != nil || !retry {
+			return res, err
+		}
+		// The bound only stops a note that keeps moving across indexing
+		// rules from looping; a real move does not repeat that often.
+		if attempt == maxIngestAttempts {
+			return IngestResult{}, fmt.Errorf("note %d moved during each of %d re-index attempts", documentID, attempt)
+		}
+	}
 }
 
-// ingest is Ingest, guarded by the documents row documentID when that is
-// not 0.
-func (s *Service) ingest(ctx context.Context, namespace, sourceFile, content string, documentID int) (IngestResult, error) {
-	// Context documents (context/soul) go into sessions whole; they are not
-	// searched.
-	if strings.HasPrefix(sourceFile, "context/") {
-		return IngestResult{}, nil
+const maxIngestAttempts = 3
+
+// indexPolicy is how a source file is indexed, which its path decides.
+type indexPolicy int
+
+const (
+	indexByHeading indexPolicy = iota
+	indexByMessageWindow
+	notIndexed
+)
+
+func policyFor(sourceFile string) indexPolicy {
+	switch {
+	// Context documents (context/soul) go into sessions whole; they are
+	// not searched.
+	case strings.HasPrefix(sourceFile, "context/"):
+		return notIndexed
+	case isConversationSource(sourceFile):
+		return indexByMessageWindow
+	}
+	return indexByHeading
+}
+
+// ingestOnce is one prepare-and-write, guarded by the documents row
+// documentID when that is not 0. retry reports a guarded note whose move
+// during the embedding changed its indexing policy: nothing was written,
+// and the caller prepares again.
+func (s *Service) ingestOnce(ctx context.Context, namespace, sourceFile, content string, documentID int) (res IngestResult, retry bool, err error) {
+	// A note saved under context/ is not indexed, so there is nothing to
+	// prepare and no row to check. A move never re-indexes a note (Move
+	// carries the chunks it has), so one that later leaves context/ stays
+	// unindexed until its next save, as before.
+	if policyFor(sourceFile) == notIndexed {
+		return IngestResult{}, false, nil
+	}
+	if documentID != 0 {
+		// No lock: the embedding below is slow, and the row must not be
+		// held through it. The write re-checks under a lock.
+		err := s.DB.QueryRow(ctx,
+			"SELECT namespace, slug FROM documents WHERE id = $1 AND deleted_at IS NULL AND content = $2",
+			documentID, content).Scan(&namespace, &sourceFile)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return IngestResult{Skipped: true}, false, nil
+		}
+		if err != nil {
+			return IngestResult{}, false, err
+		}
+	}
+	policy := policyFor(sourceFile)
+	if policy == notIndexed {
+		return IngestResult{}, false, nil
 	}
 
 	var chunks []Chunk
-	if isConversationSource(sourceFile) {
+	if policy == indexByMessageWindow {
 		window, err := s.Config.Get("conversation_chunk_window")
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 		overlap, err := s.Config.Get("conversation_chunk_overlap")
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 		maxChars, err := s.Config.Get("conversation_chunk_max_chars")
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 		chunks = ChunkConversation(content, jsutil.IntOr(window, 5), jsutil.IntOr(overlap, 2), jsutil.IntOr(maxChars, 0))
 	} else {
 		chunks = ChunkByHeading(content)
 	}
 	if len(chunks) == 0 {
-		return IngestResult{}, apierr.New(http.StatusBadRequest, "No chunks extracted from content")
+		return IngestResult{}, false, apierr.New(http.StatusBadRequest, "No chunks extracted from content")
 	}
 	chunks = SplitOversized(chunks, DefaultChunkLimit)
 
@@ -107,15 +167,15 @@ func (s *Service) ingest(ctx context.Context, namespace, sourceFile, content str
 	}
 	vectors, err := s.embedBatched(ctx, texts)
 	if err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	if len(vectors) < len(chunks) {
-		return IngestResult{}, errors.New("expected array or sparse vector")
+		return IngestResult{}, false, errors.New("expected array or sparse vector")
 	}
 
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	defer tx.Rollback(ctx)
 	if documentID != 0 {
@@ -129,10 +189,14 @@ func (s *Service) ingest(ctx context.Context, namespace, sourceFile, content str
             FOR UPDATE
         `, documentID, content).Scan(&namespace, &sourceFile)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return IngestResult{Skipped: true}, nil
+			return IngestResult{Skipped: true}, false, nil
 		}
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
+		}
+		if policyFor(sourceFile) != policy {
+			// The deferred Rollback releases the row before the retry.
+			return IngestResult{}, true, nil
 		}
 	}
 	// Two ingests of one file at once would both run their DELETE before
@@ -144,24 +208,24 @@ func (s *Service) ingest(ctx context.Context, namespace, sourceFile, content str
 	if _, err := tx.Exec(ctx,
 		"SELECT pg_advisory_xact_lock($1, hashtext($2::text || '/' || LOWER($3::text)))",
 		ingestLockClass, namespace, sourceFile); err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	if _, err := tx.Exec(ctx,
 		"DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
 		namespace, sourceFile); err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	for i, c := range chunks {
 		if _, err := tx.Exec(ctx,
 			"INSERT INTO memory_chunks (namespace, source_file, heading, chunk_text, embedding) VALUES ($1, $2, $3, $4, $5)",
 			namespace, sourceFile, c.Heading, c.ChunkText, VectorLiteral(vectors[i])); err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
-	return IngestResult{ChunksCreated: len(chunks), SourceFile: sourceFile, Namespace: namespace}, nil
+	return IngestResult{ChunksCreated: len(chunks), SourceFile: sourceFile, Namespace: namespace}, false, nil
 }
 
 // isConversationSource reports a conversation log, chunked by message window:

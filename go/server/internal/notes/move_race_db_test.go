@@ -25,6 +25,13 @@ type pausingDB struct {
 	reached  chan struct{}
 	release  chan struct{}
 	pausedAt sync.Once
+	released sync.Once
+}
+
+// Release lets the paused statement run. It is safe to call more than once,
+// so a test can defer it and still release early.
+func (p *pausingDB) Release() {
+	p.released.Do(func() { close(p.release) })
 }
 
 func newPausingDB(inner db.DB, pauseOn string) *pausingDB {
@@ -128,6 +135,10 @@ func TestMoveKeepsChunksWithTheNoteUnderAConcurrentMove(t *testing.T) {
 	first.DB = paused
 	second := newDeletedCopiesService(pool)
 
+	// Deferred before the first move starts: a failed assertion below
+	// must not leave that move paused with its transaction open while the
+	// scratch database is dropped.
+	defer paused.Release()
 	firstDone := make(chan struct{})
 	var firstErr error
 	go func() {
@@ -144,7 +155,7 @@ func TestMoveKeepsChunksWithTheNoteUnderAConcurrentMove(t *testing.T) {
 		second.Move(ctx, MoveInput{Namespace: "ns", Slug: "notes/b", NewSlug: "notes/c"})
 	}()
 	waitDoneOrBlocked(t, pool, secondDone)
-	close(paused.release)
+	paused.Release()
 	waitClosed(t, firstDone, "the first move finishing")
 	waitClosed(t, secondDone, "the second move finishing")
 	if firstErr != nil {

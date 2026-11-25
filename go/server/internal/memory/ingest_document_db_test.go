@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -125,5 +127,72 @@ func TestIngestDocumentFollowsANoteMovedMidIngest(t *testing.T) {
 	}
 	if old, moved := storedChunks(t, s, "ns", "notes/doc"), storedChunks(t, s, "ns", "notes/moved"); len(old) != 0 || len(moved) != 1 {
 		t.Errorf("%d chunks at the old slug and %d at the new one, want 0 and 1", len(old), len(moved))
+	}
+}
+
+// A move during the embedding that crosses an indexing rule: the note was
+// prepared by heading at notes/day, and is moved to a conversations/ path,
+// which calls for message windows. The chunks at the new slug must be
+// message windows (each carries the day's header line), not the heading
+// chunk prepared for the old slug.
+func TestIngestDocumentReindexesANoteMovedAcrossIndexingRules(t *testing.T) {
+	pool := testutil.ScratchDB(t, documentsAndChunksSchema)
+	var day strings.Builder
+	day.WriteString("Day: 2026-11-24 — Constance Scott\n\n")
+	for i := range 12 {
+		day.WriteString("[Tuesday 12:0" + string(rune('0'+i%10)) + " Constance Scott] \"line\"\n")
+	}
+	content := day.String()
+	id := seedDocument(t, pool, "notes/day", content)
+	var once sync.Once
+	s := &Service{DB: pool, Config: conversationConfig(), Embedder: duringEmbed{hook: func() {
+		once.Do(func() {
+			exec(t, pool, "UPDATE documents SET slug = 'constance-scott/conversations/2026-11-24-sim-day' WHERE id = $1", id)
+		})
+	}}}
+
+	res, err := s.IngestDocument(context.Background(), id, "ns", "notes/day", content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skipped || res.SourceFile != "constance-scott/conversations/2026-11-24-sim-day" {
+		t.Fatalf("got %+v, want chunks at the conversations/ slug", res)
+	}
+	if old := storedChunks(t, s, "ns", "notes/day"); len(old) != 0 {
+		t.Errorf("%d chunks left at the old slug", len(old))
+	}
+	texts := storedChunks(t, s, "ns", "constance-scott/conversations/2026-11-24-sim-day")
+	if len(texts) < 3 {
+		t.Fatalf("%d chunks, want message windows", len(texts))
+	}
+	for i, text := range texts {
+		if !strings.HasPrefix(text, "Day: 2026-11-24") || strings.Count(text, "[Tuesday ") > 5 {
+			t.Errorf("chunk %d is not a message window: %.80q", i, text)
+		}
+	}
+}
+
+// A note moved into context/ during the embedding is no longer searched:
+// nothing is written for it.
+func TestIngestDocumentWritesNothingForANoteMovedIntoContext(t *testing.T) {
+	pool := testutil.ScratchDB(t, documentsAndChunksSchema)
+	content := "# Soul\n\nwho I am"
+	id := seedDocument(t, pool, "notes/soul", content)
+	var once sync.Once
+	s := &Service{DB: pool, Embedder: duringEmbed{hook: func() {
+		once.Do(func() {
+			exec(t, pool, "UPDATE documents SET slug = 'context/soul' WHERE id = $1", id)
+		})
+	}}}
+
+	if _, err := s.IngestDocument(context.Background(), id, "ns", "notes/soul", content); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM memory_chunks").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("%d chunks written for a context/ note", n)
 	}
 }
