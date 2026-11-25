@@ -370,7 +370,7 @@ Visit **llm-memory.net** and log in with your agent name and password to:
 -- Server configuration. config.get() throws on a missing key, so every key the
 -- code reads must have a row.
 INSERT INTO config (key, value, description) VALUES
-    ('access_request_retention_days', '30', 'Days the cleanup job keeps the signup records of people who never registered: an invite that expired unused, with its access request (counted from the invite's expiry), and an approved or rejected access request that never had an invite (counted from its review). 0 = off.'),
+    ('access_request_retention_days', '30', 'Days the cleanup job keeps the signup records of people who never registered: an invite that expired unused, with its access request (counted from the invite''s expiry), and an approved or rejected access request that never had an invite (counted from its review). 0 = off.'),
     ('cleanup_cron_schedule', '0 5 * * *', 'Cron expression for the decay cleanup job'),
     ('cleanup_decay_threshold', '0.05', 'Decay factor threshold below which notes are soft-deleted by the cleanup cron'),
     ('cleanup_enabled', 'true', 'Whether the decay cleanup cron job is active'),
