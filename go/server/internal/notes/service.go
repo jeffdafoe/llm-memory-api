@@ -612,7 +612,7 @@ func (s *Service) Read(ctx context.Context, namespace, slug string) (Note, error
 	n.CreatedAt, n.UpdatedAt, n.Metadata = jsTime(created), jsTime(updated), meta
 
 	s.background("LAST_ACCESSED_UPDATE_FAILED", namespace, slug, func(ctx context.Context) error {
-		_, err := s.DB.Exec(ctx, "UPDATE documents SET last_accessed = NOW() WHERE namespace = $1 AND LOWER(slug) = LOWER($2)", namespace, slug)
+		_, err := s.DB.Exec(ctx, "UPDATE documents SET last_accessed = NOW() WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL", namespace, slug)
 		return err
 	})
 	return n, nil
@@ -836,10 +836,13 @@ func (s *Service) Edit(ctx context.Context, in EditInput) (Edited, error) {
 		}
 	}
 
+	// Only the live row: soft-deleted copies of the slug are the note's
+	// restore points, and writing into them would make every restore give
+	// back today's content.
 	rows, err := s.DB.Query(ctx, `
         UPDATE documents d
         SET content = $1, updated_at = NOW()
-        WHERE d.namespace = $2 AND LOWER(d.slug) = LOWER($3)
+        WHERE d.namespace = $2 AND LOWER(d.slug) = LOWER($3) AND d.deleted_at IS NULL
         RETURNING d.id, d.namespace, d.slug, d.title, d.created_by_actor_id, d.created_at, d.updated_at
     `, updated, in.Namespace, in.Slug)
 	if err != nil {
@@ -918,12 +921,15 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 		return nil, err
 	}
 
+	// Only the live row (sourceID). Soft-deleted copies stay at the old slug
+	// as its restore points; moving them too made the RETURNING row (the
+	// note this answers with) whichever copy came back first.
 	rows, err := s.DB.Query(ctx, `
         UPDATE documents
-        SET slug = $1, namespace = $2, updated_at = NOW(), kind = $5
-        WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
+        SET slug = $1, namespace = $2, updated_at = NOW(), kind = $4
+        WHERE id = $3
         RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-    `, in.NewSlug, target, in.Namespace, in.Slug, SlugToKind(in.NewSlug))
+    `, in.NewSlug, target, sourceID, SlugToKind(in.NewSlug))
 	if err != nil {
 		return nil, err
 	}

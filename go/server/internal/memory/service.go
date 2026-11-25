@@ -54,7 +54,7 @@ func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content str
 	}
 
 	var chunks []Chunk
-	if strings.HasPrefix(sourceFile, "conversations/") {
+	if isConversationSource(sourceFile) {
 		window, err := s.Config.Get("conversation_chunk_window")
 		if err != nil {
 			return IngestResult{}, err
@@ -74,12 +74,13 @@ func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content str
 	if len(chunks) == 0 {
 		return IngestResult{}, apierr.New(http.StatusBadRequest, "No chunks extracted from content")
 	}
+	chunks = SplitOversized(chunks, MaxChunkChars)
 
 	texts := make([]string, len(chunks))
 	for i, c := range chunks {
 		texts[i] = c.ChunkText
 	}
-	vectors, err := s.Embedder.Embed(ctx, texts)
+	vectors, err := s.embedBatched(ctx, texts)
 	if err != nil {
 		return IngestResult{}, err
 	}
@@ -119,6 +120,53 @@ func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content str
 		return IngestResult{}, err
 	}
 	return IngestResult{ChunksCreated: len(chunks), SourceFile: sourceFile, Namespace: namespace}, nil
+}
+
+// isConversationSource reports a conversation log, chunked by message window:
+// a session log at conversations/..., or a log under an agent folder such as
+// salem-vendor's <npc>/conversations/<day>-sim-day.
+func isConversationSource(sourceFile string) bool {
+	return strings.HasPrefix(sourceFile, "conversations/") || strings.Contains(sourceFile, "/conversations/")
+}
+
+// The embeddings endpoint takes at most 300,000 tokens and 2048 inputs per
+// request. A batch closes at embedBatchChars UTF-16 code units, which stays
+// under the token limit even for text denser than one token a character.
+const (
+	embedBatchChars  = 200000
+	embedBatchInputs = 512
+)
+
+// embedBatched embeds texts in as many requests as the per-request limits
+// need, and returns the vectors in the order of texts. A note of ordinary
+// size goes in one request, as before.
+func (s *Service) embedBatched(ctx context.Context, texts []string) ([][]float64, error) {
+	var vectors [][]float64
+	start := 0
+	for start < len(texts) {
+		end := start
+		size := 0
+		for end < len(texts) && end-start < embedBatchInputs {
+			n := jsutil.UTF16Len(texts[end])
+			if end > start && size+n > embedBatchChars {
+				break
+			}
+			size += n
+			end++
+		}
+		batch, err := s.Embedder.Embed(ctx, texts[start:end])
+		if err != nil {
+			return nil, err
+		}
+		// A short answer would shift every later vector onto the wrong
+		// chunk, so it fails the ingest here rather than at the end.
+		if len(batch) < end-start {
+			return nil, errors.New("expected array or sparse vector")
+		}
+		vectors = append(vectors, batch[:end-start]...)
+		start = end
+	}
+	return vectors, nil
 }
 
 // SearchResult is one note in a search answer: its best chunk, the note's

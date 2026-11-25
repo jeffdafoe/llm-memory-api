@@ -90,15 +90,50 @@ func ChunkByHeading(content string) []Chunk {
 	return chunks
 }
 
-// isMessageLine is /^\[\d{2}:\d{2}\s/, the start of a "[HH:MM speaker] text"
-// conversation line.
+// isMessageLine reports the start of a conversation message line: a session
+// log's "[HH:MM speaker] text" (/^\[\d{2}:\d{2}\s/) or a salem sim-day's
+// "[Weekday HH:MM speaker] text".
 func isMessageLine(line string) bool {
-	if len(line) < 7 || line[0] != '[' || !isDigit(line[1]) || !isDigit(line[2]) ||
-		line[3] != ':' || !isDigit(line[4]) || !isDigit(line[5]) {
+	if isClockAt(line, 1) {
+		r, _ := utf8.DecodeRuneInString(line[6:])
+		return jsutil.IsSpace(r)
+	}
+	at := weekdayClockAt(line)
+	if at < 0 {
 		return false
 	}
-	r, _ := utf8.DecodeRuneInString(line[6:])
+	r, _ := utf8.DecodeRuneInString(line[at+5:])
 	return jsutil.IsSpace(r)
+}
+
+// isClockAt reports whether line holds "HH:MM" starting at byte i, after a
+// "[" at the start of the line.
+func isClockAt(line string, i int) bool {
+	return len(line) >= i+6 && line[0] == '[' && isDigit(line[i]) && isDigit(line[i+1]) &&
+		line[i+2] == ':' && isDigit(line[i+3]) && isDigit(line[i+4])
+}
+
+// weekdayClockAt is the byte index of HH:MM in a line that starts
+// "[Weekday HH:MM" (one or more ASCII letters, then one space), or -1.
+func weekdayClockAt(line string) int {
+	if len(line) == 0 || line[0] != '[' {
+		return -1
+	}
+	i := 1
+	for i < len(line) && isASCIILetter(line[i]) {
+		i++
+	}
+	if i == 1 || i >= len(line) || line[i] != ' ' {
+		return -1
+	}
+	if !isClockAt(line, i+1) {
+		return -1
+	}
+	return i + 1
+}
+
+func isASCIILetter(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 func isDigit(c byte) bool {
@@ -196,6 +231,9 @@ func ChunkConversation(content string, windowSize, overlap, maxChars int) []Chun
 				first[3] == ':' && isDigit(first[4]) && isDigit(first[5]) {
 				h := "Conversation at " + first[1:6]
 				heading = &h
+			} else if at := weekdayClockAt(first); at >= 0 {
+				h := "Conversation at " + first[1:at+5]
+				heading = &h
 			}
 			chunks = append(chunks, Chunk{Heading: heading, ChunkText: text})
 		}
@@ -205,6 +243,104 @@ func ChunkConversation(content string, windowSize, overlap, maxChars int) []Chun
 		start += max(1, end-start-overlap)
 	}
 	return chunks
+}
+
+// MaxChunkChars caps one chunk's text, in UTF-16 code units. The embedding
+// model rejects an input over 8192 tokens, and the whole ingest fails with
+// it. English runs about 4 characters a token; 6000 leaves room for denser
+// text (names, numbers, emoji) without a tokenizer.
+const MaxChunkChars = 6000
+
+// SplitOversized splits every chunk whose text is over maxChars into pieces
+// that fit, each piece keeping the chunk's heading. Chunks that fit pass
+// through unchanged, so a note with no oversized section chunks as before.
+func SplitOversized(chunks []Chunk, maxChars int) []Chunk {
+	out := make([]Chunk, 0, len(chunks))
+	for _, c := range chunks {
+		if jsutil.UTF16Len(c.ChunkText) <= maxChars {
+			out = append(out, c)
+			continue
+		}
+		for _, piece := range splitText(c.ChunkText, maxChars) {
+			out = append(out, Chunk{Heading: c.Heading, ChunkText: piece})
+		}
+	}
+	return out
+}
+
+// splitSeparators are tried coarsest first: paragraphs, then lines, then
+// words. A piece still too long after words is cut by character count.
+var splitSeparators = []string{"\n\n", "\n", " "}
+
+// splitText breaks text into trimmed, non-empty pieces of at most maxChars.
+// It packs as many whole parts per piece as fit, and goes to a finer
+// separator only for a single part that is still too long.
+func splitText(text string, maxChars int) []string {
+	if jsutil.UTF16Len(text) <= maxChars {
+		if t := jsutil.Trim(text); t != "" {
+			return []string{t}
+		}
+		return nil
+	}
+	for _, sep := range splitSeparators {
+		parts := strings.Split(text, sep)
+		if len(parts) == 1 {
+			continue
+		}
+		sepLen := jsutil.UTF16Len(sep)
+		var pieces []string
+		var current []string
+		currentLen := 0
+		emit := func() {
+			if len(current) > 0 {
+				pieces = append(pieces, splitText(strings.Join(current, sep), maxChars)...)
+			}
+			current = nil
+			currentLen = 0
+		}
+		for _, part := range parts {
+			partLen := jsutil.UTF16Len(part)
+			if len(current) > 0 && currentLen+sepLen+partLen > maxChars {
+				emit()
+			}
+			if len(current) > 0 {
+				currentLen += sepLen
+			}
+			current = append(current, part)
+			currentLen += partLen
+		}
+		emit()
+		return pieces
+	}
+	return cutByChars(text, maxChars)
+}
+
+// cutByChars is the last resort for text with no separator: consecutive
+// slices of at most maxChars UTF-16 code units, never splitting a rune.
+func cutByChars(text string, maxChars int) []string {
+	var pieces []string
+	var b strings.Builder
+	n := 0
+	flush := func() {
+		if t := jsutil.Trim(b.String()); t != "" {
+			pieces = append(pieces, t)
+		}
+		b.Reset()
+		n = 0
+	}
+	for _, r := range text {
+		width := 1
+		if r > 0xFFFF {
+			width = 2
+		}
+		if n+width > maxChars {
+			flush()
+		}
+		b.WriteRune(r)
+		n += width
+	}
+	flush()
+	return pieces
 }
 
 // addSat adds without wrapping past the int range, as JavaScript numbers do
