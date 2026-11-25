@@ -25,16 +25,18 @@ export PGCONNECT_TIMEOUT=10
 
 # read_days KEY: the KEY row of the config table if it is a whole number of
 # days from 1 to 999999; else 7. The read is optional: it is bounded by a
-# 15-second wall clock (a stalled connection or a lock must not hold up the
-# job), never prompts for a password, and any failure gives 7. The privacy
+# 15-second wall clock, with a KILL 2 seconds later if psql ignores the TERM
+# (a stalled connection or a lock must not hold up the job), never prompts for a password, and any failure gives 7. The privacy
 # page (LLM-1021) states the same period by the same rule.
 read_days() {
     local value
-    if value=$(timeout 15 psql "$DATABASE_URL" --no-psqlrc -tAq -w -c "SELECT value FROM config WHERE key = '$1'" 2>/dev/null); then
-        # Trim leading and trailing whitespace only; inner spaces stay and
-        # make the value invalid.
-        value="${value#"${value%%[![:space:]]*}"}"
-        value="${value%"${value##*[![:space:]]}"}"
+    if value=$(timeout --kill-after=2s 15s psql "$DATABASE_URL" --no-psqlrc -tAq -w -c "SELECT value FROM config WHERE key = '$1'" 2>/dev/null); then
+        # Trim leading and trailing ASCII whitespace only (a fixed set, not
+        # the locale's [:space:], to match the privacy page); inner spaces
+        # stay and make the value invalid.
+        local ws=$' \t\n\r\v\f'
+        value="${value#"${value%%[!$ws]*}"}"
+        value="${value%"${value##*[!$ws]}"}"
     else
         value=""
     fi

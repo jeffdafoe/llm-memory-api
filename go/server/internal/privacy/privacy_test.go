@@ -124,6 +124,14 @@ func TestPlaceholderShowsEffectivePeriod(t *testing.T) {
 		{"pending_access_request_retention_days", "", true, "{{pending_access_request_retention_days}}"},
 		{"conversation_retention_days", "1e3", true, "{{conversation_retention_days}}"},
 		{"va_call_log_retention_days", "", false, "{{va_call_log_retention_days}}"},
+		// Only ASCII whitespace is trimmed, as read_days does: a value
+		// padded with non-breaking spaces is invalid in both places.
+		{"request_log_retention_days", " 14 ", true, "7"},
+		{"error_log_retention_days", " 90", true, "{{error_log_retention_days}}"},
+		{"backup_retention_days", "\t21\n", true, "21"},
+		// The six-digit cap applies only where the reader enforces it.
+		{"access_request_retention_days", "1234567", true, "{{access_request_retention_days}}"},
+		{"conversation_retention_days", "1234567", true, "1234567"},
 	}
 	for _, c := range cases {
 		values := map[string]string{PolicyKey: "Kept [{{" + c.key + "}}] days."}

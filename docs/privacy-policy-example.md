@@ -17,7 +17,8 @@ Write `{{key}}` and the page shows the period that key sets, so the periods you 
 The page states a number only when it is a real period:
 
 - `request_log_retention_days` and `backup_retention_days` are read by shell scripts, which use 7 days when the value is missing, is not a whole number from 1 to 999999, or cannot be read. The page shows the same number the scripts use. (A config read that fails at run time also gives 7 for that one run.)
-- The other keys show their value when it is a whole number of 1 or more. When a key is 0 (that cleanup is off) or not a whole number, the placeholder is shown as written: reword that line, because the data is then kept until the account is deleted.
+- The other keys show their value when it is a whole number of 1 or more (`access_request_retention_days`, `pending_access_request_retention_days` and `error_log_retention_days` also cap it at 999999, as the cleanup job does). When a key is 0 (that cleanup is off) or not a valid number, the placeholder is shown as written: reword that line to say what happens to that data while the cleanup is off.
+- Only ordinary ASCII spaces, tabs and line breaks around a value are ignored; a value padded with any other character (such as a non-breaking space) is invalid.
 
 | Placeholder | What it controls |
 |---|---|

@@ -67,8 +67,28 @@ var scriptKeys = map[string]bool{
 	"backup_retention_days":      true,
 }
 
-// wholeDays is a whole number of days the page will state.
-var wholeDays = regexp.MustCompile(`^[0-9]{1,6}$`)
+// cappedKeys are the keys whose readers take at most six digits: the two
+// script keys (read_days) and the cleanup job's LLM-1024 keys
+// (cleanup.retentionDays). The older keys are read with Node's parseInt and
+// have no cap.
+var cappedKeys = map[string]bool{
+	"request_log_retention_days":            true,
+	"backup_retention_days":                 true,
+	"access_request_retention_days":         true,
+	"pending_access_request_retention_days": true,
+	"error_log_retention_days":              true,
+}
+
+var (
+	cappedDays   = regexp.MustCompile(`^[0-9]{1,6}$`)
+	uncappedDays = regexp.MustCompile(`^[0-9]+$`)
+)
+
+// asciiSpace is the whitespace trimmed from a value. It is the same fixed
+// ASCII set read_days trims in the scripts, so a value padded with, say, a
+// non-breaking space is invalid in both places rather than valid here and 7
+// in cron.
+const asciiSpace = " \t\n\r\v\f"
 
 // effectiveDays is the period the page states for a retention key: the
 // configured whole number of days when it is 1 or more. A script key that is
@@ -78,8 +98,12 @@ var wholeDays = regexp.MustCompile(`^[0-9]{1,6}$`)
 // operator rewords that line.
 func effectiveDays(key string, store *config.Store) (days string, ok bool) {
 	raw, found := store.Lookup(key)
-	text := strings.TrimSpace(raw)
-	if found && wholeDays.MatchString(text) {
+	text := strings.Trim(raw, asciiSpace)
+	valid := uncappedDays
+	if cappedKeys[key] {
+		valid = cappedDays
+	}
+	if found && valid.MatchString(text) {
 		if trimmed := strings.TrimLeft(text, "0"); trimmed != "" {
 			return trimmed, true
 		}

@@ -61,7 +61,8 @@ func TestPrivacyPageIsPublic(t *testing.T) {
 	mock := testutil.NewMock(t)
 	store := config.NewStore()
 	store.Set("privacy_policy", "# Operator policy\n\nKept {{request_log_retention_days}} days.")
-	store.Set("request_log_retention_days", "7")
+	// Not the default 7, so a handler that ignored config would fail here.
+	store.Set("request_log_retention_days", "14")
 	h := Handler(NewServices(mock, store, ""))
 	mock.ExpectExec("INSERT INTO request_log").WithArgs(
 		"GET", "/privacy", 200, pgxmock.AnyArg(), (*int)(nil), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
@@ -69,7 +70,7 @@ func TestPrivacyPageIsPublic(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/privacy", nil))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<h1>Operator policy</h1>") || !strings.Contains(rec.Body.String(), "Kept 7 days.") {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<h1>Operator policy</h1>") || !strings.Contains(rec.Body.String(), "Kept 14 days.") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
 	}
 	testutil.WaitMet(t, mock)
