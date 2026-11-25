@@ -2,8 +2,9 @@
 # Checks that a downloaded build file was built by this repository's GitHub
 # Actions workflow (LLM-976). CI attests every published build file
 # (actions/attest, SLSA build provenance, signed through Sigstore); this
-# fetches the attestations for the file's SHA-256 from GitHub's public API, no
-# token needed, and verifies them offline with cosign.
+# fetches the attestations for the file's SHA-256 from GitHub's public API (no
+# token needed; CI sends one for the rate limit, see below), and verifies them
+# offline with cosign.
 #
 # Usage: verify-build.sh <file> <signer> <commit>
 #   <signer> is the workflow the signing certificate must name, for example
@@ -37,13 +38,33 @@ digest=$(sha256sum "$file" | cut -d' ' -f1)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+# GH_TOKEN, when set, goes with the request. CI sets it (the job's token,
+# with attestations: read): a hosted runner shares its IP with other jobs,
+# and the anonymous limit of 60 requests an hour per IP ran out there. The
+# deploy sets none and stays anonymous. The token only lifts the limit;
+# trust still comes from cosign's check of the signature below.
+auth=()
+if [ -n "${GH_TOKEN:-}" ]; then
+    auth=(-H "Authorization: Bearer $GH_TOKEN")
+fi
 # A 404 means GitHub holds no attestation for this digest: the file is not
-# one CI built, or was changed after it.
-if ! curl -fsS --max-time 30 \
+# one CI built, or was changed after it. Any other failure (a 403 from the
+# rate limit, a 5xx, no network) prints the status and the rate-limit
+# headers, so it is not taken for a missing attestation.
+status=$(curl -sS --max-time 30 \
         -H 'Accept: application/vnd.github+json' \
-        -o "$work/attestations.json" \
-        "https://api.github.com/repos/$repo/attestations/sha256:$digest"; then
+        ${auth[@]+"${auth[@]}"} \
+        -D "$work/headers" -o "$work/attestations.json" -w '%{http_code}' \
+        "https://api.github.com/repos/$repo/attestations/sha256:$digest") || status=000
+if [ "$status" = 404 ]; then
     echo "verify-build: no attestation found for $file (sha256:$digest)" >&2
+    exit 1
+fi
+if [ "$status" != 200 ]; then
+    echo "verify-build: attestation lookup for $file (sha256:$digest) failed: HTTP $status" >&2
+    grep -iE '^x-ratelimit-(limit|remaining|reset|resource):' "$work/headers" >&2 2>/dev/null || true
+    head -c 500 "$work/attestations.json" >&2 2>/dev/null || true
+    echo >&2
     exit 1
 fi
 

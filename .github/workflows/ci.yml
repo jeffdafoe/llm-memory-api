@@ -222,6 +222,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # verify-build.sh sends GH_TOKEN to the attestations API, so the job
+      # is not held to the anonymous rate limit of the runner's shared IP.
+      attestations: read
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
