@@ -636,9 +636,22 @@ func (s *Service) Delete(ctx context.Context, namespace, slug string, expectedUp
 		params = append(params, *expectedUpdatedAt)
 		versionClause = " AND updated_at = $3::timestamptz"
 	}
+	// The soft delete and the chunk removal are one transaction. The chunks
+	// must go before a new note can be saved at the slug: as a background
+	// job keyed by slug, the removal could run after the new note's
+	// re-index and take its chunks. The new note's save waits on this row
+	// until the commit (the live-slug unique index), and an in-flight
+	// re-index of this note holds the row, so the update waits for its
+	// chunks and then removes them.
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return Deleted{}, err
+	}
+	// Rollback after Commit is a no-op; this covers every early return.
+	defer tx.Rollback(ctx)
 	var id int
 	var length *int
-	err := s.DB.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
         UPDATE documents
         SET deleted_at = NOW()
         WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL`+versionClause+`
@@ -647,7 +660,7 @@ func (s *Service) Delete(ctx context.Context, namespace, slug string, expectedUp
 	if errors.Is(err, pgx.ErrNoRows) {
 		if expectedUpdatedAt != nil {
 			var one int
-			err := s.DB.QueryRow(ctx, "SELECT 1 FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL", namespace, slug).Scan(&one)
+			err := tx.QueryRow(ctx, "SELECT 1 FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL", namespace, slug).Scan(&one)
 			if err == nil {
 				return Deleted{}, apierr.New(http.StatusConflict, "Note changed since it was read: "+slug)
 			}
@@ -660,10 +673,13 @@ func (s *Service) Delete(ctx context.Context, namespace, slug string, expectedUp
 	if err != nil {
 		return Deleted{}, err
 	}
+	if _, err := tx.Exec(ctx, "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)", namespace, slug); err != nil {
+		return Deleted{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Deleted{}, err
+	}
 
-	db.Background(func(ctx context.Context) {
-		s.DB.Exec(ctx, "DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)", namespace, slug)
-	})
 	bytes := 0
 	if length != nil {
 		bytes = *length

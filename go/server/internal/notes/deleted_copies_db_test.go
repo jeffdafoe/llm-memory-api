@@ -15,8 +15,9 @@ import (
 // an UPDATE touches, which a mock that matches SQL text cannot show.
 // testutil.ScratchDB says when they run.
 
-// deletedCopiesSchema has the columns Read, Edit and Move use, and the
-// tables their background work writes.
+// deletedCopiesSchema has the columns Read, Edit and Move use, the
+// tables their background work writes, and production's one-live-note-per-
+// slug index, which a save at a slug being deleted waits on.
 const deletedCopiesSchema = `
 CREATE TABLE actors (id serial PRIMARY KEY, name text NOT NULL);
 CREATE TABLE documents (
@@ -34,6 +35,7 @@ CREATE TABLE documents (
 	metadata jsonb,
 	extension text
 );
+CREATE UNIQUE INDEX documents_namespace_slug_active_key ON documents (namespace, slug) WHERE deleted_at IS NULL;
 CREATE TABLE namespace_usage (
 	namespace text PRIMARY KEY,
 	note_count integer NOT NULL DEFAULT 0,
