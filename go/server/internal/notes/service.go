@@ -852,19 +852,21 @@ func (s *Service) Edit(ctx context.Context, in EditInput) (Edited, error) {
 	if err != nil {
 		return Edited{}, err
 	}
-	s.updateUsage(in.Namespace, 0, delta)
+	// No row means the note was deleted after the Read above: nothing was
+	// written, so the usage, the index and listeners are left alone. A
+	// re-index here would bring back chunks for a deleted note.
 	if found {
+		s.updateUsage(in.Namespace, 0, delta)
 		if note.CreatedBy, err = s.createdByName(ctx, note.CreatedByActorID); err != nil {
 			return Edited{}, err
 		}
+		namespace, slug := in.Namespace, in.Slug
+		s.background("REINDEX_FAILED", namespace, slug, func(ctx context.Context) error {
+			_, err := s.Memory.Ingest(ctx, namespace, slug, updated)
+			return err
+		})
+		s.broadcast(namespace, slug, "edited")
 	}
-
-	namespace, slug := in.Namespace, in.Slug
-	s.background("REINDEX_FAILED", namespace, slug, func(ctx context.Context) error {
-		_, err := s.Memory.Ingest(ctx, namespace, slug, updated)
-		return err
-	})
-	s.broadcast(namespace, slug, "edited")
 
 	out := Edited{Replacements: 1}
 	if in.ReplaceAll {
@@ -923,19 +925,25 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 
 	// Only the live row (sourceID). Soft-deleted copies stay at the old slug
 	// as its restore points; moving them too made the RETURNING row (the
-	// note this answers with) whichever copy came back first.
+	// note this answers with) whichever copy came back first. The row must
+	// still be live and still at the source: a delete or move that ran since
+	// the SELECT above leaves no row, and the move stops before the chunks
+	// and the usage counters move.
 	rows, err := s.DB.Query(ctx, `
         UPDATE documents
         SET slug = $1, namespace = $2, updated_at = NOW(), kind = $4
-        WHERE id = $3
+        WHERE id = $3 AND deleted_at IS NULL AND namespace = $5 AND LOWER(slug) = LOWER($6)
         RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-    `, in.NewSlug, target, sourceID, SlugToKind(in.NewSlug))
+    `, in.NewSlug, target, sourceID, SlugToKind(in.NewSlug), in.Namespace, in.Slug)
 	if err != nil {
 		return nil, err
 	}
 	note, found, err := scanChanged(rows)
 	if err != nil {
 		return nil, err
+	}
+	if !found {
+		return nil, notFound(in.Slug)
 	}
 	if _, err := s.DB.Exec(ctx,
 		"UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND LOWER(source_file) = LOWER($4)",
@@ -949,11 +957,6 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 		}
 		s.updateUsage(in.Namespace, -1, -size)
 		s.updateUsage(target, 1, size)
-	}
-	// Node resolved created_by here, after the chunks and the usage moved,
-	// and read it from an undefined row when the UPDATE touched none.
-	if !found {
-		return nil, errors.New("Cannot read properties of undefined (reading 'created_by_actor_id')")
 	}
 	if note.CreatedBy, err = s.createdByName(ctx, note.CreatedByActorID); err != nil {
 		return nil, err

@@ -245,23 +245,54 @@ func ChunkConversation(content string, windowSize, overlap, maxChars int) []Chun
 	return chunks
 }
 
-// MaxChunkChars caps one chunk's text, in UTF-16 code units. The embedding
-// model rejects an input over 8192 tokens, and the whole ingest fails with
-// it. English runs about 4 characters a token; 6000 leaves room for denser
-// text (names, numbers, emoji) without a tokenizer.
-const MaxChunkChars = 6000
+// The embedding model (text-embedding-3-small, a byte-level BPE tokenizer)
+// rejects an input over 8192 tokens, and the whole ingest fails with it. A
+// token covers at least one byte of UTF-8, so a chunk of at most
+// MaxChunkBytes bytes can never pass the limit, whatever the script.
+// MaxChunkChars keeps ordinary text, about 4 characters a token, at a chunk
+// size that searches well; MaxChunkBytes is the guarantee.
+const (
+	MaxChunkChars = 6000
+	MaxChunkBytes = 8000
+)
 
-// SplitOversized splits every chunk whose text is over maxChars into pieces
-// that fit, each piece keeping the chunk's heading. Chunks that fit pass
-// through unchanged, so a note with no oversized section chunks as before.
-func SplitOversized(chunks []Chunk, maxChars int) []Chunk {
+// ChunkLimit is the most one chunk may hold: Chars in UTF-16 code units (the
+// unit the rest of the chunker counts in) and Bytes in UTF-8.
+type ChunkLimit struct {
+	Chars, Bytes int
+}
+
+// DefaultChunkLimit is the limit Ingest applies.
+var DefaultChunkLimit = ChunkLimit{Chars: MaxChunkChars, Bytes: MaxChunkBytes}
+
+// textSize is a text's length in both units a ChunkLimit counts.
+type textSize struct {
+	chars, bytes int
+}
+
+func sizeOf(s string) textSize {
+	return textSize{chars: jsutil.UTF16Len(s), bytes: len(s)}
+}
+
+func (a textSize) plus(b textSize) textSize {
+	return textSize{chars: a.chars + b.chars, bytes: a.bytes + b.bytes}
+}
+
+func (l ChunkLimit) fits(s textSize) bool {
+	return s.chars <= l.Chars && s.bytes <= l.Bytes
+}
+
+// SplitOversized splits every chunk over the limit into pieces that fit,
+// each piece keeping the chunk's heading. Chunks that fit pass through
+// unchanged, so a note with no oversized section chunks as before.
+func SplitOversized(chunks []Chunk, limit ChunkLimit) []Chunk {
 	out := make([]Chunk, 0, len(chunks))
 	for _, c := range chunks {
-		if jsutil.UTF16Len(c.ChunkText) <= maxChars {
+		if limit.fits(sizeOf(c.ChunkText)) {
 			out = append(out, c)
 			continue
 		}
-		for _, piece := range splitText(c.ChunkText, maxChars) {
+		for _, piece := range splitText(c.ChunkText, limit) {
 			out = append(out, Chunk{Heading: c.Heading, ChunkText: piece})
 		}
 	}
@@ -269,14 +300,14 @@ func SplitOversized(chunks []Chunk, maxChars int) []Chunk {
 }
 
 // splitSeparators are tried coarsest first: paragraphs, then lines, then
-// words. A piece still too long after words is cut by character count.
+// words. A piece still too long after words is cut rune by rune.
 var splitSeparators = []string{"\n\n", "\n", " "}
 
-// splitText breaks text into trimmed, non-empty pieces of at most maxChars.
-// It packs as many whole parts per piece as fit, and goes to a finer
-// separator only for a single part that is still too long.
-func splitText(text string, maxChars int) []string {
-	if jsutil.UTF16Len(text) <= maxChars {
+// splitText breaks text into trimmed, non-empty pieces within the limit. It
+// packs as many whole parts per piece as fit, and goes to a finer separator
+// only for a single part that is still too long.
+func splitText(text string, limit ChunkLimit) []string {
+	if limit.fits(sizeOf(text)) {
 		if t := jsutil.Trim(text); t != "" {
 			return []string{t}
 		}
@@ -287,57 +318,62 @@ func splitText(text string, maxChars int) []string {
 		if len(parts) == 1 {
 			continue
 		}
-		sepLen := jsutil.UTF16Len(sep)
+		sepSize := sizeOf(sep)
 		var pieces []string
 		var current []string
-		currentLen := 0
+		var currentSize textSize
 		emit := func() {
 			if len(current) > 0 {
-				pieces = append(pieces, splitText(strings.Join(current, sep), maxChars)...)
+				pieces = append(pieces, splitText(strings.Join(current, sep), limit)...)
 			}
 			current = nil
-			currentLen = 0
+			currentSize = textSize{}
 		}
 		for _, part := range parts {
-			partLen := jsutil.UTF16Len(part)
-			if len(current) > 0 && currentLen+sepLen+partLen > maxChars {
+			partSize := sizeOf(part)
+			if len(current) > 0 && !limit.fits(currentSize.plus(sepSize).plus(partSize)) {
 				emit()
 			}
 			if len(current) > 0 {
-				currentLen += sepLen
+				currentSize = currentSize.plus(sepSize)
 			}
 			current = append(current, part)
-			currentLen += partLen
+			currentSize = currentSize.plus(partSize)
 		}
 		emit()
 		return pieces
 	}
-	return cutByChars(text, maxChars)
+	return cutByRunes(text, limit)
 }
 
-// cutByChars is the last resort for text with no separator: consecutive
-// slices of at most maxChars UTF-16 code units, never splitting a rune.
-func cutByChars(text string, maxChars int) []string {
+// cutByRunes is the last resort for text with no separator: consecutive
+// slices within the limit, never splitting a rune.
+func cutByRunes(text string, limit ChunkLimit) []string {
 	var pieces []string
 	var b strings.Builder
-	n := 0
+	var n textSize
 	flush := func() {
 		if t := jsutil.Trim(b.String()); t != "" {
 			pieces = append(pieces, t)
 		}
 		b.Reset()
-		n = 0
+		n = textSize{}
 	}
 	for _, r := range text {
-		width := 1
+		width := textSize{chars: 1, bytes: utf8.RuneLen(r)}
 		if r > 0xFFFF {
-			width = 2
+			width.chars = 2
 		}
-		if n+width > maxChars {
+		// utf8.RuneLen is -1 for an invalid rune; ranging a string yields
+		// U+FFFD for bad bytes, which encodes in 3.
+		if width.bytes < 0 {
+			width.bytes = 3
+		}
+		if n.chars > 0 && !limit.fits(n.plus(width)) {
 			flush()
 		}
 		b.WriteRune(r)
-		n += width
+		n = n.plus(width)
 	}
 	flush()
 	return pieces

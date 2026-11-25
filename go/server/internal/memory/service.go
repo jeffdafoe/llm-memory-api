@@ -74,7 +74,7 @@ func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content str
 	if len(chunks) == 0 {
 		return IngestResult{}, apierr.New(http.StatusBadRequest, "No chunks extracted from content")
 	}
-	chunks = SplitOversized(chunks, MaxChunkChars)
+	chunks = SplitOversized(chunks, DefaultChunkLimit)
 
 	texts := make([]string, len(chunks))
 	for i, c := range chunks {
@@ -130,10 +130,11 @@ func isConversationSource(sourceFile string) bool {
 }
 
 // The embeddings endpoint takes at most 300,000 tokens and 2048 inputs per
-// request. A batch closes at embedBatchChars UTF-16 code units, which stays
-// under the token limit even for text denser than one token a character.
+// request. A batch closes at embedBatchBytes bytes of UTF-8: a token covers
+// at least one byte (see MaxChunkBytes), so the token limit holds for any
+// script.
 const (
-	embedBatchChars  = 200000
+	embedBatchBytes  = 290000
 	embedBatchInputs = 512
 )
 
@@ -147,8 +148,8 @@ func (s *Service) embedBatched(ctx context.Context, texts []string) ([][]float64
 		end := start
 		size := 0
 		for end < len(texts) && end-start < embedBatchInputs {
-			n := jsutil.UTF16Len(texts[end])
-			if end > start && size+n > embedBatchChars {
+			n := len(texts[end])
+			if end > start && size+n > embedBatchBytes {
 				break
 			}
 			size += n

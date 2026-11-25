@@ -84,12 +84,15 @@ func words(text string) []string {
 	return strings.Fields(text)
 }
 
-func checkPieces(t *testing.T, name, text string, pieces []string, max int) {
+func checkPieces(t *testing.T, name, text string, pieces []string, limit ChunkLimit) {
 	t.Helper()
 	var joined []string
 	for i, p := range pieces {
-		if n := jsutil.UTF16Len(p); n > max {
-			t.Errorf("%s: piece %d is %d code units, over %d", name, i, n, max)
+		if n := jsutil.UTF16Len(p); n > limit.Chars {
+			t.Errorf("%s: piece %d is %d code units, over %d", name, i, n, limit.Chars)
+		}
+		if n := len(p); n > limit.Bytes {
+			t.Errorf("%s: piece %d is %d bytes, over %d", name, i, n, limit.Bytes)
 		}
 		if p == "" || p != jsutil.Trim(p) {
 			t.Errorf("%s: piece %d is empty or untrimmed: %q", name, i, p)
@@ -107,7 +110,7 @@ func checkPieces(t *testing.T, name, text string, pieces []string, max int) {
 }
 
 func TestSplitTextKeepsEveryWordUnderTheCap(t *testing.T) {
-	const max = 100
+	limit := ChunkLimit{Chars: 100, Bytes: 1000}
 	paragraph := strings.Repeat("alpha beta gamma ", 4) // 68 chars
 	cases := map[string]string{
 		"paragraphs":         strings.Repeat(paragraph+"\n\n", 10),
@@ -118,11 +121,33 @@ func TestSplitTextKeepsEveryWordUnderTheCap(t *testing.T) {
 		"long word in lines": "short line\n" + strings.Repeat("q", 250) + "\nanother short line",
 	}
 	for name, text := range cases {
-		pieces := splitText(text, max)
+		pieces := splitText(text, limit)
 		if len(pieces) < 2 {
 			t.Errorf("%s: %d pieces, want a split", name, len(pieces))
 		}
-		checkPieces(t, name, text, pieces, max)
+		checkPieces(t, name, text, pieces, limit)
+	}
+}
+
+// Text of three-byte characters reaches the byte cap long before the
+// character cap: 6000 of them are 18,000 bytes, and a tokenizer that spends
+// a token or more per character would pass the model's 8192-token limit.
+// The byte cap must bind, with and without separators to split on.
+func TestSplitTextByteCapBindsForMultibyteText(t *testing.T) {
+	line := strings.Repeat("漢字仮名交じり文", 50) // 400 chars, 1200 bytes
+	cases := map[string]string{
+		"lines":        strings.Repeat(line+"\n", 14),
+		"no separator": strings.Repeat("漢", 6000),
+	}
+	for name, text := range cases {
+		if jsutil.UTF16Len(text) > MaxChunkChars {
+			t.Fatalf("%s: test text is over the character cap; it must test the byte cap alone", name)
+		}
+		pieces := splitText(text, DefaultChunkLimit)
+		if len(pieces) < 2 {
+			t.Errorf("%s: %d pieces, want the byte cap to split it", name, len(pieces))
+		}
+		checkPieces(t, name, text, pieces, DefaultChunkLimit)
 	}
 }
 
@@ -132,7 +157,7 @@ func TestSplitTextPacksWholeParagraphs(t *testing.T) {
 	a := strings.Repeat("a", 40)
 	b := strings.Repeat("b", 40)
 	c := strings.Repeat("c", 40)
-	got := splitText(a+"\n\n"+b+"\n\n"+c, 90)
+	got := splitText(a+"\n\n"+b+"\n\n"+c, ChunkLimit{Chars: 90, Bytes: 1000})
 	want := []string{a + "\n\n" + b, c}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("got %q, want %q", got, want)
@@ -143,7 +168,7 @@ func TestSplitOversizedKeepsHeadingsAndSmallChunks(t *testing.T) {
 	h1, h2 := "# Small", "## In Progress"
 	small := Chunk{Heading: &h1, ChunkText: "# Small\n\nshort"}
 	big := Chunk{Heading: &h2, ChunkText: "## In Progress\n\n" + strings.Repeat("- **Client** — status line\n", 400)}
-	out := SplitOversized([]Chunk{small, big}, MaxChunkChars)
+	out := SplitOversized([]Chunk{small, big}, DefaultChunkLimit)
 	if out[0] != small {
 		t.Errorf("a chunk under the cap changed: %+v", out[0])
 	}
@@ -157,11 +182,12 @@ func TestSplitOversizedKeepsHeadingsAndSmallChunks(t *testing.T) {
 		}
 		pieces = append(pieces, c.ChunkText)
 	}
-	checkPieces(t, "big", big.ChunkText, pieces, MaxChunkChars)
+	checkPieces(t, "big", big.ChunkText, pieces, DefaultChunkLimit)
 }
 
-// countingEmbedder records the size of every request and answers with one
-// vector per text, the vector being the text's position in all calls.
+// countingEmbedder records every request and answers with one vector per
+// text, the vector being the text's length in bytes, so a test can see that
+// each vector came back for its own text.
 type countingEmbedder struct {
 	calls [][]string
 	short bool
@@ -179,36 +205,47 @@ func (e *countingEmbedder) Embed(_ context.Context, texts []string) ([][]float64
 	return out, nil
 }
 
-func TestEmbedBatchedSplitsLargeRequestsInOrder(t *testing.T) {
-	var texts []string
-	for i := range 100 {
-		texts = append(texts, strings.Repeat("w", 5000+i))
-	}
-	e := &countingEmbedder{}
-	s := &Service{Embedder: e}
-	vectors, err := s.embedBatched(context.Background(), texts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(e.calls) < 3 {
-		t.Errorf("%d requests for 500K characters, want them split at %d", len(e.calls), embedBatchChars)
-	}
+func checkBatches(t *testing.T, name string, e *countingEmbedder, texts []string, vectors [][]float64) {
+	t.Helper()
 	for i, call := range e.calls {
 		size := 0
 		for _, text := range call {
 			size += len(text)
 		}
-		if size > embedBatchChars {
-			t.Errorf("request %d holds %d characters, over %d", i, size, embedBatchChars)
+		if size > embedBatchBytes {
+			t.Errorf("%s: request %d holds %d bytes, over %d", name, i, size, embedBatchBytes)
 		}
 	}
 	if len(vectors) != len(texts) {
-		t.Fatalf("got %d vectors for %d texts", len(vectors), len(texts))
+		t.Fatalf("%s: got %d vectors for %d texts", name, len(vectors), len(texts))
 	}
 	for i, v := range vectors {
 		if int(v[0]) != len(texts[i]) {
-			t.Fatalf("vector %d belongs to a text of length %v, want %d", i, v[0], len(texts[i]))
+			t.Fatalf("%s: vector %d belongs to a text of %v bytes, want %d", name, i, v[0], len(texts[i]))
 		}
+	}
+}
+
+func TestEmbedBatchedSplitsLargeRequestsInOrder(t *testing.T) {
+	ascii := make([]string, 100)
+	multibyte := make([]string, 100)
+	for i := range 100 {
+		ascii[i] = strings.Repeat("w", 5000+i)
+		// 2600 characters, 7800 bytes: a request counted in characters
+		// would hold about twice the bytes the token limit allows.
+		multibyte[i] = strings.Repeat("漢", 2600) + strings.Repeat("w", i)
+	}
+	for name, texts := range map[string][]string{"ascii": ascii, "multibyte": multibyte} {
+		e := &countingEmbedder{}
+		s := &Service{Embedder: e}
+		vectors, err := s.embedBatched(context.Background(), texts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(e.calls) < 2 {
+			t.Errorf("%s: %d requests, want the texts split", name, len(e.calls))
+		}
+		checkBatches(t, name, e, texts, vectors)
 	}
 }
 
