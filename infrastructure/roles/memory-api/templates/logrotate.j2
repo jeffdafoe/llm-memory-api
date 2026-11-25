@@ -5,8 +5,11 @@
 #
 # "ifempty" rotates every log every day, even a quiet one, so its old files
 # keep moving down the chain. "maxage 30" deletes rotated files older than
-# 30 days each time their log rotates, which also clears the files kept under
-# the old weekly / rotate 12 rule at the first rotation after the deploy.
+# 30 days each time their log rotates; "rotate 30" only caps the count. So
+# 30 days is the cleanup threshold, applied at each daily rotation: a missed
+# or failed rotation (or a missing live log) leaves old files until the next
+# one. The files kept under the old weekly / rotate 12 rule go at the first
+# rotation after the deploy, not at the deploy itself.
 # The server opens activity.log on every write, so no postrotate signal is
 # needed. The cron logs (db-cleanup, pg-backup, staleness-check) follow the
 # same rule.
