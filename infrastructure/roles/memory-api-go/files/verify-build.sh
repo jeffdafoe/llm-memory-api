@@ -2,8 +2,9 @@
 # Checks that a downloaded build file was built by this repository's GitHub
 # Actions workflow (LLM-976). CI attests every published build file
 # (actions/attest, SLSA build provenance, signed through Sigstore); this
-# fetches the attestations for the file's SHA-256 from GitHub's public API, no
-# token needed, and verifies them offline with cosign.
+# fetches the attestations for the file's SHA-256 from GitHub's public API (no
+# token needed; CI sends one for the rate limit, see below), and verifies them
+# offline with cosign.
 #
 # Usage: verify-build.sh <file> <signer> <commit>
 #   <signer> is the workflow the signing certificate must name, for example
@@ -37,14 +38,48 @@ digest=$(sha256sum "$file" | cut -d' ' -f1)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-# A 404 means GitHub holds no attestation for this digest: the file is not
-# one CI built, or was changed after it.
-if ! curl -fsS --max-time 30 \
+# GH_TOKEN, when set, goes with the request. CI sets it (the job's token,
+# with attestations: read): a hosted runner shares its IP with other jobs,
+# and the runner's 403s may have been the anonymous limit of 60 requests an
+# hour per IP. The deploy sets none and stays anonymous. The token only
+# affects that limit; trust still comes from cosign's check of the
+# signature below. The header goes in a file in the private work directory
+# (printf is a shell builtin, so the token never appears on a command line,
+# where other users on the host could read it from the process list); the
+# trap above removes it.
+auth=()
+if [ -n "${GH_TOKEN:-}" ]; then
+    printf 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$work/auth-header"
+    auth=(-H "@$work/auth-header")
+fi
+# Only a completed request answered 404 means GitHub holds no attestation
+# for this digest: the file is not one CI built, or was changed after it.
+# Anything else fails with what happened: curl's exit code when curl
+# failed (no network, a timeout, a cut-off body; the HTTP status it got, if
+# any, is reported too), or the HTTP status, the rate-limit headers and the
+# start of the body for any other answer (a 403 from the rate limit, a 5xx).
+curl_exit=0
+status=$(curl -sS --max-time 30 \
         -H 'Accept: application/vnd.github+json' \
-        -o "$work/attestations.json" \
-        "https://api.github.com/repos/$repo/attestations/sha256:$digest"; then
+        ${auth[@]+"${auth[@]}"} \
+        -D "$work/headers" -o "$work/attestations.json" -w '%{http_code}' \
+        "https://api.github.com/repos/$repo/attestations/sha256:$digest") || curl_exit=$?
+lookup_failed() {
+    echo "verify-build: attestation lookup for $file (sha256:$digest) failed: $1" >&2
+    grep -iE '^x-ratelimit-(limit|remaining|reset|resource):' "$work/headers" >&2 2>/dev/null || true
+    head -c 500 "$work/attestations.json" >&2 2>/dev/null || true
+    echo >&2
+    exit 1
+}
+if [ "$curl_exit" -ne 0 ]; then
+    lookup_failed "curl exit $curl_exit, HTTP ${status:-none}"
+fi
+if [ "$status" = 404 ]; then
     echo "verify-build: no attestation found for $file (sha256:$digest)" >&2
     exit 1
+fi
+if [ "$status" != 200 ]; then
+    lookup_failed "HTTP $status"
 fi
 
 # Each attestation's bundle goes to its own file for cosign.

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/dockind"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 )
 
@@ -50,25 +51,9 @@ func ValidateSlug(slug string, notString, allowTrailingSlash bool) error {
 }
 
 // SlugToKind is the document kind a slug's folder implies. Search decay and
-// weights are keyed on it.
+// weights are keyed on it. The rule lives in dockind so enrichment shares it.
 func SlugToKind(slug string) string {
-	switch {
-	case strings.HasPrefix(slug, "instructions/"):
-		return "instruction"
-	case strings.HasPrefix(slug, "notes/codebase/"):
-		return "reference"
-	case strings.HasPrefix(slug, "conversations/"):
-		return "conversation"
-	case strings.HasPrefix(slug, "context/"):
-		return "context"
-	case strings.HasPrefix(slug, "dreams/"):
-		return "dream"
-	case strings.HasPrefix(slug, "tasks/"):
-		return "task"
-	case strings.HasPrefix(slug, "learnings/"):
-		return "learning"
-	}
-	return "note"
+	return dockind.Of(slug)
 }
 
 // TitleToSlug derives a slug from a title: lowercased, only a-z, 0-9,

@@ -64,8 +64,13 @@ check "empty"                   7      5  'true'
 check "largest allowed"         999999 5  'echo 999999'
 check "seven digits"            7      5  'echo 1234567'
 check "non-breaking space"      7      5  "printf '\\xc2\\xa014\\xc2\\xa0\\n'"
-check "stalls, honours TERM"    7      18 'sleep 60; echo 30'
-check "stalls, ignores TERM"    7      20 "trap '' TERM; sleep 60; echo 30"
+# The stalling stubs exec sleep, so the stub is one process, as psql is. A
+# bash stub with a child sleep fails on timeout builds that kill only the
+# process they started (coreutils on ubuntu-latest sends the final KILL to
+# the child alone): the orphaned sleep keeps the $(...) pipe open, and
+# read_days waits the full 60 s.
+check "stalls, honours TERM"    7      18 'exec sleep 60'
+check "stalls, ignores TERM"    7      20 "trap '' TERM; exec sleep 60"
 
 if [ "$fail" -ne 0 ]; then
     exit 1

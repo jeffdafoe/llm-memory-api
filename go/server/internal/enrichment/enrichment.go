@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/dockind"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/logger"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/virtualagent"
@@ -71,27 +72,6 @@ func (e *Enricher) now() time.Time {
 // skipKinds are the kinds not worth a model call.
 var skipKinds = map[string]bool{"conversation": true, "context": true, "dream": true}
 
-// kindFromSlug is enrichment.js's own copy of the slug-to-kind rule.
-func kindFromSlug(slug string) string {
-	switch {
-	case strings.HasPrefix(slug, "instructions/"):
-		return "instruction"
-	case strings.HasPrefix(slug, "notes/codebase/"):
-		return "reference"
-	case strings.HasPrefix(slug, "conversations/"):
-		return "conversation"
-	case strings.HasPrefix(slug, "context/"):
-		return "context"
-	case strings.HasPrefix(slug, "dreams/"):
-		return "dream"
-	case strings.HasPrefix(slug, "tasks/"):
-		return "task"
-	case strings.HasPrefix(slug, "learnings/"):
-		return "learning"
-	}
-	return "note"
-}
-
 func (e *Enricher) log(action string, details logger.Fields) {
 	if e.Log != nil {
 		e.Log.Log("enrichment", action, details)
@@ -107,7 +87,7 @@ func (e *Enricher) Enrich(ctx context.Context, namespace, slug, title, content s
 	if v, err := e.Config.Get("note_enrichment_enabled"); err != nil || v != "true" {
 		return nil
 	}
-	kind := kindFromSlug(slug)
+	kind := dockind.Of(slug)
 	if skipKinds[kind] {
 		return nil
 	}

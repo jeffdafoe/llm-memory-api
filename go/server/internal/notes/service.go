@@ -385,9 +385,9 @@ func (s *Service) Save(ctx context.Context, in SaveInput) (SavedNote, error) {
 		return SavedNote{}, err
 	}
 
-	namespace, content := in.Namespace, in.Content
+	namespace, content, documentID := in.Namespace, in.Content, doc.ID
 	s.background("AUTO_INDEX_FAILED", namespace, slug, func(ctx context.Context) error {
-		_, err := s.Memory.Ingest(ctx, namespace, slug, content)
+		_, err := s.Memory.IngestDocument(ctx, documentID, namespace, slug, content)
 		return err
 	})
 	s.broadcast(namespace, slug, "saved")
@@ -612,7 +612,7 @@ func (s *Service) Read(ctx context.Context, namespace, slug string) (Note, error
 	n.CreatedAt, n.UpdatedAt, n.Metadata = jsTime(created), jsTime(updated), meta
 
 	s.background("LAST_ACCESSED_UPDATE_FAILED", namespace, slug, func(ctx context.Context) error {
-		_, err := s.DB.Exec(ctx, "UPDATE documents SET last_accessed = NOW() WHERE namespace = $1 AND LOWER(slug) = LOWER($2)", namespace, slug)
+		_, err := s.DB.Exec(ctx, "UPDATE documents SET last_accessed = NOW() WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL", namespace, slug)
 		return err
 	})
 	return n, nil
@@ -836,10 +836,13 @@ func (s *Service) Edit(ctx context.Context, in EditInput) (Edited, error) {
 		}
 	}
 
+	// Only the live row: soft-deleted copies of the slug are the note's
+	// restore points, and writing into them would make every restore give
+	// back today's content.
 	rows, err := s.DB.Query(ctx, `
         UPDATE documents d
         SET content = $1, updated_at = NOW()
-        WHERE d.namespace = $2 AND LOWER(d.slug) = LOWER($3)
+        WHERE d.namespace = $2 AND LOWER(d.slug) = LOWER($3) AND d.deleted_at IS NULL
         RETURNING d.id, d.namespace, d.slug, d.title, d.created_by_actor_id, d.created_at, d.updated_at
     `, updated, in.Namespace, in.Slug)
 	if err != nil {
@@ -849,19 +852,21 @@ func (s *Service) Edit(ctx context.Context, in EditInput) (Edited, error) {
 	if err != nil {
 		return Edited{}, err
 	}
-	s.updateUsage(in.Namespace, 0, delta)
+	// No row means the note was deleted after the Read above: nothing was
+	// written, so the usage, the index and listeners are left alone. A
+	// re-index here would bring back chunks for a deleted note.
 	if found {
+		s.updateUsage(in.Namespace, 0, delta)
 		if note.CreatedBy, err = s.createdByName(ctx, note.CreatedByActorID); err != nil {
 			return Edited{}, err
 		}
+		namespace, slug, documentID := in.Namespace, in.Slug, note.ID
+		s.background("REINDEX_FAILED", namespace, slug, func(ctx context.Context) error {
+			_, err := s.Memory.IngestDocument(ctx, documentID, namespace, slug, updated)
+			return err
+		})
+		s.broadcast(namespace, slug, "edited")
 	}
-
-	namespace, slug := in.Namespace, in.Slug
-	s.background("REINDEX_FAILED", namespace, slug, func(ctx context.Context) error {
-		_, err := s.Memory.Ingest(ctx, namespace, slug, updated)
-		return err
-	})
-	s.broadcast(namespace, slug, "edited")
 
 	out := Edited{Replacements: 1}
 	if in.ReplaceAll {
@@ -918,12 +923,30 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 		return nil, err
 	}
 
-	rows, err := s.DB.Query(ctx, `
+	// The note and its chunks move in one transaction. As two writes, a
+	// second move of the note could run between them, find no chunks at
+	// the middle slug, and the first move would then leave the chunks
+	// there. In one transaction the UPDATE's row lock makes the second move
+	// wait until both writes commit. Rollback after Commit is a no-op; the
+	// uncancelled context lets it run if ctx is cancelled mid-move.
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+
+	// Only the live row (sourceID). Soft-deleted copies stay at the old slug
+	// as its restore points; moving them too made the RETURNING row (the
+	// note this answers with) whichever copy came back first. The row must
+	// still be live and still at the source: a delete or move that ran since
+	// the SELECT above leaves no row, and the move stops before the chunks
+	// and the usage counters move.
+	rows, err := tx.Query(ctx, `
         UPDATE documents
-        SET slug = $1, namespace = $2, updated_at = NOW(), kind = $5
-        WHERE namespace = $3 AND LOWER(slug) = LOWER($4)
+        SET slug = $1, namespace = $2, updated_at = NOW(), kind = $4
+        WHERE id = $3 AND deleted_at IS NULL AND namespace = $5 AND LOWER(slug) = LOWER($6)
         RETURNING id, namespace, slug, title, created_by_actor_id, created_at, updated_at
-    `, in.NewSlug, target, in.Namespace, in.Slug, SlugToKind(in.NewSlug))
+    `, in.NewSlug, target, sourceID, SlugToKind(in.NewSlug), in.Namespace, in.Slug)
 	if err != nil {
 		return nil, err
 	}
@@ -931,9 +954,15 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.DB.Exec(ctx,
+	if !found {
+		return nil, notFound(in.Slug)
+	}
+	if _, err := tx.Exec(ctx,
 		"UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND LOWER(source_file) = LOWER($4)",
 		in.NewSlug, target, in.Namespace, in.Slug); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	if target != in.Namespace {
@@ -943,11 +972,6 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 		}
 		s.updateUsage(in.Namespace, -1, -size)
 		s.updateUsage(target, 1, size)
-	}
-	// Node resolved created_by here, after the chunks and the usage moved,
-	// and read it from an undefined row when the UPDATE touched none.
-	if !found {
-		return nil, errors.New("Cannot read properties of undefined (reading 'created_by_actor_id')")
 	}
 	if note.CreatedBy, err = s.createdByName(ctx, note.CreatedByActorID); err != nil {
 		return nil, err
