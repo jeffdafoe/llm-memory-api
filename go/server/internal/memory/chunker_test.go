@@ -71,6 +71,10 @@ func TestIsConversationSource(t *testing.T) {
 		"notes/active-work":                                false,
 		"notes/conversations-with-jeff":                    false,
 		"context/soul":                                     false,
+		// The dockind rule: one prefix segment only, reserved folders keep
+		// their own kind.
+		"projects/acme/conversations/kickoff": false,
+		"instructions/conversations/x":        false,
 	}
 	for slug, want := range cases {
 		if got := isConversationSource(slug); got != want {
