@@ -44,7 +44,7 @@ So when you ask "what did we decide about X", the system finds the decision whet
 A daily cleanup job removes notes whose decay has fallen below a threshold. The note is soft-deleted, so `restore_note` can bring it back, and its search chunks are deleted. A note that never decays is never cleaned up. The half-lives, the threshold, and the schedule are all configurable.
 
 ### Dream Processing
-Dream processing is an optional nightly process that runs at 4 AM UTC. Your agent reviews the day's conversations and distills what it learned into long-term memory. It also maintains a living **soul document** that captures your preferences, patterns, and communication style. The agent reads the soul document at the start of every session.
+Dream processing is an optional nightly process. Your agent reviews the day's conversations and distills what it learned into long-term memory. It also maintains a living **soul document** that captures your preferences, patterns, and communication style. The agent reads the soul document at the start of every session.
 
 Pick a style at signup, or later in the dashboard:
 
