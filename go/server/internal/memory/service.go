@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
@@ -40,6 +42,9 @@ type IngestResult struct {
 	ChunksCreated int    `json:"chunks_created"`
 	SourceFile    string `json:"source_file,omitempty"`
 	Namespace     string `json:"namespace,omitempty"`
+	// Skipped is an IngestDocument whose note was deleted, or changed, by
+	// the time its chunks were to be written; nothing was written.
+	Skipped bool `json:"-"`
 }
 
 // Ingest replaces a document's chunks: it chunks the content, embeds every
@@ -47,6 +52,26 @@ type IngestResult struct {
 // transaction. Conversation logs are chunked by message window, everything
 // else by heading.
 func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content string) (IngestResult, error) {
+	return s.ingest(ctx, namespace, sourceFile, content, 0)
+}
+
+// IngestDocument is Ingest for the note in documents row documentID, as the
+// notes service runs it in the background after a save or an edit. The
+// background job can run after a later delete, move or edit of the note, so
+// the transaction that writes the chunks first locks the row and checks it
+// is still live and still holds content. If not, it writes nothing (the
+// result is Skipped): a deleted note gets no chunks back, and a newer edit
+// has its own re-index on the way. A note that moved meanwhile gets its
+// chunks at its current slug. The check must sit in the writing
+// transaction; a check before the (slow) embedding call would leave the
+// window open.
+func (s *Service) IngestDocument(ctx context.Context, documentID int, namespace, slug, content string) (IngestResult, error) {
+	return s.ingest(ctx, namespace, slug, content, documentID)
+}
+
+// ingest is Ingest, guarded by the documents row documentID when that is
+// not 0.
+func (s *Service) ingest(ctx context.Context, namespace, sourceFile, content string, documentID int) (IngestResult, error) {
 	// Context documents (context/soul) go into sessions whole; they are not
 	// searched.
 	if strings.HasPrefix(sourceFile, "context/") {
@@ -93,6 +118,23 @@ func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content str
 		return IngestResult{}, err
 	}
 	defer tx.Rollback(ctx)
+	if documentID != 0 {
+		// FOR UPDATE holds the row until commit: a delete, move or edit of
+		// the note waits for these chunks to land, and then does its own
+		// chunk work after them. Under READ COMMITTED the row is re-read
+		// once a concurrent writer commits, so the check sees its result.
+		err := tx.QueryRow(ctx, `
+            SELECT namespace, slug FROM documents
+            WHERE id = $1 AND deleted_at IS NULL AND content = $2
+            FOR UPDATE
+        `, documentID, content).Scan(&namespace, &sourceFile)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return IngestResult{Skipped: true}, nil
+		}
+		if err != nil {
+			return IngestResult{}, err
+		}
+	}
 	// Two ingests of one file at once would both run their DELETE before
 	// either inserts, and both versions' chunks would stay. The lock makes
 	// the second wait for the first to commit; its DELETE is a later

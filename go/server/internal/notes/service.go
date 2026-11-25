@@ -385,9 +385,9 @@ func (s *Service) Save(ctx context.Context, in SaveInput) (SavedNote, error) {
 		return SavedNote{}, err
 	}
 
-	namespace, content := in.Namespace, in.Content
+	namespace, content, documentID := in.Namespace, in.Content, doc.ID
 	s.background("AUTO_INDEX_FAILED", namespace, slug, func(ctx context.Context) error {
-		_, err := s.Memory.Ingest(ctx, namespace, slug, content)
+		_, err := s.Memory.IngestDocument(ctx, documentID, namespace, slug, content)
 		return err
 	})
 	s.broadcast(namespace, slug, "saved")
@@ -860,9 +860,9 @@ func (s *Service) Edit(ctx context.Context, in EditInput) (Edited, error) {
 		if note.CreatedBy, err = s.createdByName(ctx, note.CreatedByActorID); err != nil {
 			return Edited{}, err
 		}
-		namespace, slug := in.Namespace, in.Slug
+		namespace, slug, documentID := in.Namespace, in.Slug, note.ID
 		s.background("REINDEX_FAILED", namespace, slug, func(ctx context.Context) error {
-			_, err := s.Memory.Ingest(ctx, namespace, slug, updated)
+			_, err := s.Memory.IngestDocument(ctx, documentID, namespace, slug, updated)
 			return err
 		})
 		s.broadcast(namespace, slug, "edited")
@@ -923,13 +923,25 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 		return nil, err
 	}
 
+	// The note and its chunks move in one transaction. As two writes, a
+	// second move of the note could run between them, find no chunks at
+	// the middle slug, and the first move would then leave the chunks
+	// there. In one transaction the UPDATE's row lock makes the second move
+	// wait until both writes commit. Rollback after Commit is a no-op; the
+	// uncancelled context lets it run if ctx is cancelled mid-move.
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+
 	// Only the live row (sourceID). Soft-deleted copies stay at the old slug
 	// as its restore points; moving them too made the RETURNING row (the
 	// note this answers with) whichever copy came back first. The row must
 	// still be live and still at the source: a delete or move that ran since
 	// the SELECT above leaves no row, and the move stops before the chunks
 	// and the usage counters move.
-	rows, err := s.DB.Query(ctx, `
+	rows, err := tx.Query(ctx, `
         UPDATE documents
         SET slug = $1, namespace = $2, updated_at = NOW(), kind = $4
         WHERE id = $3 AND deleted_at IS NULL AND namespace = $5 AND LOWER(slug) = LOWER($6)
@@ -945,9 +957,12 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 	if !found {
 		return nil, notFound(in.Slug)
 	}
-	if _, err := s.DB.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		"UPDATE memory_chunks SET source_file = $1, namespace = $2 WHERE namespace = $3 AND LOWER(source_file) = LOWER($4)",
 		in.NewSlug, target, in.Namespace, in.Slug); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	if target != in.Namespace {
