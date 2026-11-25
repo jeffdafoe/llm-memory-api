@@ -19,6 +19,9 @@
     src: logrotate.j2
     dest: /etc/logrotate.d/llm-memory-api
     mode: "0644"
+    # Debug mode checks the syntax and rotates nothing, so a bad file never
+    # replaces the live one.
+    validate: "/usr/sbin/logrotate -d -s /dev/null %s"
 
 - name: Create deployment directory
   file:

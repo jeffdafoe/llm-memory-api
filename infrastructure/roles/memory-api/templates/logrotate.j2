@@ -1,9 +1,22 @@
+# Managed by Ansible (roles/memory-api/templates/logrotate.j2).
+# The privacy policy (/privacy) states this period ("Web server and system
+# logs ... 30 days"); change both together. activity.log can hold IP
+# addresses and the names in an account-deletion record.
+#
+# "ifempty" rotates every log every day, even a quiet one, so its old files
+# keep moving down the chain. "maxage 30" deletes rotated files older than
+# 30 days each time their log rotates, which also clears the files kept under
+# the old weekly / rotate 12 rule at the first rotation after the deploy.
+# The server opens activity.log on every write, so no postrotate signal is
+# needed. The cron logs (db-cleanup, pg-backup, staleness-check) follow the
+# same rule.
 /var/log/llm-memory-api/*.log {
-    weekly
+    daily
     missingok
-    rotate 12
+    rotate 30
+    maxage 30
     compress
     delaycompress
-    notifempty
+    ifempty
     create 644 {{ app_user }} {{ app_user }}
 }
