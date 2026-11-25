@@ -16,14 +16,16 @@ import (
 )
 
 // pausingDB passes every call through, but the first statement containing
-// pauseOn waits until release is closed, after closing reached. It wraps
-// transactions too, so the pause works whether the code under test runs the
-// statement on the pool or inside a transaction.
+// pauseOn waits until release is closed, after closing reached. finished
+// closes once that statement has run. It wraps transactions too, so the
+// pause works whether the code under test runs the statement on the pool or
+// inside a transaction.
 type pausingDB struct {
 	db.DB
 	pauseOn  string
 	reached  chan struct{}
 	release  chan struct{}
+	finished chan struct{}
 	pausedAt sync.Once
 	released sync.Once
 }
@@ -35,20 +37,26 @@ func (p *pausingDB) Release() {
 }
 
 func newPausingDB(inner db.DB, pauseOn string) *pausingDB {
-	return &pausingDB{DB: inner, pauseOn: pauseOn, reached: make(chan struct{}), release: make(chan struct{})}
+	return &pausingDB{DB: inner, pauseOn: pauseOn, reached: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{})}
 }
 
-func (p *pausingDB) pause(sql string) {
+// pause holds the first statement containing pauseOn, and reports whether
+// this call was that statement.
+func (p *pausingDB) pause(sql string) (paused bool) {
 	if strings.Contains(sql, p.pauseOn) {
 		p.pausedAt.Do(func() {
+			paused = true
 			close(p.reached)
 			<-p.release
 		})
 	}
+	return paused
 }
 
 func (p *pausingDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	p.pause(sql)
+	if p.pause(sql) {
+		defer close(p.finished)
+	}
 	return p.DB.Exec(ctx, sql, args...)
 }
 
@@ -66,7 +74,9 @@ type pausingTx struct {
 }
 
 func (t pausingTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	t.p.pause(sql)
+	if t.p.pause(sql) {
+		defer close(t.p.finished)
+	}
 	return t.Tx.Exec(ctx, sql, args...)
 }
 
@@ -80,7 +90,8 @@ func waitClosed(t *testing.T, ch <-chan struct{}, what string) {
 }
 
 // waitDoneOrBlocked returns once done closes or some session in the scratch
-// database waits on a lock.
+// database waits on a lock. The concurrent operation either got through or
+// is held behind the paused one.
 func waitDoneOrBlocked(t *testing.T, pool *pgxpool.Pool, done <-chan struct{}) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -100,7 +111,7 @@ func waitDoneOrBlocked(t *testing.T, pool *pgxpool.Pool, done <-chan struct{}) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("the second move neither finished nor waited")
+	t.Fatal("the concurrent operation neither finished nor waited")
 }
 
 func chunkSlugs(t *testing.T, pool *pgxpool.Pool) []string {

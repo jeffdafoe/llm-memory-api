@@ -245,13 +245,16 @@ func expectRead(mock pgxmock.PgxPoolIface, slug string, found bool, title *strin
 }
 
 // expectDelete is a conditional delete: "ok" deletes, "changed" finds the
-// note rewritten (409), "gone" finds no live note (404).
+// note rewritten (409), "gone" finds no live note (404). The soft delete and
+// the chunk delete are one transaction.
 func expectDelete(mock pgxmock.PgxPoolIface, slug, exact, outcome string) {
+	mock.ExpectBegin()
 	q := mock.ExpectQuery(regexp.QuoteMeta("SET deleted_at = NOW()")).WithArgs("agent-a", slug, exact)
 	if outcome == "ok" {
 		q.WillReturnRows(pgxmock.NewRows([]string{"id", "content_length"}).AddRow(5, intPtr(3)))
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM memory_chunks")).WithArgs("agent-a", slug).
 			WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectCommit()
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO namespace_usage")).WithArgs("agent-a", -1, -3).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		return
@@ -263,6 +266,7 @@ func expectDelete(mock pgxmock.PgxPoolIface, slug, exact, outcome string) {
 	} else {
 		live.WillReturnRows(pgxmock.NewRows([]string{"?column?"}))
 	}
+	mock.ExpectRollback()
 }
 
 func intPtr(n int) *int { return &n }
