@@ -28,7 +28,7 @@ func hasNoteAccess(ctx context.Context, conn db.DB, namespace, slug string, acto
 	var one int
 	err := conn.QueryRow(ctx, `SELECT 1 FROM note_permissions
          WHERE owner_namespace = $1
-           AND (slug_pattern = $2 OR $2 LIKE slug_pattern || '%')
+           AND `+permissions.ShareCovers("slug_pattern", "$2")+`
            AND (grantee_actor_id = $3 OR grantee_actor_id IS NULL)
            AND revoked_at IS NULL
            AND `+column+` = true
@@ -237,7 +237,7 @@ func (rt *ContentRoutes) sharesDocuments(w http.ResponseWriter, r *http.Request)
                 np.can_read, np.can_write, np.can_delete
          FROM note_permissions np
          JOIN documents d ON d.namespace = np.owner_namespace
-           AND (np.slug_pattern = d.slug OR (np.slug_pattern LIKE '%/' AND d.slug LIKE np.slug_pattern || '%'))
+           AND `+permissions.ShareCovers("np.slug_pattern", "d.slug")+`
          WHERE (np.grantee_actor_id = $1 OR np.grantee_actor_id IS NULL)
            AND np.revoked_at IS NULL AND np.can_read = true
            AND d.deleted_at IS NULL

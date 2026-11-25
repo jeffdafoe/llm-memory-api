@@ -35,7 +35,7 @@ CREATE TABLE documents (
 	metadata jsonb,
 	extension text
 );
-CREATE UNIQUE INDEX documents_namespace_slug_active_key ON documents (namespace, slug) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX documents_namespace_lower_slug_active_key ON documents (namespace, LOWER(slug)) WHERE deleted_at IS NULL;
 CREATE TABLE namespace_usage (
 	namespace text PRIMARY KEY,
 	note_count integer NOT NULL DEFAULT 0,

@@ -3,16 +3,20 @@ package notes
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 )
 
 // PrefixConflict is a live note at a destination slug of a prefix move.
+// source is the slug of the note that would move onto it, and overwrite
+// whether the caller named the destination in OverwriteSlugs; neither is
+// part of the response.
 type PrefixConflict struct {
-	Slug  string  `json:"slug"`
-	Title *string `json:"title"`
+	Slug      string  `json:"slug"`
+	Title     *string `json:"title"`
+	source    string
+	overwrite bool
 }
 
 // PrefixPreview is a dry run of a prefix move.
@@ -47,7 +51,8 @@ func (s *Service) PreviewMovePrefix(ctx context.Context, in MovePrefixInput) (Pr
 
 // MovePrefix rewrites OldPrefix to NewPrefix on every live note under it in
 // the namespace, with its chunks and sync mappings, in one transaction (the
-// three must move together). A destination slug that already holds a live
+// three must move together). The chunks and mappings take the note's exact
+// new slug. A destination slug that already holds a live
 // note is soft-deleted first when it is in OverwriteSlugs; otherwise the
 // source note that collides with it stays where it is.
 func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMoved, error) {
@@ -56,24 +61,18 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
 		return PrefixMoved{}, err
 	}
 
-	overwrite := map[string]bool{}
-	for _, slug := range in.OverwriteSlugs {
-		overwrite[slug] = true
-	}
 	var toSkip, toOverwrite []PrefixConflict
 	for _, c := range conflicts {
-		if overwrite[c.Slug] {
+		if c.overwrite {
 			toOverwrite = append(toOverwrite, c)
 		} else {
 			toSkip = append(toSkip, c)
 		}
 	}
-	// Each skipped conflict's source slug, which stays put. A conflict's slug
-	// equals NewPrefix plus the rest of its source slug, so cutting NewPrefix
-	// off is Node's substring(newPrefix.length).
+	// Each skipped conflict's source slug, which stays put.
 	skipSlugs := make([]string, len(toSkip))
 	for i, c := range toSkip {
-		skipSlugs[i] = in.OldPrefix + strings.TrimPrefix(c.Slug, in.NewPrefix)
+		skipSlugs[i] = c.source
 	}
 	oldLike := memory.EscapeLikePattern(in.OldPrefix)
 
@@ -96,92 +95,125 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
 		}
 		if _, err := tx.Exec(ctx, `
                 DELETE FROM memory_chunks
-                WHERE namespace = $1 AND source_file = ANY($2)
+                WHERE namespace = $1
+                  AND LOWER(source_file) IN (SELECT LOWER(t) FROM unnest($2::text[]) t)
             `, in.Namespace, targets); err != nil {
 			return PrefixMoved{}, err
 		}
 	}
 
-	var moved int64
-	if len(skipSlugs) > 0 {
-		tag, err := tx.Exec(ctx, `
-                UPDATE documents
-                SET slug = $3 || substring(slug FROM length($2) + 1), updated_at = NOW()
-                WHERE namespace = $1 AND slug LIKE $4 || '%' AND deleted_at IS NULL
-                  AND slug != ALL($5)
-                RETURNING id
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs)
-		if err != nil {
+	// Lock the notes that move and read their slugs. FOR UPDATE waits for a
+	// concurrent rename or delete of one of them to commit, then re-reads the
+	// row and re-checks the WHERE, so the slugs are current, and they stay
+	// so until this transaction ends. Each destination is computed from the
+	// locked slug. skipSlugs (possibly empty: != ALL of an empty array is
+	// true) are the skipped conflicts' sources.
+	rows, err := tx.Query(ctx, `
+            SELECT id, slug, $3 || substring(slug FROM length($2) + 1)
+            FROM documents
+            WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($4) || '%' AND deleted_at IS NULL
+              AND slug != ALL($5)
+            FOR UPDATE
+        `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs)
+	if err != nil {
+		return PrefixMoved{}, err
+	}
+	ids, oldSlugs, newSlugs := []int{}, []string{}, []string{}
+	for rows.Next() {
+		var id int
+		var oldSlug, newSlug string
+		if err := rows.Scan(&id, &oldSlug, &newSlug); err != nil {
+			rows.Close()
 			return PrefixMoved{}, err
 		}
-		moved = tag.RowsAffected()
-		if _, err := tx.Exec(ctx, `
-                UPDATE memory_chunks
-                SET source_file = $3 || substring(source_file FROM length($2) + 1)
-                WHERE namespace = $1 AND source_file LIKE $4 || '%'
-                  AND source_file != ALL($5)
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs); err != nil {
-			return PrefixMoved{}, err
-		}
-	} else {
-		tag, err := tx.Exec(ctx, `
-                UPDATE documents
-                SET slug = $3 || substring(slug FROM length($2) + 1), updated_at = NOW()
-                WHERE namespace = $1 AND slug LIKE $4 || '%' AND deleted_at IS NULL
-                RETURNING id
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike)
-		if err != nil {
-			return PrefixMoved{}, err
-		}
-		moved = tag.RowsAffected()
-		if _, err := tx.Exec(ctx, `
-                UPDATE memory_chunks
-                SET source_file = $3 || substring(source_file FROM length($2) + 1)
-                WHERE namespace = $1 AND source_file LIKE $4 || '%'
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike); err != nil {
-			return PrefixMoved{}, err
-		}
+		ids = append(ids, id)
+		oldSlugs = append(oldSlugs, oldSlug)
+		newSlugs = append(newSlugs, newSlug)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return PrefixMoved{}, err
 	}
 
-	// Sync mappings follow the notes, except a skipped note's (its document
-	// stays at the old slug) and one whose actor already maps the
-	// destination slug (note_synchronization is unique per actor, namespace
-	// and slug; that row stays, and the next sync drops the old file).
-	if len(skipSlugs) > 0 {
-		if _, err := tx.Exec(ctx, `
-                UPDATE note_synchronization src
-                SET slug = $3 || substring(src.slug FROM length($2) + 1)
-                WHERE src.namespace = $1 AND src.slug LIKE $4 || '%'
-                  AND src.slug != ALL($5)
+	// The chunks move by id, with every destination computed in this one
+	// statement, before any note's slug changes. A moved note's chunks
+	// (matched without case) take its exact new slug; chunks under the old
+	// prefix with no live note (raw ingests) move by the prefix. Decided
+	// after the notes moved, a raw chunk could pass for a moved note's chunk
+	// at that note's new slug, or the other way round. A skipped note's
+	// chunks have their live note and stay. unnest of two arrays pairs them
+	// up row by row: (old_slug, new_slug).
+	if _, err := tx.Exec(ctx, `
+            UPDATE memory_chunks mc
+            SET source_file = x.dest
+            FROM (
+                SELECT c.id, m.new_slug AS dest
+                FROM memory_chunks c
+                JOIN unnest($5::text[], $6::text[]) AS m(old_slug, new_slug)
+                  ON LOWER(c.source_file) = LOWER(m.old_slug)
+                WHERE c.namespace = $1
+                UNION ALL
+                SELECT c.id, $3 || substring(c.source_file FROM length($2) + 1)
+                FROM memory_chunks c
+                WHERE c.namespace = $1 AND LOWER(c.source_file) LIKE LOWER($4) || '%'
                   AND NOT EXISTS (
-                      SELECT 1 FROM note_synchronization dst
-                      WHERE dst.actor_id = src.actor_id
-                        AND dst.namespace = src.namespace
-                        AND dst.slug = $3 || substring(src.slug FROM length($2) + 1)
+                      SELECT 1 FROM documents d
+                      WHERE d.namespace = c.namespace
+                        AND LOWER(d.slug) = LOWER(c.source_file)
+                        AND d.deleted_at IS NULL
                   )
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, skipSlugs); err != nil {
-			return PrefixMoved{}, err
-		}
-	} else {
-		if _, err := tx.Exec(ctx, `
-                UPDATE note_synchronization src
-                SET slug = $3 || substring(src.slug FROM length($2) + 1)
-                WHERE src.namespace = $1 AND src.slug LIKE $4 || '%'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM note_synchronization dst
-                      WHERE dst.actor_id = src.actor_id
-                        AND dst.namespace = src.namespace
-                        AND dst.slug = $3 || substring(src.slug FROM length($2) + 1)
-                  )
-            `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike); err != nil {
-			return PrefixMoved{}, err
-		}
+            ) x
+            WHERE mc.id = x.id
+        `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, oldSlugs, newSlugs); err != nil {
+		return PrefixMoved{}, err
+	}
+
+	// The notes move by id, to the destinations read under the lock.
+	if _, err := tx.Exec(ctx, `
+            UPDATE documents d
+            SET slug = m.new_slug, updated_at = NOW()
+            FROM unnest($1::int[], $2::text[]) AS m(id, new_slug)
+            WHERE d.id = m.id
+        `, ids, newSlugs); err != nil {
+		return PrefixMoved{}, err
+	}
+
+	// Sync mappings follow the moved notes to their exact new slug.
+	// note_synchronization is unique per actor, namespace and slug by exact
+	// case, so per actor at most one mapping of a note moves: the one spelled
+	// like the note, else the oldest (lowest id). The others, and a mapping
+	// whose actor already maps the new slug, stay; the next sync drops the
+	// old file.
+	if _, err := tx.Exec(ctx, `
+            UPDATE note_synchronization src
+            SET slug = m.new_slug
+            FROM unnest($2::text[], $3::text[]) AS m(old_slug, new_slug)
+            WHERE src.namespace = $1 AND LOWER(src.slug) = LOWER(m.old_slug)
+              AND NOT EXISTS (
+                  SELECT 1 FROM note_synchronization twin
+                  WHERE twin.actor_id = src.actor_id
+                    AND twin.namespace = src.namespace
+                    AND LOWER(twin.slug) = LOWER(src.slug)
+                    AND twin.id <> src.id
+                    AND (
+                        (twin.slug = m.old_slug AND src.slug <> m.old_slug)
+                        OR ((twin.slug = m.old_slug) = (src.slug = m.old_slug) AND twin.id < src.id)
+                    )
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM note_synchronization dst
+                  WHERE dst.actor_id = src.actor_id
+                    AND dst.namespace = src.namespace
+                    AND dst.slug = m.new_slug
+              )
+        `, in.Namespace, oldSlugs, newSlugs); err != nil {
+		return PrefixMoved{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return PrefixMoved{}, err
 	}
-	return PrefixMoved{Moved: int(moved), Skipped: len(toSkip), Overwritten: len(toOverwrite)}, nil
+	return PrefixMoved{Moved: len(newSlugs), Skipped: len(toSkip), Overwritten: len(toOverwrite)}, nil
 }
 
 // prefixScan validates the prefixes, then counts the live notes under the
@@ -197,31 +229,54 @@ func (s *Service) prefixScan(ctx context.Context, in MovePrefixInput) (int, []Pr
 	}
 	// A move into itself or under itself would rewrite a moved note again
 	// (it is still in the source range). A move to the root ("") never nests.
-	if in.NewPrefix != "" && strings.HasPrefix(in.NewPrefix, in.OldPrefix) {
-		return 0, nil, apierr.New(http.StatusBadRequest,
-			`Cannot move prefix "`+in.OldPrefix+`" to "`+in.NewPrefix+`": the destination is the same as, or nested under, the source.`)
+	// Prefixes compare without case, as slugs do; a rename that only changes
+	// the prefix's case ("notes/" to "Notes/") is allowed. Postgres does the
+	// lowercasing, so the guard follows the same collation as the queries
+	// that pick the notes (Go's strings.ToLower can disagree, e.g. with a
+	// Turkish collation).
+	if in.NewPrefix != "" {
+		var sameIgnoringCase, nested bool
+		if err := s.DB.QueryRow(ctx,
+			"SELECT LOWER($1) = LOWER($2), starts_with(LOWER($2), LOWER($1))",
+			in.OldPrefix, in.NewPrefix).Scan(&sameIgnoringCase, &nested); err != nil {
+			return 0, nil, err
+		}
+		caseOnly := sameIgnoringCase && in.NewPrefix != in.OldPrefix
+		if nested && !caseOnly {
+			return 0, nil, apierr.New(http.StatusBadRequest,
+				`Cannot move prefix "`+in.OldPrefix+`" to "`+in.NewPrefix+`": the destination is the same as, or nested under, the source.`)
+		}
 	}
 	oldLike := memory.EscapeLikePattern(in.OldPrefix)
 
 	tag, err := s.DB.Exec(ctx, `
         SELECT slug, title FROM documents
-        WHERE namespace = $1 AND slug LIKE $2 || '%' AND deleted_at IS NULL
+        WHERE namespace = $1 AND LOWER(slug) LIKE LOWER($2) || '%' AND deleted_at IS NULL
     `, in.Namespace, oldLike)
 	if err != nil {
 		return 0, nil, err
 	}
 
+	// overwrite is whether the caller named the destination in
+	// OverwriteSlugs, matched without case by the same LOWER as the slugs.
+	overwrites := in.OverwriteSlugs
+	if overwrites == nil {
+		overwrites = []string{}
+	}
 	rows, err := s.DB.Query(ctx, `
-        SELECT d2.slug, d2.title FROM documents d1
+        SELECT d2.slug, d2.title, d1.slug,
+               LOWER(d2.slug) IN (SELECT LOWER(t) FROM unnest($5::text[]) t) AS overwrite
+        FROM documents d1
         JOIN documents d2
           ON d2.namespace = d1.namespace
-          AND d2.slug = $3 || substring(d1.slug FROM length($2) + 1)
+          AND LOWER(d2.slug) = LOWER($3 || substring(d1.slug FROM length($2) + 1))
           AND d2.deleted_at IS NULL
+          AND d2.id <> d1.id
         WHERE d1.namespace = $1
-          AND d1.slug LIKE $4 || '%'
+          AND LOWER(d1.slug) LIKE LOWER($4) || '%'
           AND d1.deleted_at IS NULL
         ORDER BY d2.slug
-    `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike)
+    `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, overwrites)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -229,7 +284,7 @@ func (s *Service) prefixScan(ctx context.Context, in MovePrefixInput) (int, []Pr
 	conflicts := []PrefixConflict{}
 	for rows.Next() {
 		var c PrefixConflict
-		if err := rows.Scan(&c.Slug, &c.Title); err != nil {
+		if err := rows.Scan(&c.Slug, &c.Title, &c.source, &c.overwrite); err != nil {
 			return 0, nil, err
 		}
 		conflicts = append(conflicts, c)

@@ -15,6 +15,18 @@ type NoteShares struct {
 	DB db.DB
 }
 
+// ShareCovers is the SQL condition for a share pattern covering a slug,
+// given the two column or parameter expressions: the pattern is the note
+// itself, or a folder (a pattern ending in "/") the slug lies under. Both
+// compare without case, as note lookups do (one live note per lowercased
+// slug); with exact case a grantee of "public/" could still read a note
+// stored as "PUBLIC/x" by asking for "public/x". starts_with, not LIKE, so
+// a "_" or "%" in a pattern is a plain character, not a wildcard, and a
+// one-note share does not cover the slugs that merely start with it.
+func ShareCovers(pattern, slug string) string {
+	return "(LOWER(" + pattern + ") = LOWER(" + slug + ") OR (" + pattern + " LIKE '%/' AND starts_with(LOWER(" + slug + "), LOWER(" + pattern + "))))"
+}
+
 // HasNoteAccess reports whether the actor holds op on the note through a
 // live share of it or of a prefix of its slug. A nil slug (a tool call with
 // none) is bound as NULL and matches nothing, as node-postgres bound
@@ -23,7 +35,7 @@ func (n *NoteShares) HasNoteAccess(ctx context.Context, ownerNamespace string, s
 	column := "can_" + string(op)
 	rows, err := n.DB.Query(ctx, `SELECT 1 FROM note_permissions
          WHERE owner_namespace = $1
-           AND (slug_pattern = $2 OR $2 LIKE slug_pattern || '%')
+           AND `+ShareCovers("slug_pattern", "$2")+`
            AND (grantee_actor_id = $3 OR grantee_actor_id IS NULL)
            AND revoked_at IS NULL
            AND `+column+` = true
@@ -89,7 +101,7 @@ func (n *NoteShares) ListSharedDocuments(ctx context.Context, actorID int) ([]Sh
                 np.can_read, np.can_write, np.can_delete
          FROM note_permissions np
          JOIN documents d ON d.namespace = np.owner_namespace
-           AND (np.slug_pattern = d.slug OR (np.slug_pattern LIKE '%/' AND d.slug LIKE np.slug_pattern || '%'))
+           AND `+ShareCovers("np.slug_pattern", "d.slug")+`
          WHERE (np.grantee_actor_id = $1 OR np.grantee_actor_id IS NULL)
            AND np.revoked_at IS NULL AND np.can_read = true
            AND d.deleted_at IS NULL

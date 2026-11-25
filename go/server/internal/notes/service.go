@@ -740,6 +740,13 @@ func (s *Service) Restore(ctx context.Context, namespace, slug string) (Restored
         RETURNING d.id, d.namespace, d.slug, d.title
     `, id).Scan(&r.ID, &r.Namespace, &r.Slug, &r.Title)
 	if err != nil {
+		// The one-live-note-per-slug index ignores case: a live note at
+		// this slug in any case blocks the restore.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Restored{}, apierr.New(http.StatusConflict,
+				"A live note already exists at slug: "+slug+". Move or delete it before restoring.")
+		}
 		return Restored{}, err
 	}
 	s.updateUsage(namespace, 1, bytes)
@@ -928,10 +935,12 @@ func (s *Service) Move(ctx context.Context, in MoveInput) (any, error) {
 		return nil, err
 	}
 
+	// The note itself is not a conflict, so a rename that only changes case
+	// ("notes/a" to "Notes/A") goes through.
 	var conflict int
 	err = s.DB.QueryRow(ctx,
-		"SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL",
-		target, in.NewSlug).Scan(&conflict)
+		"SELECT id FROM documents WHERE namespace = $1 AND LOWER(slug) = LOWER($2) AND deleted_at IS NULL AND id <> $3",
+		target, in.NewSlug, sourceID).Scan(&conflict)
 	if err == nil {
 		return nil, apierr.New(http.StatusConflict, "Target slug already exists: "+target+"/"+in.NewSlug)
 	}
