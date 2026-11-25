@@ -300,6 +300,23 @@ jobs:
       - name: No runtime-compiled templates
         run: node node/api/scripts/check-admin-templates.js
 
+  # The cron scripts' config read (read_days in db-cleanup.sh and
+  # pg-backup.sh, LLM-1021): a stub psql checks parsing, the fallback to 7,
+  # and that a stalled psql (even one that ignores SIGTERM) cannot hold up
+  # the job. Plain bash, no network, read-only.
+  script-tests:
+    name: Script Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: read_days
+        run: bash node/api/scripts/test-read-days.sh
+
   build-admin-ui:
     name: Build Admin UI
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
