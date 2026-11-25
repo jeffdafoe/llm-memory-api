@@ -11,8 +11,15 @@
 //     emptied, metadata.purged_at set) a retention window later.
 //  4. Sim chat retention hard-deletes salem chat older than
 //     sim_chat_retention_days.
+//  5. Access request retention hard-deletes the access requests and unused
+//     invites of people who never registered (LLM-1024, GDPR storage
+//     limitation): access_request_retention_days after an invite expired
+//     unused or a request was decided, pending_access_request_retention_days
+//     after a request nobody reviewed.
+//  6. Error log retention hard-deletes error_log and system_errors rows
+//     older than error_log_retention_days.
 //
-// The four run in that order on cleanup_cron_schedule, each on its own, so
+// The six run in that order on cleanup_cron_schedule, each on its own, so
 // one failing does not stop the others.
 package cleanup
 
@@ -21,6 +28,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -385,6 +394,225 @@ func (j *Job) PurgeSimChat(ctx context.Context) (logger.Fields, int64, error) {
 	return result, purged, nil
 }
 
+// wholeDays matches a whole number of days, optionally negative.
+var wholeDays = regexp.MustCompile(`^-?[0-9]{1,6}$`)
+
+// retentionDays reads one of the LLM-1024 retention keys. These keys drive
+// hard deletes, so unlike the older keys (which keep Node's parseInt, where
+// "1e3" reads as 1) the whole trimmed value must be a whole number: a typo
+// is an error, logged by Pass, and never a shorter window. A blank value or
+// 0 or less turns the rule off (on == false). A missing key is an error, as
+// everywhere in config.
+func (j *Job) retentionDays(key string) (days float64, on bool, err error) {
+	raw, err := j.Config.Get(key)
+	if err != nil {
+		return 0, false, err
+	}
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return 0, false, nil
+	}
+	if !wholeDays.MatchString(text) {
+		return 0, false, fmt.Errorf("%s must be a whole number of days, got %q", key, raw)
+	}
+	n, err := strconv.Atoi(text)
+	if err != nil {
+		return 0, false, err
+	}
+	if n <= 0 {
+		return 0, false, nil
+	}
+	return float64(n), true, nil
+}
+
+// expiredInvitesSQL deletes the invites made for an access request that
+// expired unused more than $1 days ago, and returns the requests they were
+// made for. An invite with used_by or used_at set belongs to a registered
+// account and is never touched; one with no expires_at never expires, so it
+// never matches. Invites made by an admin with no access request behind them
+// hold no personal data and stay.
+const expiredInvitesSQL = `DELETE FROM invite_codes
+         WHERE access_request_id IS NOT NULL
+           AND used_by IS NULL AND used_at IS NULL
+           AND expires_at < NOW() - INTERVAL '1 day' * $1
+         RETURNING access_request_id`
+
+// invitedRequestsSQL deletes the requests whose expired invites
+// expiredInvitesSQL just deleted, so a request goes with its invite on the
+// invite's clock. A request another invite still points at stays (and the
+// foreign key would refuse it anyway).
+const invitedRequestsSQL = `DELETE FROM access_requests a
+         WHERE a.id = ANY($1::int[])
+           AND NOT EXISTS (SELECT 1 FROM invite_codes i WHERE i.access_request_id = a.id)`
+
+// decidedRequestsSQL deletes access requests that were approved or rejected
+// more than $1 days ago and that no invite points at. The NOT EXISTS is what
+// keeps a registered account's request (its used invite still points at it)
+// and a request whose invite has not expired yet; deleting either would also
+// break the invite_codes foreign key.
+const decidedRequestsSQL = `DELETE FROM access_requests a
+         WHERE a.status IN ('approved', 'rejected')
+           AND a.reviewed_at < NOW() - INTERVAL '1 day' * $1
+           AND NOT EXISTS (SELECT 1 FROM invite_codes i WHERE i.access_request_id = a.id)`
+
+// pendingRequestsSQL deletes access requests still pending $1 days after
+// they were made. status is what defines "not reviewed": the app sets
+// reviewed_at only together with a new status, so a pending row with
+// reviewed_at set can only come from a hand edit, and it goes too rather
+// than stay forever. Same NOT EXISTS guard as decidedRequestsSQL.
+const pendingRequestsSQL = `DELETE FROM access_requests a
+         WHERE a.status = 'pending'
+           AND a.created_at < NOW() - INTERVAL '1 day' * $1
+           AND NOT EXISTS (SELECT 1 FROM invite_codes i WHERE i.access_request_id = a.id)`
+
+// PurgeAccessRequests hard-deletes the signup records (email, usage text,
+// invite) of people who never registered: an invite that expired unused more
+// than access_request_retention_days ago together with its request, a decided
+// request with no invite access_request_retention_days after its review, and
+// an unreviewed request after pending_access_request_retention_days. Either
+// key at 0 or less turns its rules off. All of it is one transaction, and the
+// invites go first: a later statement in a transaction sees the earlier one's
+// deletes, so the request of a just-deleted invite is free to go. It returns
+// the result object and the total rows deleted.
+func (j *Job) PurgeAccessRequests(ctx context.Context) (logger.Fields, int64, error) {
+	decidedDays, decidedOn, err := j.retentionDays("access_request_retention_days")
+	if err != nil {
+		return nil, 0, err
+	}
+	pendingDays, pendingOn, err := j.retentionDays("pending_access_request_retention_days")
+	if err != nil {
+		return nil, 0, err
+	}
+	if !decidedOn && !pendingOn {
+		return logger.Fields{{Key: "invitesPurged", Value: 0}, {Key: "requestsPurged", Value: 0}}, 0, nil
+	}
+
+	tx, err := j.DB.Begin(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	// Rollback after Commit is a no-op; WithoutCancel lets the rollback run
+	// even when shutdown cancelled ctx, as retireStage does.
+	defer tx.Rollback(context.WithoutCancel(ctx))
+
+	var invites, requests int64
+	if decidedOn {
+		rows, err := tx.Query(ctx, expiredInvitesSQL, jsutil.Num(decidedDays))
+		if err != nil {
+			return nil, 0, err
+		}
+		var requestIDs []int64
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, 0, err
+			}
+			requestIDs = append(requestIDs, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, 0, err
+		}
+		invites = int64(len(requestIDs))
+		if len(requestIDs) > 0 {
+			tag, err := tx.Exec(ctx, invitedRequestsSQL, requestIDs)
+			if err != nil {
+				return nil, 0, err
+			}
+			requests += tag.RowsAffected()
+		}
+		tag, err := tx.Exec(ctx, decidedRequestsSQL, jsutil.Num(decidedDays))
+		if err != nil {
+			return nil, 0, err
+		}
+		requests += tag.RowsAffected()
+	}
+	if pendingOn {
+		tag, err := tx.Exec(ctx, pendingRequestsSQL, jsutil.Num(pendingDays))
+		if err != nil {
+			return nil, 0, err
+		}
+		requests += tag.RowsAffected()
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, 0, err
+	}
+
+	result := logger.Fields{{Key: "invitesPurged", Value: invites}, {Key: "requestsPurged", Value: requests}}
+	if decidedOn {
+		result = append(result, logger.Field{Key: "retentionDays", Value: jsNumber(decidedDays)})
+	}
+	if pendingOn {
+		result = append(result, logger.Field{Key: "pendingRetentionDays", Value: jsNumber(pendingDays)})
+	}
+	if invites > 0 || requests > 0 {
+		j.log("access-requests-purged", result)
+	}
+	return result, invites + requests, nil
+}
+
+// errorLogPurgeBatch is the rows one error log purge statement deletes, so
+// the first run on a table that was never purged does not hold one huge
+// delete open.
+const errorLogPurgeBatch = 5000
+
+// errorLogTables are the two error tables and the column each one dates its
+// rows by.
+var errorLogTables = []struct{ table, column string }{
+	{"error_log", "created_at"},
+	{"system_errors", "reported_at"},
+}
+
+// PurgeErrorLogs hard-deletes error_log and system_errors rows older than
+// error_log_retention_days (0 or less is off), in batches. Each batch is its
+// own statement, so a failure keeps what earlier batches deleted; the next
+// run deletes the rest. Nothing reads system_errors back (the server only
+// inserts into it), so its unresolved rows go too. It returns the result
+// object and the total rows deleted.
+func (j *Job) PurgeErrorLogs(ctx context.Context) (logger.Fields, int64, error) {
+	days, on, err := j.retentionDays("error_log_retention_days")
+	if err != nil {
+		return nil, 0, err
+	}
+	if !on {
+		return logger.Fields{{Key: "purged", Value: 0}}, 0, nil
+	}
+
+	result := logger.Fields{}
+	var total int64
+	for _, t := range errorLogTables {
+		// The table and column names are the constants above, never input,
+		// so building the statement with Sprintf is safe.
+		sql := fmt.Sprintf(`DELETE FROM %[1]s WHERE id IN (
+                 SELECT id FROM %[1]s
+                 WHERE %[2]s < NOW() - INTERVAL '1 day' * $1
+                 LIMIT $2)`, t.table, t.column)
+		var purged int64
+		for {
+			tag, err := j.DB.Exec(ctx, sql, jsutil.Num(days), errorLogPurgeBatch)
+			if err != nil {
+				// Earlier batches are already committed. Pass logs only the
+				// error, so say here what was deleted before it.
+				partial := append(result, logger.Field{Key: t.table, Value: purged})
+				j.log("error-logs-partial", append(partial, logger.Field{Key: "failedTable", Value: t.table}))
+				return nil, 0, err
+			}
+			purged += tag.RowsAffected()
+			if tag.RowsAffected() < errorLogPurgeBatch {
+				break
+			}
+		}
+		result = append(result, logger.Field{Key: t.table, Value: purged})
+		total += purged
+	}
+	result = append(result, logger.Field{Key: "retentionDays", Value: jsNumber(days)})
+	if total > 0 {
+		j.log("error-logs-purged", result)
+	}
+	return result, total, nil
+}
+
 // Windows are the two conversation retention windows, in days: from a
 // session's date to its soft delete, and from the soft delete to the
 // tombstone.
@@ -545,7 +773,7 @@ func (j *Job) retireStage(ctx context.Context, sql string, days float64, credit 
 	return len(retired), nil
 }
 
-// Pass is one scheduled run: the four tasks in order, each failure logged
+// Pass is one scheduled run: the six tasks in order, each failure logged
 // (and recorded in error_log) without stopping the others. A task that
 // shutdown cancelled ends the pass; the tasks after it do not start.
 func (j *Job) Pass(ctx context.Context, schedule string) {
@@ -582,6 +810,24 @@ func (j *Job) Pass(ctx context.Context, schedule string) {
 		j.fail("cron-sim-chat-error", err)
 	} else if purged > 0 {
 		j.log("cron-sim-chat-complete", logger.Fields{{Key: "result", Value: result}})
+	}
+	if ctx.Err() != nil {
+		return
+	}
+
+	if result, purged, err := j.PurgeAccessRequests(ctx); err != nil {
+		j.fail("cron-access-requests-error", err)
+	} else if purged > 0 {
+		j.log("cron-access-requests-complete", logger.Fields{{Key: "result", Value: result}})
+	}
+	if ctx.Err() != nil {
+		return
+	}
+
+	if result, purged, err := j.PurgeErrorLogs(ctx); err != nil {
+		j.fail("cron-error-logs-error", err)
+	} else if purged > 0 {
+		j.log("cron-error-logs-complete", logger.Fields{{Key: "result", Value: result}})
 	}
 }
 

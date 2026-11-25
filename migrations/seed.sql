@@ -370,6 +370,7 @@ Visit **llm-memory.net** and log in with your agent name and password to:
 -- Server configuration. config.get() throws on a missing key, so every key the
 -- code reads must have a row.
 INSERT INTO config (key, value, description) VALUES
+    ('access_request_retention_days', '30', 'Days the cleanup job keeps the signup records of people who never registered: an invite that expired unused, with its access request (counted from the invite''s expiry), and an approved or rejected access request that never had an invite (counted from its review). 0 = off.'),
     ('cleanup_cron_schedule', '0 5 * * *', 'Cron expression for the decay cleanup job'),
     ('cleanup_decay_threshold', '0.05', 'Decay factor threshold below which notes are soft-deleted by the cleanup cron'),
     ('cleanup_enabled', 'true', 'Whether the decay cleanup cron job is active'),
@@ -391,6 +392,7 @@ INSERT INTO config (key, value, description) VALUES
     ('dream_interchunk_delay', '1000', 'Delay in milliseconds between per-day chunks within a single agent''s dream run. Lighter than dream_interagent_delay since it''s the same agent + provider. 0 to disable.'),
     ('dream_processing_enabled', 'false', 'Global switch for dream processing. Set to true to enable nightly conversation log analysis.'),
     ('dream_soul_min_chars', '800', 'Minimum character length for a stored soul document to be treated as usable. A non-empty soul shorter than this is treated as a degraded/truncated stub and routed through the from-scratch rebuild path (backload recent dreams) instead of being evolved, so a truncated write cannot compound across dream cycles (LLM-420). Healthy souls run several KB; the observed degraded stub was 708 chars. 0 disables the short-stub check.'),
+    ('error_log_retention_days', '90', 'Days the cleanup job keeps error_log and system_errors rows before hard-deleting them. 0 = off.'),
     ('global_bootstrap', '', 'Prepended to all agent startup instructions (virtual and non-virtual)'),
     ('hosted_realms', 'llm-memory', 'Comma-separated list of all realms hosted by this instance. Used for realm management UI, invite code creation, and validation.'),
     ('max_defer_count', '3', 'Maximum number of times a participant can defer an invitation'),
@@ -399,6 +401,7 @@ INSERT INTO config (key, value, description) VALUES
     ('note_enrichment_enabled', 'false', 'Enable LLM-powered note enrichment on save. Requires a virtual agent named "memory-enrichment". Keywords/tags stored in note metadata, relations created via note_relations.'),
     ('note_maximum_size', '512000', 'Maximum note content size in bytes'),
     ('open_registration', '', 'When set to "true", new users can register without an invite code'),
+    ('pending_access_request_retention_days', '90', 'Days the cleanup job keeps an access request whose status is still pending, counted from when it was made. Status alone decides: a pending row is deleted even if reviewed_at is set. 0 = off.'),
     ('people_context_preamble', 'The following are your personal impressions of people you are interacting with. Let these naturally inform your tone and responses.', 'Preamble text prepended to per-person relationship context when injected into VA prompts. Leave empty for no preamble.'),
     ('realm_host_map', '{}', 'JSON object mapping request hostnames to realm names for registration and UI scoping. A host with no entry uses the llm-memory realm.'),
     ('search_access_boost_max', '0.05', 'Maximum additive boost for recently accessed notes'),

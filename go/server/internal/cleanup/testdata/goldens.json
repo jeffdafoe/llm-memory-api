@@ -15,7 +15,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "5",
     "conversation_retention_days": "30",
-    "sim_chat_retention_days": "14"
+    "sim_chat_retention_days": "14",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -383,7 +386,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -432,7 +438,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -481,7 +490,10 @@
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "abc",
     "conversation_retention_days": "-1",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -529,7 +541,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -577,7 +592,10 @@
     "search_decay_halflife_dream": "30",
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -636,7 +654,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -685,7 +706,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -735,7 +759,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "5",
     "conversation_retention_days": "30",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -850,7 +877,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -919,7 +949,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1138,7 +1171,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "5",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1210,7 +1246,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "30",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1272,7 +1311,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "14"
+    "sim_chat_retention_days": "14",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1362,7 +1404,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "14"
+    "sim_chat_retention_days": "14",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1476,7 +1521,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "14"
+    "sim_chat_retention_days": "14",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1556,7 +1604,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "14"
+    "sim_chat_retention_days": "14",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1620,7 +1671,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "14"
+    "sim_chat_retention_days": "14",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1692,7 +1746,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "14"
+    "sim_chat_retention_days": "14",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1794,7 +1851,10 @@
     "search_decay_halflife_episodic": "90",
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
-    "conversation_retention_days": ""
+    "conversation_retention_days": "",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -1854,7 +1914,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "0",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -1965,7 +2028,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2043,7 +2109,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2121,7 +2190,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2199,7 +2271,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2277,7 +2352,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2355,7 +2433,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2433,7 +2514,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2511,7 +2595,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2589,7 +2676,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2667,7 +2757,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2745,7 +2838,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2823,7 +2919,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2901,7 +3000,10 @@
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -2973,7 +3075,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3045,7 +3150,10 @@
     "search_decay_halflife_reflective": "   ",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3118,7 +3226,10 @@
     "search_decay_halflife_reflective": "-1",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3182,7 +3293,10 @@
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3256,7 +3370,10 @@
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3320,7 +3437,10 @@
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3394,7 +3514,10 @@
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3467,7 +3590,10 @@
     "search_decay_halflife_reflective": "-Infinity",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3531,7 +3657,10 @@
     "search_decay_halflife_reflective": "0",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3604,7 +3733,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "1e3",
     "conversation_retention_days": "1e21",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3706,7 +3838,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "99999999999999999999999",
     "conversation_retention_days": "-0",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3808,7 +3943,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": " 7days",
     "conversation_retention_days": " 7 ",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -3910,7 +4048,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0x1A",
     "conversation_retention_days": "0x10",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4012,7 +4153,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "-5",
     "conversation_retention_days": "30.5",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -4061,7 +4205,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "  12",
     "conversation_retention_days": "Infinity",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4139,7 +4286,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "3.9",
     "conversation_retention_days": "1e2",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4241,7 +4391,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "",
     "conversation_retention_days": "007",
-    "sim_chat_retention_days": "0"
+    "sim_chat_retention_days": "0",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4316,7 +4469,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "abc"
+    "sim_chat_retention_days": "abc",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -4365,7 +4521,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "-3"
+    "sim_chat_retention_days": "-3",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -4414,7 +4573,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": " 7days"
+    "sim_chat_retention_days": " 7days",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4504,7 +4666,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "1e3"
+    "sim_chat_retention_days": "1e3",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4594,7 +4759,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "0x10"
+    "sim_chat_retention_days": "0x10",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4684,7 +4852,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "3.9"
+    "sim_chat_retention_days": "3.9",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
@@ -4774,7 +4945,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": ""
+    "sim_chat_retention_days": "",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [],
    "unused": 0,
@@ -4823,7 +4997,10 @@
     "search_decay_halflife_reflective": "180",
     "va_call_log_retention_days": "0",
     "conversation_retention_days": "",
-    "sim_chat_retention_days": "99999999999999999999999"
+    "sim_chat_retention_days": "99999999999999999999999",
+    "access_request_retention_days": "0",
+    "pending_access_request_retention_days": "0",
+    "error_log_retention_days": "0"
    },
    "script": [
     {
