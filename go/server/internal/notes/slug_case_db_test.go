@@ -24,6 +24,7 @@ import (
 const slugCaseSchema = deletedCopiesSchema + `
 CREATE TABLE agent_configuration (actor_id integer, storage_quota bigint);
 CREATE TABLE note_synchronization (
+	id serial PRIMARY KEY,
 	actor_id integer NOT NULL,
 	namespace text NOT NULL,
 	slug text NOT NULL,
@@ -72,20 +73,49 @@ func chunkFiles(t *testing.T, pool *pgxpool.Pool, namespace string) []string {
 	return files
 }
 
-// waitChunkFiles waits for the background re-index to leave exactly want.
-func waitChunkFiles(t *testing.T, pool *pgxpool.Pool, namespace string, want []string) {
+// waitChunks waits for the background re-index to leave exactly the chunk
+// files want, all holding text. The text tells a finished re-index from the
+// chunks it replaces, which may already sit under the same file name.
+func waitChunks(t *testing.T, pool *pgxpool.Pool, namespace string, want []string, text string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		got := chunkFiles(t, pool, namespace)
-		if reflect.DeepEqual(got, want) {
+		var stale int
+		if err := pool.QueryRow(context.Background(),
+			"SELECT COUNT(*) FROM memory_chunks WHERE namespace = $1 AND chunk_text NOT LIKE '%' || $2 || '%'",
+			namespace, text).Scan(&stale); err != nil {
+			t.Fatal(err)
+		}
+		if reflect.DeepEqual(got, want) && stale == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("chunk files %v, want %v", got, want)
+			t.Fatalf("chunk files %v (%d without %q), want %v", got, stale, text, want)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// syncSlugs is the actor's sync mappings in the namespace, in byte order.
+func syncSlugs(t *testing.T, pool *pgxpool.Pool, actorID int, namespace string) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(),
+		"SELECT slug FROM note_synchronization WHERE actor_id = $1 AND namespace = $2", actorID, namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	slugs := []string{}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		slugs = append(slugs, s)
+	}
+	sort.Strings(slugs)
+	return slugs
 }
 
 func wantStatus(t *testing.T, err error, status int) {
@@ -127,7 +157,7 @@ func TestUpsertAndEditInAnotherCaseIndexUnderTheStoredSlug(t *testing.T) {
 	if _, err := s.Save(ctx, SaveInput{Namespace: "ns", Slug: "notes/a", Title: "A", Content: "first"}); err != nil {
 		t.Fatal(err)
 	}
-	waitChunkFiles(t, pool, "ns", []string{"notes/a"})
+	waitChunks(t, pool, "ns", []string{"notes/a"}, "first")
 
 	doc, err := s.Save(ctx, SaveInput{Namespace: "ns", Slug: "NOTES/A", Title: "A", Content: "second", Upsert: true})
 	if err != nil {
@@ -136,17 +166,13 @@ func TestUpsertAndEditInAnotherCaseIndexUnderTheStoredSlug(t *testing.T) {
 	if doc.Slug != "notes/a" {
 		t.Fatalf("upsert answered slug %q", doc.Slug)
 	}
-	// The re-index replaces the chunks; give it time to land, then check
-	// that no chunk went under the asked-for case.
-	time.Sleep(200 * time.Millisecond)
-	waitChunkFiles(t, pool, "ns", []string{"notes/a"})
+	waitChunks(t, pool, "ns", []string{"notes/a"}, "second")
 
 	replacement := "third"
 	if _, err := s.Edit(ctx, EditInput{Namespace: "ns", Slug: "Notes/a", OldString: "second", NewString: &replacement}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(200 * time.Millisecond)
-	waitChunkFiles(t, pool, "ns", []string{"notes/a"})
+	waitChunks(t, pool, "ns", []string{"notes/a"}, "third")
 	if got := liveSlugs(t, pool, "ns"); !reflect.DeepEqual(got, []string{"notes/a"}) {
 		t.Fatalf("live %v", got)
 	}
@@ -294,4 +320,69 @@ func TestMovePrefixCanChangeOnlyTheCase(t *testing.T) {
 
 	_, err = s.PreviewMovePrefix(ctx, MovePrefixInput{Namespace: "ns", OldPrefix: "notes/", NewPrefix: "NOTES/sub/"})
 	wantStatus(t, err, http.StatusBadRequest)
+}
+
+// The sync mappings of a move_folder: a skipped note keeps its mapping even
+// when the mapping spells the slug in another case, and of two mappings of
+// one actor that differ only in case (a case-only rename leaves them) only
+// the older one moves, so they do not collide at the destination.
+func TestMovePrefixSyncMappingsIgnoreCase(t *testing.T) {
+	pool := testutil.ScratchDB(t, slugCaseSchema)
+	s := newDeletedCopiesService(pool)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+        INSERT INTO documents (namespace, slug, content) VALUES ('ns', 'a/x', 'x'), ('ns', 'a/y', 'y'), ('ns', 'B/x', 'bx');
+        INSERT INTO note_synchronization (actor_id, namespace, slug) VALUES (1, 'ns', 'A/x'), (1, 'ns', 'a/y'), (1, 'ns', 'A/Y');
+    `); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := s.MovePrefix(ctx, MovePrefixInput{Namespace: "ns", OldPrefix: "a/", NewPrefix: "b/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved != (PrefixMoved{Moved: 1, Skipped: 1}) {
+		t.Fatalf("moved %+v", moved)
+	}
+	if got := liveSlugs(t, pool, "ns"); !reflect.DeepEqual(got, []string{"B/x", "a/x", "b/y"}) {
+		t.Fatalf("live %v", got)
+	}
+	if got := syncSlugs(t, pool, 1, "ns"); !reflect.DeepEqual(got, []string{"A/Y", "A/x", "b/y"}) {
+		t.Fatalf("sync mappings %v", got)
+	}
+}
+
+// Under a Turkish collation Postgres lowers "I" to dotless "ı", where
+// Go's strings.ToLower gives "i". move_folder's nesting guard and its
+// overwrite list must follow Postgres, which picks the notes; with Go's rule
+// the guard refused this move and the overwrite missed its destination.
+func TestMovePrefixFollowsTheDatabaseCollation(t *testing.T) {
+	pool := testutil.ScratchDBICU(t, "tr-TR", slugCaseSchema)
+	s := newDeletedCopiesService(pool)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+        INSERT INTO documents (namespace, slug, content) VALUES ('ns', 'i/x', 'x'), ('ns', 'a/I', 'source'), ('ns', 'b/ı', 'target');
+    `); err != nil {
+		t.Fatal(err)
+	}
+
+	// "I/sub/" is not under "i/" in Turkish: LOWER gives "ı/sub/".
+	moved, err := s.MovePrefix(ctx, MovePrefixInput{Namespace: "ns", OldPrefix: "i/", NewPrefix: "I/sub/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved != (PrefixMoved{Moved: 1}) {
+		t.Fatalf("nested move %+v", moved)
+	}
+
+	// "b/I" names the live "b/ı" in Turkish.
+	moved, err = s.MovePrefix(ctx, MovePrefixInput{Namespace: "ns", OldPrefix: "a/", NewPrefix: "b/", OverwriteSlugs: []string{"b/I"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved != (PrefixMoved{Moved: 1, Overwritten: 1}) {
+		t.Fatalf("overwrite move %+v", moved)
+	}
+	if got := liveSlugs(t, pool, "ns"); !reflect.DeepEqual(got, []string{"I/sub/x", "b/I"}) {
+		t.Fatalf("live %v", got)
+	}
 }

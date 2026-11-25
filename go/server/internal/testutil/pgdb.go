@@ -24,6 +24,19 @@ const PGURLVar = "TEST_PG_URL"
 // check.
 func ScratchDB(t *testing.T, schema string) *pgxpool.Pool {
 	t.Helper()
+	return scratchDB(t, "", schema)
+}
+
+// ScratchDBICU is ScratchDB on a database whose default collation is the
+// ICU locale given (for example "tr-TR"), for rules that depend on the
+// collation, such as LOWER. The server must be built with ICU.
+func ScratchDBICU(t *testing.T, icuLocale, schema string) *pgxpool.Pool {
+	t.Helper()
+	return scratchDB(t, " TEMPLATE template0 LOCALE_PROVIDER icu ICU_LOCALE '"+icuLocale+"' LOCALE 'C.UTF-8'", schema)
+}
+
+func scratchDB(t *testing.T, createOptions, schema string) *pgxpool.Pool {
+	t.Helper()
 	url := os.Getenv(PGURLVar)
 	if url == "" {
 		if os.Getenv("CI") == "true" {
@@ -41,7 +54,7 @@ func ScratchDB(t *testing.T, schema string) *pgxpool.Pool {
 	// collides on Windows, whose clock ticks far coarser than a
 	// nanosecond, so a random part is added.
 	name := fmt.Sprintf("scratch_%d_%d", time.Now().UnixNano(), rand.Uint32())
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name+createOptions); err != nil {
 		admin.Close(ctx)
 		t.Fatal(err)
 	}

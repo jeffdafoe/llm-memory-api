@@ -3,19 +3,20 @@ package notes
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/memory"
 )
 
 // PrefixConflict is a live note at a destination slug of a prefix move.
-// source is the slug of the note that would move onto it; it is not part of
-// the response.
+// source is the slug of the note that would move onto it, and overwrite
+// whether the caller named the destination in OverwriteSlugs; neither is
+// part of the response.
 type PrefixConflict struct {
-	Slug   string  `json:"slug"`
-	Title  *string `json:"title"`
-	source string
+	Slug      string  `json:"slug"`
+	Title     *string `json:"title"`
+	source    string
+	overwrite bool
 }
 
 // PrefixPreview is a dry run of a prefix move.
@@ -59,15 +60,9 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
 		return PrefixMoved{}, err
 	}
 
-	// Slugs match without case (one live note per lowercased slug), so an
-	// overwrite names its destination in any case.
-	overwrite := map[string]bool{}
-	for _, slug := range in.OverwriteSlugs {
-		overwrite[strings.ToLower(slug)] = true
-	}
 	var toSkip, toOverwrite []PrefixConflict
 	for _, c := range conflicts {
-		if overwrite[strings.ToLower(c.Slug)] {
+		if c.overwrite {
 			toOverwrite = append(toOverwrite, c)
 		} else {
 			toSkip = append(toSkip, c)
@@ -150,13 +145,23 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
 	// Sync mappings follow the notes, except a skipped note's (its document
 	// stays at the old slug) and one whose actor already maps the
 	// destination slug (note_synchronization is unique per actor, namespace
-	// and slug; that row stays, and the next sync drops the old file).
+	// and slug, by exact case; that row stays, and the next sync drops the
+	// old file). Two mappings of one actor that differ only in case (left by
+	// a case-only rename) would both move to the same destination and break
+	// that key, so only the older one (lower id) moves.
 	if len(skipSlugs) > 0 {
 		if _, err := tx.Exec(ctx, `
                 UPDATE note_synchronization src
                 SET slug = $3 || substring(src.slug FROM length($2) + 1)
                 WHERE src.namespace = $1 AND LOWER(src.slug) LIKE LOWER($4) || '%'
-                  AND src.slug != ALL($5)
+                  AND LOWER(src.slug) NOT IN (SELECT LOWER(t) FROM unnest($5::text[]) t)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM note_synchronization twin
+                      WHERE twin.actor_id = src.actor_id
+                        AND twin.namespace = src.namespace
+                        AND LOWER(twin.slug) = LOWER(src.slug)
+                        AND twin.id < src.id
+                  )
                   AND NOT EXISTS (
                       SELECT 1 FROM note_synchronization dst
                       WHERE dst.actor_id = src.actor_id
@@ -171,6 +176,13 @@ func (s *Service) MovePrefix(ctx context.Context, in MovePrefixInput) (PrefixMov
                 UPDATE note_synchronization src
                 SET slug = $3 || substring(src.slug FROM length($2) + 1)
                 WHERE src.namespace = $1 AND LOWER(src.slug) LIKE LOWER($4) || '%'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM note_synchronization twin
+                      WHERE twin.actor_id = src.actor_id
+                        AND twin.namespace = src.namespace
+                        AND LOWER(twin.slug) = LOWER(src.slug)
+                        AND twin.id < src.id
+                  )
                   AND NOT EXISTS (
                       SELECT 1 FROM note_synchronization dst
                       WHERE dst.actor_id = src.actor_id
@@ -202,12 +214,22 @@ func (s *Service) prefixScan(ctx context.Context, in MovePrefixInput) (int, []Pr
 	// A move into itself or under itself would rewrite a moved note again
 	// (it is still in the source range). A move to the root ("") never nests.
 	// Prefixes compare without case, as slugs do; a rename that only changes
-	// the prefix's case ("notes/" to "Notes/") is allowed.
-	oldLower, newLower := strings.ToLower(in.OldPrefix), strings.ToLower(in.NewPrefix)
-	caseOnly := newLower == oldLower && in.NewPrefix != in.OldPrefix
-	if in.NewPrefix != "" && strings.HasPrefix(newLower, oldLower) && !caseOnly {
-		return 0, nil, apierr.New(http.StatusBadRequest,
-			`Cannot move prefix "`+in.OldPrefix+`" to "`+in.NewPrefix+`": the destination is the same as, or nested under, the source.`)
+	// the prefix's case ("notes/" to "Notes/") is allowed. Postgres does the
+	// lowercasing, so the guard follows the same collation as the queries
+	// that pick the notes (Go's strings.ToLower can disagree, e.g. with a
+	// Turkish collation).
+	if in.NewPrefix != "" {
+		var sameIgnoringCase, nested bool
+		if err := s.DB.QueryRow(ctx,
+			"SELECT LOWER($1) = LOWER($2), starts_with(LOWER($2), LOWER($1))",
+			in.OldPrefix, in.NewPrefix).Scan(&sameIgnoringCase, &nested); err != nil {
+			return 0, nil, err
+		}
+		caseOnly := sameIgnoringCase && in.NewPrefix != in.OldPrefix
+		if nested && !caseOnly {
+			return 0, nil, apierr.New(http.StatusBadRequest,
+				`Cannot move prefix "`+in.OldPrefix+`" to "`+in.NewPrefix+`": the destination is the same as, or nested under, the source.`)
+		}
 	}
 	oldLike := memory.EscapeLikePattern(in.OldPrefix)
 
@@ -219,8 +241,16 @@ func (s *Service) prefixScan(ctx context.Context, in MovePrefixInput) (int, []Pr
 		return 0, nil, err
 	}
 
+	// overwrite is whether the caller named the destination in
+	// OverwriteSlugs, matched without case by the same LOWER as the slugs.
+	overwrites := in.OverwriteSlugs
+	if overwrites == nil {
+		overwrites = []string{}
+	}
 	rows, err := s.DB.Query(ctx, `
-        SELECT d2.slug, d2.title, d1.slug FROM documents d1
+        SELECT d2.slug, d2.title, d1.slug,
+               LOWER(d2.slug) IN (SELECT LOWER(t) FROM unnest($5::text[]) t) AS overwrite
+        FROM documents d1
         JOIN documents d2
           ON d2.namespace = d1.namespace
           AND LOWER(d2.slug) = LOWER($3 || substring(d1.slug FROM length($2) + 1))
@@ -230,7 +260,7 @@ func (s *Service) prefixScan(ctx context.Context, in MovePrefixInput) (int, []Pr
           AND LOWER(d1.slug) LIKE LOWER($4) || '%'
           AND d1.deleted_at IS NULL
         ORDER BY d2.slug
-    `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike)
+    `, in.Namespace, in.OldPrefix, in.NewPrefix, oldLike, overwrites)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -238,7 +268,7 @@ func (s *Service) prefixScan(ctx context.Context, in MovePrefixInput) (int, []Pr
 	conflicts := []PrefixConflict{}
 	for rows.Next() {
 		var c PrefixConflict
-		if err := rows.Scan(&c.Slug, &c.Title, &c.source); err != nil {
+		if err := rows.Scan(&c.Slug, &c.Title, &c.source, &c.overwrite); err != nil {
 			return 0, nil, err
 		}
 		conflicts = append(conflicts, c)
