@@ -58,6 +58,11 @@
 - name: Turn off LLMNR
   include_tasks: resolved-llmnr.yml
 
+# --- systemd-journald ---
+
+- name: Set the journal retention period
+  include_tasks: journald-retention.yml
+
 # --- Swap ---
 
 - name: Set up the swap file
