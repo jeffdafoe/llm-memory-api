@@ -10,9 +10,9 @@ import (
 
 // OpenAI: gpt-5.x and gpt-6.x go through /v1/responses (function tools are
 // refused on /v1/chat/completions for them); any other model id through
-// /v1/chat/completions. Cost is computed here because it depends on the
-// service tier OpenAI applied (flex is half price), cache reads, cache
-// writes (gpt-5.6 and later) and the long-context surcharge.
+// /v1/chat/completions. Cost is computed here because it depends on cache
+// reads, cache writes (gpt-5.6 and later) and the long-context surcharge.
+// No service tier is requested; OpenAI's reported tier is only logged.
 
 func openaiTemperature() Capability {
 	c := stepCap("temperature", "Temperature", "Controls randomness. Lower values are more focused and deterministic, higher values are more creative.", 1.0, 0, 2.0, 0.1)
@@ -24,16 +24,11 @@ func openaiMaxTokens() Capability {
 	return numberCap("max_completion_tokens", "Max Output Tokens", "Maximum number of tokens the model will generate in its response.", 8192, 1, 32768)
 }
 
-func openaiServiceTier() Capability {
-	return selectCap("service_tier", "Service Tier", "Processing tier. \"auto\" uses standard pricing. \"flex\" is half the cost but higher latency — good for background/batch work.", "auto", "auto", "flex")
-}
-
 func gpt5Capabilities() Capabilities {
 	return Capabilities{
 		openaiTemperature(),
 		selectCap("reasoning_effort", "Reasoning Effort", "Controls how much time the model spends thinking. Supports none (default), low, medium, high, and xhigh.", "none", "none", "low", "medium", "high", "xhigh"),
 		openaiMaxTokens(),
-		openaiServiceTier(),
 	}
 }
 
@@ -44,17 +39,11 @@ var (
 	gpt6ReasoningNoNone = []string{"low", "medium", "high", "xhigh", "max"}
 )
 
-// flex is false for models released after OpenAI stopped adding Flex
-// ("We won't be adding Flex to new models"), so the control is not offered.
-func gpt6Capabilities(levels []string, flex bool) Capabilities {
-	caps := Capabilities{
+func gpt6Capabilities(levels []string) Capabilities {
+	return Capabilities{
 		selectCap("reasoning_effort", "Reasoning Effort", "Controls how much time the model spends thinking. Supports "+strings.Join(levels, ", ")+". OpenAI default is medium.", "medium", append([]string(nil), levels...)...),
 		openaiMaxTokens(),
 	}
-	if flex {
-		caps = append(caps, openaiServiceTier())
-	}
-	return caps
 }
 
 // openaiLongContext: above 272,000 prompt tokens the whole request bills
@@ -87,10 +76,10 @@ func openaiWritePricing(input, output, cacheRead, cacheWrite float64) *Pricing {
 const openai12hWriteFactor = 2.0
 
 var openaiModels = Models{
-	{ID: "gpt-6.2-sol", Label: "GPT-6.2 Sol", ConfigVersion: 3, Pricing: openaiWritePricing(2.00, 10, 0.10, 2.50), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningNoNone, false)},
-	{ID: "gpt-6.1-sol", Label: "GPT-6.1 Sol", ConfigVersion: 3, Pricing: openaiWritePricing(2.00, 10, 0.10, 2.50), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningNoNone, true)},
-	{ID: "gpt-6.1-terra", Label: "GPT-6.1 Terra", ConfigVersion: 3, Pricing: openaiWritePricing(1.00, 5, 0.05, 1.25), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll, true)},
-	{ID: "gpt-6-luna", Label: "GPT-6 Luna", ConfigVersion: 3, Pricing: openaiWritePricing(0.10, 0.50, 0.01, 0.125), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll, true)},
+	{ID: "gpt-6.2-sol", Label: "GPT-6.2 Sol", ConfigVersion: 3, Pricing: openaiWritePricing(2.00, 10, 0.10, 2.50), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningNoNone)},
+	{ID: "gpt-6.1-sol", Label: "GPT-6.1 Sol", ConfigVersion: 3, Pricing: openaiWritePricing(2.00, 10, 0.10, 2.50), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningNoNone)},
+	{ID: "gpt-6.1-terra", Label: "GPT-6.1 Terra", ConfigVersion: 3, Pricing: openaiWritePricing(1.00, 5, 0.05, 1.25), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll)},
+	{ID: "gpt-6-luna", Label: "GPT-6 Luna", ConfigVersion: 3, Pricing: openaiWritePricing(0.10, 0.50, 0.01, 0.125), LongContext: openaiLongContext(), Capabilities: gpt6Capabilities(gpt6ReasoningAll)},
 	{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", ConfigVersion: 2, Pricing: openaiWritePricing(4.00, 20, 0.40, 5.00), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
 	{ID: "gpt-5.6-terra", Label: "GPT-5.6 Terra", ConfigVersion: 2, Pricing: openaiWritePricing(2.00, 12, 0.20, 2.50), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
 	{ID: "gpt-5.6-luna", Label: "GPT-5.6 Luna", ConfigVersion: 2, Pricing: openaiWritePricing(0.20, 1.20, 0.02, 0.25), LongContext: openaiLongContext(), Capabilities: gpt5Capabilities()},
@@ -200,37 +189,33 @@ func messagesToResponsesInput(messages []*object) ([]any, error) {
 }
 
 // openaiComputeCost: ordinary input, cache reads, cache writes and output
-// at the model's rates, halved for flex, multiplied above the long-context
+// at the model's rates, multiplied above the long-context
 // threshold. A model without a write price bills written tokens as
 // ordinary input. Nil when the model has no pricing.
-func openaiComputeCost(model string, serviceTier any, promptTokens any, split inputSplit, completionTokens any) (*float64, error) {
+func openaiComputeCost(model string, promptTokens any, split inputSplit, completionTokens any) (*float64, error) {
 	entry := openaiModels.Get(model)
 	if entry == nil || entry.Pricing == nil {
 		return nil, nil
 	}
 	n := &numbers{}
 	pricing := entry.Pricing
-	flex := 1.0
-	if isStr(serviceTier, "flex") {
-		flex = 0.5
-	}
 	inputMul, cacheMul, outputMul := 1.0, 1.0, 1.0
 	prompt := n.of(promptTokens)
 	if lc := entry.LongContext; lc != nil && prompt > lc.Threshold {
 		inputMul, cacheMul, outputMul = lc.Input, lc.CacheRead, lc.Output
 	}
-	inputRate := pricing.rate(pricing.Input) * flex * inputMul
-	cacheRate := pricing.rate(pricing.CacheRead) * flex * cacheMul
+	inputRate := pricing.rate(pricing.Input) * inputMul
+	cacheRate := pricing.rate(pricing.CacheRead) * cacheMul
 	if pricing.CacheRead == nil {
 		cacheRate = inputRate
 	}
-	outputRate := pricing.rate(pricing.Output) * flex * outputMul
+	outputRate := pricing.rate(pricing.Output) * outputMul
 
 	cost := 0.0
 	cost += split.ordinary * inputRate / 1_000_000
 	cost += split.cached * cacheRate / 1_000_000
 	if pricing.CacheWrite != nil {
-		writeRate := *pricing.CacheWrite * flex * inputMul
+		writeRate := *pricing.CacheWrite * inputMul
 		cost += (split.written - split.written12h) * writeRate / 1_000_000
 		cost += split.written12h * writeRate * openai12hWriteFactor / 1_000_000
 	} else {
@@ -340,11 +325,6 @@ func openaiCreateCall(p *Providers, model, apiKey string, configuration any) cal
 			}
 		}
 
-		requestedTier := or(member(conf, "service_tier"), "auto")
-		if truthy(requestedTier) && !isStr(requestedTier, "auto") {
-			body.Set("service_tier", requestedTier)
-		}
-
 		if opts != nil && len(opts.Stop) > 0 {
 			body.Set("stop", stringsToValues(opts.Stop, 4))
 		}
@@ -353,7 +333,7 @@ func openaiCreateCall(p *Providers, model, apiKey string, configuration any) cal
 			body.Set("tools", toolsFunctionWrapped(opts.Tools))
 		}
 
-		p.logProvider("api-call", logger.Fields{{Key: "provider", Value: "openai"}, {Key: "model", Value: model}, {Key: "reasoning", Value: reasoning}, {Key: "serviceTier", Value: logValue(requestedTier)}, {Key: "tools", Value: useTools}})
+		p.logProvider("api-call", logger.Fields{{Key: "provider", Value: "openai"}, {Key: "model", Value: model}, {Key: "reasoning", Value: reasoning}, {Key: "tools", Value: useTools}})
 
 		url, err := endpoint("OPENAI_API_BASE", "/v1/chat/completions")
 		if err != nil {
@@ -387,10 +367,9 @@ func openaiCreateCall(p *Providers, model, apiKey string, configuration any) cal
 		}
 		cached, uncached := split.cached, split.ordinary
 
-		serviceTier, _ := get(data, "service_tier")
-		appliedTier := coalesce(serviceTier, requestedTier)
+		appliedTier, _ := get(data, "service_tier")
 		usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
-		cost, err := openaiComputeCost(model, appliedTier, promptTokens, split, completionTokens)
+		cost, err := openaiComputeCost(model, promptTokens, split, completionTokens)
 		if err != nil {
 			return nil, err
 		}
@@ -537,11 +516,6 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 		body.Set("reasoning", obj("effort", effort))
 	}
 
-	requestedTier := or(member(conf, "service_tier"), "auto")
-	if truthy(requestedTier) && !isStr(requestedTier, "auto") {
-		body.Set("service_tier", requestedTier)
-	}
-
 	useTools := opts != nil && len(opts.Tools) > 0
 	if useTools {
 		tools := make([]any, len(opts.Tools))
@@ -551,7 +525,7 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 		body.Set("tools", tools)
 	}
 
-	p.logProvider("api-call", logger.Fields{{Key: "provider", Value: "openai"}, {Key: "model", Value: model}, {Key: "endpoint", Value: "responses"}, {Key: "serviceTier", Value: logValue(requestedTier)}, {Key: "tools", Value: useTools}})
+	p.logProvider("api-call", logger.Fields{{Key: "provider", Value: "openai"}, {Key: "model", Value: model}, {Key: "endpoint", Value: "responses"}, {Key: "tools", Value: useTools}})
 
 	url, err := endpoint("OPENAI_API_BASE", "/v1/responses")
 	if err != nil {
@@ -632,13 +606,12 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 	}
 	cached, uncached := split.cached, split.ordinary
 
-	serviceTier, _ := get(data, "service_tier")
-	appliedTier := coalesce(serviceTier, requestedTier)
+	appliedTier, _ := get(data, "service_tier")
 	usage := Usage{InputTokens: uncached, OutputTokens: completionTokens, CacheReadInputTokens: cached}
 	if split.written > 0 {
 		usage.CacheCreationInputTokens = split.written
 	}
-	cost, err := openaiComputeCost(model, appliedTier, promptTokens, split, completionTokens)
+	cost, err := openaiComputeCost(model, promptTokens, split, completionTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -659,30 +632,21 @@ func openaiCallResponses(ctx context.Context, p *Providers, model, apiKey string
 	return &Result{Text: text, ToolCalls: toolCalls, Usage: usage, FinishReason: finish, Truncated: IsTruncated(finish)}, nil
 }
 
-// openaiFormatPricing lists the rates, halved and marked for flex.
-func openaiFormatPricing(p *Providers, modelID string, conf any) string {
+// openaiFormatPricing lists the rates.
+func openaiFormatPricing(p *Providers, modelID string, _ any) string {
 	entry := openaiModels.Get(modelID)
 	if entry == nil || entry.Pricing == nil {
 		return "No pricing data"
 	}
-	isFlex := truthy(conf) && isStr(member(conf, "service_tier"), "flex")
-	m := 1.0
-	if isFlex {
-		m = 0.5
-	}
 	var parts []string
 	add := func(v *float64, suffix string) {
 		if v != nil {
-			parts = append(parts, "$"+jsutil.NumberString(*v*m)+suffix)
+			parts = append(parts, "$"+jsutil.NumberString(*v)+suffix)
 		}
 	}
 	add(entry.Pricing.Input, " in")
 	add(entry.Pricing.Output, " out")
 	add(entry.Pricing.CacheRead, " cached")
 	add(entry.Pricing.CacheWrite, " cache write")
-	result := strings.Join(parts, " / ") + " per 1M tokens"
-	if isFlex {
-		result += " (flex tier)"
-	}
-	return result
+	return strings.Join(parts, " / ") + " per 1M tokens"
 }
