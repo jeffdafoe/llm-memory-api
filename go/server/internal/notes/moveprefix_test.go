@@ -3,6 +3,7 @@ package notes
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/pashagolub/pgxmock/v6"
@@ -11,15 +12,18 @@ import (
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/testutil"
 )
 
+// expectPrefixScan answers the prefix scan; each conflict is a destination
+// slug, and the source that would move onto it is the same rest under
+// oldPrefix.
 func expectPrefixScan(mock pgxmock.PgxPoolIface, ns, oldPrefix, newPrefix, oldLike string, sources int64, conflicts ...string) {
 	mock.ExpectExec(`SELECT slug, title FROM documents`).WithArgs(ns, oldLike).
 		WillReturnResult(pgxmock.NewResult("SELECT", sources))
-	rows := pgxmock.NewRows([]string{"slug", "title"})
+	rows := pgxmock.NewRows([]string{"slug", "title", "source"})
 	for _, c := range conflicts {
 		title := "T " + c
-		rows.AddRow(c, &title)
+		rows.AddRow(c, &title, oldPrefix+strings.TrimPrefix(c, newPrefix))
 	}
-	mock.ExpectQuery(`SELECT d2.slug, d2.title FROM documents d1`).WithArgs(ns, oldPrefix, newPrefix, oldLike).WillReturnRows(rows)
+	mock.ExpectQuery(`SELECT d2.slug, d2.title, d1.slug FROM documents d1`).WithArgs(ns, oldPrefix, newPrefix, oldLike).WillReturnRows(rows)
 }
 
 func TestMovePrefixMovesEverythingInOneTransaction(t *testing.T) {
@@ -53,12 +57,13 @@ func TestMovePrefixOverwritesListedConflictsAndSkipsTheRest(t *testing.T) {
 	mock.ExpectExec(`UPDATE documents SET deleted_at = NOW\(\)`).WithArgs("ns", []string{"b/over"}).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectExec(`DELETE FROM memory_chunks`).WithArgs("ns", []string{"b/over"}).WillReturnResult(pgxmock.NewResult("DELETE", 1))
 	mock.ExpectExec(`slug != ALL\(\$5\)`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
-	mock.ExpectExec(`source_file != ALL\(\$5\)`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
+	mock.ExpectExec(`LOWER\(source_file\) NOT IN`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).WillReturnResult(pgxmock.NewResult("UPDATE", 2))
 	mock.ExpectExec(`src.slug != ALL\(\$5\)`).WithArgs("ns", "a/", "b/", "a/", []string{"a/keep"}).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectCommit()
 
 	s := &Service{DB: mock}
-	got, err := s.MovePrefix(context.Background(), MovePrefixInput{Namespace: "ns", OldPrefix: "a/", NewPrefix: "b/", OverwriteSlugs: []string{"b/over"}})
+	// Named in another case: slugs match without case.
+	got, err := s.MovePrefix(context.Background(), MovePrefixInput{Namespace: "ns", OldPrefix: "a/", NewPrefix: "b/", OverwriteSlugs: []string{"B/Over"}})
 	if err != nil {
 		t.Fatal(err)
 	}

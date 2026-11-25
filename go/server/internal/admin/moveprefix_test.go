@@ -74,8 +74,8 @@ func TestMovePrefixSetErrorAfterScan(t *testing.T) {
 	writeAllGrant(mock)
 	mock.ExpectExec("SELECT slug, title FROM documents").WithArgs("alpha", "a/").
 		WillReturnResult(pgxmock.NewResult("SELECT", 1))
-	mock.ExpectQuery("SELECT d2.slug, d2.title FROM documents d1").WithArgs("alpha", "a/", "b/", "a/").
-		WillReturnRows(pgxmock.NewRows([]string{"slug", "title"}))
+	mock.ExpectQuery("SELECT d2.slug, d2.title, d1.slug FROM documents d1").WithArgs("alpha", "a/", "b/", "a/").
+		WillReturnRows(pgxmock.NewRows([]string{"slug", "title", "source"}))
 	expectErrorMessage(mock, "number 7 is not iterable (cannot read property Symbol(Symbol.iterator))")
 	rec := serve(h, asUser(1, "/v1/admin/notes/move-prefix", setErrorBody))
 	check(t, "set error", rec, 500, errorBody("INTERNAL", "Failed: notes-move-prefix"))
@@ -99,7 +99,7 @@ func TestMovePrefixScanErrorBeforeSetError(t *testing.T) {
 		writeAllGrant(mock)
 		mock.ExpectExec("SELECT slug, title FROM documents").WithArgs("alpha", "a/").
 			WillReturnResult(pgxmock.NewResult("SELECT", 1))
-		mock.ExpectQuery("SELECT d2.slug, d2.title FROM documents d1").WithArgs("alpha", "a/", "b/", "a/").
+		mock.ExpectQuery("SELECT d2.slug, d2.title, d1.slug FROM documents d1").WithArgs("alpha", "a/", "b/", "a/").
 			WillReturnError(errors.New("conflicts failed"))
 		expectErrorMessage(mock, "conflicts failed")
 		rec := serve(h, asUser(1, "/v1/admin/notes/move-prefix", setErrorBody))

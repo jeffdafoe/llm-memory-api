@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/permissions"
 )
 
 // SearchInput is one search request.
@@ -166,7 +167,7 @@ func buildSearch(in SearchInput, cfg searchConfig, cleaned, vector string) (stri
 			nsFilter = `AND (mc.namespace = ANY(` + nsIdx + `) OR EXISTS (
                 SELECT 1 FROM note_permissions np
                 WHERE np.owner_namespace = mc.namespace
-                  AND (np.slug_pattern = mc.source_file OR mc.source_file LIKE np.slug_pattern || '%')
+                  AND ` + permissions.ShareCovers("np.slug_pattern", "mc.source_file") + `
                   AND (np.grantee_actor_id = ` + actorIdx + ` OR np.grantee_actor_id IS NULL)
                   AND np.revoked_at IS NULL AND np.can_read = true
             ))`
