@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/apierr"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/config"
 	"github.com/jeffdafoe/llm-memory-api/go/server/internal/db"
@@ -40,6 +42,9 @@ type IngestResult struct {
 	ChunksCreated int    `json:"chunks_created"`
 	SourceFile    string `json:"source_file,omitempty"`
 	Namespace     string `json:"namespace,omitempty"`
+	// Skipped is an IngestDocument whose note was deleted, or changed, by
+	// the time its chunks were to be written; nothing was written.
+	Skipped bool `json:"-"`
 }
 
 // Ingest replaces a document's chunks: it chunks the content, embeds every
@@ -47,51 +52,153 @@ type IngestResult struct {
 // transaction. Conversation logs are chunked by message window, everything
 // else by heading.
 func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content string) (IngestResult, error) {
-	// Context documents (context/soul) go into sessions whole; they are not
-	// searched.
-	if strings.HasPrefix(sourceFile, "context/") {
-		return IngestResult{}, nil
+	res, _, err := s.ingestOnce(ctx, namespace, sourceFile, content, 0)
+	return res, err
+}
+
+// IngestDocument is Ingest for the note in documents row documentID, as the
+// notes service runs it in the background after a save or an edit. The
+// background job can run after a later delete, move or edit of the note:
+//   - It first reads the note's live location and prepares (chunks and
+//     embeds) for that slug, since the slug decides how a note is indexed.
+//   - The transaction that writes the chunks then locks the row and checks
+//     it is still live and still holds content. If not, nothing is written
+//     (the result is Skipped): a deleted note gets no chunks back, and a
+//     newer edit has its own re-index on the way. The check must sit in the
+//     writing transaction; one before the slow embedding call would leave
+//     the window open.
+//   - A note that moved during the embedding gets its chunks at its current
+//     slug, or is prepared again there when the move changed how it is
+//     indexed (into or out of a conversations/ path, or into context/,
+//     where nothing is written).
+func (s *Service) IngestDocument(ctx context.Context, documentID int, namespace, slug, content string) (IngestResult, error) {
+	for attempt := 1; ; attempt++ {
+		res, retry, err := s.ingestOnce(ctx, namespace, slug, content, documentID)
+		if err != nil || !retry {
+			return res, err
+		}
+		// The bound only stops a note that keeps moving across indexing
+		// rules from looping; a real move does not repeat that often.
+		if attempt == maxIngestAttempts {
+			return IngestResult{}, fmt.Errorf("note %d moved during each of %d re-index attempts", documentID, attempt)
+		}
+	}
+}
+
+const maxIngestAttempts = 3
+
+// indexPolicy is how a source file is indexed, which its path decides.
+type indexPolicy int
+
+const (
+	indexByHeading indexPolicy = iota
+	indexByMessageWindow
+	notIndexed
+)
+
+func policyFor(sourceFile string) indexPolicy {
+	switch {
+	// Context documents (context/soul) go into sessions whole; they are
+	// not searched.
+	case strings.HasPrefix(sourceFile, "context/"):
+		return notIndexed
+	case isConversationSource(sourceFile):
+		return indexByMessageWindow
+	}
+	return indexByHeading
+}
+
+// ingestOnce is one prepare-and-write, guarded by the documents row
+// documentID when that is not 0. retry reports a guarded note whose move
+// during the embedding changed its indexing policy: nothing was written,
+// and the caller prepares again.
+func (s *Service) ingestOnce(ctx context.Context, namespace, sourceFile, content string, documentID int) (res IngestResult, retry bool, err error) {
+	// A note saved under context/ is not indexed, so there is nothing to
+	// prepare and no row to check. A move never re-indexes a note (Move
+	// carries the chunks it has), so one that later leaves context/ stays
+	// unindexed until its next save, as before.
+	if policyFor(sourceFile) == notIndexed {
+		return IngestResult{}, false, nil
+	}
+	if documentID != 0 {
+		// No lock: the embedding below is slow, and the row must not be
+		// held through it. The write re-checks under a lock.
+		err := s.DB.QueryRow(ctx,
+			"SELECT namespace, slug FROM documents WHERE id = $1 AND deleted_at IS NULL AND content = $2",
+			documentID, content).Scan(&namespace, &sourceFile)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return IngestResult{Skipped: true}, false, nil
+		}
+		if err != nil {
+			return IngestResult{}, false, err
+		}
+	}
+	policy := policyFor(sourceFile)
+	if policy == notIndexed {
+		return IngestResult{}, false, nil
 	}
 
 	var chunks []Chunk
-	if strings.HasPrefix(sourceFile, "conversations/") {
+	if policy == indexByMessageWindow {
 		window, err := s.Config.Get("conversation_chunk_window")
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 		overlap, err := s.Config.Get("conversation_chunk_overlap")
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 		maxChars, err := s.Config.Get("conversation_chunk_max_chars")
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 		chunks = ChunkConversation(content, jsutil.IntOr(window, 5), jsutil.IntOr(overlap, 2), jsutil.IntOr(maxChars, 0))
 	} else {
 		chunks = ChunkByHeading(content)
 	}
 	if len(chunks) == 0 {
-		return IngestResult{}, apierr.New(http.StatusBadRequest, "No chunks extracted from content")
+		return IngestResult{}, false, apierr.New(http.StatusBadRequest, "No chunks extracted from content")
 	}
+	chunks = SplitOversized(chunks, DefaultChunkLimit)
 
 	texts := make([]string, len(chunks))
 	for i, c := range chunks {
 		texts[i] = c.ChunkText
 	}
-	vectors, err := s.Embedder.Embed(ctx, texts)
+	vectors, err := s.embedBatched(ctx, texts)
 	if err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	if len(vectors) < len(chunks) {
-		return IngestResult{}, errors.New("expected array or sparse vector")
+		return IngestResult{}, false, errors.New("expected array or sparse vector")
 	}
 
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	defer tx.Rollback(ctx)
+	if documentID != 0 {
+		// FOR UPDATE holds the row until commit: a delete, move or edit of
+		// the note waits for these chunks to land, and then does its own
+		// chunk work after them. Under READ COMMITTED the row is re-read
+		// once a concurrent writer commits, so the check sees its result.
+		err := tx.QueryRow(ctx, `
+            SELECT namespace, slug FROM documents
+            WHERE id = $1 AND deleted_at IS NULL AND content = $2
+            FOR UPDATE
+        `, documentID, content).Scan(&namespace, &sourceFile)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return IngestResult{Skipped: true}, false, nil
+		}
+		if err != nil {
+			return IngestResult{}, false, err
+		}
+		if policyFor(sourceFile) != policy {
+			// The deferred Rollback releases the row before the retry.
+			return IngestResult{}, true, nil
+		}
+	}
 	// Two ingests of one file at once would both run their DELETE before
 	// either inserts, and both versions' chunks would stay. The lock makes
 	// the second wait for the first to commit; its DELETE is a later
@@ -101,24 +208,72 @@ func (s *Service) Ingest(ctx context.Context, namespace, sourceFile, content str
 	if _, err := tx.Exec(ctx,
 		"SELECT pg_advisory_xact_lock($1, hashtext($2::text || '/' || LOWER($3::text)))",
 		ingestLockClass, namespace, sourceFile); err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	if _, err := tx.Exec(ctx,
 		"DELETE FROM memory_chunks WHERE namespace = $1 AND LOWER(source_file) = LOWER($2)",
 		namespace, sourceFile); err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
 	for i, c := range chunks {
 		if _, err := tx.Exec(ctx,
 			"INSERT INTO memory_chunks (namespace, source_file, heading, chunk_text, embedding) VALUES ($1, $2, $3, $4, $5)",
 			namespace, sourceFile, c.Heading, c.ChunkText, VectorLiteral(vectors[i])); err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, false, err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, false, err
 	}
-	return IngestResult{ChunksCreated: len(chunks), SourceFile: sourceFile, Namespace: namespace}, nil
+	return IngestResult{ChunksCreated: len(chunks), SourceFile: sourceFile, Namespace: namespace}, false, nil
+}
+
+// isConversationSource reports a conversation log, chunked by message window:
+// a session log at conversations/..., or a log under an agent folder such as
+// salem-vendor's <npc>/conversations/<day>-sim-day.
+func isConversationSource(sourceFile string) bool {
+	return strings.HasPrefix(sourceFile, "conversations/") || strings.Contains(sourceFile, "/conversations/")
+}
+
+// The embeddings endpoint takes at most 300,000 tokens and 2048 inputs per
+// request. A batch closes at embedBatchBytes bytes of UTF-8: a token covers
+// at least one byte (see MaxChunkBytes), so the token limit holds for any
+// script.
+const (
+	embedBatchBytes  = 290000
+	embedBatchInputs = 512
+)
+
+// embedBatched embeds texts in as many requests as the per-request limits
+// need, and returns the vectors in the order of texts. A note of ordinary
+// size goes in one request, as before.
+func (s *Service) embedBatched(ctx context.Context, texts []string) ([][]float64, error) {
+	var vectors [][]float64
+	start := 0
+	for start < len(texts) {
+		end := start
+		size := 0
+		for end < len(texts) && end-start < embedBatchInputs {
+			n := len(texts[end])
+			if end > start && size+n > embedBatchBytes {
+				break
+			}
+			size += n
+			end++
+		}
+		batch, err := s.Embedder.Embed(ctx, texts[start:end])
+		if err != nil {
+			return nil, err
+		}
+		// A short answer would shift every later vector onto the wrong
+		// chunk, so it fails the ingest here rather than at the end.
+		if len(batch) < end-start {
+			return nil, errors.New("expected array or sparse vector")
+		}
+		vectors = append(vectors, batch[:end-start]...)
+		start = end
+	}
+	return vectors, nil
 }
 
 // SearchResult is one note in a search answer: its best chunk, the note's
