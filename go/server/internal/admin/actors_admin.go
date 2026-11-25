@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -260,6 +261,59 @@ var actorDeleteSteps = []string{
 	"UPDATE documents SET created_by_actor_id = NULL WHERE created_by_actor_id = $1",
 }
 
+// actorNamespaceDeleteSteps are the rows keyed by the actor's namespace (its
+// name) rather than its id, so no foreign key reaches them (GDPR Art. 17,
+// LLM-1022). The grants matter beyond tidiness: a grant left on the namespace
+// would apply to a later account that signs up with the same name.
+var actorNamespaceDeleteSteps = []string{
+	// Grants other actors hold on this namespace
+	"DELETE FROM namespace_permissions WHERE namespace = $1",
+	// Note shares out of this namespace, whoever granted them
+	"DELETE FROM note_permissions WHERE owner_namespace = $1",
+	// Other actors' sync state for this namespace
+	"DELETE FROM note_synchronization WHERE namespace = $1",
+	// The note count and size row (the cleanup job only adjusts it, never
+	// removes it)
+	"DELETE FROM namespace_usage WHERE namespace = $1",
+}
+
+// signupRequestIDsSQL finds the access requests that belong to an account:
+// the one behind the invite it registered with, and any others made with its
+// email address (case-insensitive, as an address is). A request whose invite
+// another account used is left alone: the same address on two accounts
+// (an operator's own, say) must not let one delete take the other's record.
+const signupRequestIDsSQL = `
+        SELECT access_request_id FROM invite_codes
+         WHERE used_by = $1 AND access_request_id IS NOT NULL
+        UNION
+        SELECT ar.id FROM access_requests ar
+         WHERE $2::text <> '' AND LOWER(ar.email) = LOWER($2::text)
+           AND NOT EXISTS (
+               SELECT 1 FROM invite_codes ic
+                WHERE ic.access_request_id = ar.id
+                  AND ic.used_by IS NOT NULL AND ic.used_by <> $1)`
+
+// deleteSignupRecords removes an account's invites and access requests
+// inside the delete's transaction. invite_codes.access_request_id is a NO
+// ACTION foreign key, so the invites go first.
+func deleteSignupRecords(ctx context.Context, tx pgx.Tx, name, email string) error {
+	rows, err := tx.Query(ctx, signupRequestIDsSQL, name, email)
+	if err != nil {
+		return err
+	}
+	requestIDs, err := pgx.CollectRows(rows, pgx.RowTo[int])
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM invite_codes WHERE used_by = $1 OR access_request_id = ANY($2::int[])", name, requestIDs); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM access_requests WHERE id = ANY($1::int[])", requestIDs); err != nil {
+		return err
+	}
+	return nil
+}
+
 // actorsDelete is POST /admin/actors/delete: deletes an actor, the virtual
 // agents it created, and everything that belongs to them, in one
 // transaction. Not oneself; only an actor one created, unless superadmin.
@@ -276,7 +330,8 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 		return httpapi.BadRequest(w, "Cannot delete your own account")
 	}
 	var name string
-	err := rt.DB.QueryRow(r.Context(), "SELECT id, name FROM actors WHERE id = $1", actorID).Scan(new(int), &name)
+	var email *string
+	err := rt.DB.QueryRow(r.Context(), "SELECT id, name, email FROM actors WHERE id = $1", actorID).Scan(new(int), &name, &email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpapi.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Actor not found")
 		return nil
@@ -341,6 +396,27 @@ func (rt *Routes) actorsDelete(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		if _, err := tx.Exec(ctx, "DELETE FROM documents WHERE namespace = $1", n); err != nil {
+			return err
+		}
+		for _, sql := range actorNamespaceDeleteSteps {
+			if _, err := tx.Exec(ctx, sql, n); err != nil {
+				return err
+			}
+		}
+	}
+	// Signup records. Only the account itself has an email address; its
+	// virtual agents never register by invite, but a match on their names
+	// costs nothing.
+	accountEmail := ""
+	if email != nil {
+		accountEmail = *email
+	}
+	for i, n := range names {
+		e := ""
+		if i == 0 {
+			e = accountEmail
+		}
+		if err := deleteSignupRecords(ctx, tx, n, e); err != nil {
 			return err
 		}
 	}
