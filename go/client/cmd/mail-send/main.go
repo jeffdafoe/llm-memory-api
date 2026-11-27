@@ -13,13 +13,20 @@
 //	          [--config <path-to-.agent.json>]
 //	          [--in-reply-to <mail-uuid>]
 //	          [--from <agent>]
+//	          [--attach <image> ...]
+//
+// --attach adds an image (PNG, JPEG, WebP or GIF; up to 8, 3 MiB together)
+// and may be given more than once. A virtual agent that receives the mail
+// sees the images with the text (LLM-1040).
 package main
 
 import (
+    "encoding/base64"
     "flag"
     "fmt"
     "os"
     "path/filepath"
+    "strings"
 
     "github.com/jeffdafoe/llm-memory-api/go/client/internal/api"
     "github.com/jeffdafoe/llm-memory-api/go/client/internal/config"
@@ -36,7 +43,51 @@ type sendResponse struct {
     SentAt    string `json:"sent_at"`
 }
 
+// attachFlag collects every --attach path, in order. flag.Var takes any type
+// with String and Set, and calls Set once per occurrence of the flag.
+type attachFlag []string
+
+func (a *attachFlag) String() string { return strings.Join(*a, ",") }
+
+func (a *attachFlag) Set(path string) error {
+    *a = append(*a, path)
+    return nil
+}
+
+// imageTypes maps a file extension to the media type the API expects. The
+// server checks the bytes too, so a mislabelled file is refused there.
+var imageTypes = map[string]string{
+    ".png":  "image/png",
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif":  "image/gif",
+}
+
+// loadAttachments reads each image into the /mail/send attachments shape.
+func loadAttachments(paths []string) ([]map[string]string, error) {
+    out := make([]map[string]string, 0, len(paths))
+    for _, p := range paths {
+        mediaType, ok := imageTypes[strings.ToLower(filepath.Ext(p))]
+        if !ok {
+            return nil, fmt.Errorf("%s: not a .png, .jpg, .jpeg, .webp or .gif file", p)
+        }
+        data, err := os.ReadFile(p)
+        if err != nil {
+            return nil, err
+        }
+        out = append(out, map[string]string{
+            "filename":    filepath.Base(p),
+            "media_type":  mediaType,
+            "data_base64": base64.StdEncoding.EncodeToString(data),
+        })
+    }
+    return out, nil
+}
+
 func main() {
+    var attach attachFlag
+    flag.Var(&attach, "attach", "Image to attach (PNG, JPEG, WebP or GIF); repeat for more")
     to := flag.String("to", "", "Recipient agent name (e.g. code_review, work)")
     subject := flag.String("subject", "", "Subject line")
     bodyFile := flag.String("body-file", "", "Path to a file whose contents are the mail body")
@@ -60,7 +111,7 @@ func main() {
     if *to == "" || *subject == "" {
         fmt.Fprintln(os.Stderr, "Usage: mail-send --to <agent> --subject <subject> --body-file <path>")
         fmt.Fprintln(os.Stderr, "                 [--body <inline-string>] [--in-reply-to <uuid>]")
-        fmt.Fprintln(os.Stderr, "                 [--from <agent>] [--config <path>]")
+        fmt.Fprintln(os.Stderr, "                 [--from <agent>] [--config <path>] [--attach <image> ...]")
         os.Exit(1)
     }
 
@@ -80,6 +131,12 @@ func main() {
         body = string(data)
     } else {
         body = *bodyInline
+    }
+
+    attachments, err := loadAttachments(attach)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Attach: %s\n", err)
+        os.Exit(1)
     }
 
     // Resolve config path.
@@ -123,6 +180,9 @@ func main() {
     if *inReplyTo != "" {
         req["in_reply_to"] = *inReplyTo
     }
+    if len(attachments) > 0 {
+        req["attachments"] = attachments
+    }
 
     var resp sendResponse
     if err := client.Post("/mail/send", req, &resp); err != nil {
@@ -131,5 +191,9 @@ func main() {
     }
 
     // Terse success output — just the ID so scripts can capture it easily.
+    if len(attachments) > 0 {
+        fmt.Printf("Sent %s -> %s (id: %s, %d image(s))\n", resp.FromAgent, resp.ToAgent, resp.ID, len(attachments))
+        return
+    }
     fmt.Printf("Sent %s -> %s (id: %s)\n", resp.FromAgent, resp.ToAgent, resp.ID)
 }

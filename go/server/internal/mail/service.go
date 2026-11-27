@@ -78,8 +78,18 @@ type Sent struct {
 // Unless the sender is "system", a virtual recipient is then triggered in
 // the background.
 func (s *Service) Send(ctx context.Context, toAgent, fromAgent, subject, body, inReplyTo string) (*Sent, error) {
+	return s.SendWithAttachments(ctx, toAgent, fromAgent, subject, body, inReplyTo, nil)
+}
+
+// SendWithAttachments is Send with image attachments (LLM-1040). The
+// message and its attachments are written in one transaction, committed
+// before the virtual recipient is triggered, so its reply always sees them.
+func (s *Service) SendWithAttachments(ctx context.Context, toAgent, fromAgent, subject, body, inReplyTo string, attachments []Attachment) (*Sent, error) {
 	if toAgent == "" || fromAgent == "" || subject == "" || body == "" {
 		return nil, badRequest("Required fields: to_agent, from_agent, subject, body")
+	}
+	if err := validateAttachments(attachments); err != nil {
+		return nil, err
 	}
 	toActor, err := s.Actors.RequireByName(ctx, toAgent)
 	if err != nil {
@@ -90,21 +100,16 @@ func (s *Service) Send(ctx context.Context, toAgent, fromAgent, subject, body, i
 		return nil, err
 	}
 
-	var row pgx.Row
-	if inReplyTo != "" {
-		row = s.DB.QueryRow(ctx, "INSERT INTO mail (to_actor_id, from_actor_id, subject, body, in_reply_to) VALUES ($1, $2, $3, $4, $5) RETURNING id, sent_at",
-			toActor.ID, fromActor.ID, subject, body, inReplyTo)
-	} else {
-		row = s.DB.QueryRow(ctx, "INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at",
-			toActor.ID, fromActor.ID, subject, body)
-	}
-	var id string
-	var sentAt time.Time
-	if err := row.Scan(&id, &sentAt); err != nil {
+	id, sentAt, err := s.insertMail(ctx, toActor.ID, fromActor.ID, subject, body, inReplyTo, attachments)
+	if err != nil {
 		return nil, err
 	}
 
-	s.logMail("send", logger.Fields{{Key: "from_agent", Value: fromAgent}, {Key: "to_agent", Value: toAgent}, {Key: "mail_id", Value: id}, {Key: "subject", Value: subject}})
+	fields := logger.Fields{{Key: "from_agent", Value: fromAgent}, {Key: "to_agent", Value: toAgent}, {Key: "mail_id", Value: id}, {Key: "subject", Value: subject}}
+	if len(attachments) > 0 {
+		fields = append(fields, logger.Field{Key: "attachments", Value: len(attachments)})
+	}
+	s.logMail("send", fields)
 
 	if fromAgent != "system" {
 		// Unbounded: a virtual agent's reply waits on its provider and, on
@@ -117,6 +122,38 @@ func (s *Service) Send(ctx context.Context, toAgent, fromAgent, subject, body, i
 	}
 
 	return &Sent{ID: id, ToAgent: toAgent, FromAgent: fromAgent, Subject: subject, SentAt: jsTime(&sentAt)}, nil
+}
+
+// insertMail writes the message row and returns its id and sent_at. With
+// attachments, the row and the attachments share a transaction: a failure
+// part way leaves neither.
+func (s *Service) insertMail(ctx context.Context, toID, fromID int, subject, body, inReplyTo string, attachments []Attachment) (string, time.Time, error) {
+	insert := "INSERT INTO mail (to_actor_id, from_actor_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id, sent_at"
+	args := []any{toID, fromID, subject, body}
+	if inReplyTo != "" {
+		insert = "INSERT INTO mail (to_actor_id, from_actor_id, subject, body, in_reply_to) VALUES ($1, $2, $3, $4, $5) RETURNING id, sent_at"
+		args = append(args, inReplyTo)
+	}
+	var id string
+	var sentAt time.Time
+	if len(attachments) == 0 {
+		err := s.DB.QueryRow(ctx, insert, args...).Scan(&id, &sentAt)
+		return id, sentAt, err
+	}
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	// Rollback after a Commit is a no-op, so the deferred call only undoes a
+	// transaction that returned early.
+	defer tx.Rollback(ctx)
+	if err := tx.QueryRow(ctx, insert, args...).Scan(&id, &sentAt); err != nil {
+		return "", time.Time{}, err
+	}
+	if err := insertAttachments(ctx, tx, id, attachments); err != nil {
+		return "", time.Time{}, err
+	}
+	return id, sentAt, tx.Commit(ctx)
 }
 
 // triggerVirtualAgent answers direct mail to a virtual agent from an agent
@@ -183,6 +220,9 @@ type Message struct {
 	Body      string  `json:"body"`
 	SentAt    Time    `json:"sent_at"`
 	InReplyTo *string `json:"in_reply_to"`
+	// Attachments are the message's images (LLM-1040), left out of the JSON
+	// when there are none so a text-only message reads as before.
+	Attachments []AttachmentInfo `json:"attachments,omitempty"`
 }
 
 // Messages is the answer of the list calls.
@@ -252,6 +292,18 @@ func (s *Service) Receive(ctx context.Context, agent string, ids json.RawMessage
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	// Closed before the next query: pgx holds the connection until the rows
+	// are read and closed, and the deferred Close runs only at return.
+	rows.Close()
+	if len(out) > 0 {
+		infos, err := s.attachmentInfos(ctx, messageIDs)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			out[i].Attachments = infos[out[i].ID]
+		}
 	}
 
 	s.logMail("receive", logger.Fields{{Key: "agent", Value: agent}, {Key: "pending_count", Value: len(out)}, {Key: "message_ids", Value: messageIDs}})

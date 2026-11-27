@@ -217,9 +217,22 @@ func (s *Server) mailReceive(ctx context.Context, args *jsutil.Object, c caller)
 	ids := make([]string, len(received.Messages))
 	for i, m := range received.Messages {
 		ids[i] = m.ID
-		blocks[i] = s.mailBlock(m.FromAgent, m.SentAt, m.Subject, m.ID, m.InReplyTo, m.Body)
+		blocks[i] = s.mailBlock(m.FromAgent, m.SentAt, m.Subject, m.ID, m.InReplyTo, m.Body) + attachmentLines(m.Attachments)
 	}
 	return strings.Join(blocks, "\n\n---\n\n") + "\n\n(ids: [" + strings.Join(ids, ", ") + "] — call mail_ack to mark as read)", nil
+}
+
+// attachmentLines lists a message's images after its body (LLM-1040); a
+// tool result is text, so the bytes come from POST /v1/mail/attachment.
+func attachmentLines(list []mail.AttachmentInfo) string {
+	if len(list) == 0 {
+		return ""
+	}
+	lines := []string{"\n\n**Attachments** (fetch with POST /v1/mail/attachment {agent, id}):"}
+	for _, a := range list {
+		lines = append(lines, fmt.Sprintf("- %s (%s, %d bytes, id: %s)", a.Filename, a.MediaType, a.SizeBytes, a.ID))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s *Server) mailAck(ctx context.Context, args *jsutil.Object, c caller) (string, error) {

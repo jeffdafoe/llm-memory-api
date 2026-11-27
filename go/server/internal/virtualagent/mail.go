@@ -125,11 +125,52 @@ func buildMailUserMessage(fromAgent, subject, body string) string {
 	return "From: " + fromAgent + "\nSubject: " + subject + "\n\n" + body
 }
 
-// incomingMail is the mail row handleDirectMail reads.
+// incomingMail is the mail row handleDirectMail reads, with its images.
 type incomingMail struct {
 	Subject   string
 	Body      string
 	FromAgent string
+	Images    []mailImage
+}
+
+// mailImage is one image attached to the mail (LLM-1040).
+type mailImage struct {
+	Filename  string
+	MediaType string
+	Data      []byte
+}
+
+// loadMailImages reads the mail's images, in the order they were attached.
+func (s *Service) loadMailImages(ctx context.Context, mailID string) ([]mailImage, error) {
+	rows, err := s.DB.Query(ctx, `SELECT filename, media_type, data FROM mail_attachment WHERE mail_id = $1 ORDER BY position`, mailID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []mailImage
+	for rows.Next() {
+		var img mailImage
+		if err := rows.Scan(&img.Filename, &img.MediaType, &img.Data); err != nil {
+			return nil, err
+		}
+		out = append(out, img)
+	}
+	return out, rows.Err()
+}
+
+// imageLines names the images in the text of the user message, so the model
+// can refer to each one by name, and so the logged prompt, the transcript and
+// learning extraction (which keep only the text) record that they were there.
+func imageLines(images []mailImage) string {
+	if len(images) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nAttached images, in order:")
+	for i, img := range images {
+		fmt.Fprintf(&b, "\n[image %d: %s]", i+1, img.Filename)
+	}
+	return b.String()
 }
 
 const ackMailSQL = "UPDATE mail SET acked_at = NOW() WHERE id = $1 AND to_actor_id = $2 AND acked_at IS NULL"
@@ -166,6 +207,9 @@ func (s *Service) HandleDirectMail(ctx context.Context, virtualAgentName, fromAg
 		return nil
 	}
 	if err != nil {
+		return err
+	}
+	if m.Images, err = s.loadMailImages(ctx, mailID); err != nil {
 		return err
 	}
 
@@ -207,8 +251,28 @@ func (s *Service) answerMail(ctx context.Context, agent *Agent, fromAgent, mailI
 	if err != nil {
 		return err
 	}
-	userMessage := buildMailUserMessage(m.FromAgent, m.Subject, m.Body)
+	userMessage := buildMailUserMessage(m.FromAgent, m.Subject, m.Body) + imageLines(m.Images)
 	subject := replySubject(m.Subject)
+
+	// A mail with images goes to the model as one user message of the text
+	// and the pictures (LLM-1040). A provider not wired for images gets no
+	// call: the sender is told, rather than given a reply written without
+	// seeing what was sent.
+	var opts *providers.RawOpts
+	if len(m.Images) > 0 {
+		if !providers.SupportsImages(provider) {
+			s.logVA("direct-mail-images-unsupported", logger.Fields{{Key: "agent", Value: agent.Name}, {Key: "provider", Value: provider}, {Key: "mailId", Value: mailID}})
+			_, err := s.Mail.Send(ctx, fromAgent, agent.Name, subject,
+				fmt.Sprintf("[Error] This mail has %d image attachment(s), and %s's provider (%s) is not set up to read images, so it was not answered.",
+					len(m.Images), agent.Name, provider), mailID)
+			return err
+		}
+		images := make([]providers.Image, len(m.Images))
+		for i, img := range m.Images {
+			images[i] = providers.Image{MediaType: img.MediaType, Data: img.Data}
+		}
+		opts = &providers.RawOpts{Messages: []any{providers.ImageUserMessage(userMessage, images)}}
+	}
 
 	limited, err := s.IsRateLimited(ctx, agent.Name, "")
 	if err != nil {
@@ -241,7 +305,7 @@ func (s *Service) answerMail(ctx context.Context, agent *Agent, fromAgent, mailI
 	start := s.now()
 	result, err := retryWithBackoff(ctx, s, agent.Name, func(ctx context.Context) (*providers.Result, error) {
 		return WithActivity(ctx, s, agent.Name, func() (*providers.Result, error) {
-			return call(ctx, system, userMessage, nil)
+			return call(ctx, system, userMessage, opts)
 		})
 	}, func(err error, info RetryInfo) error {
 		_, sendErr := s.Mail.Send(ctx, fromAgent, agent.Name, subject,

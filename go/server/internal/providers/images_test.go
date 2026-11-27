@@ -1,0 +1,135 @@
+package providers
+
+import (
+	"testing"
+
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
+)
+
+// images_test.go — image parts in a user message (LLM-1040): the neutral
+// OpenAI-chat message, and each adapter's translation of it.
+
+var pngBytes = []byte("\x89PNG\r\n\x1a\nfake")
+
+const pngB64 = "iVBORw0KGgpmYWtl"
+
+// toJSON is the JSON a request body would carry, keys in insertion order.
+// jsutil.Marshal takes JavaScript values, so a []*object is passed as []any.
+func toJSON(t *testing.T, v any) string {
+	t.Helper()
+	if list, ok := v.([]*object); ok {
+		values := make([]any, len(list))
+		for i, o := range list {
+			values[i] = o
+		}
+		v = values
+	}
+	return jsutil.Marshal(v)
+}
+
+func imageMessage() *object {
+	return ImageUserMessage("look at this", []Image{{MediaType: "image/png", Data: pngBytes}})
+}
+
+func TestImageUserMessageIsOpenAIChatShape(t *testing.T) {
+	got := toJSON(t, imageMessage())
+	want := `{"role":"user","content":[{"type":"text","text":"look at this"},` +
+		`{"type":"image_url","image_url":{"url":"data:image/png;base64,` + pngB64 + `"}}]}`
+	if got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
+func TestResponsesInputTranslatesImages(t *testing.T) {
+	input, err := messagesToResponsesInput([]*object{imageMessage()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := toJSON(t, input)
+	want := `[{"role":"user","content":[{"type":"input_text","text":"look at this"},` +
+		`{"type":"input_image","image_url":"data:image/png;base64,` + pngB64 + `"}]}]`
+	if got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
+func TestAnthropicTranslatesImages(t *testing.T) {
+	out, err := translateMessagesToAnthropic([]*object{imageMessage()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := toJSON(t, out)
+	want := `[{"role":"user","content":[{"type":"text","text":"look at this"},` +
+		`{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + pngB64 + `"}}]}]`
+	if got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
+func TestGoogleTranslatesImages(t *testing.T) {
+	out, err := translateMessagesToGoogle([]*object{imageMessage()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := toJSON(t, out)
+	want := `[{"role":"user","parts":[{"text":"look at this"},` +
+		`{"inline_data":{"mime_type":"image/png","data":"` + pngB64 + `"}}]}]`
+	if got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
+// A user message without images goes out exactly as before on every
+// adapter: string content as a string, and a text-part array (with its
+// extra keys, such as a cache marker) as the caller built it.
+func TestTextOnlyContentIsUnchanged(t *testing.T) {
+	str := obj("role", "user", "content", "plain")
+	parts := obj("role", "user", "content", []any{obj("type", "text", "text", "a", "cache_control", obj("type", "ephemeral"))})
+
+	responses, err := messagesToResponsesInput([]*object{str, parts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := toJSON(t, responses), `[{"role":"user","content":"plain"},`+
+		`{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]`; got != want {
+		t.Errorf("responses: got %s\nwant %s", got, want)
+	}
+	anthropic, err := translateMessagesToAnthropic([]*object{str, parts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := toJSON(t, anthropic), `[{"role":"user","content":"plain"},`+
+		`{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]`; got != want {
+		t.Errorf("anthropic: got %s\nwant %s", got, want)
+	}
+	google, err := translateMessagesToGoogle([]*object{str})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := toJSON(t, google), `[{"role":"user","parts":[{"text":"plain"}]}]`; got != want {
+		t.Errorf("google: got %s\nwant %s", got, want)
+	}
+}
+
+func TestSupportsImages(t *testing.T) {
+	for provider, want := range map[string]bool{
+		"openai": true, "OpenAI": true, "openrouter": true, "open-router": true, "anthropic": true, "google": true,
+		"perplexity": false, "xai": false, "nope": false, "": false,
+	} {
+		if got := SupportsImages(provider); got != want {
+			t.Errorf("SupportsImages(%q) = %v, want %v", provider, got, want)
+		}
+	}
+}
+
+func TestSplitDataURL(t *testing.T) {
+	mediaType, data, ok := splitDataURL("data:image/webp;base64,QUJD")
+	if !ok || mediaType != "image/webp" || data != "QUJD" {
+		t.Errorf("got %q %q %v", mediaType, data, ok)
+	}
+	for _, bad := range []string{"https://x/y.png", "data:image/png,QUJD", "data:;base64,QUJD", "data:image/png;base64"} {
+		if _, _, ok := splitDataURL(bad); ok {
+			t.Errorf("%q should not split", bad)
+		}
+	}
+}
