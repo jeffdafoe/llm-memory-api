@@ -15,8 +15,8 @@
 //	          [--from <agent>]
 //	          [--attach <image> ...]
 //
-// --attach adds an image (PNG, JPEG, WebP or GIF; up to 8, 3 MiB together)
-// and may be given more than once. A virtual agent that receives the mail
+// --attach adds an image (PNG or JPEG; up to 8, 3 MiB together, at most
+// 4096 pixels a side) and may be given more than once. A virtual agent that receives the mail
 // sees the images with the text (LLM-1040).
 package main
 
@@ -60,8 +60,6 @@ var imageTypes = map[string]string{
     ".png":  "image/png",
     ".jpg":  "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".gif":  "image/gif",
 }
 
 // loadAttachments reads each image into the /mail/send attachments shape.
@@ -70,7 +68,7 @@ func loadAttachments(paths []string) ([]map[string]string, error) {
     for _, p := range paths {
         mediaType, ok := imageTypes[strings.ToLower(filepath.Ext(p))]
         if !ok {
-            return nil, fmt.Errorf("%s: not a .png, .jpg, .jpeg, .webp or .gif file", p)
+            return nil, fmt.Errorf("%s: not a .png, .jpg or .jpeg file", p)
         }
         data, err := os.ReadFile(p)
         if err != nil {
@@ -87,7 +85,7 @@ func loadAttachments(paths []string) ([]map[string]string, error) {
 
 func main() {
     var attach attachFlag
-    flag.Var(&attach, "attach", "Image to attach (PNG, JPEG, WebP or GIF); repeat for more")
+    flag.Var(&attach, "attach", "Image to attach (PNG or JPEG); repeat for more")
     to := flag.String("to", "", "Recipient agent name (e.g. code_review, work)")
     subject := flag.String("subject", "", "Subject line")
     bodyFile := flag.String("body-file", "", "Path to a file whose contents are the mail body")
