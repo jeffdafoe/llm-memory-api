@@ -81,6 +81,25 @@ type scenarioCase struct {
 	Agent, From, MailID string
 }
 
+// settle waits, as compareMail does, until the background work (learning
+// extraction, the transcript) has written as much as the golden recording
+// did, then holds the recorder's lock for the caller's reads; the caller
+// unlocks.
+func settle(r *recorder, want *scenario) {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		r.mu.Lock()
+		done := len(r.queries) >= len(want.Queries) && len(r.logs) >= len(want.Logs) && len(r.notes) >= len(want.Notes)
+		r.mu.Unlock()
+		if done || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	r.mu.Lock()
+}
+
 func TestDirectMailWithImagesSendsThemToTheModel(t *testing.T) {
 	old := localZone
 	localZone = time.FixedZone("IST", 5*3600+1800)
@@ -90,6 +109,8 @@ func TestDirectMailWithImagesSendsThemToTheModel(t *testing.T) {
 	if err := s.HandleDirectMail(context.Background(), c.Agent, c.From, c.MailID); err != nil {
 		t.Fatal(err)
 	}
+	settle(r, &c.scenario)
+	defer r.mu.Unlock()
 	if len(r.calls) == 0 {
 		t.Fatal("no provider call")
 	}
@@ -139,6 +160,10 @@ func TestDirectMailWithImagesToATextModelIsRefused(t *testing.T) {
 	if err := s.HandleDirectMail(context.Background(), c.Agent, c.From, c.MailID); err != nil {
 		t.Fatal(err)
 	}
+	// The refusal sends its reply before returning; nothing runs in the
+	// background, so the reads only need the lock.
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if len(r.calls) != 0 {
 		t.Errorf("%d provider call(s); want none", len(r.calls))
 	}
