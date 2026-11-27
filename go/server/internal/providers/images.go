@@ -1,8 +1,9 @@
 package providers
 
 import (
-	"encoding/base64"
 	"strings"
+
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/jsutil"
 )
 
 // images.go — image parts in a user message (LLM-1040: mail attachments a
@@ -16,29 +17,42 @@ import (
 //	    {type: "image_url", image_url: {url: "data:image/png;base64,..."}},
 //	]}
 //
-// OpenAI's chat completions and OpenRouter take that as it is. The other
-// adapters translate each part into their own block when they build the
-// request: /v1/responses (input_text / input_image), Anthropic (an image
-// block with a base64 source), Google (inline_data). Perplexity and xAI are
-// not wired for images; SupportsImages says which adapters are.
+// OpenAI's chat completions take that as it is. The other adapters
+// translate each part into their own block when they build the request:
+// /v1/responses (input_text / input_image), Anthropic (an image block with a
+// base64 source), Google (inline_data). The mail side accepts PNG and JPEG
+// only, which all of these read.
 
-// Image is one picture for a user message.
+// Image is one picture for a user message: its media type and its bytes as
+// standard base64.
 type Image struct {
-	MediaType string
-	Data      []byte
+	MediaType  string
+	DataBase64 string
 }
 
-// imageProviders are the adapters that translate image parts.
-var imageProviders = map[string]bool{"openai": true, "openrouter": true, "anthropic": true, "google": true}
+// visionModels are, per adapter, the model id prefixes known to read images.
+// An adapter alone is not enough: a model of it may be text-only, and
+// OpenRouter routes to models of every kind, so it is not listed until its
+// model metadata is checked.
+var visionModels = map[string][]string{
+	"openai":    {"gpt-4o", "gpt-4.1", "gpt-5", "gpt-6", "o1", "o3", "o4"},
+	"anthropic": {"claude-"},
+	"google":    {"gemini-"},
+}
 
-// SupportsImages reports whether the provider (a name or an alias) can be
-// sent image parts.
-func SupportsImages(provider string) bool {
+// SupportsImages reports whether the provider (a name or an alias) and model
+// can be sent image parts.
+func SupportsImages(provider, model string) bool {
 	a, err := resolveProvider(provider)
 	if err != nil || a == nil {
 		return false
 	}
-	return imageProviders[a.name]
+	for _, prefix := range visionModels[a.name] {
+		if strings.HasPrefix(jsutil.ToLower(model), prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // ImageUserMessage is one user message of the text followed by the images,
@@ -46,7 +60,7 @@ func SupportsImages(provider string) bool {
 func ImageUserMessage(text string, images []Image) *object {
 	parts := []any{obj("type", "text", "text", text)}
 	for _, img := range images {
-		url := "data:" + img.MediaType + ";base64," + base64.StdEncoding.EncodeToString(img.Data)
+		url := "data:" + img.MediaType + ";base64," + img.DataBase64
 		parts = append(parts, obj("type", "image_url", "image_url", obj("url", url)))
 	}
 	return obj("role", "user", "content", parts)
@@ -144,7 +158,7 @@ func responsesContent(content any) any {
 	return translateParts(content,
 		func(t any) any { return obj("type", "input_text", "text", t) },
 		func(mediaType, data string) any {
-			return obj("type", "input_image", "image_url", "data:"+mediaType+";base64,"+data)
+			return obj("type", "input_image", "image_url", "data:"+mediaType+";base64,"+data, "detail", "auto")
 		})
 }
 

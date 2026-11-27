@@ -1,9 +1,16 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -13,11 +20,47 @@ import (
 
 // attachments_test.go — image attachments on mail (LLM-1040).
 
-// Enough of each format for http.DetectContentType to recognise it.
+// picture is a w x h image with a little detail, so a codec has something to
+// encode.
+func picture(w, h int) image.Image {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{uint8(x * 7), uint8(y * 11), 90, 255})
+		}
+	}
+	return img
+}
+
+func encodePNG(w, h int) []byte {
+	var b bytes.Buffer
+	if err := png.Encode(&b, picture(w, h)); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}
+
+func encodeJPEG(w, h int) []byte {
+	var b bytes.Buffer
+	if err := jpeg.Encode(&b, picture(w, h), nil); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}
+
+func encodeGIF(w, h int) []byte {
+	var b bytes.Buffer
+	if err := gif.Encode(&b, picture(w, h), nil); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}
+
+// Real, whole images for the happy paths.
 var (
-	pngData  = []byte("\x89PNG\r\n\x1a\n-png-")
-	jpegData = []byte("\xff\xd8\xff\xe0-jpeg-")
-	gifData  = []byte("GIF89a-gif-")
+	pngData  = encodePNG(24, 16)
+	jpegData = encodeJPEG(24, 16)
+	gifData  = encodeGIF(8, 8)
 	webpData = []byte("RIFF\x00\x00\x00\x00WEBPVP8 -webp-")
 )
 
@@ -44,11 +87,9 @@ func TestValidateAttachments(t *testing.T) {
 	ok := []Attachment{
 		{Filename: "a.png", MediaType: "image/png", Data: pngData},
 		{Filename: "b.jpg", MediaType: "image/jpeg", Data: jpegData},
-		{Filename: "c.gif", MediaType: "image/gif", Data: gifData},
-		{Filename: "d.webp", MediaType: "image/webp", Data: webpData},
 	}
 	if err := validateAttachments(ok); err != nil {
-		t.Errorf("the four formats: %v", err)
+		t.Errorf("PNG and JPEG: %v", err)
 	}
 	if err := validateAttachments(nil); err != nil {
 		t.Errorf("none: %v", err)
@@ -59,14 +100,24 @@ func TestValidateAttachments(t *testing.T) {
 	}
 	big := Attachment{Filename: "big.png", MediaType: "image/png", Data: append(append([]byte{}, pngData...), make([]byte, MaxAttachmentBytes)...)}
 	cases := map[string][]Attachment{
-		"too many":           nine,
-		"too big":            {big},
-		"no filename":        {{Filename: "", MediaType: "image/png", Data: pngData}},
-		"a path":             {{Filename: "dir/a.png", MediaType: "image/png", Data: pngData}},
-		"not an image type":  {{Filename: "a.svg", MediaType: "image/svg+xml", Data: []byte("<svg/>")}},
-		"bytes not the type": {{Filename: "a.png", MediaType: "image/png", Data: jpegData}},
-		"text as an image":   {{Filename: "a.png", MediaType: "image/png", Data: []byte("hello")}},
-		"empty":              {{Filename: "a.png", MediaType: "image/png", Data: nil}},
+		"too many":    nine,
+		"too big":     {big},
+		"no filename": {{Filename: "", MediaType: "image/png", Data: pngData}},
+		"a path":      {{Filename: "dir/a.png", MediaType: "image/png", Data: pngData}},
+		// Only PNG and JPEG: GIF and WebP are not read by every provider.
+		"a GIF":             {{Filename: "c.gif", MediaType: "image/gif", Data: gifData}},
+		"a WebP":            {{Filename: "d.webp", MediaType: "image/webp", Data: webpData}},
+		"not an image type": {{Filename: "a.svg", MediaType: "image/svg+xml", Data: []byte("<svg/>")}},
+		"JPEG called PNG":   {{Filename: "a.png", MediaType: "image/png", Data: jpegData}},
+		"GIF called PNG":    {{Filename: "a.png", MediaType: "image/png", Data: gifData}},
+		"text as an image":  {{Filename: "a.png", MediaType: "image/png", Data: []byte("hello")}},
+		"empty":             {{Filename: "a.png", MediaType: "image/png", Data: nil}},
+		// A header that reads, cut short after it: the full decode fails.
+		"truncated PNG":  {{Filename: "a.png", MediaType: "image/png", Data: pngData[:len(pngData)-30]}},
+		"truncated JPEG": {{Filename: "b.jpg", MediaType: "image/jpeg", Data: jpegData[:len(jpegData)/2]}},
+		// Dimensions over the limits, refused from the header.
+		"too wide":        {{Filename: "w.png", MediaType: "image/png", Data: encodePNG(MaxImageSide+1, 1)}},
+		"too many pixels": {{Filename: "p.png", MediaType: "image/png", Data: encodePNG(4000, 3001)}},
 	}
 	for name, list := range cases {
 		if err := validateAttachments(list); status(err) != 400 {
@@ -79,7 +130,7 @@ func TestValidateAttachments(t *testing.T) {
 func TestSendRefusesABadAttachmentBeforeWriting(t *testing.T) {
 	s, mock := newService(t)
 	_, err := s.SendWithAttachments(context.Background(), "agent-a", "agent-b", "S", "B", "",
-		[]Attachment{{Filename: "a.png", MediaType: "image/png", Data: []byte("hello")}})
+		[]Attachment{{Filename: "a.png", MediaType: "image/png", Data: pngData[:len(pngData)-30]}})
 	if status(err) != 400 {
 		t.Fatalf("want 400, got %v", err)
 	}
@@ -102,13 +153,13 @@ func TestSendWithAttachmentsWritesThemInOneTransaction(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(mailID, sentAt))
 	mock.ExpectExec("INSERT INTO mail_attachment").WithArgs(mailID, 0, "a.png", "image/png", len(pngData), pngData).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-	mock.ExpectExec("INSERT INTO mail_attachment").WithArgs(mailID, 1, "b.gif", "image/gif", len(gifData), gifData).
+	mock.ExpectExec("INSERT INTO mail_attachment").WithArgs(mailID, 1, "b.jpg", "image/jpeg", len(jpegData), jpegData).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
 
 	got, err := s.SendWithAttachments(context.Background(), "agent-a", "system", "Look", "Two renders", "", []Attachment{
 		{Filename: "a.png", MediaType: "image/png", Data: pngData},
-		{Filename: "b.gif", MediaType: "image/gif", Data: gifData},
+		{Filename: "b.jpg", MediaType: "image/jpeg", Data: jpegData},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -194,5 +245,20 @@ func TestAttachmentFetch(t *testing.T) {
 	}
 	if got.Filename != "a.png" || got.MailID != mailID || got.DataBase64 != base64.StdEncoding.EncodeToString(pngData) {
 		t.Errorf("got %+v", got)
+	}
+}
+
+// The fetch route answers only for the authenticated agent: asking as
+// another agent is a 403 before any query.
+func TestAttachmentRouteRefusesAnotherAgent(t *testing.T) {
+	s, mock := newService(t)
+	rt := &Routes{Service: s}
+	rec := httptest.NewRecorder()
+	err := rt.attachment(rec, request(`{"agent":"agent-b","id":"0a1b2c3d-0000-4000-8000-0000000000a1"}`, "agent-c"))
+	if err != nil || rec.Code != 403 {
+		t.Errorf("err %v, status %d, body %s", err, rec.Code, rec.Body)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
 	}
 }

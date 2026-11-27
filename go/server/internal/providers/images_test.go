@@ -9,8 +9,6 @@ import (
 // images_test.go — image parts in a user message (LLM-1040): the neutral
 // OpenAI-chat message, and each adapter's translation of it.
 
-var pngBytes = []byte("\x89PNG\r\n\x1a\nfake")
-
 const pngB64 = "iVBORw0KGgpmYWtl"
 
 // toJSON is the JSON a request body would carry, keys in insertion order.
@@ -28,7 +26,7 @@ func toJSON(t *testing.T, v any) string {
 }
 
 func imageMessage() *object {
-	return ImageUserMessage("look at this", []Image{{MediaType: "image/png", Data: pngBytes}})
+	return ImageUserMessage("look at this", []Image{{MediaType: "image/png", DataBase64: pngB64}})
 }
 
 func TestImageUserMessageIsOpenAIChatShape(t *testing.T) {
@@ -47,7 +45,7 @@ func TestResponsesInputTranslatesImages(t *testing.T) {
 	}
 	got := toJSON(t, input)
 	want := `[{"role":"user","content":[{"type":"input_text","text":"look at this"},` +
-		`{"type":"input_image","image_url":"data:image/png;base64,` + pngB64 + `"}]}]`
+		`{"type":"input_image","image_url":"data:image/png;base64,` + pngB64 + `","detail":"auto"}]}]`
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
@@ -102,22 +100,44 @@ func TestTextOnlyContentIsUnchanged(t *testing.T) {
 		`{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]`; got != want {
 		t.Errorf("anthropic: got %s\nwant %s", got, want)
 	}
-	google, err := translateMessagesToGoogle([]*object{str})
+	google, err := translateMessagesToGoogle([]*object{str, parts})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := toJSON(t, google), `[{"role":"user","parts":[{"text":"plain"}]}]`; got != want {
+	// Gemini wraps any content in one text part, an array included, as it
+	// did before images.
+	if got, want := toJSON(t, google), `[{"role":"user","parts":[{"text":"plain"}]},`+
+		`{"role":"user","parts":[{"text":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]}]`; got != want {
 		t.Errorf("google: got %s\nwant %s", got, want)
 	}
 }
 
+// Images go only to a provider and model known to read them: the adapter
+// alone is not enough (a model may be text-only), and OpenRouter, which
+// routes to models of every kind, is not listed.
 func TestSupportsImages(t *testing.T) {
-	for provider, want := range map[string]bool{
-		"openai": true, "OpenAI": true, "openrouter": true, "open-router": true, "anthropic": true, "google": true,
-		"perplexity": false, "xai": false, "nope": false, "": false,
-	} {
-		if got := SupportsImages(provider); got != want {
-			t.Errorf("SupportsImages(%q) = %v, want %v", provider, got, want)
+	cases := []struct {
+		provider, model string
+		want            bool
+	}{
+		{"openai", "gpt-6-luna", true},
+		{"OpenAI", "gpt-5.4", true},
+		{"openai", "gpt-4o-mini", true},
+		{"openai", "o3", true},
+		{"openai", "gpt-3.5-turbo", false},
+		{"anthropic", "claude-haiku-4-5", true},
+		{"google", "gemini-2.5-flash", true},
+		{"google", "gemma-3", false},
+		{"openrouter", "openai/gpt-4o", false},
+		{"open-router", "anthropic/claude-sonnet-4", false},
+		{"perplexity", "sonar", false},
+		{"xai", "grok-4", false},
+		{"nope", "gpt-6", false},
+		{"", "", false},
+	}
+	for _, c := range cases {
+		if got := SupportsImages(c.provider, c.model); got != c.want {
+			t.Errorf("SupportsImages(%q, %q) = %v, want %v", c.provider, c.model, got, c.want)
 		}
 	}
 }

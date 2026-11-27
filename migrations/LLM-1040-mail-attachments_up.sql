@@ -1,9 +1,11 @@
 -- Image attachments on mail (LLM-1040). A message can carry up to 8 images
--- (PNG, JPEG, WebP, GIF; 3 MiB together, so the base64 request fits the
--- 5 MiB JSON body limit). A virtual agent that receives the mail sees the
--- images alongside the text. The rows go with their mail: a hard delete of
--- the mail (the cleanup job's) cascades; a soft delete (unsend) hides them
--- with it, since every read joins through the mail row.
+-- (PNG or JPEG; 3 MiB together, so the base64 request fits the 5 MiB JSON
+-- body limit). A virtual agent that receives the mail sees the images
+-- alongside the text. The rows go with their mail: a hard delete of the mail
+-- (the cleanup job's, or the actor's) cascades; a soft delete (unsend) hides
+-- them with it, since every read checks the mail row (the fetch and the
+-- virtual agent's read join it; receive lists them only for mail it has just
+-- read as live).
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS mail_attachment (

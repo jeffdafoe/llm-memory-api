@@ -265,8 +265,9 @@ type recorder struct {
 
 // goOnlyKinds are queries the Go service makes that Node never did, so no
 // golden recording has them: the mail's image attachments (LLM-1040; Node
-// mail had none, and no scenario carries any). They answer no rows and stay
-// out of the compared sequence; their own tests cover them.
+// mail had none). They answer from a scenario's rows (no Node golden has
+// any) and stay out of the compared sequence; mail_images_test.go covers
+// them.
 var goOnlyKinds = map[string]bool{"mail-attachments": true}
 
 var kinds = []struct {
@@ -354,8 +355,18 @@ func (r *recorder) query(ctx context.Context, sql string, args []any) (string, [
 		r.t.Fatalf("unclassified query: %s", sql)
 	}
 	if goOnlyKinds[kind] {
-		// Not in Node's recording: answered with no rows, not recorded.
-		return kind, nil, nil
+		// Not in Node's recording: answered from the scenario's rows (none
+		// in the Node goldens), never recorded.
+		raw := r.sc.Rows[kind]
+		if len(raw) == 0 {
+			return kind, nil, nil
+		}
+		v, err := jsutil.Parse(raw)
+		if err != nil {
+			r.t.Fatal(err)
+		}
+		rows, _ := v.([]any)
+		return kind, rows, nil
 	}
 	if r.block[kind] {
 		<-ctx.Done()

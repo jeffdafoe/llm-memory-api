@@ -1,11 +1,17 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	// The blank imports register the PNG and JPEG decoders with the image
+	// package, so image.DecodeConfig and image.Decode read those formats.
+	_ "image/jpeg"
+	_ "image/png"
 	"net/http"
 	"strings"
 
@@ -29,10 +35,19 @@ const MaxAttachments = 8
 // (httpapi.MaxBodyBytes).
 const MaxAttachmentBytes = 3 * 1024 * 1024
 
-// imageTypes are the media types an attachment may have. Each is checked
-// against what the bytes are (http.DetectContentType sniffs these four), so
-// a mislabelled or non-image file is refused rather than passed to a model.
-var imageTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/webp": true, "image/gif": true}
+// imageTypes are the media types an attachment may have, each with the
+// format name Go's image package reports for it. PNG and JPEG only: every
+// provider a virtual agent can read images on takes both (GIF and WebP are
+// not universal), and the standard library decodes both in full.
+var imageTypes = map[string]string{"image/png": "png", "image/jpeg": "jpeg"}
+
+// MaxImageSide and MaxImagePixels bound an image's dimensions, checked from
+// its header before it is decoded: decoding allocates about four bytes a
+// pixel, and a small file can declare a huge image.
+const (
+	MaxImageSide   = 4096
+	MaxImagePixels = 12_000_000
+)
 
 // Attachment is one image a sender attaches.
 type Attachment struct {
@@ -87,19 +102,42 @@ func validateAttachments(list []Attachment) error {
 		if a.Filename == "" || len(a.Filename) > 255 || strings.ContainsAny(a.Filename, "/\\\x00") {
 			return badRequest(fmt.Sprintf("attachments[%d].filename must be a plain file name of at most 255 bytes", i))
 		}
-		if !imageTypes[a.MediaType] {
-			return badRequest(fmt.Sprintf("attachments[%d].media_type must be image/png, image/jpeg, image/webp or image/gif", i))
+		format, known := imageTypes[a.MediaType]
+		if !known {
+			return badRequest(fmt.Sprintf("attachments[%d].media_type must be image/png or image/jpeg", i))
 		}
 		if len(a.Data) == 0 {
 			return badRequest(fmt.Sprintf("attachments[%d] is empty", i))
 		}
-		if sniffed := http.DetectContentType(a.Data); sniffed != a.MediaType {
-			return badRequest(fmt.Sprintf("attachments[%d] is %s, not %s", i, sniffed, a.MediaType))
-		}
 		total += len(a.Data)
+		if total > MaxAttachmentBytes {
+			return badRequest(fmt.Sprintf("Attachments total more than %d bytes", MaxAttachmentBytes))
+		}
+		if err := checkImage(a.Data, format); err != nil {
+			return badRequest(fmt.Sprintf("attachments[%d] (%s): %s", i, a.Filename, err))
+		}
 	}
-	if total > MaxAttachmentBytes {
-		return badRequest(fmt.Sprintf("Attachments total %d bytes; the limit is %d", total, MaxAttachmentBytes))
+	return nil
+}
+
+// checkImage proves the bytes are a whole image of the format: the header
+// first (the format, and dimensions within the limits), then a full decode,
+// which catches a file cut short after its header.
+func checkImage(data []byte, format string) error {
+	conf, got, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("not a readable image (%v)", err)
+	}
+	if got != format {
+		return fmt.Errorf("the data is %s, not %s", got, format)
+	}
+	if conf.Width <= 0 || conf.Height <= 0 || conf.Width > MaxImageSide || conf.Height > MaxImageSide ||
+		conf.Width*conf.Height > MaxImagePixels {
+		return fmt.Errorf("%dx%d is outside the limits (at most %d a side, %d pixels)",
+			conf.Width, conf.Height, MaxImageSide, MaxImagePixels)
+	}
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("the image does not decode (%v)", err)
 	}
 	return nil
 }
@@ -117,7 +155,8 @@ func insertAttachments(ctx context.Context, tx pgx.Tx, mailID string, list []Att
 }
 
 // attachmentInfos lists the attachments of the given messages, by mail id,
-// each message's in order.
+// each message's in order. Receive calls it only with the ids it has just
+// read for the agent (addressed to it, not acked, not unsent).
 func (s *Service) attachmentInfos(ctx context.Context, mailIDs []string) (map[string][]AttachmentInfo, error) {
 	out := map[string][]AttachmentInfo{}
 	if len(mailIDs) == 0 {
@@ -136,26 +175,6 @@ func (s *Service) attachmentInfos(ctx context.Context, mailIDs []string) (map[st
 			return nil, err
 		}
 		out[mailID] = append(out[mailID], a)
-	}
-	return out, rows.Err()
-}
-
-// Images returns a message's attachments with their bytes, in order: what a
-// virtual agent answering it sees. No ownership check; the virtual-agent
-// service calls it for mail it was sent.
-func (s *Service) Images(ctx context.Context, mailID string) ([]Attachment, error) {
-	rows, err := s.DB.Query(ctx, `SELECT filename, media_type, data FROM mail_attachment WHERE mail_id = $1 ORDER BY position`, mailID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Attachment
-	for rows.Next() {
-		var a Attachment
-		if err := rows.Scan(&a.Filename, &a.MediaType, &a.Data); err != nil {
-			return nil, err
-		}
-		out = append(out, a)
 	}
 	return out, rows.Err()
 }
