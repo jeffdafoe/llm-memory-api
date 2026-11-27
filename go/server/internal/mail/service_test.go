@@ -201,6 +201,9 @@ func TestReceiveSendsTheIdsAsAnArrayLiteral(t *testing.T) {
 	mock.ExpectQuery("WHERE m.id = ANY").WithArgs(`{"`+upper+`"}`, 12).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "from_agent", "to_agent", "subject", "body", "sent_at", "in_reply_to"}).
 			AddRow(mailID, "agent-a", "agent-b", "S", "B", sentAt, nil))
+	// No attachments: the message reads as before, with no attachments key.
+	mock.ExpectQuery("FROM mail_attachment").WithArgs([]string{mailID}).
+		WillReturnRows(pgxmock.NewRows([]string{"mail_id", "id", "filename", "media_type", "size_bytes"}))
 	got, err := s.Receive(context.Background(), "agent-b", json.RawMessage(` [ "`+upper+`" ] `))
 	if err != nil {
 		t.Fatal(err)

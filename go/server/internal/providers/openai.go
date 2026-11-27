@@ -183,7 +183,13 @@ func messagesToResponsesInput(messages []*object) ([]any, error) {
 			}
 			continue
 		}
-		input = append(input, obj("role", role, "content", msg.Value("content")))
+		content := msg.Value("content")
+		if isStr(role, "user") {
+			// Image parts become input_image (LLM-1040); text-only content
+			// is unchanged.
+			content = responsesContent(content)
+		}
+		input = append(input, obj("role", role, "content", content))
 	}
 	return input, nil
 }

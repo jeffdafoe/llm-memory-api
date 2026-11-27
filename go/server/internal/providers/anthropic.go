@@ -163,7 +163,9 @@ func translateMessagesToAnthropic(messages []*object) ([]*object, error) {
 		flush()
 		switch role {
 		case "user":
-			out = append(out, obj("role", "user", "content", msg.Value("content")))
+			// Image parts become image blocks (LLM-1040); text-only content
+			// is unchanged.
+			out = append(out, obj("role", "user", "content", anthropicContent(msg.Value("content"))))
 		case "assistant":
 			var blocks []any
 			if c := msg.Value("content"); truthy(c) {

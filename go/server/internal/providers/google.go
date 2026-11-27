@@ -77,7 +77,9 @@ func translateMessagesToGoogle(messages []*object) ([]any, error) {
 			}
 			out = append(out, obj("role", "function", "parts", []any{obj("functionResponse", obj("name", name, "response", obj("content", content)))}))
 		case "user":
-			out = append(out, obj("role", "user", "parts", []any{obj("text", or(msg.Value("content"), ""))}))
+			// Image parts become inline_data parts (LLM-1040); other content
+			// is one text part, as before.
+			out = append(out, obj("role", "user", "parts", googleUserParts(msg.Value("content"))))
 		case "assistant":
 			parts := []any{}
 			if c := msg.Value("content"); truthy(c) {

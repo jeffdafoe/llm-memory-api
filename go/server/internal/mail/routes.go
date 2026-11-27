@@ -27,6 +27,7 @@ func (rt *Routes) Register(mux *httpapi.RawMux) {
 	route("ack", rt.ack)
 	route("sent", rt.sent)
 	route("history", rt.history)
+	route("attachment", rt.attachment)
 }
 
 // noBodyRead is V8's TypeError for `req.body.<field>` with no JSON body. The
@@ -76,7 +77,34 @@ func (rt *Routes) send(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	res, err := rt.Service.Send(r.Context(), to, from, text[0], text[1], inReplyTo)
+	// Optional images (LLM-1040): [{filename, media_type, data_base64}].
+	attachments, err := ParseAttachments(f.Raw("attachments"))
+	if err != nil {
+		return err
+	}
+	res, err := rt.Service.SendWithAttachments(r.Context(), to, from, text[0], text[1], inReplyTo, attachments)
+	if err != nil {
+		return err
+	}
+	return httpapi.WriteJSON(w, http.StatusOK, res)
+}
+
+// attachment returns one image of a message the agent sent or received, its
+// bytes as base64 (LLM-1040).
+func (rt *Routes) attachment(w http.ResponseWriter, r *http.Request) error {
+	f, ok := httpapi.BodyFields(r)
+	if !ok {
+		return noBodyRead("agent")
+	}
+	agent, done, err := httpapi.Identity(w, r, f, "agent", "agent does not match authenticated agent")
+	if done || err != nil {
+		return err
+	}
+	id, err := f.OptionalString("id")
+	if err != nil {
+		return err
+	}
+	res, err := rt.Service.Attachment(r.Context(), agent, id)
 	if err != nil {
 		return err
 	}
