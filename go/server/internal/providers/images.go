@@ -30,25 +30,46 @@ type Image struct {
 	DataBase64 string
 }
 
-// visionModels are, per adapter, the model id prefixes known to read images.
-// An adapter alone is not enough: a model of it may be text-only, and
-// OpenRouter routes to models of every kind, so it is not listed until its
-// model metadata is checked.
+// visionModels are, per adapter, the model families known to read images,
+// by id prefix. An adapter alone is not enough: a model of it may be
+// text-only, and OpenRouter routes to models of every kind, so it is not
+// listed. The model registry carries no image-input flag to check instead.
 var visionModels = map[string][]string{
 	"openai":    {"gpt-4o", "gpt-4.1", "gpt-5", "gpt-6", "o1", "o3", "o4"},
 	"anthropic": {"claude-"},
 	"google":    {"gemini-"},
 }
 
+// textOnlyMarks are the parts of a model id that mark a variant within those
+// families that does not take image input: speech, audio and realtime
+// models, transcription, embeddings, search previews and live (streaming
+// audio) models.
+var textOnlyMarks = []string{"tts", "audio", "realtime", "transcribe", "embedding", "search", "live"}
+
+// textOnlyPrefixes are older models of a vision family that predate images:
+// Claude 1 and 2, and Claude Instant.
+var textOnlyPrefixes = []string{"claude-1", "claude-2", "claude-instant"}
+
 // SupportsImages reports whether the provider (a name or an alias) and model
-// can be sent image parts.
+// can be sent image parts: a vision family, and not a text-only variant.
 func SupportsImages(provider, model string) bool {
 	a, err := resolveProvider(provider)
 	if err != nil || a == nil {
 		return false
 	}
+	id := jsutil.ToLower(model)
+	for _, mark := range textOnlyMarks {
+		if strings.Contains(id, mark) {
+			return false
+		}
+	}
+	for _, prefix := range textOnlyPrefixes {
+		if strings.HasPrefix(id, prefix) {
+			return false
+		}
+	}
 	for _, prefix := range visionModels[a.name] {
-		if strings.HasPrefix(jsutil.ToLower(model), prefix) {
+		if strings.HasPrefix(id, prefix) {
 			return true
 		}
 	}

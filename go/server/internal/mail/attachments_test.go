@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/pashagolub/pgxmock/v6"
+
+	"github.com/jeffdafoe/llm-memory-api/go/server/internal/testutil"
 )
 
 // attachments_test.go — image attachments on mail (LLM-1040).
@@ -114,7 +116,7 @@ func TestValidateAttachments(t *testing.T) {
 		"empty":             {{Filename: "a.png", MediaType: "image/png", Data: nil}},
 		// A header that reads, cut short after it: the full decode fails.
 		"truncated PNG":  {{Filename: "a.png", MediaType: "image/png", Data: pngData[:len(pngData)-30]}},
-		"truncated JPEG": {{Filename: "b.jpg", MediaType: "image/jpeg", Data: jpegData[:len(jpegData)/2]}},
+		"truncated JPEG": {{Filename: "b.jpg", MediaType: "image/jpeg", Data: jpegData[:len(jpegData)-40]}},
 		// Dimensions over the limits, refused from the header.
 		"too wide":        {{Filename: "w.png", MediaType: "image/png", Data: encodePNG(MaxImageSide+1, 1)}},
 		"too many pixels": {{Filename: "p.png", MediaType: "image/png", Data: encodePNG(4000, 3001)}},
@@ -257,6 +259,92 @@ func TestAttachmentRouteRefusesAnotherAgent(t *testing.T) {
 	err := rt.attachment(rec, request(`{"agent":"agent-b","id":"0a1b2c3d-0000-4000-8000-0000000000a1"}`, "agent-c"))
 	if err != nil || rec.Code != 403 {
 		t.Errorf("err %v, status %d, body %s", err, rec.Code, rec.Body)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// The truncated images keep a readable header: DecodeConfig accepts them,
+// and only the full decode refuses them, so these cases guard that decode.
+func TestTruncatedImagesFailOnlyTheFullDecode(t *testing.T) {
+	for name, c := range map[string]struct {
+		data   []byte
+		format string
+	}{
+		"PNG":  {pngData[:len(pngData)-30], "png"},
+		"JPEG": {jpegData[:len(jpegData)-40], "jpeg"},
+	} {
+		if _, got, err := image.DecodeConfig(bytes.NewReader(c.data)); err != nil || got != c.format {
+			t.Errorf("%s: the header should read: %q %v", name, got, err)
+		}
+		err := checkImage(c.data, c.format)
+		if err == nil || !strings.Contains(err.Error(), "does not decode") {
+			t.Errorf("%s: want the full decode to refuse it, got %v", name, err)
+		}
+	}
+}
+
+// A mail with images to a virtual agent: the agent is triggered after the
+// transaction commits (ordered expectations: the trigger's queries can only
+// match after the commit), never before it.
+func TestSendWithAttachmentsTriggersTheAgentAfterCommit(t *testing.T) {
+	s, mock := newService(t)
+	mock.MatchExpectationsInOrder(true)
+	rec := recordingAgents{got: make(chan string, 1)}
+	s.Agents = rec
+	yes := true
+	expectActor(mock, "designer", 20)
+	expectActor(mock, "agent-a", 11)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO mail \(to_actor_id, from_actor_id, subject, body\) VALUES`).WithArgs(20, 11, "Look", "B").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(mailID, sentAt))
+	mock.ExpectExec("INSERT INTO mail_attachment").WithArgs(mailID, 0, "a.png", "image/png", len(pngData), pngData).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+	expectVirtual(mock, 20, &yes)
+	expectVirtual(mock, 11, nil)
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(11, 20).
+		WillReturnRows(pgxmock.NewRows([]string{"has_access"}).AddRow(true))
+
+	if _, err := s.SendWithAttachments(context.Background(), "designer", "agent-a", "Look", "B", "",
+		[]Attachment{{Filename: "a.png", MediaType: "image/png", Data: pngData}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-rec.got:
+		if got != "designer|agent-a|"+mailID {
+			t.Errorf("dispatch %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no dispatch")
+	}
+	testutil.WaitMet(t, mock)
+}
+
+// When the transaction rolls back, the agent is never triggered.
+func TestSendWithAttachmentsRollbackTriggersNothing(t *testing.T) {
+	s, mock := newService(t)
+	mock.MatchExpectationsInOrder(true)
+	rec := recordingAgents{got: make(chan string, 1)}
+	s.Agents = rec
+	expectActor(mock, "designer", 20)
+	expectActor(mock, "agent-a", 11)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO mail`).WithArgs(20, 11, "Look", "B").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "sent_at"}).AddRow(mailID, sentAt))
+	mock.ExpectExec("INSERT INTO mail_attachment").WithArgs(mailID, 0, "a.png", "image/png", len(pngData), pngData).
+		WillReturnError(context.DeadlineExceeded)
+	mock.ExpectRollback()
+
+	if _, err := s.SendWithAttachments(context.Background(), "designer", "agent-a", "Look", "B", "",
+		[]Attachment{{Filename: "a.png", MediaType: "image/png", Data: pngData}}); err == nil {
+		t.Fatal("want an error")
+	}
+	select {
+	case got := <-rec.got:
+		t.Errorf("dispatched after a rollback: %q", got)
+	case <-time.After(200 * time.Millisecond):
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
